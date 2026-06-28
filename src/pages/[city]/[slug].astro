@@ -1021,10 +1021,24 @@ const cleanHeroHeading = String(page.hero_heading || "").endsWith(".")
         margin-bottom: 22px;
       }
 
-    .grid {
+   .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
+  width: 100%;
+  overflow: hidden;
+}
+
+@media (max-width: 1100px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
 }
 
     .grid.map-hidden {
@@ -1275,18 +1289,19 @@ body.is-map-mode .bottom-refine-cta {
   display: none !important;
 }
 
-  .card-image-wrap {
+ .card-image-wrap {
   width: 100%;
-  height: 190px;
+  aspect-ratio: 16 / 10;
   overflow: hidden;
-    background: var(--accent-soft);
+  background: var(--accent-soft);
 }
 
 .card-image-wrap img,
 .card img {
   display: block;
   width: 100%;
-  height: 190px;
+  max-width: 100%;
+  height: 100%;
   object-fit: cover;
 }
 
@@ -1937,12 +1952,9 @@ color: var(--accent) !important;
 <p class="page-hero__eyebrow">{page.eyebrow || `${city.charAt(0).toUpperCase() + city.slice(1)} Intent Search`}</p>
    <h1 set:html={`${cleanHeroHeading.replace(/\|/g, '<br>')}<span style="color:${accentColor} !important">.</span>`} />
 
-  <p class="page-hero__copy">{page.intro_copy}</p>
 
-<div class="hero-market-meta">
-  <span>{listingCount} active listings</span>
-  <span>Updated from MLS® data</span>
-</div>
+
+
 
    <!-- Hero buttons removed -->
   </div>
@@ -1955,6 +1967,16 @@ color: var(--accent) !important;
 <div style="height:60px;background:linear-gradient(to bottom, rgba(0,0,0,0.10), transparent);margin-bottom:-60px;pointer-events:none;"></div>
 <div class="intent-content-shell">
 
+  <nav aria-label="Breadcrumb" style="margin:16px 0 8px;font-size:0.82rem;color:var(--muted);font-weight:600;">
+    <a href={`/${city}`} style="color:var(--muted);text-decoration:none;">{titleCase(city)} Homes</a>
+    <span style="margin:0 6px;opacity:0.5;">›</span>
+    <span style="color:var(--ink);">
+      {pageKind === "area"
+        ? titleCase(page.area || slug)
+        : page.hero_heading || titleCase(slug.replace(/-/g, " "))}
+    </span>
+  </nav>
+
   {(page.seo_intro || seo.intro) && (
     <p style="margin:28px 0 20px;color:var(--muted);font-size:1rem;line-height:1.65;max-width:780px;">
       {page.seo_intro || seo.intro}
@@ -1962,6 +1984,44 @@ color: var(--accent) !important;
   )}
 {pageKind === "area" && (
   <section class="area-intelligence">
+
+{page.intro_copy && (
+      <p style="margin:0 0 20px;color:var(--ink);font-size:1rem;line-height:1.65;max-width:780px;font-weight:500;">
+        {page.intro_copy}
+      </p>
+    )}
+
+    {(() => {
+      const prices = listings.map((l) => Number(l.price || 0)).filter((p) => p > 0);
+      const avgPrice = prices.length ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : 0;
+      const sorted = [...prices].sort((a, b) => a - b);
+      const medianPrice = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
+      const byType = (t: string) => listings.filter((l) => String(l.normalized_type || "").toLowerCase() === t).length;
+      return (
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:24px;">
+          {[
+            { label: "Active Listings", value: String(listings.length) },
+            { label: "Average Price", value: avgPrice ? `$${avgPrice.toLocaleString()}` : "—" },
+            { label: "Median Price", value: medianPrice ? `$${medianPrice.toLocaleString()}` : "—" },
+        { label: "Houses", value: String(byType("house")), type: "house" },
+            { label: "Condos", value: String(byType("condo")), type: "condo" },
+            { label: "Townhomes", value: String(byType("townhouse")), type: "townhouse" },
+            { label: "Mobile Homes", value: String(byType("mobile")), type: "mobile" },
+            { label: "Lot / Land", value: String(byType("land")), type: "land" },
+          ].map(({ label, value, type }) => (
+            <div
+              onclick={type ? `document.querySelector('.type-filter-select').value='${type}';document.querySelector('.type-filter-select').dispatchEvent(new Event('change'));document.querySelector('.grid')?.scrollIntoView({behavior:'smooth',block:'start'})` : undefined}
+              style={`background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:6px;padding:14px 16px;${type ? "cursor:pointer;" : ""}`}
+            >
+              <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">{label}</div>
+              <div style="font-size:1.5rem;font-weight:800;letter-spacing:-0.03em;line-height:1;">{value}</div>
+              {type && <div style="font-size:0.72rem;color:var(--accent);font-weight:700;margin-top:4px;">Filter →</div>}
+            </div>
+          ))}
+        </div>
+      );
+    })()}
+
     <div class="area-intelligence__chips">
       <button type="button" class="amenity-chip active" data-amenity="schools">
         🎓 Schools <strong>13</strong>
@@ -1990,19 +2050,8 @@ color: var(--accent) !important;
           <p>13 schools in {titleCase(page.area || city)}</p>
         </div>
 
-        <div class="amenity-list" id="amenity-list">
-        <div style="display:flex;flex-direction:column;gap:3px;padding:10px 18px;border-top:1px solid rgba(0,0,0,.06);">
-            <div style="margin:0;font-size:0.94rem;font-weight:600;line-height:1.35;color:#1c1914;">Dover Bay Secondary</div>
-            <div style="margin:0;font-size:0.82rem;font-weight:400;line-height:1.4;color:#9c9590;">Public · High School · 0.8 km</div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:3px;padding:10px 18px;border-top:1px solid rgba(0,0,0,.06);">
-            <div style="margin:0;font-size:0.94rem;font-weight:600;line-height:1.35;color:#1c1914;">Randerson Ridge Elementary</div>
-            <div style="margin:0;font-size:0.82rem;font-weight:400;line-height:1.4;color:#9c9590;">Public · Elementary · 1.0 km</div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:3px;padding:10px 18px;border-top:1px solid rgba(0,0,0,.06);">
-            <div style="margin:0;font-size:0.94rem;font-weight:600;line-height:1.35;color:#1c1914;">McGirr Elementary</div>
-            <div style="margin:0;font-size:0.82rem;font-weight:400;line-height:1.4;color:#9c9590;">Public · Elementary · 1.2 km</div>
-          </div>
+   <div class="amenity-list" id="amenity-list">
+          <div style="padding:14px 18px;color:#9c9590;font-size:0.88rem;">Loading nearby places...</div>
         </div>
       </aside>
 
@@ -2282,7 +2331,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
     </main>
 
     <ShortlistReviewModal />
-<IntentModalController />
+<IntentModalController loadMapScript={false} />
 
   <style is:global>
 #refined-results .card-decision-badge {
@@ -2462,19 +2511,25 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
     padding-right: 0 !important;
   }
 
-  .section-head,
+.section-head,
   .intent-controls {
     padding-left: 14px !important;
     padding-right: 14px !important;
   }
 
-  .section-head,
+.section-head,
   .intent-controls,
   .grid {
     width: 100% !important;
     max-width: 100% !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
+  }
+
+  .area-intelligence {
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+    box-sizing: border-box !important;
   }
 
 .grid > .card {
@@ -2484,10 +2539,14 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
     border-radius: 16px !important;
   }
 
-  .card-image-wrap,
+ .card-image-wrap {
+    aspect-ratio: 16 / 10 !important;
+    height: auto !important;
+  }
+
   .card-image-wrap img,
   .card img {
-    height: 210px !important;
+    height: 100% !important;
   }
 }
     </style>
@@ -2570,12 +2629,12 @@ async function loadAreaAmenities(category = "school") {
   );
 
   const payload = await res.json();
-  document.querySelectorAll(".amenity-chip").forEach((chip) => {
+ document.querySelectorAll(".amenity-chip").forEach((chip) => {
   const key = amenityCategoryMap[chip.dataset.amenity] || chip.dataset.amenity;
-  const count = payload.categories?.[key]?.length || 0;
-  const strong = chip.querySelector("strong");
+  const allItems = payload.categories?.[key] || [];
+const nearbyCount = allItems.filter((item) => Number(item.distKm || 0) <= 2).length;  const strong = chip.querySelector("strong");
 
-  if (strong) strong.textContent = String(count);
+  if (strong) strong.textContent = String(nearbyCount);
 });
   const rows = payload.categories?.[category] || [];
 const activeChip = document.querySelector(".amenity-chip.active");
@@ -2587,12 +2646,14 @@ const amenityList = document.querySelector("#amenity-list");
 
 if (panelTitle) panelTitle.textContent = label;
 
+const nearbyRows = rows.filter((item) => Number(item.distKm || 0) <= 2);
+
 if (panelCopy) {
-  panelCopy.textContent = `${rows.length} ${label.toLowerCase()} near ${document.querySelector("[data-slug]")?.dataset.slug?.replaceAll("-", " ") || "this area"}`;
+  panelCopy.textContent = `${nearbyRows.length} ${label.toLowerCase()} near ${document.querySelector("[data-slug]")?.dataset.slug?.replaceAll("-", " ") || "this area"}`;
 }
 
 if (amenityList) {
-  amenityList.innerHTML = rows
+  amenityList.innerHTML = nearbyRows
     .slice(0, 8)
     .map((item) => {
       const name = String(item.name || label || "Nearby place").trim();
@@ -2609,7 +2670,7 @@ if (amenityList) {
 }
   const amenityBounds = new google.maps.LatLngBounds();
 
-  rows.forEach((item) => {
+ nearbyRows.forEach((item) => {
     const position = {
       lat: Number(item.lat),
       lng: Number(item.lng),
@@ -2633,9 +2694,7 @@ if (amenityList) {
     });
 
     amenityMarkers.push(marker);
-   if (!areaBounds || areaBounds.isEmpty()) {
-  bounds.extend(position);
-}
+   
   });
 
  // Area pages should stay zoomed to the selected polygon.

@@ -1,0 +1,3105 @@
+---
+import { createClient } from "@supabase/supabase-js";
+import {
+  getListingAddress,
+  getListingBaths,
+  getListingBeds,
+  getListingDescription,
+  getListingId,
+  getListingImage,
+  getListingPrice,
+  getListingSqft,
+  getListingType,
+  getListingYear
+} from "../../lib/repliers";
+import IntentModalController from "../../components/IntentModalController.astro";
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL!,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+const isAgentView = Astro.url.searchParams.get("agent") === "1";
+const isExpandedReview = Astro.url.searchParams.has("expanded");
+const clientLink = `/shortlists/${slug}`;
+const sendId = Astro.url.searchParams.get("s");
+const googleMapsApiKey = import.meta.env.PUBLIC_GOOGLE_MAPS_API_KEY || "";
+function normalizeImageUrl(url: any) {
+  const value = String(url || "").trim();
+
+  if (!value) return "";
+
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return value;
+  }
+
+  if (value.startsWith("/")) {
+    return `https://cdn.repliers.io${value}`;
+  }
+
+  return `https://cdn.repliers.io/${value}`;
+}
+function getListingLat(listing: any) {
+  return (
+    listing?.lat ||
+    listing?.latitude ||
+    listing?.map?.lat ||
+    listing?.map?.latitude ||
+    listing?.address?.lat ||
+    listing?.address?.latitude ||
+    listing?.raw?.lat ||
+    listing?.raw?.latitude ||
+    listing?.raw?.map?.lat ||
+    listing?.raw?.map?.latitude ||
+    listing?.raw?.address?.lat ||
+    listing?.raw?.address?.latitude ||
+    listing?.coordinates?.lat ||
+    listing?.coordinates?.latitude ||
+    listing?.raw?.coordinates?.lat ||
+    listing?.raw?.coordinates?.latitude ||
+    ""
+  );
+}
+
+function getListingLng(listing: any) {
+  return (
+    listing?.lng ||
+    listing?.lon ||
+    listing?.longitude ||
+    listing?.map?.lng ||
+    listing?.map?.lon ||
+    listing?.map?.longitude ||
+    listing?.address?.lng ||
+    listing?.address?.lon ||
+    listing?.address?.longitude ||
+    listing?.raw?.lng ||
+    listing?.raw?.lon ||
+    listing?.raw?.longitude ||
+    listing?.raw?.map?.lng ||
+    listing?.raw?.map?.lon ||
+    listing?.raw?.map?.longitude ||
+    listing?.raw?.address?.lng ||
+    listing?.raw?.address?.lon ||
+    listing?.raw?.address?.longitude ||
+    listing?.coordinates?.lng ||
+    listing?.coordinates?.lon ||
+    listing?.coordinates?.longitude ||
+    listing?.raw?.coordinates?.lng ||
+    listing?.raw?.coordinates?.lon ||
+    listing?.raw?.coordinates?.longitude ||
+    ""
+  );
+}
+function getListingSqftFromDescription(listing: any) {
+  const text = String(listing?.description || "").toLowerCase();
+
+  const match = text.match(/(?:~|approx\.?|approximately)?\s*([\d,]+)\s*(?:sq\.?\s*ft\.?|sqft|square feet)/i);
+
+  return match?.[1] ? match[1].replace(/,/g, "") : "";
+}
+function getListingDom(listing: any) {
+  const direct =
+    listing?.days_on_market ||
+    listing?.daysOnMarket ||
+    listing?.dom ||
+    listing?.details?.daysOnMarket ||
+    listing?.details?.dom ||
+    listing?.raw?.daysOnMarket ||
+    listing?.raw?.dom ||
+    listing?.raw?.details?.daysOnMarket ||
+    listing?.raw?.details?.dom;
+
+  if (direct) return direct;
+
+  const listedRaw =
+    listing?.listed_at ||
+    listing?.list_date ||
+    listing?.listDate ||
+    listing?.created_at ||
+    listing?.raw?.listDate ||
+    listing?.raw?.timestamps?.listingUpdated;
+
+  const listedTime = new Date(listedRaw).getTime();
+  if (!listedTime) return "";
+
+  return Math.max(0, Math.floor((Date.now() - listedTime) / 86400000));
+}
+
+
+function normalizeLiveListing(live: any, saved: any) {
+  return {
+    ...saved,
+    live_listing: live || null,
+    repliers_listing_id:
+      getListingId(live) ||
+      saved?.repliers_listing_id ||
+      saved?.listing_id ||
+      saved?.id ||
+      "",
+price_text: saved?.price_text || getListingPrice(live) || "Price unavailable",
+address: saved?.address || getListingAddress(live) || "Address unavailable",
+beds: saved?.beds || getListingBeds(live) || "-",
+baths: saved?.baths || getListingBaths(live) || "-",
+sqft:  saved?.sqft ||
+  getListingSqft(saved) ||
+  getListingSqft(live) ||
+  "",
+
+property_type:
+  saved?.property_type ||
+  getListingType(live) ||
+  "Home",
+
+year_built:
+  saved?.year_built ||
+  getListingYear(live) ||
+  "",
+
+days_on_market:
+  saved?.days_on_market ||
+  saved?.daysOnMarket ||
+  saved?.dom ||
+  getListingDom(saved) ||
+  getListingDom(live) ||
+  "",
+lat: getListingLat(saved) || getListingLat(live),
+lng: getListingLng(saved) || getListingLng(live),
+image_url:
+  normalizeImageUrl(saved?.image_url) ||
+  normalizeImageUrl(getListingImage(live)) ||
+  "https://placehold.co/800x600?text=Listing",
+
+description:
+  getListingDescription(live) ||
+  saved?.description ||
+  live?.description ||
+  live?.details?.description ||
+  live?.raw?.description ||
+  live?.raw?.details?.description ||
+  "A quick preview of this property."
+  };
+}
+const { data: shortlist } = await supabase
+  .from("shortlist_sends")
+.select(`
+    *,
+    agent:agent_id (
+      id,
+      name
+    ),
+    client:client_id (
+      id,
+      name,
+      phone
+    )
+  `)
+  .eq("shortlist_slug", slug)
+  .single();
+
+if (sendId) {
+  await supabase.rpc("track_shortlist_send_open", {
+    send_id: sendId
+  });
+}
+
+let items: any[] = [];
+let resources: any[] = [];
+
+if (shortlist?.id) {
+  const res = await supabase
+    .from("shortlist_items")
+    .select("*")
+    .eq("shortlist_send_id", shortlist.id)
+    .order("sort_order", { ascending: true });
+
+  items = res.data || [];
+
+const selectedRes = await supabase
+  .from("shortlist_resource_vendors")
+  .select("vendor_id, sort_order")
+  .eq("shortlist_slug", slug)
+  .eq("is_selected", true)
+  .order("sort_order", { ascending: true });
+
+const vendorIds = (selectedRes.data || [])
+  .map((row: any) => row.vendor_id)
+  .filter(Boolean);
+
+if (vendorIds.length) {
+  const vendorRes = await supabase
+    .from("buyer_resource_vendors")
+    .select("id, type, name, email, phone, website, note, is_active")
+    .in("id", vendorIds)
+    .eq("is_active", true);
+
+  const vendorMap = new Map(
+    (vendorRes.data || []).map((vendor: any) => [vendor.id, vendor])
+  );
+
+  resources = vendorIds
+    .map((id: string) => vendorMap.get(id))
+    .filter(Boolean);
+}
+}
+
+let listingRowsById = new Map();
+
+const cleanListingRowId = (value: any) =>
+  String(value || "").replace(/[^0-9]/g, "").trim();
+
+const normalizeAddressKey = (value: any) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const rowsRes = await supabase
+  .from("listing_rows")
+  .select("*")
+  .eq("normalized_city", "nanaimo")
+  .limit(5000);
+
+if (rowsRes.error) {
+  console.error("LISTING_ROWS LOAD ERROR", rowsRes.error);
+}
+
+console.log("LISTING_ROWS LOADED", rowsRes.data?.length || 0);
+
+listingRowsById = new Map(
+  (rowsRes.data || []).flatMap((row: any) => [
+    [cleanListingRowId(row.id), row],
+    [cleanListingRowId(row.mls_number), row],
+    [normalizeAddressKey(row.address), row]
+  ])
+);
+function getListingSortScore(listing: any) {
+  const toNumber = (value: any) =>
+    parseInt(String(value || "").replace(/[^0-9]/g, ""), 10) || 0;
+
+  const price = toNumber(listing.price_text);
+  const sqft = toNumber(listing.sqft);
+  const beds = toNumber(listing.beds);
+  const baths = toNumber(listing.baths);
+  const year = toNumber(listing.year_built);
+  const desc = String(listing.description || "").toLowerCase();
+
+  let score = 0;
+  if (listing.is_favourite) score += 100;
+if (listing.decision === "maybe") score += 20;
+if (listing.decision === "pass") score -= 500;
+
+  if (price && sqft) score += Math.round((price / sqft) * -1);
+  if (sqft) score += sqft * 0.02;
+  if (beds) score += beds * 12;
+  if (baths) score += baths * 6;
+  if (year >= 2015) score += 25;
+
+  if (/\b(ocean view|mountain view|lake view|river view|city view|water view|panoramic view)\b/i.test(desc)) score += 35;
+  if (/\b(cul[- ]de[- ]sac|dead end|quiet street)\b/i.test(desc)) score += 18;
+  if (/\b(move[- ]in ready|turnkey|updated|renovated|modern)\b/i.test(desc)) score += 16;
+  if (/\b(garage|double garage|attached garage)\b/i.test(desc)) score += 10;
+  if (/\b(yard|backyard|garden|fully fenced|fenced)\b/i.test(desc)) score += 8;
+
+  return score;
+}
+const normalizedListings = [...items].map((item: any) => {
+  const id = item.repliers_listing_id || item.listing_id || item.mls_number || "";
+  const rowId = cleanListingRowId(id);
+  const addressKey = normalizeAddressKey(item.address);
+
+  const live = null;
+  const row =
+    listingRowsById.get(rowId) ||
+    listingRowsById.get(addressKey) ||
+    {};
+
+  const saved = {
+    ...item,
+    ...row,
+    price_text: row.price ? `$${Number(row.price).toLocaleString()}` : item.price_text,
+    image_url: row.image_url || item.image_url,
+ sqft: row.sqft || getListingSqft(row) || item.sqft || getListingSqft(item),
+days_on_market: getListingDom(row) || getListingDom(item),
+    shortlist_item_id: item.shortlist_item_id || item.id,
+    is_favourite: item.is_favourite,
+    decision: item.decision,
+    liked_tags: item.liked_tags,
+    sort_order: item.sort_order
+  };
+
+  return normalizeLiveListing(live, saved);
+});
+
+const newestSortOrders = new Set(
+  normalizedListings
+    .map((item: any) => Number(item?.sort_order ?? 999999))
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => b - a)
+    .slice(0, 3)
+);
+
+const priceNumber = (item: any) =>
+  Number(String(item?.price_text || item?.price || "").replace(/[^0-9]/g, "")) || 0;
+
+// Simple sort by sort_order - keeps items in the order they were added/reviewed
+const listings = normalizedListings.sort((a, b) => {
+  return Number(a?.sort_order ?? 999999) - Number(b?.sort_order ?? 999999);
+});
+
+const clientDisplayName =
+  shortlist?.client_name ||
+  shortlist?.client?.name ||
+  "";
+
+const rawAgentName =
+  shortlist?.agent_name ||
+  shortlist?.agent?.name ||
+  "";
+
+const agentName =
+  rawAgentName && !rawAgentName.includes("@")
+    ? rawAgentName
+    : "Chris Crump";
+
+const pageTitle = shortlist?.client_name
+  ? `${shortlist.client_name}'s shortlist`
+  : "Your Shortlist";
+
+const createdLabel = shortlist?.created_at
+  ? new Date(shortlist.created_at).toLocaleDateString("en-CA", {
+      year: "numeric",
+      month: "short",
+      day: "numeric"
+    })
+  : "";
+
+const shortlistStatus = shortlist?.sent_at ? "Sent" : "Draft";
+
+const defaultIntroMessage =
+  "I pulled these homes together based on what you're looking for. Start with the first one - it’s the strongest match, then work your way through the rest.";
+
+const heroMessage = shortlist?.note?.trim() || defaultIntroMessage;
+const smsImageUrl = shortlist?.sms_image_url || "";
+const { data: uploadedSmsImages } = await supabase
+  .from("shortlist_sms_images")
+  .select("*")
+  .eq("shortlist_slug", slug)
+  .order("created_at", { ascending: false });
+const presetSmsImages = [
+  {
+    label: "New homes added",
+    url: "https://imagedelivery.net/Az3x6Ld2gouPPtikaqezkQ/aec87d01-e6d7-410d-f583-0924a6ced300/hero"
+  },
+  {
+    label: "Mortgage info added",
+    url: "https://imagedelivery.net/Az3x6Ld2gouPPtikaqezkQ/e436932a-2b37-4169-bd94-1245ca986300/hero"
+  },
+  {
+    label: "Home inspector info",
+    url: "https://imagedelivery.net/Az3x6Ld2gouPPtikaqezkQ/bd8a291a-1db0-4346-e807-eec80c70a400/hero"
+  },
+  {
+    label: "Market update",
+    url: "https://imagedelivery.net/Az3x6Ld2gouPPtikaqezkQ/27294214-7d6a-4fdf-64a4-18c4c7adba00/hero"
+  }
+];
+
+const firstListingImage =
+  listings?.[0]?.image_url ||
+  listings?.[0]?.images?.[0]?.url ||
+  "";
+
+const previewImageUrl =
+  smsImageUrl ||
+  firstListingImage ||
+  "https://placehold.co/1200x630?text=Shortlist";
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+   <title>{pageTitle}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta property="og:title" content={pageTitle} />
+<meta property="og:description" content="" />
+<meta property="og:image" content={previewImageUrl} />
+<meta property="og:image:secure_url" content={previewImageUrl} />
+<meta property="og:type" content="website" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content={pageTitle} />
+<meta name="twitter:description" content="" />
+<meta name="twitter:image" content={previewImageUrl} />
+    
+    
+    <link
+      href="https://?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap"
+      rel="stylesheet"
+    />
+
+ 
+
+<style is:global>
+  :root {
+    --bg: #f7f6f3;
+    --bg-card: #ffffff;
+    --bg-overlay: #f0ede8;
+    --bg-dark: #181614;
+    --bg-dark-2: #211f1c;
+
+    --text-primary: #18160f;
+    --text-secondary: #6b6760;
+    --text-muted: #a09c96;
+    --text-on-dark: #f0ede8;
+    --text-dim: rgba(240, 237, 232, 0.45);
+
+    --accent: #2d5016;
+    --accent-mid: #3d6b20;
+    --accent-light: #eef4e9;
+    --accent-border: #b5cfa0;
+
+    --border: #e4e0d9;
+    --border-strong: #ccc8c0;
+
+    --gold: #b07d2a;
+    --gold-bg: #fdf6e8;
+    --gold-border: #e8cc8a;
+    --gold-soft: #f6ebcf;
+    --pass: #8b1a1a;
+    --pass-bg: #fdf0f0;
+    --pass-border: #e8a0a0;
+    --danger: #9f2f2f;
+    --danger-dark: #872828;
+
+    --shadow-soft: 0 16px 50px rgba(17, 14, 9, 0.12);
+    --shadow-card: 0 8px 30px rgba(17, 14, 9, 0.07);
+
+    --f-display: "DM Serif Display", Georgia, serif;
+    --f-body: "DM Sans", system-ui, sans-serif;
+
+    --r-sm: 4px;
+    --r: 8px;
+    --r-lg: 12px;
+    --r-xl: 16px;
+    --r-2xl: 22px;
+--hero-height: 442px;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    scrollbar-gutter: stable;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: var(--f-body);
+    background: var(--bg);
+    color: var(--text-primary);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .agent-bar {
+    position: sticky;
+    top: 0;
+    z-index: 900;
+    background: var(--bg-dark);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 0 32px;
+  }
+
+  .agent-bar__inner {
+    max-width: 1280px;
+    margin: 0 auto;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 10px 0;
+  }
+
+  .agent-bar__left {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  .agent-bar__badge {
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 3px 8px;
+    border-radius: var(--r-sm);
+  }
+
+  .agent-bar__name {
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.75);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .agent-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #6bc96b;
+    flex-shrink: 0;
+  }
+
+  .agent-bar__sep {
+    color: rgba(255, 255, 255, 0.15);
+    font-size: 0.75rem;
+  }
+
+  .agent-bar__date {
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.3);
+  }
+
+  .agent-bar__actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .ab-btn {
+    height: 30px;
+    padding: 0 14px;
+    border-radius: var(--r-sm);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: transparent;
+    color: rgba(255, 255, 255, 0.6);
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+
+  .ab-btn:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: rgba(255, 255, 255, 0.9);
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+
+  .ab-btn--primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .ab-btn--primary:hover {
+    background: var(--accent-mid);
+    border-color: var(--accent-mid);
+    color: #fff;
+  }
+
+  .ab-btn--danger {
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+
+  .ab-btn--danger[data-editing="true"] {
+    background: rgba(255, 255, 255, 0.09);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.24);
+  }
+
+  .masthead {
+    background: var(--bg-dark);
+    color: var(--text-on-dark);
+    padding: 0 32px;
+  }
+.masthead__inner {
+  max-width: 1280px;
+  height: var(--hero-height);
+  margin: 0 auto;
+  padding: 72px 0 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: start;
+}
+
+  .masthead__eyebrow {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent-border);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .masthead__eyebrow::before {
+    content: "";
+    display: block;
+    width: 18px;
+    height: 1px;
+    background: var(--accent-border);
+  }
+
+  .masthead__heading {
+    font-family: var(--f-display);
+    font-size: clamp(3rem, 5.5vw, 5.5rem);
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: #fff;
+    margin-bottom: 24px;
+  }
+
+  .masthead__heading em {
+    font-style: italic;
+    color: var(--text-dim);
+  }
+
+  .masthead__client {
+    margin: 0 0 14px;
+    font-size: 1.15rem;
+    color: rgba(255, 255, 255, 0.55);
+    letter-spacing: 0.01em;
+  }
+
+  .masthead__client strong {
+    color: #fff;
+    font-weight: 500;
+  }
+
+  .masthead__message {
+    font-size: 0.9rem;
+    line-height: 1.75;
+    color: rgba(255, 255, 255, 0.38);
+    max-width: 70ch;
+    margin-top: 16px;
+  }
+
+  .masthead__right {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: flex-end;
+    padding-bottom: 8px;
+    gap: 24px;
+  }
+
+  .masthead__logo {
+  width: min(100%, 560px);
+  max-height: 50px;
+  object-fit: contain;
+  object-position: right center;
+  opacity: 0.92;
+}
+
+  .masthead__stat-block {
+    text-align: right;
+  }
+
+  .masthead__count-num {
+    font-family: var(--f-display);
+    font-size: clamp(5rem, 9vw, 8.5rem);
+    line-height: 1;
+    letter-spacing: -0.05em;
+    color: rgba(255, 255, 255, 0.12);
+    display: block;
+  }
+
+  .masthead__count-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.2);
+    margin-top: 4px;
+    display: block;
+  }
+
+  .masthead__hints {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-end;
+  }
+
+  .masthead__hint {
+    font-size: 0.72rem;
+    color: rgba(255, 255, 255, 0.25);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .masthead__hint::before {
+    content: "";
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    flex-shrink: 0;
+  }
+
+  .body-wrap {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 48px 32px 100px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .section-title {
+    font-family: var(--f-display);
+    font-size: 1.25rem;
+    font-weight: 400;
+    font-style: italic;
+    color: var(--text-primary);
+  }
+
+  .section-meta {
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .section-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.map-view-btn {
+  appearance: none;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: #fff;
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.map-view-btn:hover {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: #fff;
+}
+
+.map-view-btn.is-active {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: #fff;
+}
+
+.masthead-map-wrap {
+  grid-column: 1 / -1;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: none;
+  width: 100%;
+  position: relative;
+}
+
+.masthead-map-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  background:
+    linear-gradient(to bottom, rgba(24, 22, 20, 0.18), transparent 34%),
+    linear-gradient(to top, rgba(24, 22, 20, 0.22), transparent 42%),
+    linear-gradient(to right, rgba(24, 22, 20, 0.16), transparent 34%);
+}
+.shortlist-page-map {
+  position: relative;
+  z-index: 1;
+}
+.shortlist-page-map .leaflet-tooltip-pane {
+  z-index: 700 !important;
+}
+
+.shortlist-page-map .leaflet-marker-pane {
+  z-index: 650 !important;
+}
+
+
+
+.shortlist-page-map .leaflet-marker-pane {
+  z-index: 650 !important;
+}
+
+.shortlist-page-map .leaflet-popup-pane {
+  z-index: 700 !important;
+}
+
+.masthead-map-wrap[hidden] {
+  display: none;
+}
+
+.masthead.map-mode {
+  height: var(--hero-height);
+  max-height: var(--hero-height);
+  overflow: hidden;
+}
+
+.masthead.map-mode .masthead__inner {
+  max-width: none;
+  width: 100%;
+  height: var(--hero-height);
+  max-height: var(--hero-height);
+  padding: 0;
+  display: block;
+  overflow: hidden;
+}
+
+.masthead.map-mode .masthead-map-wrap {
+  height: var(--hero-height);
+  max-height: var(--hero-height);
+  overflow: hidden;
+}
+
+.masthead.map-mode .shortlist-page-map {
+  height: var(--hero-height);
+  min-height: var(--hero-height);
+  max-height: var(--hero-height);
+  display: block;
+}
+
+.shortlist-page-map {
+  height: 442px;
+  min-height: 442px;
+  width: 100%;
+  background: #e8e8e8;
+  display: block;
+}
+
+.shortlist-page-map > div {
+  width: 100%;
+  height: 100%;
+}
+
+.map-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+  font-size: 0.8rem;
+  color: #6b645a;
+  border-bottom: 1px solid var(--border);
+  background: #faf8f4;
+}
+
+.map-header strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.map-header--dark {
+  background: #f7f6f3;
+}
+
+
+.shortlist-map-pin {
+  width: 24px !important;
+  height: 24px !important;
+  display: block !important;
+  border: 0;
+  background: red !important;
+  border-radius: 999px;
+  padding: 0;
+  cursor: pointer;
+  position: relative;
+  z-index: 9999;
+}
+
+.shortlist-map-pin__dot {
+  display: block;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px 999px 999px 4px;
+  background: #181614;
+  border: 3px solid #fff;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.35);
+  transform: rotate(-45deg);
+}
+
+.shortlist-map-pin__dot::after {
+  content: "";
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #fff;
+  margin: 5px;
+}
+
+.shortlist-map-pin__label {
+  position: absolute;
+  left: 50%;
+  bottom: 34px;
+  transform: translateX(-50%) translateY(4px);
+  opacity: 0;
+  pointer-events: none;
+  background: #fff;
+  color: #181614;
+  border: 1px solid rgba(24,22,20,0.18);
+  border-radius: 12px;
+  padding: 8px 10px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.2);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.shortlist-map-pin__label strong,
+.shortlist-map-pin__label span {
+  display: block;
+  line-height: 1.2;
+}
+
+.shortlist-map-pin__label span {
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.shortlist-map-pin:hover .shortlist-map-pin__label,
+.shortlist-map-pin.is-active .shortlist-map-pin__label {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+@media (min-width: 900px) {
+.masthead.map-mode {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  padding: 0;
+  padding-bottom: 0;
+  height: var(--hero-height);
+  overflow: hidden;
+}
+
+  .masthead.map-mode .masthead__inner {
+  max-width: none;
+  width: 100%;
+  padding: 0;
+  display: block;
+  height: var(--hero-height);
+}
+
+  .masthead.map-mode .masthead__left,
+  .masthead.map-mode .masthead__right {
+    display: none;
+  }
+
+  .masthead.map-mode .masthead-map-wrap {
+    margin-top: 0px;
+  }
+
+.masthead.map-mode .shortlist-page-map {
+  height: var(--hero-height);
+  min-height: var(--hero-height);
+  transform: none !important;
+  display: block;
+}
+
+.shortlist-page-map canvas {
+  image-rendering: auto !important;
+}
+}
+
+  .edit-banner {
+    display: none;
+    margin: 0 0 20px;
+    padding: 14px 16px;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text-secondary);
+    font-size: 0.84rem;
+  }
+
+  .edit-banner.show {
+    display: block;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+  }
+
+ .card {
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  cursor: default;
+  transition:
+    background 0.2s,
+    opacity 0.2s ease,
+    filter 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+  position: relative;
+  border: 2px solid rgba(122, 111, 102, 0.16);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+  .card[data-decision="pass"] {
+    opacity: 0.2;
+    filter: saturate(0.72);
+  }
+
+  .card[data-decision="pass"]:hover {
+    opacity: 1;
+  }
+
+  .card:hover {
+    border-color: var(--border-strong);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.07);
+    transform: translateY(-2px);
+  }
+
+  .card__remove {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 4;
+    display: none;
+    appearance: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--danger);
+    cursor: pointer;
+    font: inherit;
+    font-size: 1rem;
+    line-height: 1;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+    transition: transform 0.14s ease, background 0.14s ease, color 0.14s ease;
+  }
+
+  .card__remove:hover {
+    transform: scale(1.04);
+    background: var(--danger);
+    color: #fff;
+  }
+
+  body.edit-mode .card__remove[data-agent-only="true"] {
+    display: inline-flex;
+  }
+
+  .card.is-removing {
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  .card__image-wrap {
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    position: relative;
+    background: var(--bg-overlay);
+    cursor: pointer;
+  }
+
+  .card__image-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
+  .card:hover .card__image-wrap img {
+    transform: scale(1.04);
+  }
+
+  .card__image-wrap::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.32) 0%, transparent 52%);
+    pointer-events: none;
+  }
+
+  .card__index {
+    position: absolute;
+    bottom: 10px;
+    left: 12px;
+    font-family: var(--f-body);
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.6);
+    z-index: 3;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+ .card__preview-image-btn {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 4;
+  appearance: none;
+  border: 1px solid rgba(255,255,255,0.75);
+  background: rgba(255,255,255,0.94);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.16);
+  display: none;
+}
+
+body.edit-mode .card__preview-image-btn {
+  display: inline-flex;
+}
+
+.card__preview-image-btn:hover {
+  background: var(--text-primary);
+  color: #fff;
+}
+
+  .card__love-badge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 4;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+
+  .card__love-badge-heart {
+    color: #e35b66;
+    font-size: 0.85rem;
+  }
+.card__new-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 13px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 8px 24px rgba(45, 80, 22, 0.28);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+  .card__maybe-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+  .card__body {
+    padding: 18px 20px 20px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+
+  .card__price {
+    font-family: var(--f-display);
+    font-size: 1.65rem;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .card__address {
+    font-size: 0.83rem;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    line-height: 1.4;
+  }
+
+  .card__meta {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    letter-spacing: 0.01em;
+  }
+
+  .card__desc {
+    font-size: 0.8rem;
+    line-height: 1.65;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    flex: 1;
+  }
+
+  .card__action {
+    appearance: none;
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    color: var(--text-primary);
+    padding: 9px 14px;
+    border-radius: var(--r);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 500;
+    transition: background 0.14s, border-color 0.14s, color 0.14s;
+    width: 100%;
+    text-align: center;
+  }
+
+  .card__action:hover {
+    background: var(--text-primary);
+    border-color: var(--text-primary);
+    color: #fff;
+  }
+
+  .empty {
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--r-lg);
+    padding: 80px 40px;
+    text-align: center;
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 1.4rem;
+    color: var(--text-muted);
+  }
+
+  .agent-edit-grid {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.note-editor,
+.resource-picker {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 18px;
+  box-shadow: var(--shadow-card);
+}
+
+.note-editor__label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.note-editor__input {
+  width: 100%;
+  min-height: 90px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 12px;
+  font: inherit;
+  color: var(--text-primary);
+  background: #fff;
+  margin-bottom: 12px;
+}
+
+.preset-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.preset-image-btn {
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+
+.preset-image-btn img {
+  width: 100%;
+  height: 90px;
+  object-fit: cover;
+  display: block;
+}
+
+.preset-image-btn span {
+  display: block;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.preset-image-btn.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.preset-image-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.preset-image-delete {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: var(--r);
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--danger);
+}
+
+.preset-image-delete:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.resource-picker__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.resource-vendor-list {
+  display: grid;
+  gap: 10px;
+}
+
+.resource-vendor-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: #faf8f4;
+}
+
+.resource-vendor-row span {
+  display: grid;
+  gap: 2px;
+}
+
+.resource-vendor-row small {
+  color: var(--text-muted);
+}
+
+.resource-section {
+  margin-top: 48px;
+}
+
+.resource-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.resource-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+}
+
+.resource-card__type {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.resource-card h3 {
+  font-size: 1.05rem;
+  margin-bottom: 8px;
+}
+
+.resource-card p {
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.resource-card__links {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.resource-card__links a {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.cta {
+  margin-top: 56px;
+  padding: 32px;
+  border-radius: var(--r-xl);
+  background: var(--bg-dark);
+  color: #fff;
+  text-align: center;
+}
+
+.cta strong {
+  display: block;
+  font-family: var(--f-display);
+  font-size: 1.7rem;
+  font-weight: 400;
+  margin-bottom: 6px;
+}
+
+.cta p {
+  color: rgba(255,255,255,0.55);
+}
+
+.cta-btn {
+  display: inline-flex;
+  margin-top: 18px;
+  padding: 11px 18px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 800;
+}
+@media (max-width: 700px) {
+  .masthead {
+    padding: 0 22px;
+  }
+
+ .masthead__inner {
+  height: auto;
+  min-height: 360px;
+  padding: 50px 0 48px;
+  display: block;
+}
+
+.masthead {
+  margin-bottom: 28px;
+}
+
+  .masthead__heading {
+    font-size: 2.6rem;
+    line-height: 0.96;
+    max-width: 280px;
+    margin-bottom: 18px;
+  }
+
+  .masthead__client,
+  .masthead__logo,
+  .masthead__hints {
+    display: none;
+  }
+
+  .masthead__message {
+    max-width: 300px;
+    font-size: 0.92rem;
+    line-height: 1.55;
+    margin-top: 0;
+  }
+
+  .masthead__right {
+    display: block;
+    margin-top: 20px;
+  }
+
+  .masthead__stat-block {
+    text-align: left;
+  }
+
+  .masthead__count-num {
+    font-size: 3.2rem;
+    color: rgba(255, 255, 255, 0.18);
+  }
+
+  .masthead__count-label {
+    color: rgba(255, 255, 255, 0.32);
+  }
+
+ .body-wrap {
+  padding: 34px 16px 80px;
+}
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+    .card {
+    width: 100%;
+  }
+
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .agent-bar {
+    padding: 0 14px;
+  }
+
+  .agent-bar__inner {
+    width: 100%;
+  }
+
+  .agent-bar__actions {
+    justify-content: flex-start;
+  }
+
+  .body-wrap {
+    width: 100%;
+    max-width: 100%;
+    padding: 34px 14px 80px;
+    overflow-x: hidden;
+  }
+
+  .agent-edit-grid,
+  .note-editor,
+  .resource-picker {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .note-editor {
+    padding: 16px;
+  }
+
+   .note-editor__input {
+    max-width: 100%;
+  }
+
+  .note-editor__input {
+    max-width: 100%;
+  }
+
+ .masthead.map-mode {
+    padding: 0 !important;
+    overflow: hidden !important;
+    margin-bottom: 0 !important;
+    height: 360px !important;
+    min-height: 360px !important;
+    max-height: 360px !important;
+  }
+
+  .masthead.map-mode .masthead-map-wrap {
+    height: 360px !important;
+    max-height: 360px !important;
+  }
+
+  .masthead.map-mode .shortlist-page-map {
+    height: 360px !important;
+    min-height: 360px !important;
+    max-height: 360px !important;
+  }
+
+  .masthead.map-mode .masthead__inner {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100vw !important;
+    width: 100vw !important;
+    min-height: 0 !important;
+    height: auto !important;
+    display: block !important;
+    overflow: hidden !important;
+  }
+
+  .masthead.map-mode .masthead__left,
+  .masthead.map-mode .masthead__right,
+  .masthead.map-mode .masthead__heading,
+  .masthead.map-mode .masthead__message,
+  .masthead.map-mode .masthead__eyebrow {
+    display: none !important;
+  }
+
+  .masthead.map-mode .masthead-map-wrap {
+    width: 100vw !important;
+    margin: 0 !important;
+    left: 0 !important;
+    position: relative !important;
+    height: 420px !important;
+    max-height: 420px !important;
+  }
+
+  .masthead.map-mode .shortlist-page-map {
+    width: 100vw !important;
+    height: 420px !important;
+    min-height: 420px !important;
+    max-height: 420px !important;
+  }
+
+}
+.refine-prompt-card {
+  padding: 24px;
+  border-radius: 20px;
+  background: #f5f9f1;
+  border: 1px solid #cfe4bd;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.refine-prompt-card:hover {
+  transform: translateY(-2px);
+  border-color: #9fcb7c;
+  box-shadow: 0 18px 42px rgba(45, 80, 22, 0.14);
+}
+
+.refine-prompt-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #edf3e7;
+  color: #45642e;
+  font-size: 0.82rem;
+  font-weight: 800;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.refine-prompt-card:hover .refine-prompt-pill {
+  animation: refinePillPop 0.42s ease both;
+}
+
+.refine-prompt-card:hover .refine-prompt-pill:nth-child(2) { animation-delay: 0.05s; }
+.refine-prompt-card:hover .refine-prompt-pill:nth-child(3) { animation-delay: 0.1s; }
+.refine-prompt-card:hover .refine-prompt-pill:nth-child(4) { animation-delay: 0.15s; }
+
+.refine-prompt-btn {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #2d5016, #163f08);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(45, 80, 22, 0.22);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.refine-prompt-card:hover .refine-prompt-btn {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 32px rgba(45, 80, 22, 0.3);
+  filter: brightness(1.04);
+}
+
+@keyframes refinePillPop {
+  0% { transform: translateY(0) scale(1); }
+  45% { transform: translateY(-4px) scale(1.06); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refine-prompt-card,
+  .refine-prompt-pill,
+  .refine-prompt-btn {
+    transition: none;
+    animation: none !important;
+  }
+}
+
+.consult-card {
+  padding: 26px 24px;
+  border-radius: 20px;
+  background: #f5f9f1;
+  border: 1px solid #cfe4bd;
+  text-align: center;
+  opacity: 0.82;
+  transform: translateY(10px) scale(0.985);
+}
+
+.consult-card.is-in-view {
+  animation: consultCardIn 0.55s ease forwards;
+}
+
+.consult-check {
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  background: #2d5016;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  margin: 0 auto 16px;
+}
+
+.consult-title {
+  font-size: 1.1rem;
+  line-height: 1.3;
+  color: #1e2818;
+  margin: 0 0 10px;
+}
+
+.consult-copy {
+  font-size: 0.9rem;
+  color: #5f675a;
+  line-height: 1.6;
+  margin: 0 0 14px;
+}
+
+.consult-price {
+  margin: 14px auto 12px;
+  padding: 13px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid #d6e8c9;
+  box-shadow: 0 10px 26px rgba(45, 80, 22, 0.08);
+}
+
+.consult-price__label {
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6d7c62;
+  margin-bottom: 4px;
+}
+
+.consult-price__value {
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #2d5016;
+}
+
+.consult-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.consult-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #edf3e7;
+  color: #45642e;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.consult-card.is-in-view .consult-price {
+  animation: consultPricePop 0.48s ease both 0.14s;
+}
+
+.consult-card.is-in-view .consult-tag {
+  animation: consultPillPop 0.42s ease both;
+}
+
+.consult-card.is-in-view .consult-tag:nth-child(1) { animation-delay: 0.22s; }
+.consult-card.is-in-view .consult-tag:nth-child(2) { animation-delay: 0.28s; }
+.consult-card.is-in-view .consult-tag:nth-child(3) { animation-delay: 0.34s; }
+.consult-card.is-in-view .consult-tag:nth-child(4) { animation-delay: 0.4s; }
+
+.consult-footer {
+  font-size: 0.85rem;
+  color: #8a8680;
+  margin-top: 14px;
+  line-height: 1.5;
+}
+
+@keyframes consultCardIn {
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    box-shadow: 0 18px 42px rgba(45, 80, 22, 0.12);
+  }
+}
+
+@keyframes consultPricePop {
+  0% { transform: translateY(6px) scale(0.98); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes consultPillPop {
+  0% { transform: translateY(6px) scale(0.94); opacity: 0; }
+  55% { transform: translateY(-3px) scale(1.05); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .consult-card,
+  .consult-price,
+  .consult-tag {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.refine-prompt-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+</style>
+  </head>
+
+  <body
+  data-agent-view={isAgentView ? "true" : "false"}
+  data-shortlist-slug={slug}
+  data-shortlist-send-id={shortlist?.id || ""}
+  data-google-maps-api-key={googleMapsApiKey}
+>
+    {isAgentView && (
+      <div class="agent-bar">
+        <div class="agent-bar__inner">
+          <div class="agent-bar__left">
+            <span class="agent-bar__badge">Agent view</span>
+            <span class="agent-bar__name">
+              <span class="agent-dot"></span>
+              {shortlist?.client_name || "Client"}
+              <span class="agent-bar__sep">·</span>
+              {shortlistStatus}
+            </span>
+            {createdLabel && <span class="agent-bar__date">{createdLabel}</span>}
+          </div>
+
+          <div class="agent-bar__actions">
+            <button
+              class="ab-btn"
+              type="button"
+              id="edit-shortlist-toggle"
+              data-editing="false">
+              Edit shortlist
+            </button>
+
+            <a class="ab-btn" href={`/listings?shortlist=${slug}`}>
+              Add homes
+            </a>
+
+         <button
+  class="ab-btn ab-btn--primary"
+  type="button"
+  id="nav-send-text-btn"
+  data-send-text
+  data-shortlist-slug={slug}
+  data-client-name={shortlist?.client?.name || shortlist?.client_name || ""}
+  data-client-phone={shortlist?.client_phone || shortlist?.client?.phone || ""}
+  data-note={shortlist?.note || ""}
+  data-sms-image-url={smsImageUrl}>
+  Send text
+</button>
+
+            <button
+              class="ab-btn"
+              type="button"
+              id="nav-copy-link-btn"
+              data-copy-link={clientLink}>
+              Copy link
+            </button>
+
+            <a class="ab-btn" href="/shortlists">Back</a>
+          </div>
+        </div>
+      </div>
+    )}
+
+    <header class="masthead">
+      <div class="masthead__inner">
+        <div class="masthead__left">
+  
+
+
+
+<h1 class="masthead__heading">
+  {clientDisplayName ? (
+    <>
+      {clientDisplayName.split(" ")[0].endsWith("s")
+  ? `${clientDisplayName.split(" ")[0]}'`
+  : `${clientDisplayName.split(" ")[0]}'s`}<br /><em>shortlist.</em>
+    </>
+  ) : (
+    <>
+      Your<br /><em>shortlist.</em>
+    </>
+  )}
+</h1>
+
+     <p class="masthead__client">
+  Curated by <strong>{agentName}</strong>
+</p>
+
+         <p
+  class="masthead__message"
+  id="masthead-message"
+  data-mobile-count={`${listings.length} selected homes`}>
+  {heroMessage}
+</p>
+
+       
+        </div>
+
+       <div class="masthead__right">
+  <img
+    src="https://imagedelivery.net/Az3x6Ld2gouPPtikaqezkQ/74000c47-a1d2-424c-2f16-3d2ebc30e300/card"
+    alt="Logo"
+    class="masthead__logo"
+  />
+
+  <div class="masthead__stat-block">
+            <span class="masthead__count-num" id="homes-count-num">
+              {String(listings.length).padStart(2, "0")}
+            </span>
+            <span class="masthead__count-label">homes selected</span>
+          </div>
+          <div class="masthead__hints">
+            <span class="masthead__hint">Tap any card to review</span>
+            <span class="masthead__hint">Move quickly through the shortlist</span>
+          </div>
+        </div>
+
+<div class="masthead-map-wrap" id="shortlist-page-map-wrap" hidden>  <div
+    id="shortlist-page-map"
+    class="shortlist-page-map"
+    data-deferred-map
+  ></div>
+</div>
+      </div>
+    </header>
+
+       <main class="body-wrap">
+      {isAgentView && (
+        <div class="agent-edit-grid">
+          <div class="edit-banner" id="edit-banner">
+            Edit mode is on. Remove anything that does not belong, then use <strong>Add homes</strong> to keep building this shortlist.
+          </div>
+
+          <div class="note-editor" id="note-editor">
+            <label class="note-editor__label" for="shortlist-note-input">
+              Buyer intro message
+            </label>
+
+            <textarea
+              id="shortlist-note-input"
+              class="note-editor__input"
+              rows="4"
+            >{heroMessage}</textarea>
+
+            <button type="button" class="ab-btn ab-btn--primary" id="save-note-btn">
+              Save message
+            </button>
+          </div>
+
+          <div class="note-editor" id="sms-message-editor">
+  <label class="note-editor__label" for="sms-message-input">
+    Text message (SMS)
+  </label>
+
+  <textarea
+    id="sms-message-input"
+    class="note-editor__input"
+    rows="3"
+    placeholder="What the buyer receives via text"
+  >{shortlist?.sms_message || heroMessage}</textarea>
+
+  <button
+    type="button"
+    class="ab-btn ab-btn--primary"
+    id="save-sms-message-btn"
+  >
+    Save text message
+  </button>
+</div>
+
+          <div class="note-editor" id="sms-image-editor">
+            <label class="note-editor__label" for="sms-image-url-input">
+              Text preview image
+            </label>
+
+           <div class="preset-image-grid">
+           {(uploadedSmsImages || []).map((image: any) => (
+  <div class="preset-image-wrap">
+    <button
+      type="button"
+      class={`preset-image-btn ${smsImageUrl === image.image_url ? "is-selected" : ""}`}
+      data-preset-image-url={image.image_url}>
+      <img src={image.image_url} alt={image.label || "Uploaded image"} loading="lazy" />
+      <span>{image.label || "Uploaded image"}</span>
+    </button>
+
+    <button
+      type="button"
+      class="preset-image-delete"
+      data-delete-sms-image-id={image.id}>
+      Delete
+    </button>
+  </div>
+))}
+ 
+
+  {presetSmsImages.map((preset) => (
+                <button
+                  type="button"
+                  class={`preset-image-btn ${smsImageUrl === preset.url ? "is-selected" : ""}`}
+                  data-preset-image-url={preset.url}>
+                  <img src={preset.url} alt={preset.label} loading="lazy" />
+                  <span>{preset.label}</span>
+                </button>
+              ))}
+            </div>
+
+       <input
+  id="sms-image-url-input"
+  type="hidden"
+  value={smsImageUrl}
+/>
+
+<label class="note-editor__label" for="sms-image-file-input" style="margin-top:10px;">
+  Or upload custom image
+</label>
+
+<input
+  id="sms-image-file-input"
+  class="note-editor__input"
+  type="file"
+  accept="image/*"
+  style="min-height:44px;"
+/>
+
+<p
+  id="sms-image-upload-status"
+  style="font-size:0.78rem; color:var(--text-muted); margin:-4px 0 12px;"
+></p>
+
+            <button type="button" class="ab-btn ab-btn--primary" id="save-sms-image-btn">
+              Save image
+            </button>
+          </div>
+<div class="note-editor" id="resource-add-editor">
+  <label class="note-editor__label">
+    Add buyer resource
+  </label>
+
+ <select id="resource-type-input" class="note-editor__input" style="min-height:44px;">
+  <option value="mortgage_broker">Mortgage broker</option>
+  <option value="home_inspector">Home inspector</option>
+  <option value="lawyer">Lawyer</option>
+  <option value="insurance">Insurance</option>
+  <option value="home_cleaner">Home cleaner</option>
+  <option value="moving_company">Moving company</option>
+  <option value="contractor">Contractor</option>
+  <option value="other">Other</option>
+</select>
+
+<button
+  type="button"
+  class="resource-save-btn"
+  id="show-add-resource-btn"
+  style="margin-bottom:10px;"
+>
+  + Add new
+</button>
+
+<input
+  id="resource-custom-type-input"
+  class="note-editor__input"
+  style="min-height:44px;"
+  placeholder="Service provider type, e.g. Home cleaner"
+/>
+
+  <input id="resource-name-input" class="note-editor__input" style="min-height:44px;" placeholder="Name" />
+  <input id="resource-phone-input" class="note-editor__input" style="min-height:44px;" placeholder="Phone" />
+  <input id="resource-email-input" class="note-editor__input" style="min-height:44px;" placeholder="Email" />
+  <input id="resource-website-input" class="note-editor__input" style="min-height:44px;" placeholder="Website URL" />
+
+  <textarea
+    id="resource-description-input"
+    class="note-editor__input"
+    rows="3"
+    placeholder="Short note for the buyer"
+  ></textarea>
+
+  <button type="button" class="ab-btn ab-btn--primary" id="add-resource-btn">
+    Add resource
+  </button>
+</div>
+<div class="resource-picker">
+  <div class="resource-picker__head">
+    <div>
+      <p class="eyebrow">Buyer resources</p>
+      <h3>Choose resources to show</h3>
+    </div>
+
+    <button type="button" class="ab-btn ab-btn--primary" id="save-resource-vendors-btn">
+      Save resources
+    </button>
+  </div>
+
+  <div id="resource-vendor-list" class="resource-vendor-list">
+    Loading resources...
+  </div>
+</div>
+          <div class="note-editor" id="resource-visibility-editor">
+            <label class="note-editor__label">
+              Buyer resources section
+            </label>
+
+            <label style="display:flex; align-items:center; gap:10px; font-size:0.9rem;">
+              <input
+                type="checkbox"
+                id="show-resources-toggle"
+                checked={shortlist?.show_resources !== false}
+              />
+              Show helpful next steps to buyer
+            </label>
+
+            <button
+              type="button"
+              class="ab-btn ab-btn--primary"
+              id="save-resource-visibility-btn"
+              style="margin-top:14px;">
+              Save resource setting
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div class="section-header">
+        <h2 class="section-title">Selected properties</h2>
+       <div class="section-actions">
+  <button type="button" class="map-view-btn" id="page-map-btn">
+    Map view
+  </button>
+
+  <span class="section-meta" id="section-meta-count">
+    {listings.length} {listings.length === 1 ? "home" : "homes"} chosen for review
+  </span>
+</div>
+      </div>
+
+
+
+      {listings.length > 0 ? (
+        <div class="grid" id="shortlist-grid">
+          {listings.map((listing: any, i: number) => {
+            const listingId = listing.repliers_listing_id || listing.id;
+            const itemId = listing.shortlist_item_id || listing.id;
+            const price = listing.price_text || "Price unavailable";
+            const address = listing.address || "Address unavailable";
+            const beds = listing.beds || "-";
+            const baths = listing.baths || "-";
+         const sqft = listing.sqft || getListingSqft(listing) || "";
+            const propertyType = listing.property_type || "Home";
+            const yearBuilt = listing.year_built || "";
+const daysOnMarket =
+  listing.days_on_market ||
+  listing.daysOnMarket ||
+  listing.dom ||
+  getListingDom(listing) ||
+  "";
+const image =
+  normalizeImageUrl(listing.image_url) ||
+  "https://placehold.co/800x600?text=Listing";
+            const description = listing.description || "A quick preview of this property.";
+            const likedTags = Array.isArray(listing.liked_tags) ? listing.liked_tags : [];
+            const isFavourite = Boolean(listing.is_favourite);
+            const decision = listing.decision || "";
+const isNew =
+  isExpandedReview &&
+  newestSortOrders.has(Number(listing?.sort_order ?? 999999)) &&
+  !listing?.is_favourite &&
+  !listing?.decision;
+const num = String(i + 1).padStart(2, "0");
+
+            return (
+            <article
+  class="card original-card"
+  data-item-id={String(itemId)}
+  data-card-id={String(listingId)}
+  data-listing-id={String(listing?.repliers_listing_id || listing?.listing_id || listing?.id || listingId || "")}
+  data-mls={String(listing?.mls_number || listing?.mls || listing?.repliers_listing_id || listingId || "")}
+data-lat={listing?.lat || ""}
+data-lng={listing?.lng || ""}
+data-city={listing?.normalized_city || listing?.city || ""}
+data-area={listing?.normalized_area || listing?.area || listing?.neighborhood || ""}
+                data-price={price}
+                data-address={address}
+                data-beds={String(beds)}
+                data-baths={String(baths)}
+                data-sqft={String(sqft)}
+data-type={propertyType}
+data-lot-size={String(listing.lot_size || listing.lotSize || listing.lot_sqft || listing.lotSqft || "")}
+data-year={String(yearBuilt)}
+data-dom={String(daysOnMarket)}
+                data-image={image}
+data-images={JSON.stringify(listing.images || listing.photo_urls || [])}
+data-description={String(description).replace(/"/g, "&quot;")}
+                data-liked-tags={JSON.stringify(likedTags)}
+                data-is-favourite={isFavourite ? "true" : "false"}
+               data-decision={decision}
+data-is-new={isNew ? "true" : "false"}
+data-sort-order={String(listing?.sort_order ?? i)}
+data-featured={i === 0 ? "true" : "false"}>
+                {isAgentView && (
+                  <button
+                    type="button"
+                    class="card__remove"
+                    data-agent-only="true"
+                    data-remove-item-id={String(itemId)}
+                    aria-label="Remove listing from shortlist"
+                    title="Remove listing">
+                    ✕
+                  </button>
+                )}
+
+                <div class="card__image-wrap">
+                  {isFavourite && (
+  <div class="card__love-badge">
+    <span class="card__love-badge-heart">♥</span>
+    <span>Loved</span>
+  </div>
+)}
+{isNew && (
+  <div class="card__new-badge">
+    <span>✨</span>
+    <span>New</span>
+  </div>
+)}
+{!isFavourite && decision === "maybe" && (
+  <div class="card__maybe-badge">
+    <span>🤔</span>
+    <span>Not sure</span>
+  </div>
+)}
+
+                  <img src={image} alt={address} loading="lazy" />
+                  <span class="card__index">No. {num}</span>
+
+{isAgentView && (
+  <button
+    type="button"
+    class="card__preview-image-btn"
+    data-preview-image-url={image}>
+    Use as text preview
+  </button>
+)}
+                </div>
+
+                <div class="card__body">
+                  <p class="card__price">{price}</p>
+                  <p class="card__address">{address}</p>
+                  <p class="card__meta">
+                    {beds} bed · {baths} bath
+                   {sqft ? ` · ${sqft} sqft` : ""}
+{yearBuilt ? ` · Built ${yearBuilt}` : ""}
+{daysOnMarket ? ` · ${daysOnMarket} DOM` : ""}
+                  </p>
+                  <p class="card__desc">{String(description || "").replace(/\s+/g, " ").trim()}</p>
+                  <button type="button" class="card__action preview-btn">View property →</button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+       ) : (
+        <div class="empty" id="empty-state">No listings added yet.</div>
+      )}
+
+      {shortlist?.show_resources !== false && (resources.length > 0 || isAgentView) && (
+  <section class="resource-section">
+          <div class="section-header">
+            <h2 class="section-title">Helpful next steps</h2>
+            <span class="section-meta">Resources from your agent</span>
+          </div>
+
+          <div class="resource-grid">
+            {resources.map((resource: any) => (
+             <article class="resource-card">
+<p class="resource-card__type">
+  {String(resource.type || "Other")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())}
+</p>
+
+  {resource.name ? (
+    <h3>{resource.name}</h3>
+  ) : (
+    <h3>{resource.title}</h3>
+  )}
+
+ {resource.note && <p>{resource.note}</p>}
+
+  <div class="resource-card__links">
+    {resource.phone && <a href={`tel:${resource.phone}`}>{resource.phone}</a>}
+    {resource.email && <a href={`mailto:${resource.email}`}>Email</a>}
+    {resource.website && <a href={resource.website}>Website</a>}
+  </div>
+</article>
+            ))}
+                   </div>
+
+          {resources?.length === 0 && isAgentView && (
+            <div class="empty" style="margin-top:16px;">
+              No buyer resources added yet.
+            </div>
+          )}
+        </section>
+      )}
+
+      <div class="cta">
+        <strong>Want to see any of these?</strong>
+        <p>Reply or text me and we’ll set it up.</p>
+
+        {isAgentView ? (
+          <p style="font-size:0.8rem; opacity:0.6;">Client sees this as a contact prompt</p>
+        ) : (
+          <a href="sms:" class="cta-btn">Text your agent</a>
+        )}
+      </div>
+      
+    </main>
+
+<IntentModalController listings={listings} />
+
+<script is:inline>
+document.addEventListener("click", (e) => {
+  const card = e.target.closest(".original-card");
+  console.log("CLICK", {
+    target: e.target.tagName,
+    targetClass: e.target.className,
+    card: !!card,
+    openSheet: typeof window.openSheet,
+    shortlistSendId: document.body.dataset.shortlistSendId,
+    agentView: document.body.dataset.agentView,
+  });
+});
+</script>
+
+
+
+
+
+<script is:inline>
+function initShortlistPage() {
+  const body = document.body;
+  const isAgentView = body?.dataset.agentView === "true";
+  const pageSlug = body?.dataset.shortlistSlug || "";
+
+  // ── Track shortlist view ──────────────────────────────────────────
+  if (!isAgentView && pageSlug) {
+    fetch("/api/shortlists/track-view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug: pageSlug })
+    }).catch(() => {});
+  }
+
+  // ── Viewed listings (for NEW badges) ─────────────────────────────
+  const viewedKey = `shortlist_viewed_${pageSlug}`;
+
+  function getViewedListings() {
+    try { return new Set(JSON.parse(localStorage.getItem(viewedKey) || "[]")); }
+    catch { return new Set(); }
+  }
+
+  function markListingViewed(card) {
+    if (!card) return;
+    const id = card.dataset.itemId || card.dataset.cardId || "";
+    if (!id) return;
+    const viewed = getViewedListings();
+    viewed.add(id);
+    localStorage.setItem(viewedKey, JSON.stringify([...viewed]));
+    card.dataset.viewed = "true";
+    card.dataset.isNew = "false";
+    card.querySelector(".card__new-badge")?.remove();
+  }
+
+  // Mark already-viewed cards on load
+  const viewedListings = getViewedListings();
+  document.querySelectorAll(".original-card").forEach((card, index) => {
+    card.dataset.originalOrder = String(index);
+    const id = card.dataset.itemId || card.dataset.cardId || "";
+    if (id && viewedListings.has(id)) {
+      card.dataset.viewed = "true";
+      card.dataset.isNew = "false";
+      card.querySelector(".card__new-badge")?.remove();
+    }
+  });
+
+// Hook into IntentModalController's openSheet to track views
+  function wrapOpenSheet() {
+    const _orig = window.openSheet;
+    window.openSheet = function(card) {
+      markListingViewed(card);
+      if (typeof _orig === "function") _orig(card);
+    };
+  }
+
+  if (typeof window.openSheet === "function") {
+    wrapOpenSheet();
+  } else {
+    // IntentModalController hasn't run yet — wait for it
+    const _poll = setInterval(() => {
+      if (typeof window.openSheet === "function") {
+        clearInterval(_poll);
+        wrapOpenSheet();
+      }
+    }, 20);
+  }
+
+  // ── Card counts ───────────────────────────────────────────────────
+  const homesCountNum = document.getElementById("homes-count-num");
+  const sectionMetaCount = document.getElementById("section-meta-count");
+  const shortlistGrid = document.getElementById("shortlist-grid");
+  const emptyState = document.getElementById("empty-state");
+
+  function getCards() {
+    return Array.from(document.querySelectorAll(".original-card"));
+  }
+
+  function updateCounts() {
+    const count = getCards().length;
+    if (homesCountNum) homesCountNum.textContent = String(count).padStart(2, "0");
+    if (sectionMetaCount) sectionMetaCount.textContent = `${count} ${count === 1 ? "home" : "homes"} chosen for review`;
+    if (shortlistGrid && emptyState) {
+      shortlistGrid.style.display = count === 0 ? "none" : "";
+      emptyState.style.display = count === 0 ? "block" : "none";
+    }
+  }
+
+  updateCounts();
+
+  // ── Edit mode ─────────────────────────────────────────────────────
+  let editMode = false;
+  const editToggleBtn = document.getElementById("edit-shortlist-toggle");
+  const editBanner = document.getElementById("edit-banner");
+
+  function syncEditModeUI() {
+    body.classList.toggle("edit-mode", editMode);
+    if (editToggleBtn) {
+      editToggleBtn.textContent = editMode ? "Done editing" : "Edit shortlist";
+      editToggleBtn.setAttribute("data-editing", editMode ? "true" : "false");
+    }
+    if (editBanner) editBanner.classList.toggle("show", editMode);
+  }
+
+  editToggleBtn?.addEventListener("click", () => {
+    editMode = !editMode;
+    syncEditModeUI();
+  });
+
+  syncEditModeUI();
+
+  // ── Remove shortlist item ─────────────────────────────────────────
+  async function removeShortlistItem(card) {
+    if (!isAgentView || !card) return;
+    const itemId = String(card.dataset.itemId || "").trim();
+    if (!itemId) { alert("Missing shortlist item id."); return; }
+    if (!window.confirm("Remove this home from the shortlist?")) return;
+    card.classList.add("is-removing");
+    try {
+      const res = await fetch("/api/shortlists/remove-item", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: itemId })
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Could not remove listing");
+      card.remove();
+      updateCounts();
+    } catch (err) {
+      card.classList.remove("is-removing");
+      alert(err instanceof Error ? err.message : "Could not remove listing");
+    }
+  }
+
+  document.querySelectorAll("[data-remove-item-id]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      await removeShortlistItem(btn.closest(".original-card"));
+    });
+  });
+
+  // ── SMS + note saving ─────────────────────────────────────────────
+  const navSendTextBtn = document.getElementById("nav-send-text-btn");
+  const navCopyLinkBtn = document.getElementById("nav-copy-link-btn");
+  const saveNoteBtn = document.getElementById("save-note-btn");
+  const noteInput = document.getElementById("shortlist-note-input");
+  const smsMessageInput = document.getElementById("sms-message-input");
+  const saveSmsMessageBtn = document.getElementById("save-sms-message-btn");
+  const mastheadMessage = document.getElementById("masthead-message");
+  const sendTextButtons = Array.from(document.querySelectorAll("[data-send-text]"));
+  const saveSmsImageBtn = document.getElementById("save-sms-image-btn");
+  const smsImageInput = document.getElementById("sms-image-url-input");
+  const presetImageButtons = Array.from(document.querySelectorAll("[data-preset-image-url]"));
+
+  async function saveSmsImageUrl(url) {
+    const cleanUrl = String(url || "").trim();
+    const res = await fetch("/api/shortlists/update-sms-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug: pageSlug, smsImageUrl: cleanUrl })
+    });
+    const data = await res.json();
+    if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to save image.");
+    sendTextButtons.forEach((btn) => btn.setAttribute("data-sms-image-url", cleanUrl));
+    return cleanUrl;
+  }
+
+  async function sendShortlistText(sendBtn) {
+    const slug = sendBtn?.getAttribute("data-shortlist-slug") || "";
+    const clientName = sendBtn?.getAttribute("data-client-name") || "";
+    const phone = sendBtn?.getAttribute("data-client-phone") || "";
+    const note = sendBtn?.getAttribute("data-note") || "";
+    const smsImageUrl = sendBtn?.getAttribute("data-sms-image-url") || "";
+    if (!slug) { alert("Missing shortlist slug."); return; }
+    if (!phone) { alert("No client phone number found."); return; }
+    const originalText = sendBtn.textContent || "Send text";
+    sendBtn.disabled = true;
+    sendBtn.textContent = "Sending...";
+    try {
+      const res = await fetch("/api/shortlists/send-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, clientName, phone, note, agentName: "Chris Crump", smsImageUrl })
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to send text.");
+      sendBtn.textContent = "Text sent ✓";
+      setTimeout(() => { sendBtn.textContent = originalText; }, 1800);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to send text.");
+      sendBtn.textContent = originalText;
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  async function copyShortlistLink(copyBtn) {
+    const path = copyBtn?.getAttribute("data-copy-link");
+    if (!path) return;
+    const url = `${window.location.origin}${path}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      const orig = copyBtn.textContent || "Copy link";
+      copyBtn.textContent = "Copied!";
+      setTimeout(() => { copyBtn.textContent = orig; }, 1400);
+    } catch { alert(url); }
+  }
+
+  navSendTextBtn?.addEventListener("click", async (e) => { e.preventDefault(); await sendShortlistText(navSendTextBtn); });
+  navCopyLinkBtn?.addEventListener("click", async (e) => { e.preventDefault(); await copyShortlistLink(navCopyLinkBtn); });
+
+  sendTextButtons.forEach((btn) => {
+    if (btn === navSendTextBtn) return;
+    btn.addEventListener("click", async (e) => { e.preventDefault(); await sendShortlistText(btn); });
+  });
+
+  saveNoteBtn?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    const note = String(noteInput?.value || "").trim();
+    const originalText = saveNoteBtn.textContent || "Save message";
+    saveNoteBtn.disabled = true;
+    saveNoteBtn.textContent = "Saving...";
+    try {
+      const res = await fetch("/api/shortlists/update-note", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: pageSlug, note })
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to save message.");
+      if (mastheadMessage) mastheadMessage.textContent = note;
+      sendTextButtons.forEach((btn) => btn.setAttribute("data-note", note));
+      saveNoteBtn.textContent = "Saved ✓";
+      setTimeout(() => { saveNoteBtn.textContent = originalText; }, 1400);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save message.");
+      saveNoteBtn.textContent = originalText;
+    } finally {
+      saveNoteBtn.disabled = false;
+    }
+  });
+
+  saveSmsMessageBtn?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    const smsMessage = smsMessageInput?.value?.trim() || "";
+    const originalText = saveSmsMessageBtn.textContent || "Save text message";
+    saveSmsMessageBtn.disabled = true;
+    saveSmsMessageBtn.textContent = "Saving...";
+    try {
+      const res = await fetch("/api/shortlists/update-sms-message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: pageSlug, smsMessage })
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to save SMS message.");
+      saveSmsMessageBtn.textContent = "Saved ✓";
+      setTimeout(() => { saveSmsMessageBtn.textContent = originalText; }, 1400);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save SMS message.");
+      saveSmsMessageBtn.textContent = originalText;
+    } finally {
+      saveSmsMessageBtn.disabled = false;
+    }
+  });
+
+  saveSmsImageBtn?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    const originalText = saveSmsImageBtn.textContent || "Save image URL";
+    try {
+      saveSmsImageBtn.disabled = true;
+      saveSmsImageBtn.textContent = "Saving...";
+      await saveSmsImageUrl(smsImageInput?.value || "");
+      saveSmsImageBtn.textContent = "Saved ✓";
+      setTimeout(() => { window.location.reload(); }, 500);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save image.");
+      saveSmsImageBtn.textContent = originalText;
+    } finally {
+      saveSmsImageBtn.disabled = false;
+    }
+  });
+
+  presetImageButtons.forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const imageUrl = btn.getAttribute("data-preset-image-url") || "";
+      if (!imageUrl || !smsImageInput) return;
+      const label = btn.querySelector("span");
+      const originalText = label?.textContent || "Preset";
+      smsImageInput.value = imageUrl;
+      presetImageButtons.forEach((b) => b.classList.remove("is-selected"));
+      btn.classList.add("is-selected");
+      try {
+        if (label) label.textContent = "Saving...";
+        await saveSmsImageUrl(imageUrl);
+        if (label) label.textContent = "Selected ✓";
+        setTimeout(() => { if (label) label.textContent = originalText; }, 1200);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Failed to save image.");
+        if (label) label.textContent = originalText;
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-preview-image-url]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const imageUrl = btn?.getAttribute("data-preview-image-url") || "";
+      if (!imageUrl || !smsImageInput) return;
+      smsImageInput.value = imageUrl;
+      try {
+        btn.textContent = "Saving...";
+        await saveSmsImageUrl(imageUrl);
+        btn.textContent = "Selected ✓";
+        setTimeout(() => { btn.textContent = "Use as text preview"; }, 1200);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Failed to save image.");
+        btn.textContent = "Use as text preview";
+      }
+    });
+  });
+
+  // ── Resources ─────────────────────────────────────────────────────
+  const resourceVendorList = document.getElementById("resource-vendor-list");
+  const saveResourceVendorsBtn = document.getElementById("save-resource-vendors-btn");
+  const showResourcesToggle = document.getElementById("show-resources-toggle");
+  const saveResourceVisibilityBtn = document.getElementById("save-resource-visibility-btn");
+  const addResourceBtn = document.getElementById("add-resource-btn");
+  const resourceTypeInput = document.getElementById("resource-type-input");
+  const resourceNameInput = document.getElementById("resource-name-input");
+  const resourcePhoneInput = document.getElementById("resource-phone-input");
+  const resourceEmailInput = document.getElementById("resource-email-input");
+  const resourceWebsiteInput = document.getElementById("resource-website-input");
+  const resourceDescriptionInput = document.getElementById("resource-description-input");
+  const showAddResourceBtn = document.getElementById("show-add-resource-btn");
+
+  async function loadResourceVendors() {
+    if (!resourceVendorList) return;
+    resourceVendorList.textContent = "Loading resources...";
+    try {
+      const res = await fetch("/api/buyer-resources/vendors");
+      const data = await res.json();
+      const selectedRes = await fetch(`/api/buyer-resources/selected?shortlistSlug=${encodeURIComponent(pageSlug)}`);
+      const selectedData = await selectedRes.json();
+      const vendors = data.vendors || [];
+      const selectedIds = new Set(selectedData.vendorIds || []);
+      if (!vendors.length) { resourceVendorList.textContent = "No vendors added yet."; return; }
+      resourceVendorList.innerHTML = vendors.map((vendor) => `
+        <div class="resource-vendor-row">
+          <input type="checkbox" value="${vendor.id}" ${selectedIds.has(vendor.id) ? "checked" : ""} />
+          <span>
+            <strong>${vendor.name}</strong>
+            <small>${String(vendor.type || "Other").replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}${vendor.email ? ` · ${vendor.email}` : ""}</small>
+          </span>
+          <div style="margin-left:auto; display:flex; gap:8px;">
+            <button type="button" class="resource-edit-btn" data-edit-resource-id="${vendor.id}" data-resource-type="${vendor.type || ""}" data-resource-name="${vendor.name || ""}" data-resource-phone="${vendor.phone || ""}" data-resource-email="${vendor.email || ""}" data-resource-website="${vendor.website || ""}" data-resource-note="${vendor.note || ""}">Edit</button>
+            <button type="button" class="resource-edit-btn" data-delete-resource-id="${vendor.id}">Delete</button>
+          </div>
+        </div>
+      `).join("");
+      resourceVendorList.querySelectorAll("[data-edit-resource-id]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.getElementById("resource-custom-type-input").value = String(btn.dataset.resourceType || "").replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+          resourceNameInput.value = btn.dataset.resourceName || "";
+          resourcePhoneInput.value = btn.dataset.resourcePhone || "";
+          resourceEmailInput.value = btn.dataset.resourceEmail || "";
+          resourceWebsiteInput.value = btn.dataset.resourceWebsite || "";
+          resourceDescriptionInput.value = btn.dataset.resourceNote || "";
+          addResourceBtn.dataset.editResourceId = btn.dataset.editResourceId || "";
+          addResourceBtn.textContent = "Save resource";
+          resourceNameInput.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+      });
+      resourceVendorList.querySelectorAll("[data-delete-resource-id]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          if (!confirm("Delete this vendor?")) return;
+          const res = await fetch("/api/buyer-resources/delete-vendor", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: btn.dataset.deleteResourceId || "" })
+          });
+          const data = await res.json();
+          if (!res.ok || !data?.ok) { alert(data?.error || "Could not delete vendor."); return; }
+          await loadResourceVendors();
+        });
+      });
+    } catch (err) {
+      resourceVendorList.textContent = "Could not load resources.";
+    }
+  }
+
+  async function saveSelectedResourceVendors() {
+    if (!saveResourceVendorsBtn) return;
+    const selectedIds = Array.from(document.querySelectorAll("#resource-vendor-list input[type='checkbox']:checked")).map((input) => input.value);
+    const originalText = saveResourceVendorsBtn.textContent || "Save resources";
+    saveResourceVendorsBtn.disabled = true;
+    saveResourceVendorsBtn.textContent = "Saving...";
+    try {
+      const res = await fetch("/api/buyer-resources/select", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shortlistSlug: pageSlug, vendorIds: selectedIds })
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to save resources.");
+      if (showResourcesToggle) showResourcesToggle.checked = true;
+      await fetch("/api/shortlists/update-resource-visibility", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: pageSlug, showResources: true })
+      });
+      saveResourceVendorsBtn.textContent = "Saved ✓";
+      setTimeout(() => { window.location.reload(); }, 500);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save resources.");
+      saveResourceVendorsBtn.textContent = originalText;
+    } finally {
+      saveResourceVendorsBtn.disabled = false;
+      setTimeout(() => { saveResourceVendorsBtn.textContent = originalText; }, 1200);
+    }
+  }
+
+  addResourceBtn?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    const originalText = addResourceBtn.textContent || "Add resource";
+    const cleanType = (value) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    const editResourceId = addResourceBtn.dataset.editResourceId || "";
+    const customType = document.getElementById("resource-custom-type-input")?.value || "";
+    const resourceType = cleanType(customType) || resourceTypeInput?.value || "other";
+    addResourceBtn.disabled = true;
+    addResourceBtn.textContent = "Adding...";
+    try {
+      const res = await fetch("/api/shortlists/add-resource", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editResourceId, slug: pageSlug, type: resourceType, name: resourceNameInput?.value?.trim() || "", phone: resourcePhoneInput?.value?.trim() || "", email: resourceEmailInput?.value?.trim() || "", website_url: resourceWebsiteInput?.value?.trim() || "", website: resourceWebsiteInput?.value?.trim() || "", description: resourceDescriptionInput?.value?.trim() || "", note: resourceDescriptionInput?.value?.trim() || "" })
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to add resource.");
+      addResourceBtn.textContent = "Added ✓";
+      await loadResourceVendors();
+      resourceNameInput.value = ""; resourcePhoneInput.value = ""; resourceEmailInput.value = ""; resourceWebsiteInput.value = ""; resourceDescriptionInput.value = "";
+      const customTypeInput = document.getElementById("resource-custom-type-input");
+      if (customTypeInput) customTypeInput.value = "";
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to add resource.");
+      addResourceBtn.textContent = originalText;
+    } finally {
+      addResourceBtn.disabled = false;
+      setTimeout(() => { addResourceBtn.textContent = originalText; }, 1200);
+    }
+  });
+
+  saveResourceVisibilityBtn?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    const originalText = saveResourceVisibilityBtn.textContent || "Save resource setting";
+    const showResources = Boolean(showResourcesToggle?.checked);
+    saveResourceVisibilityBtn.disabled = true;
+    saveResourceVisibilityBtn.textContent = "Saving...";
+    try {
+      const res = await fetch("/api/shortlists/update-resource-visibility", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: pageSlug, showResources })
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to save setting.");
+      saveResourceVisibilityBtn.textContent = "Saved ✓";
+      setTimeout(() => { window.location.reload(); }, 500);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save setting.");
+      saveResourceVisibilityBtn.textContent = originalText;
+    } finally {
+      saveResourceVisibilityBtn.disabled = false;
+    }
+  });
+
+  saveResourceVendorsBtn?.addEventListener("click", async (e) => { e.preventDefault(); await saveSelectedResourceVendors(); });
+
+  showAddResourceBtn?.addEventListener("click", () => {
+    resourceNameInput?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(() => { resourceNameInput?.focus(); }, 350);
+  });
+
+  loadResourceVendors();
+
+  // ── Page map (masthead map view button) ───────────────────────────
+  const mapBtn = document.getElementById("page-map-btn");
+  const masthead = document.querySelector(".masthead");
+  let googleShortlistMap = null;
+
+  function coordsLookWrong(lat, lng, card) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return true;
+    if (lat === 0 || lng === 0) return true;
+    const city = String(card?.dataset?.city || "").toLowerCase();
+    const cityBounds = {
+      nanaimo: { minLat: 49.0, maxLat: 49.35, minLng: -124.15, maxLng: -123.75 },
+      lantzville: { minLat: 49.2, maxLat: 49.35, minLng: -124.15, maxLng: -123.9 },
+      parksville: { minLat: 49.25, maxLat: 49.4, minLng: -124.45, maxLng: -124.2 }
+    };
+    const bounds = cityBounds[city];
+    if (!bounds) return lat < 48.2 || lat > 50.7 || lng < -128.5 || lng > -122.9;
+    return lat < bounds.minLat || lat > bounds.maxLat || lng < bounds.minLng || lng > bounds.maxLng;
+  }
+
+  function getGeocodeAddress(card) {
+    const address = card.dataset.address || "";
+    const city = card.dataset.city || "";
+    return city ? `${address}, ${city}, BC, Canada` : `${address}, British Columbia, Canada`;
+  }
+
+  function loadGoogleMapsScript() {
+    return new Promise((resolve, reject) => {
+      if (window.google?.maps?.Map) { resolve(); return; }
+      const key = document.body.dataset.googleMapsApiKey || "";
+      if (!key) { reject(new Error("Missing Google Maps API key")); return; }
+      const existing = document.querySelector("script[data-google-maps-script]");
+      if (existing) {
+        existing.addEventListener("load", resolve, { once: true });
+        existing.addEventListener("error", reject, { once: true });
+        setTimeout(() => { if (window.google?.maps?.Map) resolve(); else reject(new Error("Timed out")); }, 5000);
+        return;
+      }
+      window.__initShortlistGoogleMap = () => { resolve(); };
+      const script = document.createElement("script");
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__initShortlistGoogleMap&v=weekly`;
+      script.async = true; script.defer = true;
+      script.dataset.googleMapsScript = "true";
+      script.onerror = () => reject(new Error("Google Maps script failed to load."));
+      document.head.appendChild(script);
+      setTimeout(() => { if (!window.google?.maps?.Map) reject(new Error("Google Maps timed out.")); }, 6000);
+    });
+  }
+
+  async function renderPageMap() {
+    const mapEl = document.querySelector("[data-deferred-map]");
+    if (!mapEl) return;
+    mapEl.style.height = "100%"; mapEl.style.minHeight = "100%"; mapEl.style.width = "100%";
+    mapEl.innerHTML = `<div style="padding:18px;">Loading Google map...</div>`;
+    try {
+      await loadGoogleMapsScript();
+    } catch (err) {
+      mapEl.innerHTML = `<div style="padding:18px;"><strong>Google Maps could not load.</strong><br>${err instanceof Error ? err.message : ""}</div>`;
+      return;
+    }
+    const geocoder = new google.maps.Geocoder();
+    const cards = getCards();
+    const points = [];
+    for (const card of cards) {
+      let lat = Number(card.dataset.lat || "");
+      let lng = Number(card.dataset.lng || "");
+      if (coordsLookWrong(lat, lng, card)) {
+        try {
+          const result = await geocoder.geocode({ address: getGeocodeAddress(card) });
+          const location = result?.results?.[0]?.geometry?.location;
+          if (location) { lat = location.lat(); lng = location.lng(); }
+        } catch {}
+      }
+      if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0) {
+        points.push({ card, lat, lng });
+      }
+    }
+    if (!points.length) { mapEl.innerHTML = `<div style="padding:18px;">No usable coordinates found.</div>`; return; }
+    mapEl.innerHTML = "";
+    googleShortlistMap = new google.maps.Map(mapEl, { center: { lat: points[0].lat, lng: points[0].lng }, zoom: 13, mapTypeControl: false, streetViewControl: false, fullscreenControl: true, clickableIcons: false, gestureHandling: "greedy" });
+    const bounds = new google.maps.LatLngBounds();
+    points.forEach(({ card, lat, lng }, index) => {
+      const marker = new google.maps.Marker({ position: { lat, lng }, map: googleShortlistMap, label: String(index + 1), title: card.dataset.address || "Listing" });
+      marker.addListener("click", () => { window.openSheet(card); });
+      bounds.extend({ lat, lng });
+    });
+    googleShortlistMap.fitBounds(bounds);
+    window.setTimeout(() => {
+      google.maps.event.trigger(googleShortlistMap, "resize");
+      if (points.length > 1) { googleShortlistMap.fitBounds(bounds); }
+      else { googleShortlistMap.setCenter({ lat: points[0].lat, lng: points[0].lng }); googleShortlistMap.setZoom(15); }
+    }, 250);
+  }
+
+  mapBtn?.addEventListener("click", () => {
+    const mapWrap = document.getElementById("shortlist-page-map-wrap");
+    if (!mapWrap) return;
+    const isOpening = mapWrap.hidden;
+    mapWrap.hidden = !mapWrap.hidden;
+    mapBtn.classList.toggle("is-active", isOpening);
+    masthead?.classList.toggle("map-mode", isOpening);
+    if (isOpening) { masthead?.scrollIntoView({ behavior: "auto", block: "start" }); renderPageMap(); }
+  });
+
+  // ── Auto-open new listings ────────────────────────────────────────
+  const autoOpenParams = new URLSearchParams(window.location.search);
+  if (autoOpenParams.has("openNew")) {
+    autoOpenParams.delete("openNew");
+    const cleanUrl = window.location.pathname + (autoOpenParams.toString() ? `?${autoOpenParams.toString()}` : "");
+    window.history.replaceState({}, "", cleanUrl);
+    requestAnimationFrame(() => {
+      const cards = getCards();
+      const batchStartIndex = Math.max(0, cards.length - 3);
+      const firstNewCard = cards[batchStartIndex] || cards[0];
+      if (firstNewCard) window.openSheet(firstNewCard);
+    });
+  }
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initShortlistPage, { once: true });
+} else {
+  initShortlistPage();
+}
+
+document.addEventListener("astro:page-load", initShortlistPage);
+</script>
+
+
+   
+  </body>
+</html>
+
+
+
+
