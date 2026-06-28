@@ -23,25 +23,29 @@ const cityLabel = routeCity
   .replace(/-/g, " ")
   .replace(/\b\w/g, (c) => c.toUpperCase());
 
-const site = {
-  city: routeCity,
-  site_name: `${cityLabel} Real Estate`,
-  accent_color: "#2f6f73",
-  hero_eyebrow: "Homes worth watching",
-  hero_heading: `${cityLabel} Homes For Sale`,
-  hero_copy: "Browse active homes for sale, including houses, condos, and townhomes.",
-};
-
-const siteCity = site.city;
-const siteName = site.site_name;
-
 const supabase = createClient(
   import.meta.env.PUBLIC_SUPABASE_URL,
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const accentColor = site?.accent_color || "#2f6f73";
+const { data: siteRow } = await supabase
+  .from("sites")
+  .select("*")
+  .eq("city", routeCity)
+  .maybeSingle();
 
+const site = {
+  city: routeCity,
+  site_name: siteRow?.site_name || `${cityLabel} Real Estate`,
+  accent_color: siteRow?.accent_color || "#2f6f73",
+  hero_eyebrow: siteRow?.hero_eyebrow || "Homes worth watching",
+  hero_heading: siteRow?.hero_heading || `${cityLabel} Homes For Sale`,
+  hero_copy: siteRow?.hero_copy || "Browse active homes for sale, including houses, condos, and townhomes.",
+};
+
+const siteCity = site.city;
+const siteName = site.site_name;
+const accentColor = site.accent_color;
 const googleMapsApiKey =
   import.meta.env.PUBLIC_GOOGLE_MAPS_API_KEY || "";
 
@@ -769,7 +773,7 @@ let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(16
 <ShortlistReviewModal />
 <IntentModalController />
 
-<style is:inline slot="head">
+<style>
 
   .accent-period {
   color: var(--accent);
