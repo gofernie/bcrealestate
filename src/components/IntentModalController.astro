@@ -1,0 +1,2333 @@
+﻿---
+const { listings = [] } = Astro.props;
+---
+<style is:global>
+@import "/src/styles/intent-modal.css";
+</style>
+<div class="overlay" id="sheet-overlay"></div>
+
+<aside class="panel test-modal-style" id="preview-sheet" aria-hidden="true">
+  <div class="panel__grab" id="sheet-grab-handle" aria-hidden="true"></div>
+
+  <div class="panel__progress-wrap">
+    <div class="panel__progress-track">
+      <div class="panel__progress-bar" id="sheet-progress-bar"></div>
+    </div>
+
+    <div class="panel__header">
+      <div class="panel__position" id="sheet-position">1 of 1</div>
+
+      <div class="panel__header-actions">
+        <button class="panel__map-btn" id="sheet-map-btn" type="button">Map</button>
+        <button class="panel__top-btn" id="sheet-prev-top-btn" type="button"><span aria-hidden="true">&larr;</span> <span class="btn-label-full">Previous</span></button>
+        <button class="panel__top-btn" id="sheet-next-top-btn" type="button"><span class="btn-label-full">Next</span> <span aria-hidden="true">&rarr;</span></button>
+      </div>
+
+      <button class="panel__close" id="sheet-close-btn" type="button" aria-label="Close">&times;</button>
+    </div>
+  </div>
+
+  <div class="panel__view">
+    <section class="panel__summary" id="sheet-summary" hidden></section>
+
+    <section class="panel__content has-scroll-hint" id="sheet-content">
+      <div class="panel__image-stage">
+        <img id="sheet-image" class="panel__image" src="https://placehold.co/800x600?text=Loading" alt="" loading="eager" decoding="async" fetchpriority="high" />
+        <button type="button" class="photo-nav photo-nav--prev" id="photo-prev-btn">&#8249;</button>
+        <button type="button" class="photo-nav photo-nav--next" id="photo-next-btn">&#8250;</button>
+        <div class="panel__photo-count" id="sheet-photo-count">1 / 1 photos</div>
+        <div class="panel__image-overlay" id="sheet-image-overlay">
+          <h2 class="panel__price" id="sheet-price">&mdash;</h2>
+          <p class="panel__address" id="sheet-address">Address</p>
+          <div class="panel__meta" id="sheet-meta">&mdash;</div>
+        </div>
+      </div>
+
+      <div id="sheet-mini-map" class="panel__mini-map" hidden></div>
+
+      <div class="panel__body">
+        <div class="panel__feedback" id="sheet-feedback"></div>
+
+        <div class="panel__desc-wrap">
+          <p class="panel__desc" id="sheet-description"></p>
+          <button type="button" class="panel__desc-toggle" id="sheet-desc-toggle" hidden>Read more</button>
+        </div>
+
+        <div class="decision-actions">
+          <button class="decision-btn decision-btn--love" type="button" id="decision-love-btn">
+            <span aria-hidden="true">&#10084;&#65039;</span>
+            <span>Love</span>
+          </button>
+          <button class="decision-btn decision-btn--maybe" type="button" id="decision-maybe-btn">
+            <span aria-hidden="true">&#128076;</span>
+            <span>Like</span>
+          </button>
+          <button class="decision-btn decision-btn--pass" type="button" id="decision-pass-btn">
+            <span aria-hidden="true">&times;</span>
+            <span>Nope</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="sheet-osm-amenities" class="panel__osm-amenities" hidden></div>
+
+      <div class="panel__engage" id="sheet-engage">
+        <div class="panel__engage-copy">Want to know more?</div>
+        <div class="panel__engage-actions">
+          <button type="button" id="ask-question-btn">Ask a Question</button>
+          <button type="button" id="book-showing-btn">Book a Showing</button>
+        </div>
+      </div>
+
+      <div class="panel__footer">
+        <div class="panel__nav-row">
+          <button class="panel__next-btn" id="sheet-prev-btn" type="button">&larr; Previous</button>
+          <button class="panel__next-btn" id="sheet-next-btn" type="button">Next listing <span aria-hidden="true">&rarr;</span></button>
+        </div>
+      </div>
+    </section>
+  </div>
+</aside>
+ <script is:inline>function initIntentReviewModal() {
+        const sheet = document.getElementById("preview-sheet");
+        const overlay = document.getElementById("sheet-overlay");
+
+        if (!sheet || !overlay) return;
+
+        const sheetImage = document.getElementById("sheet-image");
+        const sheetPrice = document.getElementById("sheet-price");
+        const sheetAddress = document.getElementById("sheet-address");
+        const sheetMeta = document.getElementById("sheet-meta");
+        const sheetDescription = document.getElementById("sheet-description");
+        const sheetPosition = document.getElementById("sheet-position");
+        const sheetProgressBar = document.getElementById("sheet-progress-bar");
+        const closeBtn = document.getElementById("sheet-close-btn");
+        const sheetMapBtn = document.getElementById("sheet-map-btn");
+const sheetMiniMap = document.getElementById("sheet-mini-map");
+const sheetImageStage = document.querySelector(".panel__image-stage");
+
+let sheetMiniMapInstance = null;
+let sheetMiniMapMarker = null;
+let cachedImageStageHeight = 0;
+function getMiniMapStyleOptions() {
+  return {
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: false,
+    styles: [
+      { featureType: "transit", elementType: "labels", stylers: [{ visibility: "off" }] },
+      { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
+    ],
+  };
+}
+
+function addSmallInfoWindow(marker, label) {
+  const iw = new google.maps.InfoWindow({
+content: `
+  <div class="mini-map-label">
+    ${label}
+  </div>
+`,
+    disableAutoPan: true,
+  });
+
+  marker.addListener("click", () => {
+    window._activeOsmInfoWindow?.close();
+
+    iw.open(sheetMiniMapInstance, marker);
+    window._activeOsmInfoWindow = iw;
+  });
+}
+
+function getCardLatLng(card) {
+  const lat = parseFloat(card?.dataset?.lat || "");
+  const lng = parseFloat(card?.dataset?.lng || "");
+  if (!isFinite(lat) || !isFinite(lng)) return null;
+  return { lat, lng };
+}
+
+function loadGoogleMaps() {
+  return new Promise((resolve, reject) => {
+    if (window.google?.maps) return resolve();
+    if (document.querySelector('script[src*="maps.googleapis.com"]')) {
+      const wait = setInterval(() => {
+        if (window.google?.maps) { clearInterval(wait); resolve(); }
+      }, 80);
+      return;
+    }
+   const key = document.body.dataset.googleMapsApiKey ||
+      document.querySelector("script[src*='maps.googleapis.com']") && "" ||
+      "";
+    if (!key) {
+      // key not on body â€” check if Maps already loaded via another script tag
+      if (window.google?.maps) return resolve();
+      return reject(new Error("Missing Google Maps API key"));
+    }
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}`;
+    script.async = true;
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+        const nextBtn = document.getElementById("sheet-next-btn");
+        const prevBtn = document.getElementById("sheet-prev-btn");
+        const nextTopBtn = document.getElementById("sheet-next-top-btn");
+        const prevTopBtn = document.getElementById("sheet-prev-top-btn");
+
+        const loveBtn = document.getElementById("decision-love-btn");
+        const maybeBtn = document.getElementById("decision-maybe-btn");
+        const passBtn = document.getElementById("decision-pass-btn");
+       function popDecisionEmojisFromButton(button, emojiList = ["â¤ï¸"], count = 8) {
+  if (!button) return;
+
+  const rect = button.getBoundingClientRect();
+  const startX = rect.left + rect.width / 2;
+  const startY = rect.top + rect.height / 2;
+
+  for (let i = 0; i < count; i++) {
+    const emoji = document.createElement("span");
+
+    emoji.textContent = emojiList[i % emojiList.length];
+    emoji.style.position = "fixed";
+    emoji.style.left = `${startX}px`;
+    emoji.style.top = `${startY}px`;
+    emoji.style.zIndex = "2147483647";
+    emoji.style.pointerEvents = "none";
+    emoji.style.fontSize = i === 0 ? "34px" : "26px";
+    emoji.style.lineHeight = "1";
+    emoji.style.transform = "translate(-50%, -50%) scale(0.6)";
+    emoji.style.opacity = "1";
+    emoji.style.filter = "drop-shadow(0 6px 10px rgba(0,0,0,0.22))";
+
+    document.body.appendChild(emoji);
+
+    const driftX = (Math.random() - 0.5) * 150;
+    const driftY = -80 - Math.random() * 80;
+    const rotate = (Math.random() - 0.5) * 45;
+
+    emoji.animate(
+      [
+        { transform: "translate(-50%, -50%) scale(0.6)", opacity: 0 },
+        { transform: "translate(-50%, -70%) scale(1.15)", opacity: 1, offset: 0.18 },
+        {
+          transform: `translate(calc(-50% + ${driftX}px), calc(-50% + ${driftY}px)) scale(1.45) rotate(${rotate}deg)`,
+          opacity: 0
+        }
+      ],
+      {
+        duration: 1100,
+        delay: i * 35,
+        easing: "ease-out",
+        fill: "forwards"
+      }
+    );
+
+    window.setTimeout(() => emoji.remove(), 1500);
+  }
+}
+        const feedback = document.getElementById("sheet-feedback");
+const sheetEngage = document.getElementById("sheet-engage");
+const askQuestionBtn = document.getElementById("ask-question-btn");
+const bookShowingBtn = document.getElementById("book-showing-btn");
+
+if (askQuestionBtn) {
+  askQuestionBtn.style.setProperty("height", "40px", "important");
+  askQuestionBtn.style.setProperty("min-height", "40px", "important");
+  askQuestionBtn.style.setProperty("max-height", "40px", "important");
+  askQuestionBtn.style.setProperty("padding-top", "0", "important");
+  askQuestionBtn.style.setProperty("padding-bottom", "0", "important");
+  askQuestionBtn.style.setProperty("box-sizing", "border-box", "important");
+}
+
+if (bookShowingBtn) {
+  bookShowingBtn.style.setProperty("height", "40px", "important");
+  bookShowingBtn.style.setProperty("min-height", "40px", "important");
+  bookShowingBtn.style.setProperty("max-height", "40px", "important");
+  bookShowingBtn.style.setProperty("padding-top", "0", "important");
+  bookShowingBtn.style.setProperty("padding-bottom", "0", "important");
+  bookShowingBtn.style.setProperty("box-sizing", "border-box", "important");
+}
+let likeTagsEl = document.getElementById("intent-like-tags");
+function getLikeTagsForType(propertyType = "") {
+  const type = String(propertyType || "").toLowerCase();
+
+  if (type.includes("condo") || type.includes("apartment")) {
+    return [
+      ["area", "Location"],
+      ["layout", "Layout"],
+      ["views", "Views"],
+      ["building", "Building"],
+      ["amenities", "Amenities"],
+      ["walkability", "Walkability"],
+      ["modern", "Modern"],
+      ["value", "Value"],
+      
+    ];
+  }
+
+  if (type.includes("town")) {
+    return [
+    ["area", "Area"],  
+    ["layout", "Layout"],
+      ["garage", "Garage"],
+      ["yard", "Yard"],
+      ["storage", "Storage"],
+      ["modern", "Modern"],
+      ["value", "Value"],
+      
+    ];
+  }
+
+if (type.includes("mobile") || type.includes("manufactured")) {
+  return [
+    ["area", "Location"],
+    ["value", "Affordable"],
+    ["modern", "Updated"],
+    ["community", "Community"],
+    ["views", "Views"],
+    ["layout", "Layout"],
+    ["parking", "Parking"],
+    ["yard", "Yard"],
+  ];
+}
+
+  return [
+  ["area", "Area"],  
+  ["layout", "Layout"],
+    ["yard", "Yard"],
+    ["garage", "Garage"],
+    ["suite", "Suite potential"],
+    ["views", "Views"],
+    ["privacy", "Privacy"],
+    ["modern", "Modern"],
+    
+  ];
+}
+
+if (!likeTagsEl) {
+  likeTagsEl = document.createElement("div");
+  likeTagsEl.id = "intent-like-tags";
+  likeTagsEl.className = "intent-like-tags";
+  likeTagsEl.hidden = true;
+
+ document
+  .querySelector("#preview-sheet .decision-actions")
+  ?.insertAdjacentElement("beforebegin", likeTagsEl);
+}
+        const sheetContent = document.getElementById("sheet-content");
+        const sheetSummary = document.getElementById("sheet-summary");
+        const sheetPhotoCount = document.getElementById("sheet-photo-count");
+        const photoPrevBtn = document.getElementById("photo-prev-btn");
+        const photoNextBtn = document.getElementById("photo-next-btn");
+
+function updateSheetScrollHint() {
+  if (!sheetContent) return;
+
+  const canScroll = sheetContent.scrollHeight > sheetContent.clientHeight + 80;
+  const nearBottom =
+    sheetContent.scrollTop + sheetContent.clientHeight >= sheetContent.scrollHeight - 90;
+
+  sheetContent.classList.toggle("no-scroll-hint", !canScroll);
+  sheetContent.classList.toggle("is-near-bottom", nearBottom);
+}
+
+sheetContent?.addEventListener("scroll", updateSheetScrollHint);
+window.addEventListener("resize", updateSheetScrollHint);
+
+        let activePhotoUrls = [];
+        let activePhotoIndex = 0;
+        let photoSwipeStartX = 0;
+        let photoSwipeStartY = 0;
+
+let activeCard = null;
+let totalIntentReactions = 0;
+let positiveIntentReactions = 0;
+let hasShownIntentSummary = false;
+let refinedBrowseCount = 0;
+let hasShownSaveSearchCTA = false;
+let saveSearchDismissedAtCardKey = null;
+let isExitSaveSearchPrompt = false;
+let hasDismissedSaveSearchCTA = false;
+
+const SAVE_SEARCH_RESHOW_AFTER = 10;
+
+    function cardIsInsideCurrentMap(card) {
+  if (!document.body.classList.contains("is-map-mode")) return true;
+
+  const bounds = window.currentIntentMapBounds;
+
+  if (!bounds) return true;
+  const lat = Number(card.dataset.lat || "");
+  const lng = Number(card.dataset.lng || "");
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+
+  return (
+    lat >= Number(bounds.south) &&
+    lat <= Number(bounds.north) &&
+    lng >= Number(bounds.west) &&
+    lng <= Number(bounds.east)
+  );
+}
+
+const HIGHLIGHT_RULES = [
+  { keywords: ["ocean view", "peek-a-boo ocean", "water view", "sea view", "ocean views"], label: "Ocean views" },
+  { keywords: ["legal suite", "in-law suite", "carriage house", "mortgage helper", "self-contained suite"], label: "Suite potential" },
+  { keywords: ["r14 zoning", "r14 â€“", "fourplex", "four-plex", "duplex zoning"], label: "R14 zoning" },
+  { keywords: ["rental income", "income property", "investor alert", "income generator", "revenue property"], label: "Investor opportunity" },
+  { keywords: ["double garage", "triple garage", "detached garage", "oversized garage"], label: "Garage" },
+  { keywords: ["viu", "vancouver island university"], label: "Near VIU" },
+  { keywords: ["old city", "downtown nanaimo", "bowen park", "departure bay"], label: "Central location" },
+  { keywords: ["fully renovated", "completely updated", "newly renovated", "new kitchen", "new roof", "new windows"], label: "Updated" },
+  { keywords: ["heat pump installed", "new heat pump", "ductless heat pump", "mini split"], label: "Heat pump" },
+  { keywords: ["septic system", "drilled well", "well water", "water well"], label: "Rural services" },
+  { keywords: ["swimming pool", "hot tub", "inground pool"], label: "Pool / hot tub" },
+{ keywords: ["waterfront home", "waterfront property", "waterfront lot", "beachfront", "lakefront", "oceanfront", "on the water", "steps to the water", "direct water access"], label: "Waterfront" },  { keywords: ["acreage", "hobby farm", "farm land"], label: "Acreage" },
+  { keywords: ["new build", "new home", "brand new construction", "newly built"], label: "New build" },
+];
+
+function getHighlightChips(description = "") {
+  const lower = description.toLowerCase();
+  return HIGHLIGHT_RULES
+    .filter(rule => rule.keywords.some(kw => lower.includes(kw)))
+    .map(rule => rule.label)
+    .slice(0, 3);
+}
+
+function getCards() {
+  return Array.from(
+    document.querySelectorAll(".original-card:not(.is-hidden-by-refine), .refined-card")
+  ).filter((card) => {
+    const wrapper = card.closest(".listing-card-wrap");
+
+    return (
+      !card.hidden &&
+      card.style.display !== "none" &&
+      (!wrapper || !wrapper.hidden) &&
+      cardIsInsideCurrentMap(card)
+    );
+  });
+}
+
+        function currentIndex() {
+  return getCards().indexOf(activeCard);
+}
+
+function getCardKey(card) {
+  return String(
+    card?.dataset?.listingId ||
+    card?.dataset?.mls ||
+    card?.dataset?.itemId ||
+    card?.dataset?.address ||
+    ""
+  ).trim().toLowerCase();
+}
+
+      function openSheet(card) {
+  activeCard = card;
+  card.dataset.viewed = "true";
+  // cache image stage height while it's visible
+  const stageEl = document.querySelector(".panel__image-stage");
+  if (stageEl && !stageEl.classList.contains("is-hidden")) {
+    const h = stageEl.offsetHeight || stageEl.getBoundingClientRect().height;
+    if (h > 50) cachedImageStageHeight = h;
+  }
+window.saveViewedIntentAddress?.(card.dataset.address || "");
+window.saveViewedIntentListingKey?.(card);
+window.updateViewedBadges?.();
+  renderCard(card);
+
+          sheetContent?.classList.add("open");
+sheetSummary?.classList.remove("open");
+sheetSummary?.setAttribute("hidden", "");
+
+          sheet.classList.add("open");
+          overlay.classList.add("open");
+          sheet.setAttribute("aria-hidden", "false");
+          document.body.style.overflow = "hidden";
+        }
+   window.openSheet = openSheet;
+window.openSheet = openSheet;
+      function closeSheet(options = {}) {
+  sheet.classList.remove("is-engagement-mode");
+  const currentCardKey = getCardKey(activeCard);
+
+  if (
+    !options.force &&
+    hasDismissedSaveSearchCTA &&
+    saveSearchDismissedAtCardKey &&
+    currentCardKey &&
+    currentCardKey !== saveSearchDismissedAtCardKey
+  ) {
+    showSaveSearchCTA({
+      kicker: "Before you go",
+      title: "Want to save this search direction?",
+      body: "You can keep browsing later, and we\u2019ll help your agent spot better matches.",
+      isExitPrompt: true,
+    });
+
+    return;
+  }
+
+  sheet.classList.remove("open");
+  overlay.classList.remove("open");
+  sheet.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+}
+function preloadImages(urls = []) {
+  urls
+    .filter(Boolean)
+   .slice(0, 18)
+    .forEach((src) => {
+      const img = new Image();
+      img.decoding = "async";
+      img.loading = "eager";
+      img.src = src;
+    });
+}
+
+function getCardPhotoUrls(card) {
+  if (!card) return [];
+
+  const normalizePhotoUrl = (url) => {
+    const value = String(url || "").trim();
+
+    if (!value) return "";
+    if (value.startsWith("http://") || value.startsWith("https://")) return value;
+    if (value.startsWith("/")) return `https://cdn.repliers.io${value}`;
+
+    return `https://cdn.repliers.io/${value}`;
+  };
+
+  let rawImages = [];
+
+  try {
+    rawImages = JSON.parse(card.dataset.images || "[]");
+  } catch {
+    rawImages = [];
+  }
+
+const addSize = (url) => url && !url.includes("?") ? `${url}?class=medium` : url;
+
+  const urls = rawImages
+    .map((img) => {
+      if (typeof img === "string") return normalizePhotoUrl(addSize(img));
+
+      return normalizePhotoUrl(addSize(
+        img.mediumRes ||
+        img.highRes ||
+        img.lowRes ||
+        img.url ||
+        ""
+      ));
+    })
+    .filter(Boolean);
+
+  return urls.length
+    ? urls
+    : [card.dataset.image || "https://placehold.co/800x600?text=Listing"];
+}
+
+function preloadNearbyListingPhotos(currentCard) {
+  const cards = getCards();
+  const index = cards.indexOf(currentCard);
+
+  const nextCards = cards.slice(index + 1, index + 4);
+  const prevCard = cards[index - 1];
+
+  const urls = [
+    ...nextCards.flatMap((card) => getCardPhotoUrls(card).slice(0, 3)),
+    ...getCardPhotoUrls(prevCard).slice(0, 2),
+  ];
+
+  preloadImages(urls);
+}
+function renderCard(card) {
+  sheet.classList.remove("is-engagement-mode");
+  if (chipAdvanceTimer) { clearTimeout(chipAdvanceTimer); chipAdvanceTimer = null; }
+  resetChipProgressBar();
+          const cards = getCards();
+          const index = cards.indexOf(card);
+          const total = cards.length;
+
+          const normalizePhotoUrl = (url) => {
+            const value = String(url || "").trim();
+
+            if (!value) return "";
+            if (value.startsWith("http://") || value.startsWith("https://")) return value;
+            if (value.startsWith("/")) return `https://cdn.repliers.io${value}`;
+
+            return `https://cdn.repliers.io/${value}`;
+          };
+
+          let rawImages = [];
+
+          try {
+            rawImages = JSON.parse(card.dataset.images || "[]");
+          } catch {
+            rawImages = [];
+          }
+
+        const addSize = (url) => url && !url.includes("?") ? `${url}?class=medium` : url;
+
+          activePhotoUrls = rawImages
+            .map((img) => {
+              if (typeof img === "string") return normalizePhotoUrl(addSize(img));
+
+              return normalizePhotoUrl(addSize(
+                img.mediumRes ||
+                img.highRes ||
+                img.lowRes ||
+                img.url ||
+                ""
+              ));
+            })
+            .filter(Boolean);
+
+          if (!activePhotoUrls.length) {
+            activePhotoUrls = [card.dataset.image || "https://placehold.co/800x600?text=Listing"];
+          }
+
+      activePhotoIndex = card.dataset.openAtPhotoIndex
+            ? parseInt(card.dataset.openAtPhotoIndex)
+            : 0;
+          console.log("openAtPhotoIndex", card.dataset.openAtPhotoIndex, "â†’", activePhotoIndex);
+
+          function renderActivePhoto() {
+            if (!sheetImage || !activePhotoUrls.length) return;
+
+            sheetImage.src = activePhotoUrls[activePhotoIndex];
+            sheetImage.alt = card.dataset.address || "";
+
+            if (sheetPhotoCount) {
+              sheetPhotoCount.textContent = `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
+            }
+
+            if (photoPrevBtn) photoPrevBtn.disabled = activePhotoIndex === 0;
+            if (photoNextBtn) photoNextBtn.disabled = activePhotoIndex >= activePhotoUrls.length - 1;
+          }
+
+        renderActivePhoto();
+
+preloadImages(activePhotoUrls.slice(1, 28));
+
+window.setTimeout(() => {
+  preloadImages(activePhotoUrls.slice(28, 42));
+}, 450);
+
+window.setTimeout(() => {
+  preloadImages(activePhotoUrls.slice(42));
+}, 1200);
+
+preloadNearbyListingPhotos(card);
+
+     card.dataset.viewed = "true";
+window.saveViewedIntentAddress?.(card.dataset.address || "");
+window.saveViewedIntentListingKey?.(card);
+window.updateViewedBadges?.();
+
+if (sheetPrice) sheetPrice.textContent = card.dataset.price || "â€”";
+if (sheetAddress) sheetAddress.textContent = card.dataset.address || "Address";
+
+       if (sheetMeta) {
+            sheetMeta.textContent = [
+              `${card.dataset.beds || "-"} bd`,
+              `${card.dataset.baths || "-"} ba`,
+              card.dataset.sqft ? `${Number(card.dataset.sqft).toLocaleString()} sq ft` : "",
+            ].filter(Boolean).join(" Â· ");
+          }
+
+      if (sheetDescription) {
+  sheetDescription.textContent = card.dataset.description || "";
+  sheetDescription.classList.add("is-collapsed");
+}
+
+const chips = getHighlightChips(card.dataset.description || "");
+let chipsEl = document.getElementById("sheet-highlight-chips");
+if (!chipsEl) {
+  chipsEl = document.createElement("div");
+  chipsEl.id = "sheet-highlight-chips";
+  chipsEl.className = "panel__highlight-chips";
+  document.querySelector("#preview-sheet .panel__desc-wrap")?.before(chipsEl);
+}
+chipsEl.innerHTML = chips.map(label =>
+  `<span class="panel__highlight-chip">${label}</span>`
+).join("");
+chipsEl.hidden = chips.length === 0;
+
+const descToggle = document.getElementById("sheet-desc-toggle");
+if (descToggle) {
+  descToggle.hidden = false;
+  descToggle.textContent = "Read more";
+  descToggle.onclick = () => {
+    const collapsed = sheetDescription.classList.toggle("is-collapsed");
+    descToggle.textContent = collapsed ? "Read more" : "Show less";
+  };
+}
+
+          if (sheetPosition) {
+            sheetPosition.textContent = `${index + 1} of ${total}`;
+          }
+
+          if (sheetProgressBar) {
+            sheetProgressBar.style.width = `${((index + 1) / Math.max(total, 1)) * 100}%`;
+          }
+
+          if (prevBtn) prevBtn.disabled = index <= 0;
+          if (prevTopBtn) prevTopBtn.disabled = index <= 0;
+
+         if (nextBtn) {
+  nextBtn.innerHTML =
+    index >= total - 1
+      ? "Close"
+      : 'Next listing <span aria-hidden="true">&rarr;</span>';
+}
+
+if (nextTopBtn) {
+  nextTopBtn.innerHTML =
+    index >= total - 1
+      ? "Close"
+      : 'Next <span aria-hidden="true">&rarr;</span>';
+}
+updateDecisionButtons(card);
+renderLikeTags(card);
+
+sheet.classList.toggle(
+  "has-decision",
+  card.dataset.decision === "love" ||
+  card.dataset.decision === "maybe"
+);
+
+if (sheetEngage) {
+  sheetEngage.hidden = false;
+}
+if (card.classList.contains("refined-card")) {
+  refinedBrowseCount += 1;
+}
+     if (sheetMiniMap) {
+  sheetMiniMap.hidden = true;
+  sheetMiniMap.style.display = "none";
+}
+
+if (sheetImageStage) {
+  sheetImageStage.classList.remove("is-hidden");
+  const h = sheetImageStage.offsetHeight || sheetImageStage.getBoundingClientRect().height;
+  if (h > 50) cachedImageStageHeight = h;
+} else {
+  const anyStage = document.querySelector(".panel__image-stage");
+  if (anyStage) {
+    const h = anyStage.offsetHeight || anyStage.getBoundingClientRect().height;
+    if (h > 50) cachedImageStageHeight = h;
+  }
+}
+
+if (sheetMapBtn) {
+  sheetMapBtn.textContent = "Map";
+}
+
+sheetContent.scrollTop = 0;
+setTimeout(updateSheetScrollHint, 80);
+
+// OSM amenities
+const osmEl = document.getElementById("sheet-osm-amenities");
+if (osmEl) {
+  const lat = parseFloat(card.dataset.lat || "");
+  const lng = parseFloat(card.dataset.lng || "");
+  const cardCity = card.dataset.city || document.querySelector("[data-city]")?.dataset.city || "nanaimo";
+  if (isFinite(lat) && isFinite(lng)) {
+    osmEl.hidden = false;
+    osmEl.innerHTML = `<div class="panel__osm-loading">Loading nearby amenitiesâ€¦</div>`;
+fetch(`/api/osm-amenities?city=${encodeURIComponent(cardCity)}&lat=${lat}&lng=${lng}&radius=3`)
+      .then(r => r.json())
+      .then(data => {
+        const cats = data.categories || {};
+      const catMeta = {
+  school:     { icon: "🎓", label: "Schools" },
+  grocery:    { icon: "🛒", label: "Grocery" },
+  transit:    { icon: "🚌", label: "Transit" },
+  park:       { icon: "🌲", label: "Parks" },
+  restaurant: { icon: "🍴", label: "Restaurants" },
+  medical:    { icon: "✚", label: "Medical" },
+};
+     const cards = Object.entries(catMeta).map(([cat, meta]) => {
+          const items = cats[cat] || [];
+          if (!items.length) return "";
+          const rows = items.slice(0, 3).map(item => {
+            const dist = item.distKm < 1
+              ? Math.round(item.distKm * 1000) + "m"
+              : item.distKm.toFixed(1) + "km";
+            const name = item.name || item.osm_type || "";
+            return `<div class="panel__osm-row"><span class="panel__osm-name">${name}</span><span class="panel__osm-dist">${dist}</span></div>`;
+          }).join("");
+          const closestDist = items[0].distKm < 1
+            ? Math.round(items[0].distKm * 1000) + "m"
+            : items[0].distKm.toFixed(1) + "km";
+          return `<div class="panel__osm-card">
+            <div class="panel__osm-card-head">
+              <span class="panel__osm-icon">${meta.icon}</span>
+              <span class="panel__osm-cat">${meta.label}</span>
+              <span class="panel__osm-closest">${closestDist}</span>
+            </div>
+            <div class="panel__osm-rows">${rows}</div>
+          </div>`;
+        }).filter(Boolean).join("");
+        if (cards) {
+          osmEl.innerHTML = `<div class="panel__osm-label">Nearby Amenities</div><div class="panel__osm-grid" id="osm-card-grid">${cards}</div>`;
+          // attach click handlers after render
+          osmEl.querySelectorAll(".panel__osm-card").forEach((cardEl, i) => {
+            cardEl.style.cursor = "pointer";
+const activeCats = Object.entries(catMeta).filter(([k]) => (cats[k]||[]).length).map(([k]) => k);
+            const cat = activeCats[i];
+            if (!cat) return;
+            cardEl.addEventListener("click", () => {
+              // activate map
+              const mapBtn = document.getElementById("sheet-map-btn");
+              const miniMap = document.getElementById("sheet-mini-map");
+              const imageStage = document.querySelector(".panel__image-stage");
+              if (!miniMap) return;
+
+             // show map
+const imgStageHeight = imageStage ? (imageStage.offsetHeight || imageStage.getBoundingClientRect().height) : 0;
+const mapH = cachedImageStageHeight > 50 ? cachedImageStageHeight : (imgStageHeight > 50 ? imgStageHeight : 480);
+              console.log("mapH", mapH, "cached", cachedImageStageHeight, "live", imgStageHeight);
+              if (imageStage) imageStage.classList.add("is-hidden");
+              miniMap.hidden = false;
+              miniMap.style.display = "block";
+              miniMap.style.height = mapH + "px";
+              miniMap.style.minHeight = mapH + "px";
+              miniMap.style.width = "100%";
+              if (mapBtn) mapBtn.textContent = "Pictures";
+
+              // highlight active card
+         osmEl.querySelectorAll(".panel__osm-card").forEach(c => c.classList.remove("osm-card-active"));
+              cardEl.classList.add("osm-card-active");
+const content = document.getElementById("sheet-content");
+const panelView = document.querySelector("#preview-sheet .panel__view");
+const panel = document.getElementById("preview-sheet");
+
+content?.scrollTo({ top: 0, behavior: "smooth" });
+panelView?.scrollTo({ top: 0, behavior: "smooth" });
+panel?.scrollTo({ top: 0, behavior: "smooth" });
+
+loadGoogleMaps().then(() => {
+                const point = getCardLatLng(activeCard);
+                miniMap.innerHTML = "";
+                miniMap.style.height = mapH + "px";
+                miniMap.style.minHeight = mapH + "px";
+                miniMap.style.display = "block";
+                miniMap.hidden = false;
+
+                requestAnimationFrame(() => {
+             sheetMiniMapInstance = new google.maps.Map(miniMap, {
+  center: point || { lat: 49.1659, lng: -123.9401 },
+  zoom: 15,
+  ...getMiniMapStyleOptions(),
+});
+
+                  if (!window._osmPoiMarkers) window._osmPoiMarkers = [];
+                  window._osmPoiMarkers.forEach(m => m.setMap(null));
+                  window._osmPoiMarkers = [];
+
+                  const listingPoint = getCardLatLng(activeCard);
+                  if (listingPoint) {
+                    new google.maps.Marker({
+                      position: listingPoint,
+                      map: sheetMiniMapInstance,
+                      title: activeCard?.dataset?.address || "Listing",
+                  
+icon: {
+  path: google.maps.SymbolPath.CIRCLE,
+  scale: 9,
+  fillColor: "#ff3b30",
+  fillOpacity: 1,
+  strokeColor: "#fff",
+  strokeWeight: 2,
+}
+                    });
+                  }
+
+                  const items = cats[cat] || [];
+                  const bounds = new google.maps.LatLngBounds();
+                  if (listingPoint) bounds.extend(listingPoint);
+
+             
+                  items.forEach((item, itemIdx) => {
+                    if (!item.lat || !item.lng) return;
+                    const label = item.name || item.osm_type || "";
+                    const marker = new google.maps.Marker({
+                      position: { lat: item.lat, lng: item.lng },
+                      map: sheetMiniMapInstance,
+                      title: label,
+                      icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 7,
+                        fillColor: "#2f6f73",
+                        fillOpacity: 0.95,
+                        strokeColor: "#fff",
+                        strokeWeight: 2,
+                      }
+                    });
+              addSmallInfoWindow(marker, label);
+                    window._osmPoiMarkers.push(marker);
+                    bounds.extend({ lat: item.lat, lng: item.lng });
+                 
+                  });
+
+                  setTimeout(() => {
+                    google.maps.event.trigger(sheetMiniMapInstance, "resize");
+                    sheetMiniMapInstance.fitBounds(bounds);
+                  }, 150);
+                });
+              }).catch(console.error);
+            });
+          });
+        } else {
+          osmEl.hidden = true;
+        }
+      })
+      .catch(() => { osmEl.hidden = true; });
+  } else {
+    osmEl.hidden = true;
+  }
+}
+        }
+function updateCardDecisionBadge(card) {
+  if (!card) return;
+
+  let badge = card.querySelector(".card-decision-badge");
+
+  if (!badge) {
+    const cardBody = card.querySelector(".card-body");
+    if (!cardBody) return;
+
+    badge = document.createElement("div");
+    badge.className = "card-decision-badge";
+    badge.hidden = true;
+    cardBody.appendChild(badge);
+  }
+
+  const decision = card.dataset.decision || "";
+
+badge.classList.remove("is-love", "is-maybe", "is-pass");
+  if (decision === "love") {
+  badge.hidden = false;
+  badge.textContent = "Loved";
+  badge.classList.add("is-love");
+} else if (decision === "maybe") {
+  badge.hidden = false;
+  badge.textContent = "Kinda liked";
+  badge.classList.add("is-maybe");
+} else if (decision === "pass") {
+  badge.hidden = false;
+  badge.textContent = "Not for me";
+  badge.classList.add("is-pass");
+} else {
+  badge.hidden = true;
+  badge.textContent = "";
+}
+
+  card.classList.toggle("is-passed", decision === "pass");
+}
+        function updateDecisionButtons(card) {
+          [loveBtn, maybeBtn, passBtn].forEach((btn) => btn?.classList.remove("is-selected"));
+
+          if (card.dataset.decision === "love") loveBtn?.classList.add("is-selected");
+          if (card.dataset.decision === "maybe") maybeBtn?.classList.add("is-selected");
+          if (card.dataset.decision === "pass") passBtn?.classList.add("is-selected");
+        }
+
+        function getActiveLikedTags() {
+  return Array.from(likeTagsEl?.querySelectorAll(".intent-like-tag.active") || [])
+    .map((btn) => btn.dataset.likeTag)
+    .filter(Boolean);
+}
+
+function getContextualLikeTags(card) {
+  const text = [
+    card?.dataset?.type,
+    card?.dataset?.propertyType,
+    card?.dataset?.description,
+    card?.dataset?.address,
+    card?.dataset?.area,
+  ].join(" ").toLowerCase();
+
+  if (
+    text.includes("waterfront") ||
+    text.includes("oceanfront") ||
+    text.includes("beachfront") ||
+    text.includes("water view") ||
+    text.includes("ocean view")
+  ) {
+  return [
+  ["waterfront", "Waterfront"],
+  ["location", "Location"],
+  ["views", "Views"],
+];
+  }
+
+  if (
+    text.includes("condo") ||
+    text.includes("apartment") ||
+    text.includes("strata")
+  ) {
+    return [
+      ["walkability", "ðŸš¶ Walkability"],
+      ["location", "ðŸ“ Location"],
+      ["updated", "âœ¨ Updated interior"],
+    ];
+  }
+
+  if (
+    text.includes("family") ||
+    text.includes("yard") ||
+    text.includes("garage") ||
+    text.includes("bedroom")
+  ) {
+ return [
+  ["location", "Location"],
+  ["value", "Value"],
+  ["layout", "Layout"],
+];
+  }
+
+  return [
+    ["location", "Location"],
+["views", "Views"],
+["layout", "Layout"],
+  ];
+}
+
+function renderLikeTags(card) {
+  if (!likeTagsEl) return;
+
+  const decision = card?.dataset.decision || "";
+  const shouldShow = decision === "love" || decision === "maybe";
+
+  likeTagsEl.classList.toggle("open", shouldShow);
+
+  if (!shouldShow) {
+    likeTagsEl.hidden = true;
+    likeTagsEl.innerHTML = "";
+    return;
+  }
+
+
+
+  let savedTags = [];
+
+  try {
+    savedTags = JSON.parse(card.dataset.likedTags || "[]");
+  } catch {
+    savedTags = [];
+  }
+
+  const tagOptions =
+  decision === "love"
+    ? getContextualLikeTags(card)
+ : [
+  ["location", "Location"],
+  ["value", "Value"],
+  ["layout", "Layout"],
+];
+
+  likeTagsEl.innerHTML = `
+    <div class="intent-like-tags-kicker">What stood out?</div>
+    <div class="intent-like-tags-row">
+      ${tagOptions
+        .map(([key, label]) => {
+          const activeClass = savedTags.includes(key) ? " active" : "";
+
+          return `
+            <button
+              type="button"
+              class="intent-like-tag${activeClass}"
+              data-like-tag="${key}"
+            >
+              ${label}
+            </button>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+
+  likeTagsEl.hidden = false;
+likeTagsEl.classList.remove("is-visible");
+
+setTimeout(() => {
+  likeTagsEl.classList.add("is-visible");
+}, 120);
+}
+
+function getSharedIntentSessionId() {
+  if (typeof window.getSharedIntentSessionId === "function") {
+    return window.getSharedIntentSessionId();
+  }
+
+  const key = "intent_session_id";
+  let value = window.localStorage.getItem(key);
+
+  if (!value) {
+    value =
+      window.crypto?.randomUUID?.() ||
+      `intent_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+    window.localStorage.setItem(key, value);
+  }
+
+  return value;
+}
+function saveCurrentReaction() {
+  if (!activeCard) return;
+
+  const likedTags = getActiveLikedTags();
+  activeCard.dataset.likedTags = JSON.stringify(likedTags);
+
+  fetch("/api/intent-listing-reaction", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      session_id: getSharedIntentSessionId(),
+
+      intent_page_id: (() => {
+        const id = document.body.dataset.intentPageId || "";
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        return isUuid ? id : null;
+      })(),
+     city:
+  document.querySelector("[data-city]")?.dataset.city ||
+  document.body.dataset.city ||
+  "",
+
+slug:
+  document.querySelector("[data-slug]")?.dataset.slug ||
+  document.body.dataset.slug ||
+  "",
+
+      listing_id:
+        activeCard.dataset.listingId ||
+        activeCard.dataset.itemId ||
+        "",
+
+      mls_number:
+        activeCard.dataset.mls || "",
+
+      address:
+        activeCard.dataset.address || "",
+
+      price:
+        activeCard.dataset.price || "",
+
+      beds:
+        activeCard.dataset.beds || "",
+
+      baths:
+        activeCard.dataset.baths || "",
+
+      sqft:
+        activeCard.dataset.sqft || "",
+
+     area:
+        activeCard.dataset.area || "",
+
+      normalized_type:
+        activeCard.dataset.type || "",
+
+      decision: activeCard.dataset.decision || "",
+      liked_tags: likedTags,
+    }),
+  })
+    .then(async (res) => {
+      const json = await res.json();
+    console.log("REACTION SAVED", json);
+if (typeof refreshBehaviourChips === "function") {
+  refreshBehaviourChips();
+}
+    })
+    .catch((error) => {
+      console.error("Failed to save intent listing reaction:", error);
+    });
+}
+
+function showRefiningState(chips = []) {
+  if (!sheetSummary) return;
+
+  const chipHtml = chips.length
+    ? chips
+        .map((label) => `<span class="modal-intent-chip">${label}</span>`)
+        .join("")
+    : `
+      <span class="modal-intent-chip">Better matches</span>
+      <span class="modal-intent-chip">More homes like these</span>
+    `;
+
+  sheetSummary.innerHTML = `
+    <div class="modal-intent-summary modal-intent-summary--refining">
+      <div class="modal-intent-kicker">Refining your matches</div>
+
+      <div class="intent-refining-orb" aria-hidden="true">
+        <span></span>
+      </div>
+
+      <h2>Finding stronger matches...</h2>
+
+      <p>
+        We're adjusting the next batch around the homes, features,
+        and areas you responded to most positively.
+      </p>
+
+      <div class="modal-intent-chip-row">
+        ${chipHtml}
+      </div>
+
+      <div class="intent-refining-bar">
+        <span></span>
+      </div>
+    </div>
+  `;
+}
+function getIntentContext() {
+  const el =
+    document.querySelector("[data-intent-page-id]") ||
+    document.body;
+
+  return {
+    session_id: getSharedIntentSessionId(),
+    intent_page_id: (() => {
+      const id = el.dataset.intentPageId || document.body.dataset.intentPageId || "";
+      return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+        ? id
+        : null;
+    })(),
+    city: el.dataset.city || document.body.dataset.city || "",
+    slug: el.dataset.slug || document.body.dataset.slug || "",
+  };
+}
+
+function getActiveListingLeadData() {
+  const ctx = getIntentContext();
+
+  return {
+    ...ctx,
+    listing_id:
+      activeCard?.dataset?.listingId ||
+      activeCard?.dataset?.itemId ||
+      "",
+
+    mls_number: activeCard?.dataset?.mls || "",
+    address: activeCard?.dataset?.address || "",
+    price: activeCard?.dataset?.price || "",
+    beds: activeCard?.dataset?.beds || "",
+    baths: activeCard?.dataset?.baths || "",
+    sqft: activeCard?.dataset?.sqft || "",
+    area: activeCard?.dataset?.area || "",
+    listing_url:
+      activeCard?.dataset?.mls
+        ? `${window.location.origin}${window.location.pathname}?mls=${encodeURIComponent(activeCard.dataset.mls)}`
+        : window.location.href,
+  };
+}
+function showLeadCaptureForm(options = {}) {
+  if (!sheetContent || !sheetSummary) return;
+
+sheetContent.classList.remove("open");
+  sheetSummary.removeAttribute("hidden");
+  sheetSummary.classList.add("open");
+  sheet.querySelector(".panel__view")?.scrollTo({ top: 0, behavior: "instant" });
+  sheet.scrollTo({ top: 0, behavior: "instant" });
+
+  sheetSummary.innerHTML = `
+    <div style="min-height:100%;padding:48px 36px 40px;background:#fff;display:flex;flex-direction:column;justify-content:center;">
+      <div style="max-width:480px;margin:0 auto;width:100%;display:grid;gap:28px;">
+
+        <div>
+          <div style="display:inline-block;margin-bottom:14px;padding:5px 12px;border-radius:999px;background:#f3eadc;border:1px solid #e2cba8;font-size:0.7rem;font-weight:900;letter-spacing:0.12em;text-transform:uppercase;color:#8b6f47;">
+            ${options.kicker || "Get in touch"}
+          </div>
+          <h2 style="margin:0 0 10px;font-size:1.9rem;line-height:1.05;letter-spacing:-0.04em;font-weight:700;color:#181614;">
+            ${options.title || "Want new matches like these?"}
+          </h2>
+          <p style="margin:0;color:#6b6560;font-size:0.95rem;line-height:1.6;">
+            ${options.body || "Leave your details and we'll follow up about this property."}
+          </p>
+        </div>
+
+        <div style="display:grid;gap:12px;">
+          <input id="lead-name-input" placeholder="Your name" style="width:100%;height:52px;padding:0 20px;border-radius:12px;border:1px solid #e3d8ca;font:inherit;font-size:0.95rem;outline:none;background:#faf7f2;box-sizing:border-box;" />
+          <input id="lead-email-input" placeholder="Email address" style="width:100%;height:52px;padding:0 20px;border-radius:12px;border:1px solid #e3d8ca;font:inherit;font-size:0.95rem;outline:none;background:#faf7f2;box-sizing:border-box;" />
+      <input id="lead-phone-input" placeholder="Phone (optional)" style="width:100%;height:52px;padding:0 20px;border-radius:12px;border:1px solid #e3d8ca;font:inherit;font-size:0.95rem;outline:none;background:#faf7f2;box-sizing:border-box;" />
+        </div>
+
+        ${options.kicker === "Ask a question" ? `
+        <div style="display:grid;gap:8px;">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            <button type="button" class="lead-suggest-btn" data-q="Is this still available?" style="appearance:none;border:1px solid #e3d8ca;border-radius:999px;background:#faf7f2;color:#6b6560;padding:7px 14px;font:inherit;font-size:0.8rem;font-weight:600;cursor:pointer;">Is this still available?</button>
+            <button type="button" class="lead-suggest-btn" data-q="Can I book a showing?" style="appearance:none;border:1px solid #e3d8ca;border-radius:999px;background:#faf7f2;color:#6b6560;padding:7px 14px;font:inherit;font-size:0.8rem;font-weight:600;cursor:pointer;">Can I book a showing?</button>
+            <button type="button" class="lead-suggest-btn" data-q="What are the monthly costs?" style="appearance:none;border:1px solid #e3d8ca;border-radius:999px;background:#faf7f2;color:#6b6560;padding:7px 14px;font:inherit;font-size:0.8rem;font-weight:600;cursor:pointer;">Monthly costs?</button>
+            <button type="button" class="lead-suggest-btn" data-q="Has there been any recent work done on the property?" style="appearance:none;border:1px solid #e3d8ca;border-radius:999px;background:#faf7f2;color:#6b6560;padding:7px 14px;font:inherit;font-size:0.8rem;font-weight:600;cursor:pointer;">Recent work done?</button>
+          </div>
+          <textarea id="lead-question-input" placeholder="Your question..." style="width:100%;min-height:90px;padding:14px 20px;border-radius:12px;border:1px solid #e3d8ca;font:inherit;font-size:0.95rem;outline:none;background:#faf7f2;box-sizing:border-box;resize:vertical;line-height:1.5;"></textarea>
+        </div>
+        ` : ""}
+
+        <div style="display:grid;gap:10px;">
+          <button type="button" id="lead-save-btn" style="appearance:none;border:0;border-radius:12px;background:#181614;color:#fff;height:52px;padding:0 24px;font:inherit;font-size:0.95rem;font-weight:800;cursor:pointer;letter-spacing:-0.01em;">
+            ${options.button || "Send me better matches"}
+          </button>
+          <button type="button" id="lead-cancel-btn" style="appearance:none;border:1px solid #e3d8ca;border-radius:12px;background:#fff;color:#6b6560;height:46px;padding:0 22px;font:inherit;font-size:0.88rem;font-weight:600;cursor:pointer;">
+            Keep browsing
+          </button>
+        </div>
+
+      </div>
+    </div>
+  `;
+
+ document.querySelectorAll(".lead-suggest-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const q = document.getElementById("lead-question-input");
+      if (q) { q.value = btn.dataset.q; q.focus(); }
+    });
+  });
+
+  document.getElementById("lead-save-btn")?.addEventListener("click", async () => {
+const name = document.getElementById("lead-name-input")?.value || "";
+    const email = document.getElementById("lead-email-input")?.value || "";
+    const phone = document.getElementById("lead-phone-input")?.value || "";
+    const question = document.getElementById("lead-question-input")?.value || "";
+
+    document.querySelectorAll(".lead-suggest-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const q = document.getElementById("lead-question-input");
+        if (q) q.value = btn.dataset.q;
+      });
+    });
+
+    await fetch("/api/intent-lead", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+     body: JSON.stringify({
+  name,
+  email,
+  phone,
+source: options.kicker || "Save refined search",
+question,
+message: [
+  options.note || "",
+  question ? `Question: ${question}` : "",
+  activeCard?.dataset?.address ? `Property: ${activeCard.dataset.address}` : "",
+  ].filter(Boolean).join("\n"),
+  ...getActiveListingLeadData(),
+}),
+    });
+
+    const wasQuestion = options.kicker === "Ask a question";
+    const wasShowing = options.kicker === "Book a showing";
+
+    sheetSummary.innerHTML = `
+      <div style="min-height:100%;padding:48px 36px 40px;background:#fff;display:flex;flex-direction:column;justify-content:center;">
+        <div style="max-width:480px;margin:0 auto;width:100%;display:grid;gap:24px;">
+          <div>
+            <div style="display:inline-block;margin-bottom:14px;padding:5px 12px;border-radius:999px;background:#e8f6dd;border:1px solid #b5d79a;font-size:0.7rem;font-weight:900;letter-spacing:0.12em;text-transform:uppercase;color:#3a6b22;">
+              ${wasQuestion ? "Question sent" : wasShowing ? "Request sent" : "Saved"}
+            </div>
+            <h2 style="margin:0 0 10px;font-size:1.9rem;line-height:1.05;letter-spacing:-0.04em;font-weight:700;color:#181614;">
+              ${wasQuestion ? "Thanks â€” we'll follow up shortly." : wasShowing ? "We'll be in touch to confirm a time." : "You're all set."}
+            </h2>
+            <p style="margin:0;color:#6b6560;font-size:0.95rem;line-height:1.6;">
+              ${wasQuestion ? "Your question has been sent. We'll be in touch as soon as possible â€” usually within a few hours." : wasShowing ? "We'll reach out to confirm a time that works for you. In the meantime, keep browsing." : "We'll use this search direction to help send better matches."}
+            </p>
+          </div>
+          <div style="display:grid;gap:10px;">
+            <button type="button" id="post-lead-keep-browsing" style="appearance:none;border:0;border-radius:12px;background:#181614;color:#fff;height:52px;padding:0 24px;font:inherit;font-size:0.95rem;font-weight:800;cursor:pointer;">
+              Keep browsing
+            </button>
+            <button type="button" id="post-lead-close" style="appearance:none;border:1px solid #e3d8ca;border-radius:12px;background:#fff;color:#6b6560;height:46px;padding:0 22px;font:inherit;font-size:0.88rem;font-weight:600;cursor:pointer;">
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById("post-lead-keep-browsing")?.addEventListener("click", () => {
+      sheet.classList.remove("is-engagement-mode");
+      sheetSummary.classList.remove("open");
+      sheetContent?.classList.add("open");
+      goNext();
+    });
+
+    document.getElementById("post-lead-close")?.addEventListener("click", () => {
+      closeSheet({ force: true });
+    });
+  });
+
+  document.getElementById("lead-cancel-btn")?.addEventListener("click", () => {
+    sheet.classList.remove("is-engagement-mode");
+    sheetSummary.classList.remove("open");
+    sheetContent.classList.add("open");
+    goNext();
+  });
+}
+function showSaveSearchCTA(options = {}) {
+  if (!sheetContent || !sheetSummary) return;
+
+  hasShownSaveSearchCTA = true;
+  isExitSaveSearchPrompt = Boolean(options.isExitPrompt);
+
+  sheetContent.classList.remove("open");
+  sheetSummary.removeAttribute("hidden");
+  sheetSummary.classList.add("open");
+  sheet.querySelector(".panel__view")?.scrollTo({ top: 0, behavior: "instant" });
+  sheet.scrollTo({ top: 0, behavior: "instant" });
+
+  const isRefineAgain = options.primaryLabel === "Refine again";
+
+  // Pull chips from the interrupt card or generated chip targets
+  const refineChipLabels = Array.from(
+    document.querySelectorAll(
+      ".interrupt-groups .generated-refine-chip, .refine-options .generated-refine-chip"
+    )
+  )
+    .map((el) => el.textContent.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+
+  const chipHtml = isRefineAgain && refineChipLabels.length
+    ? `
+      <div style="margin:20px 0 0;">
+        <div style="font-size:0.72rem;font-weight:900;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;">
+          What would make the next homes a better fit?
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;" id="rerefine-chip-row">
+          ${refineChipLabels.map((label) => `
+            <button
+              type="button"
+              class="modal-intent-secondary"
+              data-rerefine-label="${label}"
+              style="font-size:0.85rem;padding:9px 16px;"
+            >${label}</button>
+          `).join("")}
+        </div>
+      </div>
+    `
+    : "";
+
+  sheetSummary.innerHTML = `
+    <div class="modal-intent-summary modal-intent-summary--polished">
+      <div class="modal-intent-kicker">
+        ${options.kicker || "Your refined search is ready"}
+      </div>
+
+      <h2>${options.title || "Want to save this search?"}</h2>
+
+      <p>
+        ${options.body || "We can save this direction and send you better matches when similar homes appear."}
+      </p>
+
+      ${chipHtml}
+
+      <div class="modal-intent-actions" style="margin-top:24px;">
+        ${!isRefineAgain ? `
+          <button type="button" class="modal-intent-primary" id="save-search-lead-btn">
+            Save this search
+          </button>
+        ` : ""}
+
+        <button type="button" class="modal-intent-secondary" id="save-search-keep-browsing-btn">
+          ${isExitSaveSearchPrompt ? "Not right now" : (options.keepBrowsingLabel || "Keep browsing")}
+        </button>
+      </div>
+    </div>
+  `;
+
+  // Chip click â†’ fire runIntentRefine and close modal
+  document.getElementById("rerefine-chip-row")?.addEventListener("click", async (event) => {
+    const btn = event.target.closest("[data-rerefine-label]");
+    if (!btn) return;
+
+    btn.classList.add("is-selected");
+
+    const label = btn.dataset.rerefineLabel;
+
+    closeSheet({ force: true });
+
+    let attempts = 0;
+    while (typeof window.runIntentRefine !== "function" && attempts < 30) {
+      await new Promise((r) => setTimeout(r, 100));
+      attempts++;
+    }
+
+    if (typeof window.runIntentRefine === "function") {
+      const fakeChip = document.createElement("button");
+      fakeChip.type = "button";
+      fakeChip.className = "refine-chip generated-refine-chip";
+      fakeChip.textContent = label;
+
+      await window.runIntentRefine(fakeChip, { openFirstResult: true });
+
+      document.getElementById("refined-results")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  });
+
+  document.getElementById("save-search-lead-btn")?.addEventListener("click", () => {
+    saveSearchDismissedAtCardKey = null;
+    hasDismissedSaveSearchCTA = false;
+    isExitSaveSearchPrompt = false;
+    hasShownSaveSearchCTA = true;
+    showLeadCaptureForm();
+  });
+
+  document.getElementById("save-search-keep-browsing-btn")?.addEventListener("click", () => {
+    if (isExitSaveSearchPrompt) {
+      closeSheet({ force: true });
+
+      const refinedAnchor =
+        document.getElementById("refined-results") ||
+        document.getElementById("refined-results-anchor");
+
+      window.setTimeout(() => {
+        refinedAnchor?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 120);
+
+      return;
+    }
+
+    saveSearchDismissedAtCardKey = getCardKey(activeCard);
+    hasDismissedSaveSearchCTA = true;
+    hasShownSaveSearchCTA = false;
+    refinedBrowseCount = 0;
+    window.__keepBrowsingActive = true;
+    window.__keepBrowsingCount = 0;
+
+    sheetSummary.classList.remove("open");
+    sheetContent.classList.add("open");
+
+    goNext();
+  });
+}
+
+function showIntentSummaryCard() {
+  if (!sheetContent || !sheetSummary) return;
+
+  hasShownIntentSummary = true;
+
+  sheetContent.classList.remove("open");
+  sheetSummary.removeAttribute("hidden");
+  sheetSummary.classList.add("open");
+  sheet.querySelector(".panel__view")?.scrollTo({ top: 0, behavior: "instant" });
+  sheet.scrollTo({ top: 0, behavior: "instant" });
+
+  const positiveCards = Array.from(document.querySelectorAll(".original-card"))
+    .filter((c) => c.dataset.decision === "love" || c.dataset.decision === "maybe")
+    .sort((a, b) => {
+      const score = (card) => card.dataset.decision === "love" ? 2 : 1;
+      return score(b) - score(a);
+    });
+
+  const displayCards = positiveCards.slice(0, 4);
+
+  const prices = positiveCards
+    .map((c) => Number(String(c.dataset.price || "").replace(/[^\d]/g, "")))
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+
+  const medianPrice = prices.length
+    ? Math.round(prices[Math.floor(prices.length / 2)] / 1000) * 1000
+    : null;
+
+  const thumbsHtml = displayCards.length ? `
+    <div style="display:grid;grid-template-columns:repeat(${displayCards.length},1fr);gap:8px;margin:0 0 20px;">
+      ${displayCards.map((c) => `
+        <div style="border-radius:12px;overflow:hidden;aspect-ratio:4/3;background:#eee;">
+          <img src="${c.dataset.image || ""}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" />
+        </div>
+      `).join("")}
+    </div>
+  ` : "";
+
+  sheetSummary.innerHTML = `
+    <div class="modal-intent-summary modal-intent-summary--polished">
+      <div class="modal-intent-kicker">Help me narrow this down</div>
+
+      <h2>You're starting to show a pattern.</h2>
+
+      ${thumbsHtml}
+
+      <p>
+        Based on what you've liked so far, I can show more homes
+        in similar areas and around ${
+          medianPrice
+            ? "$" + medianPrice.toLocaleString()
+            : "the same price range"
+        }.
+      </p>
+
+      <div class="modal-intent-actions">
+        <button type="button" class="modal-intent-primary" id="summary-refine-btn">
+          Show similar homes
+        </button>
+
+        <button type="button" class="modal-intent-secondary" id="summary-cheaper-btn">
+          Show cheaper options
+        </button>
+
+        <button type="button" class="modal-intent-secondary" id="summary-keep-browsing-btn">
+          Keep browsing newest
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("summary-refine-btn")?.addEventListener("click", (event) => {
+    event.currentTarget.classList.add("is-selected");
+    showRefiningState(["Similar area", "Similar price", "Same property type"]);
+
+    setTimeout(async () => {
+      closeSheet({ force: true });
+
+      if (typeof window.runIntentRefine === "function") {
+        const chip = document.createElement("button");
+chip.type = "button";
+chip.className = "refine-chip generated-refine-chip";
+chip.textContent = "Show similar homes";
+
+await window.runIntentRefine(chip, { openFirstResult: true });
+      }
+    }, 900);
+  });
+
+  document.getElementById("summary-cheaper-btn")?.addEventListener("click", (event) => {
+    event.currentTarget.classList.add("is-selected");
+    showRefiningState(["Cheaper options", "Similar area", "Same property type"]);
+
+    setTimeout(async () => {
+      closeSheet({ force: true });
+
+      if (typeof window.runIntentRefine === "function") {
+        const chip = document.createElement("button");
+chip.type = "button";
+chip.className = "refine-chip generated-refine-chip";
+chip.textContent = "Show cheaper options";
+
+await window.runIntentRefine(chip, { openFirstResult: true });
+      }
+    }, 900);
+  });
+
+  document.getElementById("summary-keep-browsing-btn")?.addEventListener("click", (event) => {
+    event.currentTarget.classList.add("is-selected");
+    sheetSummary.classList.remove("open");
+    sheetContent.classList.add("open");
+    goNext();
+  });
+}
+function showEndOfListCTA() {
+  if (!sheetContent || !sheetSummary) return;
+
+  sheetContent.classList.remove("open");
+  sheetSummary.removeAttribute("hidden");
+  sheetSummary.classList.add("open");
+  sheet.querySelector(".panel__view")?.scrollTo({ top: 0, behavior: "instant" });
+  sheet.scrollTo({ top: 0, behavior: "instant" });
+
+  const positiveCount = Array.from(document.querySelectorAll(".card"))
+    .filter((c) => c.dataset.decision === "love" || c.dataset.decision === "maybe").length;
+
+  const refineChipLabels = Array.from(
+    document.querySelectorAll(
+      ".interrupt-groups .generated-refine-chip, .refine-options .generated-refine-chip"
+    )
+  )
+    .map((el) => el.textContent.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
+  const chipHtml = refineChipLabels.length ? `
+    <div style="margin:20px 0 0;">
+      <div style="font-size:0.72rem;font-weight:900;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;">
+        Try a different direction
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;" id="end-rerefine-chip-row">
+        ${refineChipLabels.map((label) => `
+          <button
+            type="button"
+            class="modal-intent-secondary"
+            data-rerefine-label="${label}"
+            style="font-size:0.85rem;padding:9px 16px;"
+          >${label}</button>
+        `).join("")}
+      </div>
+    </div>
+  ` : "";
+
+ const favoriteCards = Array.from(document.querySelectorAll(".card"))
+  .filter((c) => c.dataset.decision === "love" || c.dataset.decision === "maybe")
+  .slice(0, 4);
+
+const favoritePicsHtml = favoriteCards.length
+  ? `
+    <div class="review-fave-strip">
+      ${favoriteCards.map((c) => `
+        <div class="review-fave-thumb">
+          <img src="${c.dataset.image || ""}" alt="" />
+        </div>
+      `).join("")}
+    </div>
+  `
+  : "";
+
+sheetSummary.innerHTML = `
+  <div class="review-complete">
+    <div class="review-complete__header">
+      <div class="eyebrow">Shortlist reviewed</div>
+
+      <h2 class="review-complete__title">
+        You’ve reviewed all the homes.
+      </h2>
+
+      <p class="review-complete__sub">
+        Here are your favourites. Want to take the next step?
+      </p>
+    </div>
+
+    ${favoritePicsHtml}
+
+    <div class="review-complete__note">
+      <h4>What would you like to do next?</h4>
+
+      <div class="quick-actions">
+        <button type="button" data-end-action="unlock-more">
+          Unlock more expensive homes
+        </button>
+
+        <button type="button" data-end-action="book-showings">
+          Book showings
+        </button>
+
+        <button type="button" data-end-action="ask-question">
+          Ask a question
+        </button>
+      </div>
+
+      <div class="modal-intent-actions" style="margin-top:18px;">
+        <button type="button" class="modal-intent-secondary" id="end-close-btn">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+`;
+
+ document.querySelectorAll("[data-end-action]").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    const action = btn.dataset.endAction;
+
+    if (action === "book-showings") {
+      showLeadCaptureForm({
+        kicker: "Book showings",
+        title: "Want to view your favourites?",
+        body: "Leave your details and I’ll help set up showings for the homes you liked.",
+        button: "Request showings",
+        note: "Buyer reached the end of the shortlist and wants to book showings.",
+      });
+      return;
+    }
+
+    if (action === "ask-question") {
+      showLeadCaptureForm({
+        kicker: "Ask a question",
+        title: "Have a question about any of these homes?",
+        body: "Send your question and I’ll follow up with answers and next steps.",
+        button: "Send my question",
+        note: "Buyer reached the end of the shortlist and has a question.",
+      });
+      return;
+    }
+
+    closeSheet({ force: true });
+
+    let attempts = 0;
+    while (typeof window.runIntentRefine !== "function" && attempts < 30) {
+      await new Promise((r) => setTimeout(r, 100));
+      attempts++;
+    }
+
+    if (typeof window.runIntentRefine === "function") {
+      const fakeChip = document.createElement("button");
+      fakeChip.type = "button";
+      fakeChip.className = "refine-chip generated-refine-chip";
+      fakeChip.textContent = "Show higher-value homes";
+
+      await window.runIntentRefine(fakeChip, { openFirstResult: true });
+
+      document.getElementById("refined-results")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  });
+});
+
+
+
+document.getElementById("end-close-btn")?.addEventListener("click", () => {
+  closeSheet({ force: true });
+});
+}
+
+        function goNext() {
+          const cards = getCards();
+          const index = currentIndex();
+
+if (window.__keepBrowsingActive) {
+  window.__keepBrowsingCount = (window.__keepBrowsingCount || 0) + 1;
+
+  if (window.__keepBrowsingCount >= 6) {
+    window.__keepBrowsingActive = false;
+    window.__keepBrowsingCount = 0;
+    showSaveSearchCTA({
+      kicker: "Still searching?",
+      title: "Not quite finding it?",
+      body: "We can narrow this down further â€” tell us what's missing and we'll surface better fits.",
+      primaryLabel: "Refine again",
+      keepBrowsingLabel: "Keep going",
+    });
+    return;
+  }
+}
+
+if (
+  hasShownIntentSummary &&
+  !hasShownSaveSearchCTA &&
+  refinedBrowseCount >= 5 &&
+  !hasDismissedSaveSearchCTA
+) {
+  showSaveSearchCTA();
+  return;
+}
+
+if (
+  hasShownIntentSummary &&
+  !hasShownSaveSearchCTA &&
+  hasDismissedSaveSearchCTA &&
+  refinedBrowseCount >= SAVE_SEARCH_RESHOW_AFTER
+) {
+  showSaveSearchCTA({
+    kicker: "Still seeing good matches?",
+    title: "Want us to keep watching for homes like these?",
+    body: "We can save this direction and send better matches when similar homes appear.",
+  });
+
+  return;
+}
+       if (
+  !hasShownIntentSummary &&
+  (
+    (totalIntentReactions >= 6 && positiveIntentReactions >= 2) ||
+    positiveIntentReactions >= 4
+  )
+) {
+  showIntentSummaryCard();
+  return;
+}
+
+if (
+  !hasShownIntentSummary &&
+  totalIntentReactions >= 10 &&
+  positiveIntentReactions >= 2
+) {
+  showIntentSummaryCard();
+  return;
+}
+
+if (
+  !hasShownIntentSummary &&
+  totalIntentReactions >= 10 &&
+  positiveIntentReactions >= 2
+) {
+  showIntentSummaryCard();
+  return;
+}
+
+if (index >= cards.length - 1) {
+  showEndOfListCTA();
+  return;
+}
+
+          activeCard = cards[index + 1];
+          renderCard(activeCard);
+          sheet.scrollTop = 0;
+        }
+
+        function goPrev() {
+          const cards = getCards();
+          const index = currentIndex();
+
+          if (index <= 0) return;
+
+          activeCard = cards[index - 1];
+          renderCard(activeCard);
+          sheet.scrollTop = 0;
+        }
+
+        function saveIntentDecision(decision) {
+  if (!activeCard) return;
+
+  activeCard.dataset.decision = decision;
+updateCardDecisionBadge(activeCard);
+  if (decision === "pass") {
+    activeCard.dataset.likedTags = "[]";
+  }
+
+  updateDecisionButtons(activeCard);
+likeTagsEl.hidden = true;
+likeTagsEl.classList.remove("open");
+
+window.setTimeout(() => {
+  renderLikeTags(activeCard);
+}, decision === "love" ? 300 : 150);
+
+ sheet.classList.toggle(
+  "has-decision",
+  decision === "love" || decision === "maybe"
+);
+
+if (sheetEngage) {
+  sheetEngage.hidden = false;
+}
+
+  if (feedback) {
+  feedback.textContent = "";
+}
+
+totalIntentReactions += 1;
+
+if (decision === "love" || decision === "maybe") {
+  positiveIntentReactions += 1;
+}
+
+saveCurrentReaction();
+
+// keep modal position steady after decision
+}
+
+   document.addEventListener("click", (event) => {
+const card = event.target.closest(".original-card, .refined-card");
+
+  if (!card) return;
+
+ const interactive = event.target.closest("button, a, input, textarea, select");
+  if (interactive && interactive !== card) {
+    // Allow preview-btn and image-wrap clicks to open the modal
+    const isPreviewTrigger = interactive.classList.contains("preview-btn") ||
+      !!event.target.closest(".card__image-wrap");
+    if (!isPreviewTrigger) return;
+  }
+
+if (document.body.dataset.shortlistSendId && document.body.dataset.agentView === "true") return;
+
+  if (typeof openSheet === "function") {
+    openSheet(card);
+  } else {
+    let attempts = 0;
+    const retry = setInterval(() => {
+      attempts++;
+      if (typeof window.openSheet === "function") {
+        clearInterval(retry);
+        window.openSheet(card);
+      } else if (attempts > 50) {
+        clearInterval(retry);
+        console.error("openSheet never became available");
+      }
+    }, 20);
+  }
+});
+
+        closeBtn?.addEventListener("click", closeSheet);
+sheetMapBtn?.addEventListener("click", async () => {
+  if (!activeCard || !sheetMiniMap) return;
+
+  sheetContent?.scrollTo({ top: 0, behavior: "instant" });
+sheet?.scrollTo({ top: 0, behavior: "instant" });
+
+requestAnimationFrame(() => {
+  sheetContent?.scrollTo({ top: 0, behavior: "instant" });
+  sheet?.scrollTo({ top: 0, behavior: "instant" });
+});
+
+ sheet.scrollTop = 0;
+  document.querySelector("#preview-sheet")?.scrollTo({ top: 0, behavior: "instant" });
+
+  const mapIsOpen = !sheetMiniMap.hidden;
+
+  if (mapIsOpen) {
+    sheetMiniMap.hidden = true;
+    sheetMiniMap.style.display = "none";
+    sheetMiniMap.innerHTML = "";
+
+    if (sheetImageStage) {
+      sheetImageStage.classList.remove("is-hidden");
+    }
+
+    if (sheetMapBtn) {
+      sheetMapBtn.textContent = "Map";
+    }
+
+    return;
+  }
+
+  const point = getCardLatLng(activeCard);
+
+  if (!point) {
+    sheetMiniMap.hidden = false;
+    sheetMiniMap.style.display = "block";
+    sheetMiniMap.innerHTML =
+      "<p style='padding:16px;color:#6b6560;'>No map location available for this listing.</p>";
+
+    if (sheetMapBtn) {
+      sheetMapBtn.textContent = "Pictures";
+    }
+
+    return;
+  }
+
+  if (sheetImageStage) {
+    sheetImageStage.classList.add("is-hidden");
+  }
+
+const mapBtnHeight = cachedImageStageHeight > 50 ? cachedImageStageHeight : (document.querySelector(".panel__image-stage")?.offsetHeight || 480);
+sheetMiniMap.hidden = false;
+sheetMiniMap.style.display = "block";
+sheetMiniMap.style.height = mapBtnHeight + "px";
+sheetMiniMap.style.minHeight = mapBtnHeight + "px";
+sheetMiniMap.style.width = "100%";
+
+if (sheetMapBtn) {
+  sheetMapBtn.textContent = "Pictures";
+}
+
+try {
+  await loadGoogleMaps();
+
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  await new Promise((resolve) => setTimeout(resolve, 120));
+
+  sheetMiniMapInstance = new google.maps.Map(sheetMiniMap, {
+      center: point,
+      zoom: 15,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: false,
+    });
+
+    sheetMiniMapMarker = new google.maps.Marker({
+      position: point,
+      map: sheetMiniMapInstance,
+      title: activeCard.dataset.address || "Listing",
+    });
+
+  window.setTimeout(() => {
+  google.maps.event.trigger(sheetMiniMapInstance, "resize");
+  sheetMiniMapInstance.setCenter(point);
+  sheetMiniMapInstance.setZoom(15);
+}, 350);
+} catch (error) {
+    console.error("Map failed to load:", error);
+
+    const key = document.body.dataset.googleMapsApiKey || "(missing)";
+    const point2 = getCardLatLng(activeCard);
+
+    sheetMiniMap.innerHTML =
+      `<p style='padding:16px;color:#6b6560;font-size:12px;'>Map could not load.<br>Key: ${key.slice(0,12)}...<br>Point: ${JSON.stringify(point2)}<br>Error: ${error?.message}</p>`;
+  }
+});
+
+
+        overlay?.addEventListener("click", closeSheet);
+        nextBtn?.addEventListener("click", goNext);
+        nextTopBtn?.addEventListener("click", goNext);
+        prevBtn?.addEventListener("click", goPrev);
+        prevTopBtn?.addEventListener("click", goPrev);
+
+function scrollModalToBottom() {
+  setTimeout(() => {
+    const content = document.getElementById("sheet-content");
+    const panelView = sheet.querySelector(".panel__view");
+
+    content?.scrollTo({ top: content.scrollHeight, behavior: "smooth" });
+    panelView?.scrollTo({ top: panelView.scrollHeight, behavior: "smooth" });
+    sheet?.scrollTo({ top: sheet.scrollHeight, behavior: "smooth" });
+  }, 250);
+}
+
+let idleAdvanceTimer = null;
+
+function startIdleAdvance() {
+  if (idleAdvanceTimer) clearTimeout(idleAdvanceTimer);
+idleAdvanceTimer = setTimeout(() => {
+    startChipProgressBar();
+    chipAdvanceTimer = setTimeout(() => {
+      const nextBtn = document.getElementById("sheet-next-btn");
+      if (nextBtn) nextBtn.classList.add("is-pulsing");
+      setTimeout(() => {
+        if (nextBtn) nextBtn.classList.remove("is-pulsing");
+        chipAdvanceTimer = null;
+        goNext();
+      }, 1000);
+    }, 2500);
+  }, 3000);
+}
+
+function cancelIdleAdvance() {
+  if (idleAdvanceTimer) {
+    clearTimeout(idleAdvanceTimer);
+    idleAdvanceTimer = null;
+  }
+}
+
+loveBtn?.addEventListener("click", () => {
+popDecisionEmojisFromButton(loveBtn, ["❤️", "🧡", "💛"], 1);
+  saveIntentDecision("love");
+ 
+  cancelIdleAdvance();
+  startIdleAdvance();
+});
+
+maybeBtn?.addEventListener("click", () => {
+  popDecisionEmojisFromButton(maybeBtn, ["👌"], 1);
+  saveIntentDecision("maybe");
+
+  cancelIdleAdvance();
+  startIdleAdvance();
+});
+
+passBtn?.addEventListener("click", () => {
+  popDecisionEmojisFromButton(passBtn, ["×"], 1);
+  saveIntentDecision("pass");
+
+
+  const nextBtn = document.getElementById("sheet-next-btn");
+  if (nextBtn) {
+    setTimeout(() => {
+      nextBtn.classList.add("is-pulsing");
+      setTimeout(() => {
+        nextBtn.classList.remove("is-pulsing");
+        goNext();
+      }, 1800);
+    }, 1200);
+  }
+});
+
+askQuestionBtn?.addEventListener("click", () => {
+  sheet.classList.add("is-engagement-mode");
+
+  showLeadCaptureForm({
+ kicker: "Ask a question",
+    title: "Want to ask about this home?",
+    body: "Leave your details and we\u2019ll follow up about this property.", button: "Ask about this home",
+    note: "I'm interested in this property and have a question.",
+  });
+});
+
+bookShowingBtn?.addEventListener("click", () => {
+  sheet.classList.add("is-engagement-mode");
+
+  showLeadCaptureForm({
+    kicker: "Book a showing",
+    title: "Want to see this home?",
+    body: "Leave your details and we\u2019ll help arrange a showing.",
+    button: "Book a showing",
+    note: "I'd like to arrange a showing for this property.",
+  });
+});
+
+let chipAdvanceTimer = null;
+
+function startChipProgressBar() {
+  let wrap = document.getElementById("chip-advance-bar-wrap");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.id = "chip-advance-bar-wrap";
+    wrap.style.cssText = "position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(860px,100vw);height:3px;background:#e8e3dc;overflow:hidden;z-index:1000;";
+    const bar = document.createElement("div");
+    bar.id = "chip-advance-bar";
+    bar.style.cssText = "height:100%;width:0%;background:var(--accent);transition:none;";
+    wrap.appendChild(bar);
+    sheet.appendChild(wrap);
+  }
+  const bar = document.getElementById("chip-advance-bar");
+  bar.style.transition = "none";
+  bar.style.width = "0%";
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+  bar.style.transition = "width 2.5s linear";
+      bar.style.width = "100%";
+    });
+  });
+}
+
+function resetChipProgressBar() {
+  const bar = document.getElementById("chip-advance-bar");
+  if (bar) {
+    bar.style.transition = "none";
+    bar.style.width = "0%";
+  }
+  const wrap = document.getElementById("chip-advance-bar-wrap");
+  if (wrap) wrap.remove();
+}
+
+likeTagsEl?.addEventListener("click", (event) => {
+  const tagBtn = event.target.closest(".intent-like-tag");
+
+  if (!tagBtn || !activeCard) return;
+
+  tagBtn.classList.toggle("active");
+
+  activeCard.dataset.likedTags = JSON.stringify(getActiveLikedTags());
+
+  saveCurrentReaction();
+
+  const nextBtn = document.getElementById("sheet-next-btn");
+
+cancelIdleAdvance();
+  if (chipAdvanceTimer) { clearTimeout(chipAdvanceTimer); chipAdvanceTimer = null; }
+
+  resetChipProgressBar();
+  startChipProgressBar();
+
+chipAdvanceTimer = setTimeout(() => {
+    if (nextBtn) nextBtn.classList.add("is-pulsing");
+    setTimeout(() => {
+      if (nextBtn) nextBtn.classList.remove("is-pulsing");
+      chipAdvanceTimer = null;
+      resetChipProgressBar();
+      goNext();
+    }, 1000);
+  }, 2500);
+});
+
+        photoPrevBtn?.addEventListener("click", (event) => {
+          event.stopPropagation();
+
+          if (activePhotoIndex <= 0) return;
+
+          activePhotoIndex -= 1;
+
+          if (sheetImage) {
+            sheetImage.src = activePhotoUrls[activePhotoIndex];
+
+            const nextPreload = activePhotoUrls[activePhotoIndex + 1];
+
+            if (nextPreload) {
+              const img = new Image();
+              img.src = nextPreload;
+            }
+          }
+
+          if (sheetPhotoCount) {
+            sheetPhotoCount.textContent = `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
+          }
+
+          if (photoPrevBtn) photoPrevBtn.disabled = activePhotoIndex === 0;
+          if (photoNextBtn) photoNextBtn.disabled = activePhotoIndex >= activePhotoUrls.length - 1;
+        });
+
+        function showActivePhoto() {
+          if (!sheetImage || !activePhotoUrls.length) return;
+
+          sheetImage.src = activePhotoUrls[activePhotoIndex];
+
+          if (sheetPhotoCount) {
+            sheetPhotoCount.textContent = `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
+          }
+
+          if (photoPrevBtn) photoPrevBtn.disabled = activePhotoIndex === 0;
+          if (photoNextBtn) photoNextBtn.disabled = activePhotoIndex >= activePhotoUrls.length - 1;
+        }
+
+        sheetImage?.addEventListener("touchstart", (event) => {
+          photoSwipeStartX = event.changedTouches[0].screenX;
+          photoSwipeStartY = event.changedTouches[0].screenY;
+        }, { passive: true });
+
+        sheetImage?.addEventListener("touchend", (event) => {
+          const dx = event.changedTouches[0].screenX - photoSwipeStartX;
+          const dy = event.changedTouches[0].screenY - photoSwipeStartY;
+
+          if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy)) return;
+
+          if (dx < 0 && activePhotoIndex < activePhotoUrls.length - 1) {
+            activePhotoIndex += 1;
+            showActivePhoto();
+          }
+
+          if (dx > 0 && activePhotoIndex > 0) {
+            activePhotoIndex -= 1;
+            showActivePhoto();
+          }
+        }, { passive: true });
+
+        photoNextBtn?.addEventListener("click", (event) => {
+          event.stopPropagation();
+
+          if (activePhotoIndex >= activePhotoUrls.length - 1) return;
+
+          activePhotoIndex += 1;
+
+          if (sheetImage) {
+            sheetImage.src = activePhotoUrls[activePhotoIndex];
+          }
+
+          if (sheetPhotoCount) {
+            sheetPhotoCount.textContent = `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
+          }
+
+          if (photoPrevBtn) photoPrevBtn.disabled = activePhotoIndex === 0;
+          if (photoNextBtn) photoNextBtn.disabled = activePhotoIndex >= activePhotoUrls.length - 1;
+        });
+
+        let sheetSwipeStartX = 0;
+        let sheetSwipeStartY = 0;
+
+       sheet?.addEventListener("touchstart", (event) => {
+          if (event.target.closest(".panel__image-stage")) return;
+          if (event.target.closest(".panel__mini-map")) return;
+
+          sheetSwipeStartX = event.changedTouches[0].screenX;
+          sheetSwipeStartY = event.changedTouches[0].screenY;
+        }, { passive: true });
+
+       sheet?.addEventListener("touchend", (event) => {
+          if (event.target.closest(".panel__image-stage")) return;
+          if (event.target.closest(".panel__mini-map")) return;
+
+          const dx = event.changedTouches[0].screenX - sheetSwipeStartX;
+          const dy = event.changedTouches[0].screenY - sheetSwipeStartY;
+
+          if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy)) return;
+
+          if (dx < 0) goNext();
+          if (dx > 0) goPrev();
+        }, { passive: true });
+      }
+
+   
+
+     if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initIntentReviewModal);
+} else {
+  initIntentReviewModal();
+}
+</script>
+
+
