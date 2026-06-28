@@ -2633,12 +2633,16 @@ if (amenityList) {
     });
 
     amenityMarkers.push(marker);
-    amenityBounds.extend(position);
+   if (!areaBounds || areaBounds.isEmpty()) {
+  bounds.extend(position);
+}
   });
 
-  if (amenityMarkers.length) {
-    googleMap.fitBounds(amenityBounds, 70);
-  }
+ // Area pages should stay zoomed to the selected polygon.
+// Do not let amenities control the map zoom.
+if (amenityMarkers.length && !document.querySelector(".area-intelligence")) {
+  googleMap.fitBounds(amenityBounds, 70);
+}
 }
 
       async function initIntentGoogleMap(mode = "all") {
@@ -2699,6 +2703,7 @@ if (searchAreaMask) {
 }
 
 const bounds = new google.maps.LatLngBounds();
+let areaBounds = null;
 const infoWindow = new google.maps.InfoWindow();
 let intentActiveMarker = null;
 
@@ -2740,7 +2745,11 @@ searchAreaPolygon = new google.maps.Polygon({
   });
 
   searchAreaPolygon.setMap(googleMap);
-  polygonPath.forEach((point) => bounds.extend(point));
+  areaBounds = new google.maps.LatLngBounds();
+
+  polygonPath.forEach((point) => {
+    areaBounds.extend(point);
+  });
 }
 
      points.forEach(({ card, point }) => {
@@ -2827,7 +2836,21 @@ searchAreaPolygon = new google.maps.Polygon({
           bounds.extend(point);
         });
 
-       googleMap.fitBounds(bounds);
+if (areaBounds && !areaBounds.isEmpty()) {
+  googleMap.fitBounds(areaBounds, {
+    top: 90,
+    right: 90,
+    bottom: 90,
+    left: 90,
+  });
+} else if (!bounds.isEmpty()) {
+  googleMap.fitBounds(bounds, {
+    top: 40,
+    right: 40,
+    bottom: 40,
+    left: 40,
+  });
+}
 
 google.maps.event.clearListeners(googleMap, "idle");
 
@@ -2849,7 +2872,22 @@ googleMap.addListener("idle", () => {
 
 window.setTimeout(() => {
   google.maps.event.trigger(googleMap, "resize");
-  googleMap.fitBounds(bounds);
+
+ if (areaBounds && !areaBounds.isEmpty()) {
+  googleMap.fitBounds(areaBounds, {
+    top: 90,
+    right: 90,
+    bottom: 90,
+    left: 90,
+  });
+} else if (!bounds.isEmpty()) {
+  googleMap.fitBounds(bounds, {
+    top: 40,
+    right: 40,
+    bottom: 40,
+    left: 40,
+  });
+}
 
   if (document.querySelector(".area-intelligence")) {
     loadAreaAmenities("school");
