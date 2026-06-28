@@ -1,0 +1,670 @@
+---
+import AdminSidebar from "../../components/AdminSidebar.astro";
+import { createClient } from "@supabase/supabase-js";
+import { getSite } from "../../lib/getSite";
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+const site = await getSite(Astro.url.hostname);
+const formData =
+  Astro.request.method === "POST" ? await Astro.request.formData() : null;
+
+if (formData?.get("_action") === "delete") {
+  const id = String(formData.get("id") || "");
+
+  if (id) {
+    await supabase.from("intent_page_features").delete().eq("intent_page_id", id);
+    await supabase.from("intent_pages").delete().eq("id", id);
+  }
+
+  return Astro.redirect("/admin/intent-pages");
+}
+
+const activeType = String(Astro.url.searchParams.get("type") || "");
+const activeKind = String(Astro.url.searchParams.get("kind") || "");
+const activeStatus = String(Astro.url.searchParams.get("status") || "");
+
+let pagesQuery = supabase
+  .from("intent_pages")
+  .select(`
+    *,
+    intent_page_features (
+      feature_key
+    )
+  `);
+
+pagesQuery = pagesQuery.eq(
+  "site_id",
+  site?.id || "00000000-0000-0000-0000-000000000000"
+);
+
+if (activeType) {
+  pagesQuery = pagesQuery.eq("property_type", activeType);
+}
+
+if (activeKind) {
+  pagesQuery = pagesQuery.eq("lifestyle_angle", activeKind);
+}
+
+if (activeStatus === "published") {
+  pagesQuery = pagesQuery.eq("is_published", true);
+}
+
+if (activeStatus === "draft") {
+  pagesQuery = pagesQuery.eq("is_published", false);
+}
+
+if (activeStatus === "nav") {
+  pagesQuery = pagesQuery.eq("show_in_nav", true);
+}
+
+const { data: pages, error } = await pagesQuery.order("created_at", {
+  ascending: false,
+});
+
+function titleCase(value: any) {
+  return String(value || "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatPrice(page: any) {
+  if (page.price_max) return `Under $${Number(page.price_max).toLocaleString()}`;
+  if (page.price_min) return `$${Number(page.price_min).toLocaleString()}+`;
+  return "Any price";
+}
+
+function pageTypeLabel(page: any) {
+  if (page.lifestyle_angle === "category") return "Category";
+  if (page.lifestyle_angle === "intent") return "Intent";
+  return page.intent_page_features?.length ? "Intent" : "Category";
+}
+
+function publicHref(page: any) {
+  return `/${page.city}/${page.slug}`;
+}
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Intent & Category Pages</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style is:global>
+      @media (min-width: 769px) { .mobile-topbar, .drawer-overlay { display: none !important; } }
+      @media (max-width: 768px) { .mobile-topbar { display: flex !important; width: 100% !important; } }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+   *, *::before, *::after { box-sizing: border-box; margin: 0; }
+
+      :root {
+        --bg: #f7f4ef;
+        --surface: #fff;
+        --border: rgba(24,22,20,0.10);
+        --border-strong: rgba(24,22,20,0.22);
+        --ink: #181614;
+        --muted: rgba(24,22,20,0.52);
+        --radius: 16px;
+        --font-body: "DM Sans", system-ui, sans-serif;
+        --font-display: "Instrument Serif", Georgia, serif;
+      }
+
+      body {
+        font-family: var(--font-body);
+        background: var(--bg);
+        color: var(--ink);
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+  .page {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        min-height: 100vh;
+      }
+
+      .main {
+        padding: 40px 48px 80px;
+        max-width: 1180px;
+        min-width: 0;
+      }
+
+      /* ── Page header ── */
+      .topbar {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 32px;
+        flex-wrap: wrap;
+      }
+
+      .topbar h1 {
+        font-family: var(--font-body);
+        font-size: 2.2rem;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -0.03em;
+      }
+
+      .intro {
+        color: var(--muted);
+        margin-top: 6px;
+        font-size: 0.9rem;
+        line-height: 1.55;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      /* ── Buttons ── */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 11px 20px;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        font: inherit;
+        font-size: 0.86rem;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.14s, color 0.14s, border-color 0.14s;
+      }
+
+      .btn--primary {
+        background: var(--ink);
+        color: #fff;
+        border-color: var(--ink);
+      }
+
+      .btn--primary:hover { background: #333; border-color: #333; }
+
+      .btn--ghost {
+        background: transparent;
+        color: var(--ink);
+        border-color: var(--border-strong);
+      }
+
+      .btn--ghost:hover { background: rgba(24,22,20,0.05); }
+
+      .btn--danger {
+        background: transparent;
+        color: #b33;
+        border-color: rgba(180,35,24,0.25);
+      }
+
+      .btn--danger:hover { background: #fff6f6; }
+
+      /* ── Filter pills ── */
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 20px;
+      }
+
+    .filter-pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 32px;
+        padding: 0 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--muted);
+        font: inherit;
+        font-size: 0.8rem;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.14s, color 0.14s, border-color 0.14s;
+      }
+
+      .filter-pill.active,
+      .filter-pill:hover {
+        background: var(--ink);
+        color: #fff;
+        border-color: var(--ink);
+      }
+
+   /* ── Grid ── */
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
+      /* ── Page card ── */
+     .page-card {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding: 20px;
+        border-radius: 6px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+      }
+
+      .page-card h2 {
+        font-family: var(--font-display);
+        font-size: 1.15rem;
+        font-weight: 400;
+        letter-spacing: -0.02em;
+        line-height: 1.2;
+      }
+
+      .slug {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+
+      .copy {
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.5;
+        margin-top: 6px;
+      }
+
+      /* ── Tags ── */
+      .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-top: 10px;
+      }
+
+    .tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        padding: 0 8px;
+        border-radius: 6px;
+        background: rgba(24,22,20,0.07);
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+
+      .tag.dark {
+        background: var(--ink);
+        color: #fff;
+      }
+
+      .tag.intent {
+        background: rgba(24,22,20,0.10);
+        color: var(--ink);
+      }
+
+      .tag.published {
+        background: rgba(34,139,85,0.10);
+        color: #2d7a2d;
+      }
+
+      .tag.draft {
+        background: rgba(24,22,20,0.06);
+        color: var(--muted);
+      }
+
+      /* ── Card actions ── */
+      .card-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        padding-top: 12px;
+        border-top: 1px solid var(--border);
+        margin-top: auto;
+      }
+
+      /* ── Empty / error ── */
+      .empty {
+        padding: 24px;
+        border-radius: var(--radius);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .error {
+        color: #b33;
+        font-weight: 700;
+        margin-bottom: 16px;
+      }
+
+      form { margin: 0; }
+
+@media (max-width: 860px) {
+        .page { display: block; }
+        .main { padding: 24px 20px 60px; }
+        .topbar { flex-direction: column; align-items: flex-start; }
+        .grid { grid-template-columns: 1fr; }
+      }
+
+     .nav-sort-card {
+  margin-bottom: 24px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.nav-sort-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 16px 20px;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.nav-sort-toggle:hover { background: var(--bg); }
+
+#nav-sort-body {
+  padding: 0 20px 20px;
+}
+
+.nav-sort-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: move;
+}
+
+.drag-handle {
+  display: grid;
+  grid-template-columns: repeat(2, 4px);
+  gap: 4px 5px;
+  width: 14px;
+  flex: 0 0 14px;
+  cursor: grab;
+}
+
+.drag-handle span {
+  width: 4px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(24, 22, 20, 0.42);
+}
+
+.nav-remove-btn {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.nav-remove-btn:hover {
+  background: #fff0f0;
+  color: #b33;
+}
+    </style>
+  </head>
+
+<body>
+  <div class="page">
+    <AdminSidebar active="pages" />
+    <main class="main">
+
+
+
+  <div class="topbar">
+        <div>
+          <h1>Intent & category pages</h1>
+          <p class="intro">
+            Manage all generated buyer-discovery pages. Category pages start broad;
+            intent pages start with feature filters.
+          </p>
+        </div>
+
+       <div class="actions">
+          <a class="btn btn--primary" href="/admin/intent-pages/new">+ Add new page</a>
+          <a class="btn btn--ghost" href="/admin/agent-page">Agent editor</a>
+        </div>
+      </div>
+
+      <div class="filters">
+        <a class={`filter-pill ${!activeType && !activeKind && !activeStatus ? "active" : ""}`} href="/admin/intent-pages">All</a>
+
+        <a class={`filter-pill ${activeKind === "category" ? "active" : ""}`} href="/admin/intent-pages?kind=category">Category</a>
+        <a class={`filter-pill ${activeKind === "intent" ? "active" : ""}`} href="/admin/intent-pages?kind=intent">Intent</a>
+
+        <a class={`filter-pill ${activeStatus === "published" ? "active" : ""}`} href="/admin/intent-pages?status=published">Published</a>
+        <a class={`filter-pill ${activeStatus === "draft" ? "active" : ""}`} href="/admin/intent-pages?status=draft">Draft</a>
+
+        <a class={`filter-pill ${activeType === "house" ? "active" : ""}`} href="/admin/intent-pages?type=house">House</a>
+        <a class={`filter-pill ${activeType === "condo" ? "active" : ""}`} href="/admin/intent-pages?type=condo">Condo</a>
+        <a class={`filter-pill ${activeType === "townhouse" ? "active" : ""}`} href="/admin/intent-pages?type=townhouse">Townhouse</a>
+<a class={`filter-pill ${activeType === "mobile" ? "active" : ""}`} href="/admin/intent-pages?type=mobile">Mobile</a>
+        <a class={`filter-pill ${activeStatus === "nav" ? "active" : ""}`} href="/admin/intent-pages?status=nav">In Nav</a>
+      </div>
+
+      {error && <p class="error">{error.message}</p>}
+
+<section class="nav-sort-card">
+  <button type="button" class="nav-sort-toggle" id="nav-sort-toggle" aria-expanded="false">
+    <span>Navigation Order</span>
+    <svg id="nav-sort-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" style="transition:transform 0.2s;"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+
+  <div id="nav-sort-body" hidden>
+  <p style="color:var(--muted);font-size:0.88rem;margin:12px 0 16px;">
+    Drag pages to control the order shown in the site navigation.
+  </p>
+
+  <div id="nav-sort-list">
+    {(pages || [])
+      .filter((page) => page.show_in_nav)
+      .sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999))
+      .map((page) => (
+       <div
+          class="nav-sort-item"
+          draggable="true"
+          data-id={page.id}
+        >
+          <span class="drag-handle" aria-hidden="true">
+            <span></span><span></span>
+            <span></span><span></span>
+            <span></span><span></span>
+          </span>
+          <span style="flex:1;">
+            {page.nav_label || page.hero_heading || titleCase(page.slug)}
+          </span>
+          <button
+            type="button"
+            class="nav-remove-btn"
+            data-remove-id={page.id}
+            title="Remove from nav"
+          >✕</button>
+        </div>
+      ))}
+  </div>
+
+<button
+    type="button"
+    class="btn btn--primary"
+    id="save-nav-order"
+    style="margin-top:12px;"
+  >
+    Save Nav Order
+  </button>
+  </div>
+</section>
+
+      {!pages?.length && (
+        <div class="empty">
+          No matching intent or category pages.
+          <a href="/admin/intent-pages/new">Create a new page</a>
+        </div>
+      )}
+
+      <section class="grid">
+        {(pages || []).map((page) => {
+          const features = page.intent_page_features || [];
+
+          return (
+            <article class="page-card">
+              <div>
+                <h2>{page.hero_heading || titleCase(page.slug)}</h2>
+
+                <p class="slug">/{page.city}/{page.slug}</p>
+
+                {page.intro_copy && <p class="copy">{page.intro_copy}</p>}
+
+                <div class="tags">
+                  <span class={`tag ${pageTypeLabel(page) === "Intent" ? "intent" : "dark"}`}>
+                    {pageTypeLabel(page)}
+                  </span>
+
+                  <span class={`tag ${page.is_published === false ? "draft" : "published"}`}>
+                    {page.is_published === false ? "Draft" : "Published"}
+                  </span>
+
+                  <span class="tag">{titleCase(page.city)}</span>
+
+                  {page.area && <span class="tag">{titleCase(page.area)}</span>}
+
+                  {page.property_type && (
+                    <span class="tag">{titleCase(page.property_type)}</span>
+                  )}
+
+                  <span class="tag">{formatPrice(page)}</span>
+
+                  {features.length ? (
+                    features.map((feature) => (
+                      <span class="tag intent">{titleCase(feature.feature_key)}</span>
+                    ))
+                  ) : (
+                    <span class="tag">No feature filters</span>
+                  )}
+                </div>
+              </div>
+
+             <div class="card-actions">
+<a class="btn btn--ghost" href={publicHref(page)} target="_blank">Open &nearr;</a>                <a class="btn btn--ghost" href={`/admin/intent-pages/${page.id}/edit`}>Edit</a>
+                <form method="POST" onsubmit="return confirm('Delete this page? This cannot be undone.');">
+                  <input type="hidden" name="_action" value="delete" />
+                  <input type="hidden" name="id" value={page.id} />
+                  <button class="btn btn--danger" type="submit">Delete</button>
+                </form>
+              </div>
+            </article>
+          );
+        })}
+      </section>
+     </main>
+  </div>
+  <script>
+ const list = document.getElementById("nav-sort-list");
+  const saveBtn = document.getElementById("save-nav-order");
+  const toggle = document.getElementById("nav-sort-toggle");
+  const body = document.getElementById("nav-sort-body");
+  const chevron = document.getElementById("nav-sort-chevron");
+
+  document.querySelectorAll(".nav-remove-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-remove-id");
+      if (!id) return;
+      btn.textContent = "…";
+      const res = await fetch("/api/admin/save-nav-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: [], removeFromNav: id }),
+      });
+      if (res.ok) {
+        btn.closest(".nav-sort-item")?.remove();
+      } else {
+        btn.textContent = "✕";
+      }
+    });
+  });
+
+  toggle?.addEventListener("click", () => {
+    const isOpen = !body.hidden;
+    body.hidden = isOpen;
+    toggle.setAttribute("aria-expanded", String(!isOpen));
+    chevron.style.transform = isOpen ? "" : "rotate(180deg)";
+  });
+
+  let draggedItem = null;
+
+  list?.addEventListener("dragstart", (event) => {
+    draggedItem = event.target.closest(".nav-sort-item");
+    event.dataTransfer.effectAllowed = "move";
+  });
+
+  list?.addEventListener("dragover", (event) => {
+    event.preventDefault();
+
+    const target = event.target.closest(".nav-sort-item");
+    if (!target || target === draggedItem) return;
+
+    const rect = target.getBoundingClientRect();
+    const shouldInsertAfter = event.clientY > rect.top + rect.height / 2;
+
+    list.insertBefore(
+      draggedItem,
+      shouldInsertAfter ? target.nextSibling : target
+    );
+  });
+
+  saveBtn?.addEventListener("click", async () => {
+    const items = Array.from(document.querySelectorAll(".nav-sort-item")).map(
+      (item, index) => ({
+        id: item.dataset.id,
+        sort_order: index + 1,
+      })
+    );
+
+    saveBtn.textContent = "Saving...";
+
+    const response = await fetch("/api/admin/save-nav-order", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ items }),
+    });
+
+    saveBtn.textContent = response.ok ? "Saved!" : "Save failed";
+
+    setTimeout(() => {
+      saveBtn.textContent = "Save Nav Order";
+    }, 1200);
+  });
+</script>
+</body>
+</html>

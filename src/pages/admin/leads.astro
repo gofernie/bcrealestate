@@ -1,0 +1,258 @@
+---
+import { createClient } from "@supabase/supabase-js";
+import AdminSidebar from "../../components/AdminSidebar.astro";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const sortParam = Astro.url.searchParams.get("sort") || "newest";
+const sortMap: Record<string, { column: string; ascending: boolean }> = {
+  newest: { column: "created_at", ascending: false },
+  oldest: { column: "created_at", ascending: true },
+  name:   { column: "name",       ascending: true  },
+  source: { column: "source",     ascending: true  },
+};
+const { column, ascending } = sortMap[sortParam] ?? sortMap.newest;
+
+const { data: leads = [], error } = await supabase
+  .from("intent_leads")
+  .select("*")
+  .order(column, { ascending });
+
+function fmtDate(value) {
+  if (!value) return "";
+  return new Date(value).toLocaleString();
+}
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Leads</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    
+    <link
+      href="https://?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      :global(:root) {
+        --bg: #f7f4ef;
+        --ink: #181614;
+        --font-body: "DM Sans", system-ui, sans-serif;
+        --font-display: "Instrument Serif", Georgia, serif;
+      }
+
+      :global(body) {
+        margin: 0;
+        font-family: var(--font-body);
+        background: var(--bg);
+        color: var(--ink);
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+      .page {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 220px 1fr;
+      }
+
+      .main {
+        padding: 48px 32px 64px;
+        max-width: 1100px;
+      }
+
+    h1 {
+        margin: 0 0 8px;
+        font-family: var(--font-body);
+        font-size: 2.2rem;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -0.03em;
+      }
+
+      .sub {
+        color: #6f6a63;
+        margin: 0 0 28px;
+      }
+
+      .lead {
+        background: #fff;
+        border: 1px solid #e3ddd2;
+        border-radius: 18px;
+        padding: 20px;
+        margin-bottom: 12px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+      }
+
+      .top {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+
+      .name {
+        font-weight: 800;
+        font-size: 1.05rem;
+      }
+
+      .meta {
+        color: #777;
+        font-size: 0.88rem;
+        margin-top: 4px;
+      }
+
+     .lead-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 20px;
+        margin-top: 6px;
+        font-size: 0.88rem;
+        color: #444;
+      }
+
+      .lead-row span::before {
+        content: "·";
+        margin-right: 6px;
+        color: #bbb;
+      }
+
+      .lead-row span:first-child::before {
+        content: none;
+      }
+
+      .actions {
+        margin-top: 16px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+     .btn {
+        display: inline-flex;
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: 1px solid rgba(24, 22, 20, 0.2);
+        color: #181614;
+        text-decoration: none;
+        font-size: 0.82rem;
+        font-weight: 800;
+      }
+
+      .btn:hover {
+        background: #f7f4ef;
+      }
+
+      .sort-bar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+      }
+
+      .sort-label {
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-right: 2px;
+      }
+
+      .sort-btn {
+        padding: 5px 12px;
+        border-radius: 6px;
+        border: 1px solid rgba(24, 22, 20, 0.2);
+        color: #555;
+        text-decoration: none;
+        font-size: 0.8rem;
+        font-weight: 700;
+      }
+
+      .sort-btn:hover { background: #f0ece5; }
+
+      .sort-btn.active {
+        background: #181614;
+        color: #fff;
+        border-color: #181614;
+      }
+
+      @media (max-width: 860px) {
+        .page {
+          display: block;
+        }
+
+        .main {
+          padding: 28px 18px 48px;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="page">
+      <AdminSidebar active="leads" />
+
+      <main class="main">
+        <h1>Leads</h1>
+      <p class="sub">
+          All captured buyer leads from intent pages, ask-a-question, and showing requests.
+        </p>
+
+       <div class="sort-bar">
+          <span class="sort-label">Sort:</span>
+          <a href="?sort=newest" class={"sort-btn" + (sortParam === "newest" ? " active" : "")}>Newest</a>
+          <a href="?sort=oldest" class={"sort-btn" + (sortParam === "oldest" ? " active" : "")}>Oldest</a>
+          <a href="?sort=name"   class={"sort-btn" + (sortParam === "name"   ? " active" : "")}>Name</a>
+          <a href="?sort=source" class={"sort-btn" + (sortParam === "source" ? " active" : "")}>Source</a>
+        </div>
+
+        {error && <p>Error loading leads: {error.message}</p>}
+
+        {leads.length === 0 && <p>No leads yet.</p>}
+
+        {leads.map((lead) => (
+          <article class="lead">
+            <div class="top">
+              <div>
+                <div class="name">{lead.name || "Unnamed lead"}</div>
+                <div class="meta">{fmtDate(lead.created_at)}</div>
+              </div>
+
+              <div class="meta">{lead.source || "Unknown source"}</div>
+            </div>
+
+           <div class="lead-row">
+              {lead.email && <span>{lead.email}</span>}
+              {lead.phone && <span>{lead.phone}</span>}
+              {(lead.city || lead.slug) && <span>{lead.city || "—"} / {lead.slug || "—"}</span>}
+            </div>
+
+            <div class="actions">
+              {lead.email && <a class="btn" href={`mailto:${lead.email}`}>Email</a>}
+              {lead.phone && <a class="btn" href={`tel:${lead.phone}`}>Call</a>}
+              {lead.session_id && (
+                <a class="btn" href={`/admin/intent-sessions?session=${encodeURIComponent(lead.session_id)}`}>
+                  View session
+                </a>
+              )}
+            </div>
+          </article>
+        ))}
+      </main>
+    </div>
+  </body>
+</html>
