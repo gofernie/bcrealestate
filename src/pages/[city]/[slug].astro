@@ -28,15 +28,64 @@ const accentColor =
   site?.accent_color ||
   "#2f6f73";
 
-const { data: page, error: pageError } = await supabase
+let { data: page } = await supabase
   .from("intent_pages")
   .select("*")
   .eq("slug", slug)
   .eq("city", city)
-  .single();
+  .maybeSingle();
 
-if (!page || pageError) {
-  return Astro.redirect("/404");
+let pageKind = "intent";
+
+if (!page) {
+  const { data: areaPage } = await supabase
+    .from("area_boundaries")
+    .select("*")
+    .eq("city", city)
+    .eq("area_slug", slug)
+    .maybeSingle();
+
+  if (!areaPage) {
+    return Astro.redirect("/404");
+  }
+
+  pageKind = "area";
+
+  page = {
+    id: `area-${areaPage.area_slug}`,
+    slug: areaPage.area_slug,
+    area: areaPage.area_name || String(slug).replace(/-/g, " "),
+    property_type: "",
+    hero_heading:
+      areaPage.hero_heading ||
+      `${areaPage.area_name || String(slug).replace(/-/g, " ")} Real Estate`,
+    intro_copy:
+      areaPage.intro_copy ||
+      areaPage.short_description ||
+      `Browse homes for sale in ${areaPage.area_name || String(slug).replace(/-/g, " ")}.`,
+    hero_image_url: areaPage.hero_image_url,
+    seo_title:
+      areaPage.seo_title ||
+      `${areaPage.area_name || String(slug).replace(/-/g, " ")} Real Estate`,
+    meta_description:
+      areaPage.meta_description ||
+      areaPage.short_description ||
+      "",
+    seo_heading:
+      areaPage.seo_heading ||
+      `${areaPage.area_name || String(slug).replace(/-/g, " ")} Area Guide`,
+    seo_intro: areaPage.short_description || areaPage.intro_copy || "",
+    seo_body: areaPage.intro_copy || "",
+    seo_long: "",
+    polygon_geojson: areaPage.polygon_geojson,
+    default_sort: "newest",
+    price_min: null,
+    price_max: null,
+    waterfront_type: null,
+    requires_waterfront: false,
+    requires_ocean_view: false,
+    faq_json: [],
+  };
 }
 
 const { data: featureRows } = await supabase
@@ -117,50 +166,52 @@ const normalizedPropertyType =
   propertyTypeMap[String(page.property_type || "").toLowerCase()] ||
   String(page.property_type || "").toLowerCase();
 
-if (normalizedPropertyType) {
-  query = query.eq("normalized_type", normalizedPropertyType);
-}
+if (pageKind === "intent") {
+  if (normalizedPropertyType) {
+    query = query.eq("normalized_type", normalizedPropertyType);
+  }
 
-if (page.price_min) {
-  query = query.gte("price", page.price_min);
-}
+  if (page.price_min) {
+    query = query.gte("price", page.price_min);
+  }
 
-if (page.price_max) {
-  query = query.lte("price", page.price_max);
-}
+  if (page.price_max) {
+    query = query.lte("price", page.price_max);
+  }
 
-if (page.waterfront_type === "waterfront") {
-  query = query.eq("waterfront", true);
-}
-
-if (page.waterfront_type === "oceanfront") {
-  if (city === "parksville") {
+  if (page.waterfront_type === "waterfront") {
     query = query.eq("waterfront", true);
-  } else {
+  }
+
+  if (page.waterfront_type === "oceanfront") {
+    if (city === "parksville") {
+      query = query.eq("waterfront", true);
+    } else {
+      query = query
+        .eq("waterfront", true)
+        .ilike("view_type", "%Ocean%");
+    }
+  }
+
+  if (page.waterfront_type === "riverfront") {
     query = query
       .eq("waterfront", true)
-      .ilike("view_type", "%Ocean%");
+      .ilike("view_type", "%River%");
   }
-}
 
-if (page.waterfront_type === "riverfront") {
-  query = query
-    .eq("waterfront", true)
-    .ilike("view_type", "%River%");
-}
+  if (page.waterfront_type === "lakefront") {
+    query = query
+      .eq("waterfront", true)
+      .ilike("view_type", "%Lake%");
+  }
 
-if (page.waterfront_type === "lakefront") {
-  query = query
-    .eq("waterfront", true)
-    .ilike("view_type", "%Lake%");
-}
+  if (!page.waterfront_type && page.requires_waterfront) {
+    query = query.eq("waterfront", true);
+  }
 
-if (!page.waterfront_type && page.requires_waterfront) {
-  query = query.eq("waterfront", true);
-}
-
-if (page.requires_ocean_view) {
-  query = query.eq("ocean_view", true);
+  if (page.requires_ocean_view) {
+    query = query.eq("ocean_view", true);
+  }
 }
 
 const featureTerms: Record<string, string[]> = {
@@ -985,7 +1036,125 @@ body.is-map-mode .bottom-refine-cta {
 }
 
 
+.area-intelligence {
+  margin: 22px 0 36px;
+}
 
+.area-intelligence__chips {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+  margin-bottom: 18px;
+  scrollbar-width: none;
+}
+
+.area-intelligence__chips::-webkit-scrollbar {
+  display: none;
+}
+
+.amenity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  border: 1px solid rgba(0,0,0,.08);
+  background: #fff;
+  padding: 10px 14px;
+  border-radius: 999px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.amenity-chip.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.area-map-layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 18px;
+}
+
+.area-amenity-panel {
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.area-amenity-panel__head {
+  padding: 18px;
+  border-bottom: 1px solid rgba(0,0,0,.06);
+}
+
+.area-amenity-panel__head h3 {
+  margin: 0 0 4px;
+}
+
+.area-amenity-panel__head p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.amenity-list {
+  padding: 0;
+}
+
+.amenity-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 18px;
+  border-top: 1px solid rgba(0,0,0,.06);
+}
+
+.amenity-row:first-child {
+  border-top: 0;
+}
+
+.amenity-row strong {
+  margin: 0;
+  font-size: 0.94rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.amenity-row span {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.area-neighbourhood-map {
+  min-height: 520px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(0,0,0,.08);
+  background: #f5f5f5;
+}
+
+.area-map-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted);
+}
+
+@media (max-width:900px){
+  .area-map-layout{
+    grid-template-columns:1fr;
+  }
+
+  .area-neighbourhood-map{
+    min-height:360px;
+  }
+}
 .intent-seo-grid {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
@@ -1742,6 +1911,7 @@ color: var(--accent) !important;
     grid-template-columns: 1fr;
   }
 }
+
     </style>
 
 <div
@@ -1790,7 +1960,62 @@ color: var(--accent) !important;
       {page.seo_intro || seo.intro}
     </p>
   )}
+{pageKind === "area" && (
+  <section class="area-intelligence">
+    <div class="area-intelligence__chips">
+      <button type="button" class="amenity-chip active" data-amenity="schools">
+        🎓 Schools <strong>13</strong>
+      </button>
+      <button type="button" class="amenity-chip" data-amenity="grocery">
+        🛒 Grocery & Shops <strong>7</strong>
+      </button>
+      <button type="button" class="amenity-chip" data-amenity="transit">
+        🚌 Transit <strong>161</strong>
+      </button>
+      <button type="button" class="amenity-chip" data-amenity="parks">
+        🌳 Parks <strong>51</strong>
+      </button>
+      <button type="button" class="amenity-chip" data-amenity="restaurants">
+        ☕ Restaurants & Cafés <strong>85</strong>
+      </button>
+      <button type="button" class="amenity-chip" data-amenity="medical">
+        🏥 Medical <strong>23</strong>
+      </button>
+    </div>
 
+    <div class="area-map-layout">
+      <aside class="area-amenity-panel" id="area-amenity-panel">
+        <div class="area-amenity-panel__head">
+          <h3>Schools</h3>
+          <p>13 schools in {titleCase(page.area || city)}</p>
+        </div>
+
+        <div class="amenity-list" id="amenity-list">
+        <div style="display:flex;flex-direction:column;gap:3px;padding:10px 18px;border-top:1px solid rgba(0,0,0,.06);">
+            <div style="margin:0;font-size:0.94rem;font-weight:600;line-height:1.35;color:#1c1914;">Dover Bay Secondary</div>
+            <div style="margin:0;font-size:0.82rem;font-weight:400;line-height:1.4;color:#9c9590;">Public · High School · 0.8 km</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;padding:10px 18px;border-top:1px solid rgba(0,0,0,.06);">
+            <div style="margin:0;font-size:0.94rem;font-weight:600;line-height:1.35;color:#1c1914;">Randerson Ridge Elementary</div>
+            <div style="margin:0;font-size:0.82rem;font-weight:400;line-height:1.4;color:#9c9590;">Public · Elementary · 1.0 km</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;padding:10px 18px;border-top:1px solid rgba(0,0,0,.06);">
+            <div style="margin:0;font-size:0.94rem;font-weight:600;line-height:1.35;color:#1c1914;">McGirr Elementary</div>
+            <div style="margin:0;font-size:0.82rem;font-weight:400;line-height:1.4;color:#9c9590;">Public · Elementary · 1.2 km</div>
+          </div>
+        </div>
+      </aside>
+
+    <div class="area-neighbourhood-map">
+  <div
+    id="intent-map"
+    class="intent-map"
+    style="height:100%;min-height:540px;margin:0;border:0;border-radius:0;"
+  ></div>
+</div>
+    </div>
+  </section>
+)}
       <div class="section-head" style="margin:0 0 14px;">
 <h2
   id="dynamic-results-heading"
@@ -1855,7 +2080,7 @@ color: var(--accent) !important;
   <span class="results-bar" style="margin-left:auto;font-size:0.82rem;color:var(--muted);font-weight:600;white-space:nowrap;">{listingCount} listings</span>
 </section>
 
-      <div id="intent-map" class="intent-map" hidden></div>
+     <!-- Map moved into Area Intelligence -->
 
       <section class="grid">
         {listings.map((listing, index) => {
@@ -2215,6 +2440,18 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
   border-top: 0 !important;
 }
 
+.amenity-row strong {
+  font-weight: 600 !important;
+  color: var(--ink) !important;
+  font-size: 0.94rem !important;
+}
+
+.amenity-row span {
+  font-weight: 400 !important;
+  color: var(--muted) !important;
+  font-size: 0.82rem !important;
+}
+
 
 
 @media (max-width: 900px) {
@@ -2261,9 +2498,11 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
       const intentMapEl = document.getElementById("intent-map");
       const gridEl = document.querySelector(".grid");
 
- let googleMap = null;
+let googleMap = null;
 let googleMarkers = [];
+let amenityMarkers = [];
 let searchAreaPolygon = null;
+let searchAreaMask = null;
 const searchAreaGeojson = JSON.parse(
   document.querySelector("[data-search-area-geojson]")?.dataset.searchAreaGeojson || "null"
 );
@@ -2305,24 +2544,114 @@ const key = document.querySelector("[data-google-maps-api-key]")?.dataset.google
         return googleMapsLoadingPromise;
       }
 
-      function getCardLatLng(card) {
-        const lat = Number(card.dataset.lat || "");
-        const lng = Number(card.dataset.lng || "");
+  function getCardLatLng(card) {
+  const lat = Number(card.dataset.lat || "");
+  const lng = Number(card.dataset.lng || "");
 
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-        if (lat === 0 || lng === 0) return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat === 0 || lng === 0) return null;
 
-        return { lat, lng };
-      }
+  return { lat, lng };
+}
+
+async function loadAreaAmenities(category = "school") {
+  if (!googleMap) return;
+
+  amenityMarkers.forEach((marker) => marker.setMap(null));
+  amenityMarkers = [];
+
+  const center = googleMap.getCenter();
+  if (!center) return;
+
+  const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
+
+  const res = await fetch(
+    `/api/osm-amenities?city=${encodeURIComponent(city)}&lat=${center.lat()}&lng=${center.lng()}&radius=10&limit=200`
+  );
+
+  const payload = await res.json();
+  document.querySelectorAll(".amenity-chip").forEach((chip) => {
+  const key = amenityCategoryMap[chip.dataset.amenity] || chip.dataset.amenity;
+  const count = payload.categories?.[key]?.length || 0;
+  const strong = chip.querySelector("strong");
+
+  if (strong) strong.textContent = String(count);
+});
+  const rows = payload.categories?.[category] || [];
+const activeChip = document.querySelector(".amenity-chip.active");
+const label = activeChip?.childNodes?.[0]?.textContent?.trim() || category;
+
+const panelTitle = document.querySelector("#area-amenity-panel h3");
+const panelCopy = document.querySelector("#area-amenity-panel p");
+const amenityList = document.querySelector("#amenity-list");
+
+if (panelTitle) panelTitle.textContent = label;
+
+if (panelCopy) {
+  panelCopy.textContent = `${rows.length} ${label.toLowerCase()} near ${document.querySelector("[data-slug]")?.dataset.slug?.replaceAll("-", " ") || "this area"}`;
+}
+
+if (amenityList) {
+  amenityList.innerHTML = rows
+    .slice(0, 8)
+    .map((item) => {
+      const name = String(item.name || label || "Nearby place").trim();
+      const distance = Number(item.distKm || 0).toFixed(1);
+
+  return `
+        <div style="display:flex;flex-direction:column;gap:3px;padding:10px 18px;border-top:1px solid rgba(0,0,0,.06);">
+          <div style="margin:0;font-size:0.94rem;font-weight:600;line-height:1.35;color:#1c1914;">${name}</div>
+          <div style="margin:0;font-size:0.82rem;font-weight:400;line-height:1.4;color:#9c9590;">${distance} km away</div>
+        </div>
+      `;
+    })
+    .join("");
+}
+  const amenityBounds = new google.maps.LatLngBounds();
+
+  rows.forEach((item) => {
+    const position = {
+      lat: Number(item.lat),
+      lng: Number(item.lng),
+    };
+
+    if (!Number.isFinite(position.lat) || !Number.isFinite(position.lng)) return;
+
+    const marker = new google.maps.Marker({
+      position,
+      map: googleMap,
+      title: item.name || category,
+      zIndex: 9999,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 7,
+        fillColor: "#2f6f73",
+        fillOpacity: 1,
+        strokeColor: "#ffffff",
+        strokeWeight: 2,
+      },
+    });
+
+    amenityMarkers.push(marker);
+    amenityBounds.extend(position);
+  });
+
+  if (amenityMarkers.length) {
+    googleMap.fitBounds(amenityBounds, 70);
+  }
+}
 
       async function initIntentGoogleMap(mode = "all") {
         if (!intentMapEl) return;
 
-       const selector = mode === "refined" ? ".refined-card" : ".card";
-
+     const selector = mode === "refined" ? ".refined-card" : ".original-card";
 const cards = Array.from(document.querySelectorAll(selector)).filter((card) => {
- return !card.hidden;
+  return !card.hidden &&
+    card.style.display !== "none" &&
+    card.dataset.lat &&
+    card.dataset.lng;
 });
+
 
         const points = cards
           .map((card) => ({
@@ -2364,6 +2693,11 @@ if (searchAreaPolygon) {
   searchAreaPolygon = null;
 }
 
+if (searchAreaMask) {
+  searchAreaMask.setMap(null);
+  searchAreaMask = null;
+}
+
 const bounds = new google.maps.LatLngBounds();
 const infoWindow = new google.maps.InfoWindow();
 let intentActiveMarker = null;
@@ -2374,13 +2708,33 @@ if (searchAreaGeojson?.coordinates?.[0]) {
     lng,
   }));
 
-  searchAreaPolygon = new google.maps.Polygon({
+ searchAreaMask = new google.maps.Polygon({
+  paths: [
+    [
+      { lat: 85, lng: -179 },
+      { lat: -85, lng: -179 },
+      { lat: -85, lng: 179 },
+      { lat: 85, lng: 179 },
+      { lat: 85, lng: -179 },
+    ],
+    polygonPath.slice().reverse(),
+  ],
+  fillColor: "#000000",
+  fillOpacity: 0.08,
+  strokeOpacity: 0,
+  clickable: false,
+  zIndex: 10,
+});
+
+searchAreaMask.setMap(googleMap);
+
+searchAreaPolygon = new google.maps.Polygon({
     paths: polygonPath,
     strokeColor: "#2f6f73",
     strokeOpacity: 1,
     strokeWeight: 4,
     fillColor: "#2f6f73",
-    fillOpacity: 0.16,
+    fillOpacity: 0.02,
     clickable: false,
     zIndex: 10,
   });
@@ -2496,6 +2850,10 @@ googleMap.addListener("idle", () => {
 window.setTimeout(() => {
   google.maps.event.trigger(googleMap, "resize");
   googleMap.fitBounds(bounds);
+
+  if (document.querySelector(".area-intelligence")) {
+    loadAreaAmenities("school");
+  }
 }, 150);
       }
 async function initRefinedGoogleMap(mode = "refined") {
@@ -2597,6 +2955,13 @@ async function initRefinedGoogleMap(mode = "refined") {
     initIntentGoogleMap();
   });
 });
+if (document.querySelector(".area-intelligence") && intentMapEl) {
+  intentMapEl.hidden = false;
+
+  requestAnimationFrame(() => {
+    initIntentGoogleMap();
+  });
+}
 
       let visibleListingCount = 12;
 
@@ -2614,6 +2979,33 @@ document.getElementById("show-more-listings-btn")?.addEventListener("click", () 
   if (visibleListingCount >= cards.length) {
     document.getElementById("show-more-listings-btn")?.setAttribute("hidden", "");
   }
+});
+window.addEventListener("listing-filters-updated", () => {
+  if (googleMap) {
+    initIntentGoogleMap();
+  }
+});
+
+const amenityCategoryMap = {
+  schools: "school",
+  grocery: "grocery",
+  transit: "transit",
+  parks: "park",
+  restaurants: "restaurant",
+  medical: "medical",
+};
+
+document.querySelectorAll(".amenity-chip").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll(".amenity-chip").forEach((chip) => {
+      chip.classList.remove("active");
+    });
+
+    button.classList.add("active");
+
+    const category = amenityCategoryMap[button.dataset.amenity] || "school";
+    loadAreaAmenities(category);
+  });
 });
     </script>
 
@@ -2642,8 +3034,8 @@ function applyFilters() {
     const areaValue = areaSelect?.value || "all";
     const area = areaValue.startsWith("/") ? "all" : areaValue;
     activePriceFilter = priceSelect?.value || "all";
-const typeValue = typeSelect?.value || "all";
-const bedsMin = bedsSelect?.value || "all";
+const typeValue = String(typeSelect?.value || "all").toLowerCase();
+const bedsMin = String(bedsSelect?.value || "all").toLowerCase();
 
     const cards = Array.from(document.querySelectorAll(".original-card"));
     const resultsBar = document.querySelector(".results-bar");
@@ -2753,10 +3145,8 @@ if (resultsBar) {
   resultsBar.textContent = `${visibleCount} listings found`;
 }
 
-    if (googleMap && intentMapEl && !intentMapEl.hidden) {
-      initIntentGoogleMap();
-    }
-  }
+window.dispatchEvent(new CustomEvent("listing-filters-updated"));
+}
 
   function applySort() {
     const sort = sortSelect?.value || "newest";
@@ -2782,38 +3172,35 @@ if (sort === "sqft-desc") return Number(b.dataset.sqft || 0) - Number(a.dataset.
     applyFilters();
   }
 areaSelect?.addEventListener("change", () => {
-  applyFilters();
-});
-priceSelect?.addEventListener("change", applyFilters);
-typeSelect?.addEventListener("change", (e) => {
-  const selectedType = e.target.value;
-  const currentCity = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
-  const currentSlug = document.querySelector("[data-slug]")?.dataset.slug || "";
+  const selectedArea = areaSelect.value;
+  const currentCity =
+    document.querySelector("[data-city]")?.dataset.city || "nanaimo";
 
-  if (selectedType === "all") {
-    applyFilters();
+  if (selectedArea && selectedArea !== "all") {
+    const areaSlug = selectedArea
+      .toLowerCase()
+      .trim()
+      .replace(/&/g, "and")
+      .replace(/\//g, "-")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+
+    window.location.href = `/${currentCity}/${areaSlug}`;
     return;
   }
 
-  const typeSlugMap = {
-    house: `${currentCity}-homes`,
-    condo: `${currentCity}-condos`,
-    townhouse: `${currentCity}-townhomes`,
-    mobile: `${currentCity}-mobile-homes`,
-    land: `${currentCity}-land`,
-  };
-
-  const targetSlug = typeSlugMap[selectedType];
-  if (targetSlug && targetSlug !== currentSlug) {
-    window.location.href = `/${currentCity}/${targetSlug}`;
-  } else {
-    applyFilters();
-  }
+  applyFilters();
 });
+priceSelect?.addEventListener("change", applyFilters);
+
+typeSelect?.addEventListener("change", () => {
+  applyFilters();
+});
+
 sortSelect?.addEventListener("change", applySort);
 bedsSelect?.addEventListener("change", applyFilters);
 
-  applySort();
+applySort();
 </script>
 
     <script is:inline>
