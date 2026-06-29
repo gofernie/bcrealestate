@@ -9,9 +9,10 @@
  *   npx ts-node src/scripts/rebuild-osm-data.ts --city=fernie --area=central
  */
 
+import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
+const SUPABASE_URL = process.env.PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 
@@ -39,6 +40,11 @@ const CITY_AREAS: Record<string, { areas: Record<string, { bbox: [number, number
 nanaimo: {
     areas: {
       nanaimo: { bbox: [49.071167, -124.160614, 49.276765, -123.651123] },
+    },
+  },
+ whistler: {
+    areas: {
+      whistler: { bbox: [50.080, -123.010, 50.165, -122.900] },
     },
   },
 };
@@ -238,7 +244,7 @@ async function refreshArea(city: string, area: string, bbox: [number, number, nu
   }
 
   // Small delay to be polite to Overpass
-  await new Promise((r) => setTimeout(r, 1500));
+await new Promise((r) => setTimeout(r, 4000));
 }
 
 async function main() {
