@@ -1,0 +1,230 @@
+---
+import { createClient } from "@supabase/supabase-js";
+import Layout from "../../layouts/Layout.astro";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const { data: metrics = [], error } = await supabase
+  .from("market_metrics_public")
+  .select("*")
+  .eq("snapshot_date", "2026-07-01")
+  .order("activity_index", { ascending: false });
+
+const totals = metrics.reduce(
+  (acc, row) => {
+    acc.active += row.active || 0;
+    acc.pending += row.pending || 0;
+    acc.sold += row.sold || 0;
+    acc.failed += row.failed || 0;
+    return acc;
+  },
+  { active: 0, pending: 0, sold: 0, failed: 0 }
+);
+
+const topMarkets = metrics.slice(0, 5);
+const slowMarkets = [...metrics].slice(-5).reverse();
+---
+
+<Layout title="Market Intelligence">
+  <main class="market-admin">
+    <section class="hero">
+      <p class="eyebrow">Market Intelligence</p>
+      <h1>Vancouver Island Market Pulse</h1>
+      <p>Weekly market activity based on active, pending, sold, expired, cancelled, and withdrawn listings.</p>
+    </section>
+
+    {error && <p class="error">Error loading market metrics.</p>}
+
+    <section class="stats">
+      <article><span>Active</span><strong>{totals.active}</strong></article>
+      <article><span>Pending</span><strong>{totals.pending}</strong></article>
+      <article><span>Sold</span><strong>{totals.sold}</strong></article>
+      <article><span>Failed</span><strong>{totals.failed}</strong></article>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>Most Active Markets</h2>
+        {topMarkets.map((m) => (
+          <div class="market-row">
+            <strong>{m.market_name}</strong>
+            <span>{m.activity_index}</span>
+          </div>
+        ))}
+      </article>
+
+      <article class="panel">
+        <h2>Slower Markets</h2>
+        {slowMarkets.map((m) => (
+          <div class="market-row">
+            <strong>{m.market_name}</strong>
+            <span>{m.activity_index}</span>
+          </div>
+        ))}
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2>All Markets</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Market</th>
+              <th>Active</th>
+              <th>Pending</th>
+              <th>Sold</th>
+              <th>Failed</th>
+              <th>Activity</th>
+            </tr>
+          </thead>
+          <tbody>
+            {metrics.map((m) => (
+              <tr>
+                <td>{m.market_name}</td>
+                <td>{m.active}</td>
+                <td>{m.pending}</td>
+                <td>{m.sold}</td>
+                <td>{m.failed}</td>
+                <td>{m.activity_index}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</Layout>
+
+<style>
+  .market-admin {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 40px 20px 80px;
+  }
+
+  .hero {
+    margin-bottom: 28px;
+  }
+
+  .eyebrow {
+    margin: 0 0 8px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #667085;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(2rem, 4vw, 3.25rem);
+    letter-spacing: -0.04em;
+  }
+
+  .hero p:last-child {
+    max-width: 680px;
+    color: #667085;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    margin: 28px 0;
+  }
+
+  .stats article,
+  .panel {
+    background: #fff;
+    border: 1px solid #eaecf0;
+    border-radius: 22px;
+    box-shadow: 0 14px 40px rgba(16, 24, 40, 0.06);
+  }
+
+  .stats article {
+    padding: 20px;
+  }
+
+  .stats span {
+    display: block;
+    color: #667085;
+    font-weight: 700;
+    font-size: 0.86rem;
+  }
+
+  .stats strong {
+    display: block;
+    margin-top: 8px;
+    font-size: 2rem;
+    letter-spacing: -0.04em;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: 18px;
+  }
+
+  .panel {
+    padding: 22px;
+  }
+
+  .panel h2 {
+    margin: 0 0 16px;
+    font-size: 1.1rem;
+  }
+
+  .market-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 12px 0;
+    border-top: 1px solid #f2f4f7;
+  }
+
+  .market-row span {
+    font-weight: 800;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    padding: 12px 10px;
+    text-align: left;
+    border-top: 1px solid #f2f4f7;
+  }
+
+  th {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #667085;
+  }
+
+  .error {
+    color: #b42318;
+    font-weight: 800;
+  }
+
+  @media (max-width: 760px) {
+    .stats,
+    .grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

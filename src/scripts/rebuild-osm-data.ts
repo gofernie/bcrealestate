@@ -1,4 +1,4 @@
-/**
+﻿/**
  * rebuild-osm-data.ts
  * Fetches OSM amenities + area boundaries via Overpass API
  * and upserts into Supabase.
@@ -31,10 +31,14 @@ const CITY_AREAS: Record<string, { areas: Record<string, { bbox: [number, number
       "annex":        { bbox: [49.505, -115.075, 49.525, -115.045] },
     },
   },
-  parksville: {
+parksville: {
     areas: {
       central:        { bbox: [49.305, -124.330, 49.335, -124.290] },
       "north-end":    { bbox: [49.330, -124.330, 49.360, -124.290] },
+      "nanoose":      { bbox: [49.230, -124.260, 49.300, -124.100] },
+      "errington":    { bbox: [49.270, -124.560, 49.340, -124.340] },
+      "qualicum":     { bbox: [49.340, -124.540, 49.410, -124.380] },
+      "bowser":       { bbox: [49.400, -124.820, 49.480, -124.620] },
     },
   },
 nanaimo: {
@@ -42,9 +46,19 @@ nanaimo: {
       nanaimo: { bbox: [49.071167, -124.160614, 49.276765, -123.651123] },
     },
   },
- whistler: {
+  "french-creek": {
+    areas: {
+      "french-creek": { bbox: [49.330, -124.380, 49.360, -124.340] },
+    },
+  },
+whistler: {
     areas: {
       whistler: { bbox: [50.080, -123.010, 50.165, -122.900] },
+    },
+  },
+  tofino: {
+    areas: {
+      tofino: { bbox: [49.080, -125.960, 49.175, -125.840] },
     },
   },
 };
@@ -175,7 +189,7 @@ function osmToGeoJSON(elements: any[]): object | null {
 // Main refresh logic
 // ---------------------------------------------------------------------------
 async function refreshArea(city: string, area: string, bbox: [number, number, number, number]) {
-  console.log(`\n→ ${city}/${area}`);
+  console.log(`\nâ†’ ${city}/${area}`);
 
   // 1. Amenities
   console.log("  Fetching amenities...");
@@ -220,7 +234,7 @@ async function refreshArea(city: string, area: string, bbox: [number, number, nu
       .from("osm_amenities")
       .upsert(dedupedRows, { onConflict: "city,area,osm_id" });
     if (error) console.error("  Amenity upsert error:", error.message);
-    else console.log(`  ✓ ${dedupedRows.length} amenities upserted`);
+    else console.log(`  âœ“ ${dedupedRows.length} amenities upserted`);
   } else {
     console.log("  No amenities found");
   }
@@ -235,7 +249,7 @@ async function refreshArea(city: string, area: string, bbox: [number, number, nu
         .from("osm_area_boundaries")
         .upsert({ city, area, geojson, fetched_at: new Date().toISOString() }, { onConflict: "city,area" });
       if (error) console.error("  Boundary upsert error:", error.message);
-      else console.log("  ✓ Boundary upserted");
+      else console.log("  âœ“ Boundary upserted");
     } else {
       console.log("  No boundary polygon found (OSM may not have one for this area)");
     }

@@ -1,41 +1,245 @@
 ---
-import Site from "../layouts/Site.astro";
+import { createClient } from "@supabase/supabase-js";
+import Layout from "../layouts/Layout.astro";
+import SiteNav from "../components/SiteNav.astro";
+import { getSite } from "../lib/getSite";
+import "../styles/page-hero.css";
+import "../styles/area-page.css";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const site = await getSite(Astro.url.hostname);
+
+const { data: sites = [] } = await supabase
+  .from("sites")
+  .select("city, site_name, domain, accent_color")
+  .not("city", "is", null)
+  .order("city");
+
+const { data: listings = [] } = await supabase
+  .from("listing_rows")
+  .select("normalized_city, status")
+  .eq("status", "A");
+
+const cityCounts = listings.reduce((acc, row) => {
+  const city = String(row.normalized_city || "").toLowerCase().trim();
+  if (!city) return acc;
+
+  acc[city] = (acc[city] || 0) + 1;
+  return acc;
+}, {});
+
+const titleCase = (value = "") =>
+  String(value)
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const cityCards = Object.values(
+  sites.reduce((acc, row) => {
+    const city = String(row.city || "").toLowerCase().trim();
+    if (!city) return acc;
+
+    const label = titleCase(city);
+
+    if (!acc[city]) {
+      acc[city] = {
+        city,
+        label,
+        siteName: row.site_name || `${label} Real Estate`,
+        href: `/${city}`,
+        areasHref: `/${city}/areas`,
+        count: cityCounts[city] || 0,
+        accent: row.accent_color || site?.accent_color || "#2f6f73",
+      };
+    }
+
+    return acc;
+  }, {})
+).sort((a, b) => b.count - a.count);
+
+const pageTitle = "BC Real Estate";
+const pageDescription =
+  "Browse British Columbia real estate by city, area, neighbourhood, and property type.";
 ---
-<Site
-  title="bc.realestate - Practical BC real estate guidance"
-  description="A practical guide to buying and living in British Columbia - regions, rules, tradeoffs, and next steps."
+
+<Layout
+  title={pageTitle}
+  description={pageDescription}
+  accentColor={site?.accent_color || "#2f6f73"}
+  city="bc"
 >
-  <section class="hero">
-    <p class="kicker">British Columbia - Real Estate, explained</p>
-    <h1>Make smarter BC real estate decisions.</h1>
-    <p class="lead">
-      Clear guidance on regions, buying rules, and lifestyle tradeoffs - then a simple way to find where you fit.
-    </p>
-  </section>
+  <SiteNav site={site} showAreaNav={false} />
 
-  <section class="grid">
-    <div class="card">
-      <h2>Explore Regions</h2>
-      <p>Start broad - understand the major BC regions and what they’re like in real life.</p>
-      <a href="/regions/">Browse regions</a>
-    </div>
+  <header
+    class="page-hero"
+    style={`--hero-image: url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=75')`}
+  >
+    <div class="page-hero__inner">
+      <p class="page-hero__eyebrow">BC Real Estate</p>
 
-    <div class="card">
-      <h2>Living in BC</h2>
-      <p>Taxes, buying process, investment vs primary residence, STR reality - plain language.</p>
-      <a href="/living-in-bc/">Read guides</a>
-    </div>
+      <h1>Explore British Columbia<br />real estate.</h1>
 
-    <div class="card">
-      <h2>Find Your Fit</h2>
-      <p>Tell us what matters - we’ll suggest regions to explore next.</p>
-      <a href="/find-your-fit/">Try the fit finder</a>
+      <p class="page-hero__copy">
+        Start with a city, then browse neighbourhoods, homes, condos, townhomes,
+        and land across local BC markets.
+      </p>
     </div>
+  </header>
 
-    <div class="card">
-      <h2>Local Experts</h2>
-      <p>When you’re ready, connect with a local expert for your region.</p>
-      <a href="/experts/">See experts</a>
-    </div>
-  </section>
-</Site>
+  <main class="shell">
+    <section class="content-card area-picker">
+      <div class="section-heading">
+        <span class="eyebrow">Browse by City</span>
+        <h2>Choose a BC market</h2>
+        <p>
+          Start with a city, then browse neighbourhoods, listings, and local guides.
+        </p>
+      </div>
+
+      <div class="area-card-grid">
+        {cityCards.map((city, index) => (
+          <a
+            class="area-pick-card"
+            href={city.href}
+            style={`--card-tint: ${3 + (index % 6)}%; --city-accent:${city.accent};`}
+          >
+            <strong>{city.label}</strong>
+
+            <div class="area-pick-count">
+              {city.count === 1
+                ? "1 active listing"
+                : `${city.count.toLocaleString()} active listings`}
+            </div>
+
+            <span class="area-card-link">Explore {city.label} →</span>
+          </a>
+        ))}
+      </div>
+    </section>
+  </main>
+</Layout>
+
+<style>
+  .shell {
+    width: min(1400px, calc(100% - 80px));
+    margin: 0 auto;
+    padding: 40px 0 100px;
+  }
+
+  .content-card {
+    padding: 0 0 54px;
+  }
+
+  .section-heading {
+    max-width: 720px;
+    margin-bottom: 22px;
+  }
+
+  .section-heading .eyebrow {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.7rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .section-heading h2 {
+    margin: 0 0 8px;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+    line-height: 1;
+    letter-spacing: -0.045em;
+    font-weight: 500;
+  }
+
+  .section-heading p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.6;
+    max-width: 560px;
+  }
+
+  .area-card-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .area-pick-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 170px;
+    padding: 18px;
+    border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: color-mix(
+      in srgb,
+      var(--city-accent, var(--accent)) calc(var(--card-tint, 6%)),
+      white
+    );
+    color: inherit;
+    text-decoration: none;
+    transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease,
+      border-color 0.18s ease;
+  }
+
+  .area-pick-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(0,0,0,0.18);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.07);
+  }
+
+  .area-pick-card strong {
+    display: block;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.2;
+  }
+
+  .area-pick-count {
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--muted);
+  }
+
+  .area-card-link {
+    margin-top: auto;
+    color: var(--city-accent, var(--accent));
+    font-size: 0.84rem;
+    font-weight: 700;
+  }
+
+  @media (max-width: 1100px) {
+    .area-card-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 760px) {
+    .shell {
+      width: 100%;
+      padding: 32px 18px 80px;
+    }
+
+    .area-card-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 500px) {
+    .area-card-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

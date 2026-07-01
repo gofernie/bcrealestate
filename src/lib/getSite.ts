@@ -5,7 +5,7 @@ const supabase = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-export async function getSite(hostname: string) {
+export async function getSite(hostname: string, city?: string) {
   const host = hostname.replace(/^www\./, "");
 
   // Local dev default
@@ -13,12 +13,25 @@ export async function getSite(hostname: string) {
     const { data: fallback } = await supabase
       .from("sites")
       .select("*")
-      .eq("city", "nanaimo")
+      .eq("city", city || "nanaimo")
       .maybeSingle();
 
     return fallback;
   }
 
+  // Try city-specific record first
+  if (city) {
+    const { data: cityData } = await supabase
+      .from("sites")
+      .select("*")
+      .or(`domain.eq.${host},domain.eq.www.${host}`)
+      .eq("city", city)
+      .maybeSingle();
+
+    if (cityData) return cityData;
+  }
+
+  // Fall back to domain-only match
   const { data, error } = await supabase
     .from("sites")
     .select("*")

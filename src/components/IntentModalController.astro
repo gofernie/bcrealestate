@@ -32,7 +32,7 @@ const { listings = [] } = Astro.props;
 
     <section class="panel__content has-scroll-hint" id="sheet-content">
       <div class="panel__image-stage">
-        <img id="sheet-image" class="panel__image" src="https://placehold.co/800x600?text=Loading" alt="" loading="eager" decoding="async" fetchpriority="high" />
+<img id="sheet-image" class="panel__image" src="" alt="" loading="eager" decoding="async" fetchpriority="high" style="opacity:0;" />
         <button type="button" class="photo-nav photo-nav--prev" id="photo-prev-btn">&#8249;</button>
         <button type="button" class="photo-nav photo-nav--next" id="photo-next-btn">&#8250;</button>
         <div class="panel__photo-count" id="sheet-photo-count">1 / 1 photos</div>
@@ -109,34 +109,12 @@ const sheetImageStage = document.querySelector(".panel__image-stage");
 let sheetMiniMapInstance = null;
 let sheetMiniMapMarker = null;
 let cachedImageStageHeight = 0;
-function getMiniMapStyleOptions() {
-  return {
-    mapTypeControl: false,
-    streetViewControl: false,
-    fullscreenControl: false,
-    styles: [
-      { featureType: "transit", elementType: "labels", stylers: [{ visibility: "off" }] },
-      { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
-    ],
-  };
-}
-
 function addSmallInfoWindow(marker, label) {
-  const iw = new google.maps.InfoWindow({
-content: `
-  <div class="mini-map-label">
-    ${label}
-  </div>
-`,
-    disableAutoPan: true,
+  marker.bindPopup(`<div style="font-family:'DM Sans',system-ui,sans-serif;font-size:0.82rem;font-weight:600;padding:2px 4px;">${label}</div>`, {
+    closeButton: false,
+    offset: [0, -8],
   });
-
-  marker.addListener("click", () => {
-    window._activeOsmInfoWindow?.close();
-
-    iw.open(sheetMiniMapInstance, marker);
-    window._activeOsmInfoWindow = iw;
-  });
+  marker.on("click", () => marker.openPopup());
 }
 
 function getCardLatLng(card) {
@@ -146,29 +124,23 @@ function getCardLatLng(card) {
   return { lat, lng };
 }
 
-function loadGoogleMaps() {
-  return new Promise((resolve, reject) => {
-    if (window.google?.maps) return resolve();
-    if (document.querySelector('script[src*="maps.googleapis.com"]')) {
-      const wait = setInterval(() => {
-        if (window.google?.maps) { clearInterval(wait); resolve(); }
-      }, 80);
-      return;
+function loadLeaflet() {
+  return new Promise((resolve) => {
+    if (window.L) return resolve();
+    if (!document.querySelector('link[href*="leaflet"]')) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      document.head.appendChild(link);
     }
-   const key = document.body.dataset.googleMapsApiKey ||
-      document.querySelector("script[src*='maps.googleapis.com']") && "" ||
-      "";
-    if (!key) {
-      // key not on body â€” check if Maps already loaded via another script tag
-      if (window.google?.maps) return resolve();
-      return reject(new Error("Missing Google Maps API key"));
+    if (!document.querySelector('script[src*="leaflet"]')) {
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.onload = resolve;
+      document.head.appendChild(script);
+    } else {
+      const wait = setInterval(() => { if (window.L) { clearInterval(wait); resolve(); } }, 50);
     }
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}`;
-    script.async = true;
-    script.onload = resolve;
-    script.onerror = reject;
-    document.head.appendChild(script);
   });
 }
         const nextBtn = document.getElementById("sheet-next-btn");
@@ -425,9 +397,12 @@ function getCardKey(card) {
   ).trim().toLowerCase();
 }
 
-      function openSheet(card) {
+   function openSheet(card) {
   activeCard = card;
   card.dataset.viewed = "true";
+
+ 
+
   // cache image stage height while it's visible
   const stageEl = document.querySelector(".panel__image-stage");
   if (stageEl && !stageEl.classList.contains("is-hidden")) {
@@ -479,7 +454,7 @@ window.openSheet = openSheet;
 function preloadImages(urls = []) {
   urls
     .filter(Boolean)
-   .slice(0, 18)
+   .slice(0, 50)
     .forEach((src) => {
       const img = new Image();
       img.decoding = "async";
@@ -509,7 +484,12 @@ function getCardPhotoUrls(card) {
     rawImages = [];
   }
 
-const addSize = (url) => url && !url.includes("?") ? `${url}?class=medium` : url;
+const addSize = (url) => {
+  if (!url) return url;
+  if (url.includes("placehold.co")) return url;
+  if (url.includes("class=")) return url;
+  return url.includes("?") ? `${url}&class=medium` : `${url}?class=medium`;
+};
 
   const urls = rawImages
     .map((img) => {
@@ -547,7 +527,9 @@ function preloadNearbyListingPhotos(currentCard) {
 function renderCard(card) {
   sheet.classList.remove("is-engagement-mode");
   if (chipAdvanceTimer) { clearTimeout(chipAdvanceTimer); chipAdvanceTimer = null; }
-  resetChipProgressBar();
+resetChipProgressBar();
+  // Hide the whole stage, not just the img, to prevent any flash
+  if (sheetImageStage) sheetImageStage.style.visibility = "hidden";
           const cards = getCards();
           const index = cards.indexOf(card);
           const total = cards.length;
@@ -570,7 +552,12 @@ function renderCard(card) {
             rawImages = [];
           }
 
-        const addSize = (url) => url && !url.includes("?") ? `${url}?class=medium` : url;
+const addSize = (url) => {
+  if (!url) return url;
+  if (url.includes("placehold.co")) return url;
+  if (url.includes("class=")) return url;
+  return url.includes("?") ? `${url}&class=medium` : `${url}?class=medium`;
+};
 
           activePhotoUrls = rawImages
             .map((img) => {
@@ -595,10 +582,10 @@ function renderCard(card) {
             : 0;
           console.log("openAtPhotoIndex", card.dataset.openAtPhotoIndex, "â†’", activePhotoIndex);
 
-          function renderActivePhoto() {
+         function renderActivePhoto() {
             if (!sheetImage || !activePhotoUrls.length) return;
 
-            sheetImage.src = activePhotoUrls[activePhotoIndex];
+            const targetSrc = activePhotoUrls[activePhotoIndex];
             sheetImage.alt = card.dataset.address || "";
 
             if (sheetPhotoCount) {
@@ -607,19 +594,31 @@ function renderCard(card) {
 
             if (photoPrevBtn) photoPrevBtn.disabled = activePhotoIndex === 0;
             if (photoNextBtn) photoNextBtn.disabled = activePhotoIndex >= activePhotoUrls.length - 1;
+
+            sheetImage.style.transition = "none";
+            sheetImage.style.opacity = "0";
+
+            const loader = new Image();
+            loader.onload = () => {
+              sheetImage.src = targetSrc;
+              sheetImage.style.opacity = "1";
+              if (sheetImageStage) sheetImageStage.style.visibility = "visible";
+            };
+            loader.onerror = () => {
+              sheetImage.src = targetSrc;
+              sheetImage.style.opacity = "1";
+              if (sheetImageStage) sheetImageStage.style.visibility = "visible";
+            };
+            loader.src = targetSrc;
           }
 
         renderActivePhoto();
 
-preloadImages(activePhotoUrls.slice(1, 28));
+preloadImages(activePhotoUrls.slice(1, 6));
 
 window.setTimeout(() => {
-  preloadImages(activePhotoUrls.slice(28, 42));
-}, 450);
-
-window.setTimeout(() => {
-  preloadImages(activePhotoUrls.slice(42));
-}, 1200);
+  preloadImages(activePhotoUrls.slice(6));
+}, 100);
 
 preloadNearbyListingPhotos(card);
 
@@ -811,76 +810,60 @@ content?.scrollTo({ top: 0, behavior: "smooth" });
 panelView?.scrollTo({ top: 0, behavior: "smooth" });
 panel?.scrollTo({ top: 0, behavior: "smooth" });
 
-loadGoogleMaps().then(() => {
-                const point = getCardLatLng(activeCard);
-                miniMap.innerHTML = "";
-                miniMap.style.height = mapH + "px";
-                miniMap.style.minHeight = mapH + "px";
-                miniMap.style.display = "block";
-                miniMap.hidden = false;
+loadLeaflet().then(() => {
+  const point = getCardLatLng(activeCard);
+  miniMap.innerHTML = "";
+  miniMap.style.height = mapH + "px";
+  miniMap.style.minHeight = mapH + "px";
+  miniMap.style.display = "block";
+  miniMap.hidden = false;
 
-                requestAnimationFrame(() => {
-             sheetMiniMapInstance = new google.maps.Map(miniMap, {
-  center: point || { lat: 49.1659, lng: -123.9401 },
-  zoom: 15,
-  ...getMiniMapStyleOptions(),
-});
+  if (sheetMiniMapInstance) {
+    sheetMiniMapInstance.remove();
+    sheetMiniMapInstance = null;
+  }
 
-                  if (!window._osmPoiMarkers) window._osmPoiMarkers = [];
-                  window._osmPoiMarkers.forEach(m => m.setMap(null));
-                  window._osmPoiMarkers = [];
+  const center = point ? [point.lat, point.lng] : [49.1659, -123.9401];
+  sheetMiniMapInstance = L.map(miniMap, { zoomControl: true, attributionControl: false, scrollWheelZoom: false });
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(sheetMiniMapInstance);
 
-                  const listingPoint = getCardLatLng(activeCard);
-                  if (listingPoint) {
-                    new google.maps.Marker({
-                      position: listingPoint,
-                      map: sheetMiniMapInstance,
-                      title: activeCard?.dataset?.address || "Listing",
-                  
-icon: {
-  path: google.maps.SymbolPath.CIRCLE,
-  scale: 9,
-  fillColor: "#ff3b30",
-  fillOpacity: 1,
-  strokeColor: "#fff",
-  strokeWeight: 2,
-}
-                    });
-                  }
+  if (!window._osmPoiMarkers) window._osmPoiMarkers = [];
+  window._osmPoiMarkers.forEach(m => m.remove());
+  window._osmPoiMarkers = [];
 
-                  const items = cats[cat] || [];
-                  const bounds = new google.maps.LatLngBounds();
-                  if (listingPoint) bounds.extend(listingPoint);
+  const listingPoint = getCardLatLng(activeCard);
+  const bounds = [];
 
-             
-                  items.forEach((item, itemIdx) => {
-                    if (!item.lat || !item.lng) return;
-                    const label = item.name || item.osm_type || "";
-                    const marker = new google.maps.Marker({
-                      position: { lat: item.lat, lng: item.lng },
-                      map: sheetMiniMapInstance,
-                      title: label,
-                      icon: {
-                        path: google.maps.SymbolPath.CIRCLE,
-                        scale: 7,
-                        fillColor: "#2f6f73",
-                        fillOpacity: 0.95,
-                        strokeColor: "#fff",
-                        strokeWeight: 2,
-                      }
-                    });
-              addSmallInfoWindow(marker, label);
-                    window._osmPoiMarkers.push(marker);
-                    bounds.extend({ lat: item.lat, lng: item.lng });
-                 
-                  });
+  if (listingPoint) {
+    const lp = [listingPoint.lat, listingPoint.lng];
+    bounds.push(lp);
+    L.circleMarker(lp, {
+      radius: 9, color: "#fff", weight: 2,
+      fillColor: "#ff3b30", fillOpacity: 1,
+    }).addTo(sheetMiniMapInstance)
+      .bindPopup(activeCard?.dataset?.address || "Listing", { closeButton: false });
+  }
 
-                  setTimeout(() => {
-                    google.maps.event.trigger(sheetMiniMapInstance, "resize");
-                    sheetMiniMapInstance.fitBounds(bounds);
-                  }, 150);
-                });
-              }).catch(console.error);
+  const items = cats[cat] || [];
+  items.forEach((item) => {
+    if (!item.lat || !item.lng) return;
+    const label = item.name || item.osm_type || "";
+    const lp = [item.lat, item.lng];
+    bounds.push(lp);
+    const marker = L.circleMarker(lp, {
+      radius: 7, color: "#fff", weight: 2,
+      fillColor: "#2f6f73", fillOpacity: 0.95,
+    }).addTo(sheetMiniMapInstance);
+    addSmallInfoWindow(marker, label);
+    window._osmPoiMarkers.push(marker);
+  });
+
+  setTimeout(() => {
+    sheetMiniMapInstance.invalidateSize();
+    if (bounds.length > 1) sheetMiniMapInstance.fitBounds(bounds, { padding: [30, 30] });
+    else if (bounds.length === 1) sheetMiniMapInstance.setView(bounds[0], 15);
+  }, 150);
+}).catch(console.error);
             });
           });
         } else {
@@ -2017,39 +2000,28 @@ if (sheetMapBtn) {
 }
 
 try {
-  await loadGoogleMaps();
+  await loadLeaflet();
 
-  await new Promise((resolve) => requestAnimationFrame(resolve));
-  await new Promise((resolve) => setTimeout(resolve, 120));
+  if (sheetMiniMapInstance) { sheetMiniMapInstance.remove(); sheetMiniMapInstance = null; }
 
-  sheetMiniMapInstance = new google.maps.Map(sheetMiniMap, {
-      center: point,
-      zoom: 15,
-      mapTypeControl: false,
-      streetViewControl: false,
-      fullscreenControl: false,
-    });
+  sheetMiniMap.innerHTML = "";
+  sheetMiniMapInstance = L.map(sheetMiniMap, { zoomControl: true, attributionControl: false, scrollWheelZoom: false });
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(sheetMiniMapInstance);
 
-    sheetMiniMapMarker = new google.maps.Marker({
-      position: point,
-      map: sheetMiniMapInstance,
-      title: activeCard.dataset.address || "Listing",
-    });
+  sheetMiniMapMarker = L.circleMarker([point.lat, point.lng], {
+    radius: 9, color: "#fff", weight: 2,
+    fillColor: "#ff3b30", fillOpacity: 1,
+  }).addTo(sheetMiniMapInstance)
+    .bindPopup(activeCard.dataset.address || "Listing", { closeButton: false });
 
-  window.setTimeout(() => {
-  google.maps.event.trigger(sheetMiniMapInstance, "resize");
-  sheetMiniMapInstance.setCenter(point);
-  sheetMiniMapInstance.setZoom(15);
-}, 350);
+  setTimeout(() => {
+    sheetMiniMapInstance.invalidateSize();
+    sheetMiniMapInstance.setView([point.lat, point.lng], 15);
+  }, 150);
 } catch (error) {
-    console.error("Map failed to load:", error);
-
-    const key = document.body.dataset.googleMapsApiKey || "(missing)";
-    const point2 = getCardLatLng(activeCard);
-
-    sheetMiniMap.innerHTML =
-      `<p style='padding:16px;color:#6b6560;font-size:12px;'>Map could not load.<br>Key: ${key.slice(0,12)}...<br>Point: ${JSON.stringify(point2)}<br>Error: ${error?.message}</p>`;
-  }
+  console.error("Map failed to load:", error);
+  sheetMiniMap.innerHTML = `<p style='padding:16px;color:#6b6560;font-size:12px;'>Map could not load: ${error?.message}</p>`;
+}
 });
 
 

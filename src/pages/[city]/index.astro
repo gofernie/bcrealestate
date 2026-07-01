@@ -21,11 +21,13 @@ const supabase = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const { data: siteRow } = await supabase
-  .from("sites")
-  .select("*")
-  .eq("city", routeCity)
-  .maybeSingle();
+const host = Astro.request.headers.get("x-forwarded-host") || Astro.request.headers.get("host") || "";
+const domain = host.split(",")[0].trim().replace(/^www\./, "").split(":")[0];
+const isLocal = domain === "localhost" || domain.startsWith("localhost:");
+
+const siteQuery = supabase.from("sites").select("*").eq("city", routeCity);
+if (!isLocal) siteQuery.eq("domain", domain);
+const { data: siteRow } = await siteQuery.maybeSingle();
 
 const site = {
   city: routeCity,
@@ -39,8 +41,7 @@ const site = {
 const siteCity = site.city;
 const siteName = site.site_name;
 const accentColor = site.accent_color;
-const googleMapsApiKey =
-  import.meta.env.PUBLIC_GOOGLE_MAPS_API_KEY || "";
+
 
 const url = Astro.url;
 
@@ -433,7 +434,7 @@ let listings: any[] = [];
 let errorMessage = "";
 
 try {
-let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(16);  if (city) query = query.eq("normalized_city", clean(city));
+let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(500);  if (city) query = query.eq("normalized_city", clean(city));
 
   // Homepage discovery preloads a broad pool.
   // Filters are applied client-side for instant UX.
@@ -448,7 +449,7 @@ let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(16
   listings = data || [];
 
  
-  listings = listings.slice(0, 8);
+
 } catch (error: any) {
   errorMessage = error?.message || "Could not load listings.";
 }
@@ -483,12 +484,21 @@ let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(16
     type="application/json"
     set:html={JSON.stringify(allIntentCollections)}
   />
-
+<script
+    id="home-all-listings-json"
+    type="application/json"
+    set:html={JSON.stringify(listings.map((l: any) => ({
+      lat: l.lat,
+      lng: l.lng,
+      price: l.price ? `$${Number(l.price).toLocaleString()}` : "",
+      address: (() => { const v = l.address; if (!v) return ""; if (typeof v === "string" && !v.startsWith("{")) return v; try { const o = typeof v === "string" ? JSON.parse(v) : v; return [o.streetNumber, o.streetName || o.streetAddress, o.streetSuffix].filter(Boolean).join(" ").trim(); } catch { return ""; } })(),
+    })))}
+  />
   <div
     data-intent-page-id="homepage"
     data-city={city || "nanaimo"}
     data-slug="homepage"
-    data-google-maps-api-key={googleMapsApiKey}
+   
   >
 <SiteNav
   city={city}
@@ -535,7 +545,7 @@ let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(16
       <p>Start with an area, then filter by property type, price, beds, and more.</p>
     </div>
 
-<a href={`/${city || "nanaimo"}`} class="see-all-areas">
+<a href={`/${city || "nanaimo"}/areas`} class="see-all-areas">
       See all areas →
     </a>
   </div>
@@ -549,7 +559,7 @@ let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(16
       </a>
     ))}
 
-<a href={`/${city || "nanaimo"}`} class="homepage-area-card homepage-area-card--soft">
+<a href={`/${city || "nanaimo"}/areas`} class="homepage-area-card homepage-area-card--soft">
       <strong>See all areas</strong>
       <span>Explore every neighbourhood</span>
       <small>View full area guide →</small>
@@ -647,9 +657,10 @@ let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(16
               const description = getListingDescription(listing);
               const images = getListingImages(listing);
 
-              return (
+          return (
                                   <article
                     class="card original-card"
+                    hidden={listings.indexOf(listing) >= 8}
                     data-item-id={String(listing?.id || listing?.mls_number || "")}
                     data-card-id={String(listing?.id || listing?.mls_number || "")}
                     data-listing-id={String(listing?.id || listing?.mls_number || "")}
@@ -698,7 +709,7 @@ let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(16
               );
             })}
                  </section>
-
+<button type="button" id="home-load-more" class="home-load-more-btn">Load more listings</button>
 <div class="homepage-interruptor">
   <div class="homepage-interruptor-copy">
     <strong>Not seeing what you're looking for?</strong>
@@ -1329,59 +1340,80 @@ let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(16
   const intentMapEl = document.getElementById("intent-map");
   const gridEl = document.querySelector(".grid");
 
-  let googleMap = null;
-  let googleMarkers = [];
-  let googleMapsLoadingPromise = null;
+  let leafletMap = null;
+  let leafletMarkers = [];
   window.currentHomeMapListings = [];
 
-  function loadGoogleMaps() {
-    if (window.google?.maps) return Promise.resolve();
-    if (googleMapsLoadingPromise) return googleMapsLoadingPromise;
-
-const key = document.querySelector("[data-google-maps-api-key]")?.dataset.googleMapsApiKey;
-    if (!key) {
-      console.error("Missing PUBLIC_GOOGLE_MAPS_API_KEY");
-      return Promise.reject(new Error("Missing Google Maps API key"));
-    }
-
-    googleMapsLoadingPromise = new Promise((resolve, reject) => {
-      const existing = document.querySelector("script[data-google-maps-loader]");
-
-      if (existing) {
-        existing.addEventListener("load", resolve);
-        existing.addEventListener("error", reject);
-        return;
+  function loadLeaflet() {
+    return new Promise((resolve) => {
+      if (window.L) return resolve();
+      if (!document.querySelector('link[href*="leaflet"]')) {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+        document.head.appendChild(link);
       }
-
-      const script = document.createElement("script");
-      script.dataset.googleMapsLoader = "true";
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}`;
-      script.async = true;
-      script.defer = true;
-      script.onload = resolve;
-      script.onerror = reject;
-      document.head.appendChild(script);
+      if (!document.querySelector('script[src*="leaflet"]')) {
+        const script = document.createElement("script");
+        script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+        script.onload = resolve;
+        document.head.appendChild(script);
+      } else {
+        const wait = setInterval(() => { if (window.L) { clearInterval(wait); resolve(); } }, 50);
+      }
     });
-
-    return googleMapsLoadingPromise;
   }
 
-  function getCardLatLng(card) {
-    const lat = Number(card.dataset.lat || "");
-    const lng = Number(card.dataset.lng || "");
-
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    if (lat === 0 || lng === 0) return null;
-
-    return { lat, lng };
-  }
-
-async function initIntentGoogleMap() {
+  async function initIntentGoogleMap() {
     if (!intentMapEl) return;
 
     let mapListings = Array.isArray(window.currentHomeMapListings)
       ? window.currentHomeMapListings
       : [];
+// Use all-listings JSON for unfiltered map, visible cards when filtered
+    const allListingsEl = document.getElementById("home-all-listings-json");
+    const hasActiveFilters = (() => {
+      const form = document.getElementById("home-filter-form");
+      if (!form) return false;
+      return (form.elements.area?.value || "") !== "" ||
+             (form.elements.type?.value || "") !== "" ||
+             (form.elements.maxPrice?.value || "") !== "" ||
+             (form.elements.beds?.value || "") !== "" ||
+             Array.from(document.querySelectorAll("#homepage-refine-panel [data-refine].active")).length > 0;
+    })();
+
+    if (hasActiveFilters) {
+      // Only show markers for cards matching current filters (ignore hidden/pagination)
+      mapListings = Array.from(document.querySelectorAll(".grid .card")).map((card) => ({
+        lat: card.dataset.lat,
+        lng: card.dataset.lng,
+        price: card.dataset.price,
+        address: card.dataset.address,
+        _hidden: card.hidden,
+      })).filter((l) => l.lat && l.lng && !l._hidden);
+      // But we want ALL matching cards, not just the paginated 8 — unhide logic runs separately
+      // so read all cards and check filter match directly
+      const form = document.getElementById("home-filter-form");
+      const areaVal = String(form?.elements?.area?.value || "").trim().toLowerCase();
+      const typeVal = String(form?.elements?.type?.value || "").trim().toLowerCase();
+      const maxPriceVal = Number(form?.elements?.maxPrice?.value || 0) * 1000;
+      const bedsVal = Number(form?.elements?.beds?.value || 0);
+      mapListings = Array.from(document.querySelectorAll(".grid .card"))
+        .filter((card) => {
+          const cardArea = String(card.dataset.area || "").toLowerCase();
+          const cardType = String(card.dataset.type || "").toLowerCase();
+          const cardPrice = Number(card.dataset.rawPrice || 0);
+          const cardBeds = Number(card.dataset.beds || 0);
+          return (!areaVal || cardArea.includes(areaVal)) &&
+                 (!typeVal || cardType === typeVal) &&
+                 (!maxPriceVal || cardPrice <= maxPriceVal) &&
+                 (!bedsVal || cardBeds >= bedsVal);
+        })
+        .map((card) => ({ lat: card.dataset.lat, lng: card.dataset.lng, price: card.dataset.price, address: card.dataset.address }))
+        .filter((l) => l.lat && l.lng);
+    } else if (allListingsEl) {
+      try { mapListings = JSON.parse(allListingsEl.textContent || "[]"); } catch {}
+    }
 
     if (!mapListings.length) {
       mapListings = Array.from(document.querySelectorAll(".grid .card")).map((card) => ({
@@ -1393,80 +1425,47 @@ async function initIntentGoogleMap() {
     }
 
     const points = mapListings
-      .map((listing) => ({
-        listing,
-        point: {
-          lat: Number(listing.lat || 0),
-          lng: Number(listing.lng || 0),
-        },
-      }))
-      .filter((item) => item.point.lat && item.point.lng);
+      .map((l) => ({ listing: l, lat: Number(l.lat || 0), lng: Number(l.lng || 0) }))
+      .filter((p) => p.lat && p.lng);
 
-     if (!points.length) {
-      googleMarkers.forEach((marker) => marker.setMap(null));
-      googleMarkers = [];
-
-      if (googleMap) {
-        googleMap = null;
-      }
-
-      intentMapEl.innerHTML =
-        "<p style='padding:16px;color:#6b6560;'>No map locations available.</p>";
+    if (!points.length) {
+      intentMapEl.innerHTML = "<p style='padding:16px;color:#6b6560;'>No map locations available.</p>";
       return;
     }
 
-    try {
-      await loadGoogleMaps();
-    } catch (error) {
-      console.error("Google Maps failed to load:", error);
-      intentMapEl.innerHTML =
-        "<p style='padding:16px;color:#6b6560;'>Map could not load.</p>";
-      return;
+    await loadLeaflet();
+
+    if (!leafletMap) {
+      leafletMap = L.map(intentMapEl, { zoomControl: true, attributionControl: false, scrollWheelZoom: false });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(leafletMap);
+      L.control.attribution({ prefix: false }).addAttribution('© <a href="https://openstreetmap.org">OSM</a>').addTo(leafletMap);
     }
 
-    if (!googleMap) {
-      googleMap = new google.maps.Map(intentMapEl, {
-        center: { lat: 49.1659, lng: -123.9401 },
-        zoom: 12,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
-      });
-    }
+    leafletMarkers.forEach((m) => m.remove());
+    leafletMarkers = [];
 
-    googleMarkers.forEach((marker) => marker.setMap(null));
-    googleMarkers = [];
-
-    const bounds = new google.maps.LatLngBounds();
-    const infoWindow = new google.maps.InfoWindow();
-
-       points.forEach(({ listing, point }) => {
-      const marker = new google.maps.Marker({
-        position: point,
-        map: googleMap,
-        title: listing.address || "Listing",
-      });
-
-      marker.addListener("click", () => {
-        infoWindow.setContent(
-          `<strong>${listing.price || "Listing"}</strong><br>${listing.address || ""}`
-        );
-        infoWindow.open(googleMap, marker);
-      });
-
-      googleMarkers.push(marker);
-      bounds.extend(point);
+    const accentColor = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#2f6f73";
+    const icon = L.divIcon({
+      className: "",
+      html: `<svg viewBox="0 0 28 36" width="28" height="36" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3))"><path d="M14 0C6.268 0 0 6.268 0 14c0 9.333 14 22 14 22S28 23.333 28 14C28 6.268 21.732 0 14 0z" fill="${accentColor}"/><circle cx="14" cy="14" r="5" fill="white"/></svg>`,
+      iconSize: [28, 36], iconAnchor: [14, 36], popupAnchor: [0, -36],
     });
 
-    googleMap.fitBounds(bounds);
+    const latlngs = [];
+    points.forEach(({ listing, lat, lng }) => {
+      const marker = L.marker([lat, lng], { icon }).addTo(leafletMap);
+      marker.bindPopup(`<div style="font-family:'DM Sans',system-ui,sans-serif;padding:6px 8px;"><strong>${listing.price || ""}</strong><br><span style="font-size:0.82rem;color:#6b6560;">${listing.address || ""}</span></div>`, { closeButton: false });
+      marker.on("mouseover", () => marker.openPopup());
+      marker.on("mouseout", () => setTimeout(() => marker.closePopup(), 200));
+      leafletMarkers.push(marker);
+      latlngs.push([lat, lng]);
+    });
 
-    window.setTimeout(() => {
-      google.maps.event.trigger(googleMap, "resize");
-      googleMap.fitBounds(bounds);
-    }, 150);
+    if (latlngs.length) leafletMap.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] });
+    setTimeout(() => leafletMap.invalidateSize(), 100);
   }
 
-    window.initIntentGoogleMap = initIntentGoogleMap;
+  window.initIntentGoogleMap = initIntentGoogleMap;
 
   listViewBtn?.addEventListener("click", () => {
     if (intentMapEl) intentMapEl.hidden = true;
@@ -1558,122 +1557,107 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";  
   `;
 }
 
+   let visibleCount = 8;
+
     function getLoadMoreButton() {
-      let btn = document.getElementById("home-load-more");
-
-      if (!btn) {
-     const grid = document.querySelector(".grid");
-        btn = document.createElement("button");
-        btn.id = "home-load-more";
-       btn.className = "home-load-more-btn";
-btn.textContent = "Load More Listings";
-
-        grid?.after(btn);
-
-        btn.addEventListener("click", () => {
-          homeOffset += 8;
-          fetchHomeListings({ append: true });
-        });
-      }
-
-      return btn;
+      return document.getElementById("home-load-more");
     }
 
-    async function fetchHomeListings({ append = false } = {}) {
-      if (homeLoading) return;
-      homeLoading = true;
-
-   const grid = document.querySelector(".grid");
+    function updateLoadMoreBtn() {
       const btn = getLoadMoreButton();
+      if (!btn) return;
+      const allCards = Array.from(document.querySelectorAll(".grid .card"));
+      btn.style.display = allCards.length > visibleCount ? "block" : "none";
+    }
 
-      if (!form || !grid) {
-        homeLoading = false;
-        return;
+function showMoreCards() {
+      visibleCount += 8;
+      fetchHomeListings({ resetVisible: false });
+    }
+
+    document.getElementById("home-load-more")?.addEventListener("click", showMoreCards);
+    updateLoadMoreBtn();
+
+   function fetchHomeListings({ append = false, resetVisible = true } = {}) {
+      const grid = document.querySelector(".grid");
+      if (!grid) return;
+
+      const areaVal = String(form?.elements?.area?.value || "").trim().toLowerCase();
+      const typeVal = String(form?.elements?.type?.value || "").trim().toLowerCase();
+      const maxPriceVal = Number(form?.elements?.maxPrice?.value || 0) * 1000;
+      const bedsVal = Number(form?.elements?.beds?.value || 0);
+      const sortVal = String(form?.elements?.sort?.value || "newest").trim();
+
+      const refinements = Array.from(
+        document.querySelectorAll("#homepage-refine-panel [data-refine].active")
+      ).map((b) => b.dataset.refine).filter(Boolean);
+
+      const featureKeywords = {
+        views: ["view", "ocean view", "water view"],
+        garage: ["garage"],
+        yard: ["yard", "fenced"],
+        suite: ["suite", "income", "mortgage helper"],
+        updated: ["updated", "renovated", "new kitchen", "new roof"],
+        walkability: ["walkable", "walk", "downtown"],
+      };
+
+      const allCards = Array.from(grid.querySelectorAll(".card"));
+
+      if (resetVisible) {
+        allCards.sort((a, b) => {
+          if (sortVal === "price-low") return Number(a.dataset.rawPrice || 0) - Number(b.dataset.rawPrice || 0);
+          if (sortVal === "price-high") return Number(b.dataset.rawPrice || 0) - Number(a.dataset.rawPrice || 0);
+          return new Date(b.dataset.listedAt || 0).getTime() - new Date(a.dataset.listedAt || 0).getTime();
+        });
+        allCards.forEach((card) => grid.appendChild(card));
+        visibleCount = 8;
       }
 
-      if (!append) {
-        homeOffset = 0;
-        grid.style.opacity = "0.55";
-      }
+      let shown = 0;
 
-      btn.disabled = true;
-      btn.textContent = "Loading...";
+      allCards.forEach((card) => {
+        const cardArea = String(card.dataset.area || "").toLowerCase();
+        const cardType = String(card.dataset.type || "").toLowerCase();
+        const cardPrice = Number(card.dataset.rawPrice || 0);
+        const cardBeds = Number(card.dataset.beds || 0);
+        const cardDesc = String(card.dataset.description || "").toLowerCase();
 
-      const params = new URLSearchParams();
-      params.set("city", city);
-      params.set("limit", "8");
-      params.set("offset", String(homeOffset));
+        const matchArea = !areaVal || cardArea.includes(areaVal);
+        const matchType = !typeVal || cardType === typeVal || (typeVal === "house" && cardType === "house");
+        const matchPrice = !maxPriceVal || cardPrice <= maxPriceVal;
+        const matchBeds = !bedsVal || cardBeds >= bedsVal;
+        const matchFeatures = refinements.every((ref) =>
+          (featureKeywords[ref] || [ref]).some((kw) => cardDesc.includes(kw))
+        );
 
-      const area = String(form.elements.area?.value || "").trim();
-      const type = String(form.elements.type?.value || "").trim();
-    const maxPrice = String(form.elements.maxPrice?.value || "").trim();
-const beds = String(form.elements.beds?.value || "").trim();
-const sort = String(form.elements.sort?.value || "newest").trim();
+        const visible = matchArea && matchType && matchPrice && matchBeds && matchFeatures;
+        card.hidden = !visible || shown >= visibleCount;
+        if (visible) shown++;
+      });
 
-      if (area) params.set("area", area);
-      if (type) params.set("type", type);
-      if (maxPrice) params.set("maxPrice", maxPrice);
-      if (beds) params.set("beds", beds);
-if (sort) params.set("sort", sort);
+      updateLoadMoreBtn();
 
-const refinements = Array.from(
-  document.querySelectorAll("#homepage-refine-panel [data-refine].active")
-).map((button) => button.dataset.refine).filter(Boolean);
+      const resultsCount = document.getElementById("results-count");
+      const totalVisible = allCards.filter((c) => {
+        const cardArea = String(c.dataset.area || "").toLowerCase();
+        const cardType = String(c.dataset.type || "").toLowerCase();
+        const cardPrice = Number(c.dataset.rawPrice || 0);
+        const cardBeds = Number(c.dataset.beds || 0);
+        const cardDesc = String(c.dataset.description || "").toLowerCase();
+        return (!areaVal || cardArea.includes(areaVal)) &&
+          (!typeVal || cardType === typeVal) &&
+          (!maxPriceVal || cardPrice <= maxPriceVal) &&
+          (!bedsVal || cardBeds >= bedsVal) &&
+          refinements.every((ref) => (featureKeywords[ref] || [ref]).some((kw) => cardDesc.includes(kw)));
+      }).length;
 
-if (refinements.length) {
-  params.set("features", refinements.join(","));
-}
-      try {
-        const res = await fetch(`/api/home-listings?${params.toString()}`);
-        const payload = await res.json();
+      if (resultsCount) resultsCount.textContent = String(totalVisible);
 
-        if (!res.ok) {
-          throw new Error(payload?.error || "Could not load listings.");
-        }
+      const map = document.getElementById("intent-map");
+      if (map && !map.hidden) initIntentGoogleMap();
 
-               const listings = payload.listings || [];
-        window.currentHomeMapListings = payload.mapListings || listings;
-        homeTotal = Number(payload.count || 0);
-const resultsCount = document.getElementById("results-count");
-
-if (resultsCount) {
-  resultsCount.textContent = String(homeTotal);
-}
-        if (!append) {
-          grid.innerHTML = "";
-        }
-
-     if (append) {
-  grid.insertAdjacentHTML(
-    "beforeend",
-    listings.map(cardHtml).join("")
-  );
-} else {
-  grid.innerHTML = listings.map(cardHtml).join("");
-}
-
-        const shown = grid.children.length;
-
-        btn.style.display = shown < homeTotal ? "block" : "none";
-        btn.disabled = false;
-        btn.textContent = "Load More Listings";
-
-                   const map = document.getElementById("intent-map");
-
-        if (map && !map.hidden && typeof window.initIntentGoogleMap === "function") {
-          window.initIntentGoogleMap();
-        }
-
-  applySavedHomeDecisions();
-
-window.dispatchEvent(new CustomEvent("intent:cards-updated"));
-      } catch (error) {
-        console.error(error);
-        btn.textContent = "Could not load listings";
-      } finally {
-        grid.style.opacity = "";
-        homeLoading = false;
-      }
+      applySavedHomeDecisions();
+      window.dispatchEvent(new CustomEvent("intent:cards-updated"));
     }
 const HOME_INTENT_COLLECTIONS = JSON.parse(
   document.getElementById("home-intent-collections-json")?.textContent || "[]"
@@ -1787,7 +1771,7 @@ if (bedsValue) {
       `${areaText} ${typeText}${bedsText}${priceText}`;
   }
 
-  fetchHomeListings({ append: false });
+ fetchHomeListings({ resetVisible: true });
 });
 
     form?.addEventListener("submit", (event) => {
@@ -1865,7 +1849,7 @@ if (homeGrid) {
 }
 
 applySavedHomeDecisions();
-
+fetchHomeListings();
 document.documentElement.style.visibility = "";
   })();
 </script>
@@ -1889,12 +1873,15 @@ document.documentElement.style.visibility = "";
     overflow: visible !important;
   }
 
-  .section .grid > article.card {
-    display: block !important;
+ .section .grid > article.card {
     width: 100% !important;
     min-width: 0 !important;
     max-width: 100% !important;
     overflow: hidden !important;
+  }
+
+  .section .grid > article.card:not([hidden]) {
+    display: block !important;
   }
 
   .section .grid .card-image-wrap {

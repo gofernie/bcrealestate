@@ -1,4 +1,4 @@
-import "dotenv/config";
+﻿import "dotenv/config";
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -8,6 +8,19 @@ const supabase = createClient(
 );
 
 const clean = (v: any) => String(v || "").toLowerCase().trim();
+
+function isLikelyApartment(address: string) {
+  return /^#?[a-z0-9-]{1,6}\s+\d+\s+/.test(clean(address));
+}
+
+function isKnownTownhouse(listing: any, address: string) {
+  const building = clean(getBuildingName(listing));
+
+  return (
+    address.includes("doumont road") ||
+    building.includes("painted village")
+  );
+}
 const getNormalizedAddress = (listing: any) => {
   const addressObj =
     typeof listing?.address === "object" && listing.address !== null
@@ -265,7 +278,26 @@ const normalizeType = (listing: any) => {
 
   return "other";
 };
+const PARKSVILLE_MARKET_CITIES = new Set([
+  "parksville",
+  "nanoose bay",
+  "qualicum beach"
+]);
 
+const DUNCAN_MARKET_CITIES = new Set([
+  "duncan",
+  "chemainus",
+  "cowichan bay",
+  "cowichan station glenora",
+  "crofton",
+  "east duncan",
+  "honeymoon bay",
+  "ladysmith",
+  "lake cowichan",
+  "saltair",
+  "west duncan",
+  "youbou"
+]);
 const BUILDING_ALIASES: Record<string, string> = {
   "pacifica": "old city",
   "the 1615 residences": "old city",
@@ -1059,27 +1091,14 @@ function getAreaFromPolygon(city: string, lat: number, lng: number): string | nu
       const snapshotCity = text(snapshot?.city || snapshot?.search_key || "");
       const city = snapshotCity || getCity(listing, snapshot);
       const rawCity = clean(city);
+if (
+  TARGET_CITY &&
+  clean(TARGET_CITY) === "nanaimo" &&
+  rawCity !== "nanaimo"
+) {
+  continue;
+}
 
-const PARKSVILLE_MARKET_CITIES = new Set([
-  "parksville",
-  "nanoose bay",
-  "qualicum beach"
-]);
-
-const DUNCAN_MARKET_CITIES = new Set([
-  "duncan",
-  "chemainus",
-  "cowichan bay",
-  "cowichan station glenora",
-  "crofton",
-  "east duncan",
-  "honeymoon bay",
-  "ladysmith",
-  "lake cowichan",
-  "saltair",
-  "west duncan",
-  "youbou"
-]);
 
 const normalized_city =
   PARKSVILLE_MARKET_CITIES.has(rawCity)
@@ -1088,15 +1107,19 @@ const normalized_city =
       ? "duncan"
       : clean(rawCity);
       const normalized_type = normalizeType(listing);
-      // Fernie/Sparwood: unit-prefixed addresses (e.g. "613D 4559" or "2221 5350") are condos
-  const rowAddressForType = clean(getNormalizedAddress(listing));
-      // Any address where a unit/suite prefix appears before the street number = condo
-      // e.g. "103 34 Rivermount", "613D 4559 Timberline", "2221 5350 Stewart"
-    // Unit prefix = two separate number groups at the start (e.g. "103 34 rivermount")
-      const hasUnitPrefix = /^\d+ \d+ /.test(rowAddressForType) || (/^[a-z0-9-]+ \d/.test(rowAddressForType) && !/^\d{1,6} [a-z]/.test(rowAddressForType));
-      const finalType = (normalized_city === "fernie" || normalized_city === "sparwood") && hasUnitPrefix && normalized_type !== "mobile"
-        ? "condo"
-        : normalized_type;
+
+const rowAddressForType = clean(getNormalizedAddress(listing));
+
+const hasUnitPrefix = isLikelyApartment(rowAddressForType);
+let finalType =
+  hasUnitPrefix &&
+  !["mobile", "land", "commercial", "business", "townhouse"].includes(normalized_type)
+    ? "condo"
+    : normalized_type;
+
+if (isKnownTownhouse(listing, rowAddressForType)) {
+  finalType = "townhouse";
+}
      // Skip commercial completely
 if (
   normalized_type === "commercial" ||
@@ -1109,15 +1132,19 @@ if (
 
 
 
-let normalized_area = normalizeArea(listing, normalized_city);
+const freshLatForArea = getLat(listing);
+const freshLngForArea = getLng(listing);
 
-// Polygon fallback for unknown areas
-if (normalized_area === "unknown" || !normalized_area) {
-  const freshLat = getLat(listing);
-  const freshLng = getLng(listing);
-  const polygonArea = freshLat && freshLng ? getAreaFromPolygon(normalized_city, freshLat, freshLng) : null;
-  if (polygonArea) normalized_area = polygonArea;
-}
+const polygonArea =
+  freshLatForArea && freshLngForArea
+    ? getAreaFromPolygon(normalized_city, freshLatForArea, freshLngForArea)
+    : null;
+
+// Prefer drawn polygons when available.
+// This prevents building/complex names from becoming fake areas.
+let normalized_area = polygonArea || normalizeArea(listing, normalized_city);
+
+normalized_area = clean(normalized_area).replace(/-/g, " ");
 
 if (normalized_city === "duncan" && normalized_area === "unknown") {
   const sourceCityArea = AREA_ALIASES.duncan?.[clean(listing?.source_city)];
