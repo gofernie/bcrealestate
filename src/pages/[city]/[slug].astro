@@ -17,12 +17,12 @@ const supabase = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const googleMapsApiKey = import.meta.env.PUBLIC_GOOGLE_MAPS_API_KEY || "";
+
 
 const slug = Astro.params.slug || "";
 const city = Astro.params.city || "nanaimo";
 
-const site = await getSite(Astro.url.hostname);
+const site = await getSite(Astro.url.hostname, city);
 
 const accentColor =
   site?.accent_color ||
@@ -59,10 +59,11 @@ if (!page) {
     hero_heading:
       areaPage.hero_heading ||
       `${areaPage.area_name || String(slug).replace(/-/g, " ")} Real Estate`,
-    intro_copy:
-      areaPage.intro_copy ||
-      areaPage.short_description ||
-      `Browse homes for sale in ${areaPage.area_name || String(slug).replace(/-/g, " ")}.`,
+   intro_copy:
+  areaPage.intro_copy ||
+  areaPage.short_description ||
+ 
+  `Browse homes for sale in ${areaPage.area_name || String(slug).replace(/-/g, " ")}.`,
     hero_image_url: areaPage.hero_image_url,
     seo_title:
       areaPage.seo_title ||
@@ -76,7 +77,9 @@ if (!page) {
       `${areaPage.area_name || String(slug).replace(/-/g, " ")} Area Guide`,
     seo_intro: areaPage.short_description || areaPage.intro_copy || "",
     seo_body: areaPage.intro_copy || "",
-    seo_long: "",
+seo_long: areaPage.seo_long || "",
+    neighbourhood_copy: areaPage.neighbourhood_copy || null,
+    market_commentary: areaPage.market_commentary || null,
     polygon_geojson: areaPage.polygon_geojson,
     default_sort: "newest",
     price_min: null,
@@ -87,6 +90,119 @@ if (!page) {
     faq_json: [],
   };
 }
+const titleCaseCity = city.charAt(0).toUpperCase() + city.slice(1).toLowerCase();
+const areaName = page.area
+  ? page.area.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+  : null;
+
+const { data: census } = areaName ? await supabase
+  .from("neighbourhood_census_data")
+  .select("*")
+  .eq("city", titleCaseCity)
+  .eq("neighbourhood", areaName)
+  .maybeSingle() : { data: null };
+
+const { data: cityCensus } = await supabase
+  .from("city_census_data")
+  .select("*")
+  .eq("city", titleCaseCity)
+  .maybeSingle();
+
+const censusData = pageKind === "area"
+  ? census
+  : cityCensus;
+// Pull centroid from area boundary polygon for OSM fetch
+let osmLat = 0;
+let osmLng = 0;
+
+if (pageKind === "area" && page.polygon_geojson) {
+  try {
+    const geojson = page.polygon_geojson;
+    const coords =
+      geojson?.type === "Feature"
+        ? geojson.geometry?.coordinates?.[0]
+        : geojson?.type === "FeatureCollection"
+          ? geojson.features?.[0]?.geometry?.coordinates?.[0]
+          : geojson?.coordinates?.[0];
+
+    if (Array.isArray(coords) && coords.length) {
+      const lats = coords.map((c: number[]) => c[1]);
+      const lngs = coords.map((c: number[]) => c[0]);
+      osmLat = lats.reduce((a: number, b: number) => a + b, 0) / lats.length;
+      osmLng = lngs.reduce((a: number, b: number) => a + b, 0) / lngs.length;
+    }
+  } catch (e) {
+    // use 0,0 fallback
+  }
+}
+
+// Fetch OSM amenities server-side for copy generation
+let osmSummary = { schools: 0, parks: 0, transit: 0, grocery: 0, restaurants: 0, medical: 0 };
+
+if (osmLat && osmLng) {
+  try {
+    const osmRes = await fetch(
+      `${Astro.url.origin}/api/osm-amenities?city=${encodeURIComponent(city)}&lat=${osmLat}&lng=${osmLng}&radius=10&limit=200&maxDistKm=4`
+    );
+    const osmData = await osmRes.json();
+    const cats = osmData.categories || {};
+    osmSummary = {
+      schools: (cats.school || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+      parks: (cats.park || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+      transit: (cats.transit || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+      grocery: (cats.grocery || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+      restaurants: (cats.restaurant || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+      medical: (cats.medical || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+    };
+  } catch (e) {
+    // silently fail
+  }
+}
+
+// Auto-generate neighbourhood copy from live data
+function generateAreaCopy(listings: any[], census: any, osm: typeof osmSummary, areaName: string, cityName: string) {
+  const prices = listings.map((l) => Number(l.price || 0)).filter((p) => p > 0);
+  const minPrice = prices.length ? Math.min(...prices) : 0;
+  const maxPrice = prices.length ? Math.max(...prices) : 0;
+  const medianPrice = prices.length ? [...prices].sort((a, b) => a - b)[Math.floor(prices.length / 2)] : 0;
+
+  const typeCounts: Record<string, number> = {};
+  listings.forEach((l) => {
+    const t = String(l.normalized_type || "").toLowerCase();
+    if (t) typeCounts[t] = (typeCounts[t] || 0) + 1;
+  });
+
+  const dominantTypes = Object.entries(typeCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([type]) => type === "house" ? "houses" : `${type}s`);
+
+  const fmt = (n: number) => `$${Math.round(n / 1000)}k`;
+  const area = areaName || cityName;
+
+  let about = `${area} has ${listings.length} active listing${listings.length !== 1 ? "s" : ""}`;
+  if (minPrice && maxPrice) about += ` ranging from ${fmt(minPrice)} to ${fmt(maxPrice)}`;
+  if (dominantTypes.length) about += `, predominantly ${dominantTypes.join(" and ")}`;
+  about += ".";
+
+  if (census?.pct_owned) about += ` With ${census.pct_owned}% owner-occupied households`;
+  if (census?.median_age) about += ` and a median age of ${census.median_age}`;
+  if (census?.median_household_income) about += `, the area attracts buyers with a median household income of $${Math.round(census.median_household_income / 1000)}k`;
+  if (census?.pct_owned || census?.median_age || census?.median_household_income) about += ".";
+
+  let market = `Median pricing sits at ${fmt(medianPrice)} across current listings.`;
+  const osmParts = [];
+  if (osm.schools > 0) osmParts.push(`${osm.schools} school${osm.schools !== 1 ? "s" : ""}`);
+  if (osm.parks > 0) osmParts.push(`${osm.parks} park${osm.parks !== 1 ? "s" : ""}`);
+  if (osm.transit > 0) osmParts.push(`${osm.transit} transit stop${osm.transit !== 1 ? "s" : ""}`);
+  if (osmParts.length) market += ` Within 2km you'll find ${osmParts.join(", ")}.`;
+  market += " Inventory and pricing can shift quickly — check back regularly for new listings.";
+
+  return { about, market };
+}
+
+
+ 
 
 const { data: featureRows } = await supabase
   .from("intent_page_features")
@@ -104,6 +220,11 @@ const areas = areaBoundaryRows
   .filter(Boolean)
   .sort((a, b) => a.localeCompare(b));
 
+const areaLinks = areaBoundaryRows.map((r) => ({
+  label: String(r.area_name || r.area_slug || "").replace(/^pq\s+/i, "").replace(/\b\w/g, (c: string) => c.toUpperCase()),
+  href: `/${city}/${r.area_slug || String(r.area_name || "").toLowerCase().replace(/\s+/g, "-")}`,
+})).filter((a) => a.label && a.href);
+
 const { data: navRows = [] } = await supabase
   .from("listing_rows")
   .select("normalized_type")
@@ -113,7 +234,7 @@ const { data: navRows = [] } = await supabase
 const propertyTypes = [...new Set(
   navRows
     .map((row) => String(row.normalized_type || "").trim())
-    .filter((item) => item && item !== "unknown")
+    .filter((item) => item && item !== "unknown" && item !== "sale")
 )].sort((a, b) => a.localeCompare(b));
 
 const navIntentPages = await getNavIntentPages(supabase, city);
@@ -125,13 +246,15 @@ const { data: areaIntentPages } = await supabase
   .eq("is_published", true)
   .not("area", "is", null)
   .order("area", { ascending: true });
+const hasPolygonSearch = Boolean(page.polygon_geojson?.coordinates?.[0]?.length);
+
 let query = supabase
   .from("listing_rows")
   .select("*")
   .eq("status", "A")
   .eq("normalized_city", city);
 
-if (page.area) {
+if (page.area && !hasPolygonSearch) {
 const normalizedPageArea = String(page.area)
     .toLowerCase()
     .trim()
@@ -236,7 +359,7 @@ console.log("INTENT QUERY DEBUG", {
   priceMax: page.price_max,
 });
 
-const hasPolygonSearch = Boolean(page.polygon_geojson);
+
 
 const listingLimit = 1000;
 
@@ -328,11 +451,58 @@ if (hasPolygonSearch) {  listings = listings.filter((listing) => {
 }
 
 
+
 console.log("INTENT LISTINGS DEBUG", {
   slug,
   count: listings?.length || 0,
   error: listingsError,
 });
+
+const marketNameMap: Record<string, string> = {
+  nanaimo: "Nanaimo",
+  parksville: "Parksville / Qualicum",
+  qualicum: "Parksville / Qualicum",
+  "qualicum-beach": "Parksville / Qualicum",
+  tofino: "Port Alberni",
+};
+const marketName = marketNameMap[String(city || "").toLowerCase()] || titleCaseCity;
+
+let marketMetric: any = null;
+
+const { data: areaMetric } = await supabase
+  .from("area_metrics_public")
+  .select("*")
+  .ilike("area_name", page.area || "")
+  .order("snapshot_date", { ascending: false })
+  .limit(1)
+  .maybeSingle();
+
+if (areaMetric) {
+  marketMetric = areaMetric;
+} else {
+  const { data: cityMetric } = await supabase
+    .from("market_metrics_public")
+    .select("*")
+    .eq("market_name", marketName)
+    .order("snapshot_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  marketMetric = cityMetric;
+}
+
+function marketActivityLabel(index: any) {
+  const value = Number(index || 0);
+  if (value >= 0.8) return "🔥 Very Active";
+  if (value >= 0.6) return "🟢 Active";
+  if (value >= 0.4) return "🟡 Balanced";
+  if (value >= 0.25) return "🔵 Slower";
+  return "⚪ Quiet";
+}
+
+const generatedCopy = pageKind === "area"
+  ? generateAreaCopy(listings, censusData, osmSummary, page.area || "", city)
+  : null;
 
 const { data: relatedIntentPagesRaw = [] } = await supabase
   .from("intent_pages")
@@ -1023,15 +1193,21 @@ const cleanHeroHeading = String(page.hero_heading || "").endsWith(".")
         margin-bottom: 22px;
       }
 
-   .grid {
+  .grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
   width: 100%;
   overflow: hidden;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1200px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
   .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1058,8 +1234,8 @@ body.is-map-mode .bottom-refine-cta {
 
 .area-intelligence__chips {
   display: flex;
-  gap: 10px;
-  overflow-x: auto;
+  gap: 8px;
+  flex-wrap: wrap;
   padding-bottom: 10px;
   margin-bottom: 18px;
   scrollbar-width: none;
@@ -1069,22 +1245,32 @@ body.is-map-mode .bottom-refine-cta {
   display: none;
 }
 
+@media (max-width: 900px) {
+  .area-intelligence__chips {
+    flex-wrap: wrap !important;
+    overflow-x: visible !important;
+  }
+}
+
 .amenity-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px !important;
   white-space: nowrap;
   border: 1px solid rgba(0,0,0,.08);
   background: #fff;
-  padding: 10px 14px;
-  border-radius: 999px;
+  padding: 6px 12px !important;
+ border-radius: 6px;
   font: inherit;
+  font-size: 0.76rem !important;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .amenity-chip.active {
   background: var(--accent);
   color: #fff;
+  border-radius: 6px;
 }
 
 .area-map-layout {
@@ -1173,8 +1359,8 @@ body.is-map-mode .bottom-refine-cta {
 }
 .intent-seo-grid {
   display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-  gap: 34px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 40px 48px;
 }
 
 @media (max-width: 800px) {
@@ -1201,11 +1387,11 @@ body.is-map-mode .bottom-refine-cta {
 }
 
 .intent-guide h2 {
-  margin: 0 0 32px;
+  margin: 0 0 24px;
   font-family: var(--serif);
-  font-size: clamp(2.4rem, 4vw, 4rem);
-  line-height: 0.95;
-  letter-spacing: -0.05em;
+  font-size: clamp(1.6rem, 2.5vw, 2.4rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
 }
 
 .intent-guide h3 {
@@ -1416,20 +1602,9 @@ body.is-map-mode .bottom-refine-cta {
 }
 
 .interrupt-card {
-  grid-column: 1 / -1;
-  margin: 12px 0 18px;
-  background: var(--surface);
-  border-top: 0.5px solid rgba(0,0,0,0.1);
-  border-right: 0.5px solid rgba(0,0,0,0.1);
-  border-bottom: 0.5px solid rgba(0,0,0,0.1);
-  border-left: 3px solid var(--accent);
-  border-radius: 0 6px 6px 0;
-  padding: 26px;
-  box-shadow: none;
-}
-
-.interrupt-card::before {
-  display: none;
+  grid-column: span 1;
+  margin: 0;
+  padding: 0;
 }
 
 .interrupt-inner {
@@ -1928,15 +2103,34 @@ color: var(--accent) !important;
     grid-template-columns: 1fr;
   }
 }
+.area-neighbourhood-map,
+.intent-map {
+  isolation: isolate;
+}
 
+.leaflet-pane,
+.leaflet-tile-pane,
+.leaflet-overlay-pane,
+.leaflet-shadow-pane,
+.leaflet-marker-pane,
+.leaflet-tooltip-pane,
+.leaflet-popup-pane {
+  z-index: 0 !important;
+}
+
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 10 !important;
+}
     </style>
 
 <div
   data-intent-page-id={page.id}
   data-city={city}
   data-slug={slug}
-  data-google-maps-api-key={googleMapsApiKey}
-  data-search-area-geojson={JSON.stringify(page.polygon_geojson || null)}
+ data-search-area-geojson={JSON.stringify(page.polygon_geojson || null)}
+  data-area-center-lat={String(osmLat || "")}
+  data-area-center-lng={String(osmLng || "")}
 >
 <SiteNav
   city={city}
@@ -1979,69 +2173,161 @@ color: var(--accent) !important;
     </span>
   </nav>
 
-  {(page.seo_intro || seo.intro) && (
+{pageKind !== "area" && (page.seo_intro || seo.intro) && (
     <p style="margin:28px 0 20px;color:var(--muted);font-size:1rem;line-height:1.65;max-width:780px;">
       {page.seo_intro || seo.intro}
     </p>
   )}
 {pageKind === "area" && (
-  <section class="area-intelligence">
+ <section class="area-intelligence">
 
-{page.intro_copy && (
-      <p style="margin:0 0 20px;color:var(--ink);font-size:1rem;line-height:1.65;max-width:780px;font-weight:500;">
-        {page.intro_copy}
-      </p>
-    )}
+  <div style="margin-bottom:22px;">
+    <div style="font-size:0.72rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">
+      Neighbourhood Snapshot
+    </div>
 
-    {(() => {
+    <h2 style="margin:0;font-size:2rem;font-weight:800;letter-spacing:-0.04em;">
+      {titleCase(page.area || city)} at a Glance
+    </h2>
+
+    <p style="margin:10px 0 0;color:var(--muted);max-width:760px;line-height:1.6;">
+      Live listings, weekly market activity, demographics, and nearby amenities for buyers exploring {titleCase(page.area || city)}.
+    </p>
+  </div>
+
+   {(() => {
       const prices = listings.map((l) => Number(l.price || 0)).filter((p) => p > 0);
-      const avgPrice = prices.length ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : 0;
       const sorted = [...prices].sort((a, b) => a - b);
       const medianPrice = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
       const byType = (t: string) => listings.filter((l) => String(l.normalized_type || "").toLowerCase() === t).length;
-      return (
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:24px;">
-          {[
-            { label: "Active Listings", value: String(listings.length) },
-            { label: "Average Price", value: avgPrice ? `$${avgPrice.toLocaleString()}` : "—" },
-            { label: "Median Price", value: medianPrice ? `$${medianPrice.toLocaleString()}` : "—" },
-        { label: "Houses", value: String(byType("house")), type: "house" },
-            { label: "Condos", value: String(byType("condo")), type: "condo" },
-            { label: "Townhomes", value: String(byType("townhouse")), type: "townhouse" },
-            { label: "Mobile Homes", value: String(byType("mobile")), type: "mobile" },
-            { label: "Lot / Land", value: String(byType("land")), type: "land" },
-          ].map(({ label, value, type }) => (
-            <div
-              onclick={type ? `document.querySelector('.type-filter-select').value='${type}';document.querySelector('.type-filter-select').dispatchEvent(new Event('change'));document.querySelector('.grid')?.scrollIntoView({behavior:'smooth',block:'start'})` : undefined}
-              style={`background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:6px;padding:14px 16px;${type ? "cursor:pointer;" : ""}`}
-            >
-              <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">{label}</div>
-              <div style="font-size:1.5rem;font-weight:800;letter-spacing:-0.03em;line-height:1;">{value}</div>
-              {type && <div style="font-size:0.72rem;color:var(--accent);font-weight:700;margin-top:4px;">Filter →</div>}
-            </div>
-          ))}
+      const fmt = (n: number) => `$${n.toLocaleString()}`;
+
+      const houseCt = byType("house");
+      const condoCt = byType("condo");
+      const townCt = byType("townhouse");
+      const mobileCt = byType("mobile");
+      const landCt = byType("land");
+
+const cityActiveCount = rawListings?.length || listings.length;
+const areaSharePct = cityActiveCount
+  ? Math.round((listings.length / cityActiveCount) * 100)
+  : 0;
+
+      const typeList: string[] = [];
+      if (houseCt) typeList.push(`${houseCt} house${houseCt !== 1 ? "s" : ""}`);
+      if (condoCt) typeList.push(`${condoCt} condo${condoCt !== 1 ? "s" : ""}`);
+      if (townCt) typeList.push(`${townCt} townhome${townCt !== 1 ? "s" : ""}`);
+      if (mobileCt) typeList.push(`${mobileCt} mobile home${mobileCt !== 1 ? "s" : ""}`);
+      if (landCt) typeList.push(`${landCt} lot${landCt !== 1 ? "s" : ""}`);
+      const typeStr = typeList.length > 1
+        ? `${typeList[0]}, with ${typeList.slice(1).join(", ")}`
+        : typeList[0] || "";
+
+      const censusParts: string[] = [];
+      if (censusData?.median_age) censusParts.push(`a median age of ${censusData.median_age}`);
+      if (censusData?.pct_owned) censusParts.push(`${censusData.pct_owned}% owner-occupied homes`);
+      if (censusData?.pop_change_pct) censusParts.push(`${censusData.pop_change_pct > 0 ? "+" : ""}${censusData.pop_change_pct}% population growth between 2016–2021`);
+
+      const sentence1 = `${titleCase(page.area || city)} has ${listings.length} active listing${listings.length !== 1 ? "s" : ""}${medianPrice ? ` with a median price of ${fmt(medianPrice)}` : ""}${typeStr ? ` — mostly ${typeStr}` : ""}.`;
+      const sentence2 = censusParts.length ? ` The area has ${censusParts.join(", ")}.` : "";
+
+return (
+        <div style="margin-bottom:20px;">
+        {marketMetric?.activity_index != null && <div style={`
+  background:${
+    marketMetric.activity_index >= 0.8 ? "#fff3f1" :
+    marketMetric.activity_index >= 0.6 ? "#f1fbf4" :
+    marketMetric.activity_index >= 0.4 ? "#fff9e8" :
+    marketMetric.activity_index >= 0.25 ? "#f2f7ff" :
+    "#f7f7f7"
+  };
+  border:1px solid rgba(0,0,0,.08);
+  border-radius:6px;
+  padding:14px 16px;
+`}><div style="font-size:1.18rem;font-weight:800;letter-spacing:-0.03em;color:var(--ink);margin-bottom:4px;"><div style="display:flex;align-items:center;gap:8px;">
+ <span style="width:16px;height:16px;border-radius:50%;background:
+    {marketMetric.activity_index >= 0.8 ? '#ef4444' :
+     marketMetric.activity_index >= 0.6 ? '#22c55e' :
+     marketMetric.activity_index >= 0.4 ? '#fbbf24' :
+     marketMetric.activity_index >= 0.25 ? '#3b82f6' :
+     '#94a3b8'};
+  "></span>
+
+  <span style="font-size:1.3rem;font-weight:800;letter-spacing:-0.03em;">
+    {marketActivityLabel(marketMetric.activity_index).replace(/[🔥🟢🟡🔵⚪]/g,"").trim()}
+  </span>
+</div></div><div style="font-size:0.76rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Current Market</div></div>}
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px;">
+            {medianPrice > 0 && <div style="background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:6px;padding:14px 16px;"><div style="font-size:1.18rem;font-weight:800;letter-spacing:-0.03em;color:var(--ink);margin-bottom:4px;">{fmt(medianPrice)}</div><div style="font-size:0.76rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Median price</div></div>}
+           <div style="background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:6px;padding:14px 16px;"><div style="font-size:1.18rem;font-weight:800;letter-spacing:-0.03em;color:var(--ink);margin-bottom:4px;">{listings.length}</div><div style="font-size:0.76rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Homes for sale</div></div>
+
+{marketMetric?.pending != null && <div style="background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:6px;padding:14px 16px;"><div style="font-size:1.18rem;font-weight:800;letter-spacing:-0.03em;color:var(--ink);margin-bottom:4px;">{marketMetric.pending}</div><div style="font-size:0.76rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Pending sales</div></div>}
+
+{marketMetric?.sold != null && <div style="background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:6px;padding:14px 16px;"><div style="font-size:1.18rem;font-weight:800;letter-spacing:-0.03em;color:var(--ink);margin-bottom:4px;">{marketMetric.sold}</div><div style="font-size:0.76rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Recently sold</div></div>}
+
+
+            {censusData?.median_age && <div style="background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:6px;padding:14px 16px;"><div style="font-size:1.18rem;font-weight:800;letter-spacing:-0.03em;color:var(--ink);margin-bottom:4px;">{censusData.median_age}</div><div style="font-size:0.76rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Median age</div></div>}
+            {censusData?.pct_owned && <div style="background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:6px;padding:14px 16px;"><div style="font-size:1.18rem;font-weight:800;letter-spacing:-0.03em;color:var(--ink);margin-bottom:4px;">{censusData.pct_owned}%</div><div style="font-size:0.76rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Owner-occupied</div></div>}
+           {censusData?.pop_change_pct && <div style="background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:6px;padding:14px 16px;"><div style="font-size:1.18rem;font-weight:800;letter-spacing:-0.03em;color:var(--ink);margin-bottom:4px;">{censusData.pop_change_pct > 0 ? "+" : ""}{censusData.pop_change_pct}%</div><div style="font-size:0.76rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Pop. growth 2016–21</div></div>}
+
+<div style="grid-column:1 / -1;background:#fff;border:0.5px solid rgba(0,0,0,.1);border-radius:6px;padding:18px 20px;">
+  <div style="font-size:0.78rem;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;">
+    📍 Local Market Snapshot
+  </div>
+
+  <div style="font-size:1rem;line-height:1.6;color:var(--ink);max-width:860px;">
+    {areaSharePct >= 15
+      ? <>Nearly <strong>one in five</strong> homes currently listed in {titleCase(city)} is located in {titleCase(page.area || city)}.</>
+      : <>{titleCase(page.area || city)} currently accounts for <strong>{areaSharePct}%</strong> of active listings in {titleCase(city)}.</>
+    }
+  </div>
+</div>
+          </div>
+  <p style="margin:0 0 16px;color:var(--muted);font-size:0.96rem;line-height:1.75;max-width:900px;">
+<strong>{titleCase(page.area || city)}</strong>
+offers buyers a broad selection of homes, with
+<strong>{houseCt}</strong> houses,
+{condoCt > 0 && <> <strong>{condoCt}</strong> condos,</>}
+{townCt > 0 && <> <strong>{townCt}</strong> townhomes,</>}
+{landCt > 0 && <> and <strong>{landCt}</strong> vacant lots</>}
+currently available.
+
+{censusData?.pct_owned &&
+<> With <strong>{censusData.pct_owned}%</strong> owner-occupied homes, the neighbourhood has an established residential character.</>}
+</p>
+
+<div style="display:flex;flex-wrap:wrap;gap:8px;">
+{houseCt > 0 && <button type="button" onclick="var s=document.querySelector('.type-filter-select');s.value='house';applyFilters();" style="background:#fff;border:0.5px solid rgba(0,0,0,0.12);border-radius:999px;padding:6px 14px;font:inherit;font-size:0.82rem;font-weight:600;color:var(--ink);cursor:pointer;">{houseCt} houses ↗</button>}
+            {condoCt > 0 && <button type="button" onclick="var s=document.querySelector('.type-filter-select');s.value='condo';applyFilters();" style="background:#fff;border:0.5px solid rgba(0,0,0,0.12);border-radius:999px;padding:6px 14px;font:inherit;font-size:0.82rem;font-weight:600;color:var(--ink);cursor:pointer;">{condoCt} condos ↗</button>}
+            {townCt > 0 && <button type="button" onclick="var s=document.querySelector('.type-filter-select');s.value='townhouse';applyFilters();" style="background:#fff;border:0.5px solid rgba(0,0,0,0.12);border-radius:999px;padding:6px 14px;font:inherit;font-size:0.82rem;font-weight:600;color:var(--ink);cursor:pointer;">{townCt} townhomes ↗</button>}
+            {mobileCt > 0 && <button type="button" onclick="var s=document.querySelector('.type-filter-select');s.value='mobile';applyFilters();" style="background:#fff;border:0.5px solid rgba(0,0,0,0.12);border-radius:999px;padding:6px 14px;font:inherit;font-size:0.82rem;font-weight:600;color:var(--ink);cursor:pointer;">{mobileCt} mobile homes ↗</button>}
+            {landCt > 0 && <button type="button" onclick="var s=document.querySelector('.type-filter-select');s.value='land';applyFilters();" style="background:#fff;border:0.5px solid rgba(0,0,0,0.12);border-radius:999px;padding:6px 14px;font:inherit;font-size:0.82rem;font-weight:600;color:var(--ink);cursor:pointer;">{landCt} lots ↗</button>}
+          </div>
         </div>
       );
     })()}
 
-    <div class="area-intelligence__chips">
+<div class="area-intelligence__chips">
+     <button type="button" id="toggle-listings-btn" class="amenity-chip" data-listings-visible="true">
+        🏠 Hide listings
+      </button>
       <button type="button" class="amenity-chip active" data-amenity="schools">
-        🎓 Schools <strong>13</strong>
+        🎓 Schools <strong></strong>
       </button>
       <button type="button" class="amenity-chip" data-amenity="grocery">
-        🛒 Grocery & Shops <strong>7</strong>
+        🛒 Grocery & Shops <strong></strong>
       </button>
       <button type="button" class="amenity-chip" data-amenity="transit">
-        🚌 Transit <strong>161</strong>
+        🚌 Transit <strong></strong>
       </button>
       <button type="button" class="amenity-chip" data-amenity="parks">
-        🌳 Parks <strong>51</strong>
+        🌳 Parks <strong></strong>
       </button>
       <button type="button" class="amenity-chip" data-amenity="restaurants">
-        ☕ Restaurants & Cafés <strong>85</strong>
+        ☕ Restaurants & Cafés <strong></strong>
       </button>
       <button type="button" class="amenity-chip" data-amenity="medical">
-        🏥 Medical <strong>23</strong>
+        🏥 Medical <strong></strong>
       </button>
     </div>
 
@@ -2131,7 +2417,14 @@ color: var(--accent) !important;
   <span class="results-bar" style="margin-left:auto;font-size:0.82rem;color:var(--muted);font-weight:600;white-space:nowrap;">{listingCount} listings</span>
 </section>
 
-     <!-- Map moved into Area Intelligence -->
+  {pageKind !== "area" && (
+  <div
+    id="intent-map"
+    class="intent-map"
+    hidden
+    style="margin-bottom:22px;"
+  ></div>
+)}
 
       <section class="grid">
         {listings.map((listing, index) => {
@@ -2149,6 +2442,22 @@ color: var(--accent) !important;
 
           return (
             <>
+{index === 8 && (
+  <aside class="card interrupt-card" id="intent-interrupt-card" style="overflow:hidden;">
+    <div class="card-image-wrap" style="background:var(--accent-soft);display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;padding:16px;">
+      <div class="interrupt-kicker" style="margin-bottom:4px;color:var(--accent);font-size:0.72rem;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;">Shape this search</div>
+      <p style="margin:0;font-weight:600;font-size:0.95rem;line-height:1.35;color:var(--ink);">{interruptTitle}</p>
+    </div>
+    <div class="card-body">
+      <div class="interrupt-options generated-chip-target" style="gap:6px;display:flex;flex-wrap:wrap;margin-bottom:10px;">
+        {[...priceDirectionLabels.slice(0,1), ...featureDirectionLabels.slice(0, 3)].map((label) => (
+          <button type="button" class="refine-chip generated-refine-chip" style="font-size:0.75rem;padding:5px 9px;border-radius:999px;min-height:unset;">{label}</button>
+        ))}
+      </div>
+      <button type="button" class="cta-button" style="width:100%;justify-content:center;" onclick="saveIntentPreferences()">Steer results</button>
+    </div>
+  </aside>
+)}
               <article
   class="card original-card"
   hidden={index >= 12}
@@ -2214,58 +2523,14 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
                 </div>
               </article>
 
-{(index === 11 ||
-  (index === (listings || []).length - 1 && (listings || []).length < 12)) && (
-  <>                  <aside class="interrupt-card" id="intent-interrupt-card">
-                    <div class="interrupt-inner">
-                      <div>
-<div class="interrupt-kicker">Shape this search</div>
-<h3>{interruptTitle}</h3>
-<p>
-  {interruptDescription}
-</p>
-                      </div>
 
-                                           <div class="interrupt-groups">
-                        <div class="interrupt-group-card">
-                          <div class="interrupt-group-label">Price direction</div>
-
-                                                 <div class="interrupt-options">
-                            {priceDirectionLabels.map((label) => (
-                              <button type="button" class="refine-chip generated-refine-chip">
-                                {label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div class="interrupt-group-card">
-                          <div class="interrupt-group-label">Feature direction</div>
-
-                          <div class="interrupt-options generated-chip-target">
-                            {featureDirectionLabels.slice(0, 5).map((label) => (
-                              <button type="button" class="refine-chip generated-refine-chip">
-                                {label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <button type="button" class="cta-button" onclick="saveIntentPreferences()">
-                          Save this direction
-                        </button>
-                      </div>
-                    </div>
-                  </aside>
-
-                  <div id="refined-results-anchor"></div>
-                  <section id="refined-results" class="refined-results"></section>
-                </>
-              )}
+                 
             </>
           );
         })}
-      </section>
+   </section>
+      <div id="refined-results-anchor"></div>
+      <section id="refined-results" class="refined-results"></section>
       <button
   type="button"
   id="show-more-listings-btn"
@@ -2275,7 +2540,27 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
   Show more listings
 </button>
 <RelatedIntentCards city={city} pages={relatedIntentPages} />
-
+{pageKind === "area" && listings.length > 0 && (
+  <section style="margin-top:40px;">
+    <div id="area-dashboard"
+      data-listings={JSON.stringify(listings.map(l => ({
+        price: Number(l.price || 0),
+        type: String(l.normalized_type || "house").toLowerCase()
+      })))}
+      data-accent={accentColor}
+style="display:grid;grid-template-columns:1fr 1fr;gap:18px;"
+    >
+      <div style="background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:8px;padding:20px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#9c9590;margin-bottom:14px;">Price distribution</div>
+        <div style="position:relative;height:180px;"><canvas id="price-chart" role="img" aria-label="Price distribution of current listings"></canvas></div>
+      </div>
+   <div style="background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:8px;padding:20px;overflow:hidden;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#9c9590;margin-bottom:14px;">Property types</div>
+        <div style="position:relative;height:240px;"><canvas id="type-chart" role="img" aria-label="Property type breakdown"></canvas></div>
+      </div>
+    </div>
+  </section>
+)}
 <section class="intent-guide">
  <div class="intent-guide-label">
   Area Guide
@@ -2283,35 +2568,68 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
 
   <h2>{page.seo_heading || seo.heading}</h2>
 
-  <div class="intent-seo-grid">
-    <div>
-      <p>{page.seo_intro || seo.intro}</p>
-      <p>{page.seo_body || seo.body}</p>
+{(pageKind !== "area" || (page.seo_long && page.seo_long.trim())) && (
+   <div style="margin-top:8px;columns:2 400px;column-gap:48px;color:var(--muted);line-height:1.75;font-size:1rem;">
+      {pageKind === "area"
+        ? <>
+            {(page.neighbourhood_copy || "")
+              .split(/\n\n|\r\n\r\n/)
+              .filter((p) => p.trim())
+              .map((p) => <p style="margin-bottom:1.1rem;break-inside:avoid;">{p.trim()}</p>)}
+            {(page.seo_long || seo.long)
+              .split(/\n\n|\r\n\r\n/)
+              .filter((p) => p.trim())
+              .map((p) => <p style="margin-bottom:1rem;break-inside:avoid;">{p.trim()}</p>)}
+          </>
+        : <>
+            <p style="margin-bottom:1rem;break-inside:avoid;">{page.seo_intro || seo.intro}</p>
+            <p style="margin-bottom:1rem;break-inside:avoid;">{page.seo_body || seo.body}</p>
+            {(page.seo_long || seo.long)
+              .split(/\n\n|\r\n\r\n/)
+              .filter((p) => p.trim())
+              .map((p) => <p style="margin-bottom:1rem;break-inside:avoid;">{p.trim()}</p>)}
+          </>
+      }
     </div>
+  )}
 
-    <div>
-      {(page.seo_long || seo.long)
-        .split("\n")
-        .filter((paragraph) => paragraph.trim().length > 0)
-        .map((paragraph) => (
-          <p>{paragraph}</p>
+ <div class="intent-guide-divider"></div>
+
+{pageKind === "area" && areaLinks.length > 1 && (
+  <div style="margin:0 0 28px;">
+    <h3 style="margin-bottom:12px;">Explore other {titleCase(city)} neighbourhoods</h3>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      {areaLinks
+        .filter((a) => a.href !== `/${city}/${slug}`)
+        .slice(0, 6)
+        .map((a) => (
+          <a href={a.href} style="display:inline-flex;align-items:center;padding:7px 14px;border-radius:6px;border:0.5px solid rgba(0,0,0,0.12);background:#fff;color:var(--ink);font-size:0.84rem;font-weight:650;text-decoration:none;">
+            {a.label}
+          </a>
         ))}
     </div>
   </div>
+)}
 
-  <div class="intent-guide-divider"></div>
+{pageKind === "area" && navIntentPages.length > 0 && (
+  <div style="margin:0 0 28px;">
+    <h3 style="margin-bottom:12px;">Browse by property type in {titleCase(city)}</h3>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      {navIntentPages.slice(0, 6).map((p: any) => (
+        <a href={`/${city}/${p.slug}`} style="display:inline-flex;align-items:center;padding:7px 14px;border-radius:6px;border:0.5px solid rgba(0,0,0,0.12);background:#fff;color:var(--ink);font-size:0.84rem;font-weight:650;text-decoration:none;">
+          {p.nav_label || p.hero_heading || p.slug}
+        </a>
+      ))}
+    </div>
+  </div>
+)}
 
-  <h3>About {titleCase(page.area || city)}</h3>
+<div class="intent-guide-divider"></div>
 
-  <p>
-    {page.neighbourhood_copy ||
-`${titleCase(page.area || city)} is a popular area for buyers seeking a balance of location, lifestyle, and long-term value. Local amenities, recreation opportunities, schools, transportation links, and housing diversity all contribute to its appeal.`}  </p>
-
-  <h3>Local Market Snapshot</h3>
-
-  <p>
-    {page.market_commentary ||
-      `Inventory levels, pricing, and new listing activity can change quickly throughout the year. Monitoring the market regularly can help buyers identify new opportunities and stay informed about changing conditions.`}
+<h3>Local Market Snapshot</h3>
+  <p style="font-size:1rem;line-height:1.75;color:var(--muted);">
+    {page.market_commentary || generatedCopy?.market ||
+      `Inventory levels, pricing, and new listing activity can change quickly throughout the year.`}
   </p>
 </section>
 
@@ -2336,6 +2654,26 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
 <IntentModalController loadMapScript={false} />
 
   <style is:global>
+
+
+    
+.leaflet-listing-popup .leaflet-popup-content-wrapper {
+  padding: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  border: none;
+}
+.leaflet-listing-popup .leaflet-popup-content {
+  margin: 0;
+}
+.leaflet-listing-popup .leaflet-popup-tip-container {
+  display: none;
+}
+.leaflet-container {
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
 #refined-results .card-decision-badge {
   position: absolute !important;
   top: 16px !important;
@@ -2392,22 +2730,29 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
   opacity: 0.65 !important;
 }
 
-#refined-results .card-image-wrap,
-#refined-results .card-image-wrap img,
-#refined-results .card img {
+.refined-card .card-image-wrap {
   width: 100%;
-  height: 190px !important;
-  object-fit: cover;
+  aspect-ratio: 16 / 10 !important;
+  height: auto !important;
+  overflow: hidden;
+  background: var(--accent-soft);
 }
 
-#refined-results .card-body {
+.refined-card .card-image-wrap img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  display: block !important;
+}
+
+.refined-card .card-body {
   position: relative;
   padding: 14px 16px !important;
   background: var(--surface);
-  min-height: 116px !important;
+  min-height: unset !important;
 }
 
-#refined-results .price {
+.refined-card .price {
   font-size: 1.34rem !important;
   line-height: 1.1 !important;
   font-weight: 800 !important;
@@ -2416,7 +2761,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
   padding-right: 104px !important;
 }
 
-#refined-results .address {
+.refined-card .address {
   margin-bottom: 2px !important;
   color: var(--ink) !important;
   line-height: 1.35 !important;
@@ -2424,7 +2769,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
   font-weight: 400 !important;
 }
 
-#refined-results .card-city {
+.refined-card .card-city {
   margin-bottom: 14px !important;
   color: var(--muted) !important;
   font-size: 0.86rem !important;
@@ -2551,539 +2896,68 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
     height: 100% !important;
   }
 }
+
+.refined-card {
+  border-radius: 6px !important;
+  overflow: hidden !important;
+  cursor: pointer !important;
+}
+
+.refined-card:hover {
+  transform: translateY(-4px) !important;
+  box-shadow: 0 16px 48px rgba(28, 25, 23, 0.1) !important;
+  border-color: var(--accent-light) !important;
+}
+
     </style>
 
     <script is:inline>
-      const listViewBtn = document.getElementById("list-view-btn");
-      const mapViewBtn = document.getElementById("map-view-btn");
-      const intentMapEl = document.getElementById("intent-map");
-      const gridEl = document.querySelector(".grid");
+      // ============================================================
+// LEAFLET MAP REPLACEMENT
+// Drop this entire block in place of the Google Maps <script is:inline> block
+// in [slug].astro. Remove the existing Google Maps script block entirely.
+// ============================================================
 
-let googleMap = null;
-let googleMarkers = [];
+// --- Load Leaflet from CDN ---
+(function () {
+  if (window.L) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+  document.head.appendChild(link);
+
+  const script = document.createElement("script");
+  script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+  script.onload = () => window.__leafletReady = true;
+  document.head.appendChild(script);
+})();
+
+function waitForLeaflet(cb) {
+  if (window.L) return cb();
+  const t = setInterval(() => { if (window.L) { clearInterval(t); cb(); } }, 50);
+}
+
+// --- State ---
+const intentMapEl = document.getElementById("intent-map");
+const gridEl = document.querySelector(".grid");
+const listViewBtn = document.getElementById("list-view-btn");
+const mapViewBtn = document.getElementById("map-view-btn");
+
+let leafletMap = null;
+let listingMarkers = [];
 let amenityMarkers = [];
-let searchAreaPolygon = null;
-let searchAreaMask = null;
+let polygonLayer = null;
+let maskLayer = null;
+let refinedLeafletMap = null;
+let refinedMarkers = [];
+let currentIntentMapBounds = null;
+
 const searchAreaGeojson = JSON.parse(
   document.querySelector("[data-search-area-geojson]")?.dataset.searchAreaGeojson || "null"
 );
-let refinedGoogleMap = null;
-let refinedGoogleMarkers = [];
-let currentIntentMapBounds = null;
-      let googleMapsLoadingPromise = null;
 
-      function loadGoogleMaps() {
-        if (window.google?.maps) return Promise.resolve();
-
-        if (googleMapsLoadingPromise) return googleMapsLoadingPromise;
-
-const key = document.querySelector("[data-google-maps-api-key]")?.dataset.googleMapsApiKey;
-        if (!key) {
-          console.error("Missing PUBLIC_GOOGLE_MAPS_API_KEY");
-          return Promise.reject(new Error("Missing Google Maps API key"));
-        }
-
-        googleMapsLoadingPromise = new Promise((resolve, reject) => {
-          const existing = document.querySelector("script[data-google-maps-loader]");
-
-          if (existing) {
-            existing.addEventListener("load", resolve);
-            existing.addEventListener("error", reject);
-            return;
-          }
-
-          const script = document.createElement("script");
-          script.dataset.googleMapsLoader = "true";
-          script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}`;
-          script.async = true;
-          script.defer = true;
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
-
-        return googleMapsLoadingPromise;
-      }
-
-  function getCardLatLng(card) {
-  const lat = Number(card.dataset.lat || "");
-  const lng = Number(card.dataset.lng || "");
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (lat === 0 || lng === 0) return null;
-
-  return { lat, lng };
-}
-
-async function loadAreaAmenities(category = "school") {
-  if (!googleMap) return;
-
-  amenityMarkers.forEach((marker) => marker.setMap(null));
-  amenityMarkers = [];
-
-  const center = googleMap.getCenter();
-  if (!center) return;
-
-  const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
-
- const res = await fetch(
-    `/api/osm-amenities?city=${encodeURIComponent(city)}&lat=${center.lat()}&lng=${center.lng()}&radius=10&limit=200&maxDistKm=4`
-  );
-
-  const payload = await res.json();
- document.querySelectorAll(".amenity-chip").forEach((chip) => {
-  const key = amenityCategoryMap[chip.dataset.amenity] || chip.dataset.amenity;
-  const allItems = payload.categories?.[key] || [];
-const nearbyCount = allItems.filter((item) => Number(item.distKm || 0) <= 4).length;  const strong = chip.querySelector("strong");
-
-  if (strong) strong.textContent = String(nearbyCount);
-});
-  const rows = payload.categories?.[category] || [];
-const activeChip = document.querySelector(".amenity-chip.active");
-const label = activeChip?.childNodes?.[0]?.textContent?.trim() || category;
-
-const panelTitle = document.querySelector("#area-amenity-panel h3");
-const panelCopy = document.querySelector("#area-amenity-panel p");
-const amenityList = document.querySelector("#amenity-list");
-
-if (panelTitle) panelTitle.textContent = label;
-
-const nearbyRows = rows.filter((item) => Number(item.distKm || 0) <= 2);
-
-if (panelCopy) {
-  panelCopy.textContent = `${nearbyRows.length} ${label.toLowerCase()} near ${document.querySelector("[data-slug]")?.dataset.slug?.replaceAll("-", " ") || "this area"}`;
-}
-
-if (amenityList) {
-  amenityList.innerHTML = nearbyRows
-    .slice(0, 8)
-    .map((item) => {
-      const name = String(item.name || label || "Nearby place").trim();
-      const distance = Number(item.distKm || 0).toFixed(1);
-
-  return `
-        <div style="display:flex;flex-direction:column;gap:3px;padding:10px 18px;border-top:1px solid rgba(0,0,0,.06);">
-          <div style="margin:0;font-size:0.94rem;font-weight:600;line-height:1.35;color:#1c1914;">${name}</div>
-          <div style="margin:0;font-size:0.82rem;font-weight:400;line-height:1.4;color:#9c9590;">${distance} km away</div>
-        </div>
-      `;
-    })
-    .join("");
-}
-  const amenityBounds = new google.maps.LatLngBounds();
-
- nearbyRows.forEach((item) => {
-    const position = {
-      lat: Number(item.lat),
-      lng: Number(item.lng),
-    };
-
-    if (!Number.isFinite(position.lat) || !Number.isFinite(position.lng)) return;
-
-    const marker = new google.maps.Marker({
-      position,
-      map: googleMap,
-      title: item.name || category,
-      zIndex: 9999,
-      icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 7,
-        fillColor: "#2f6f73",
-        fillOpacity: 1,
-        strokeColor: "#ffffff",
-        strokeWeight: 2,
-      },
-    });
-
-    amenityMarkers.push(marker);
-   
-  });
-
- // Area pages should stay zoomed to the selected polygon.
-// Do not let amenities control the map zoom.
-if (amenityMarkers.length && !document.querySelector(".area-intelligence")) {
-  googleMap.fitBounds(amenityBounds, 70);
-}
-}
-
-      async function initIntentGoogleMap(mode = "all") {
-        if (!intentMapEl) return;
-
-     const selector = mode === "refined" ? ".refined-card" : ".original-card";
-const cards = Array.from(document.querySelectorAll(selector)).filter((card) => {
-  return !card.hidden &&
-    card.style.display !== "none" &&
-    card.dataset.lat &&
-    card.dataset.lng;
-});
-
-
-        const points = cards
-          .map((card) => ({
-            card,
-            point: getCardLatLng(card),
-          }))
-          .filter((item) => item.point);
-
-        if (!points.length) {
-          intentMapEl.innerHTML =
-            "<p style='padding:16px;color:#6b6560;'>No map locations available.</p>";
-          return;
-        }
-
-        try {
-          await loadGoogleMaps();
-        } catch (error) {
-          console.error("Google Maps failed to load:", error);
-          intentMapEl.innerHTML =
-            "<p style='padding:16px;color:#6b6560;'>Map could not load.</p>";
-          return;
-        }
-
-        if (!googleMap) {
-          googleMap = new google.maps.Map(intentMapEl, {
-            center: { lat: 49.1659, lng: -123.9401 },
-            zoom: 12,
-            mapTypeControl: false,
-            streetViewControl: false,
-            fullscreenControl: false,
-          });
-        }
-
-       googleMarkers.forEach((marker) => marker.setMap(null));
-googleMarkers = [];
-
-if (searchAreaPolygon) {
-  searchAreaPolygon.setMap(null);
-  searchAreaPolygon = null;
-}
-
-if (searchAreaMask) {
-  searchAreaMask.setMap(null);
-  searchAreaMask = null;
-}
-
-const bounds = new google.maps.LatLngBounds();
-let areaBounds = null;
-const infoWindow = new google.maps.InfoWindow();
-let intentActiveMarker = null;
-
-if (searchAreaGeojson?.coordinates?.[0]) {
-  const polygonPath = searchAreaGeojson.coordinates[0].map(([lng, lat]) => ({
-    lat,
-    lng,
-  }));
-
- searchAreaMask = new google.maps.Polygon({
-  paths: [
-    [
-      { lat: 85, lng: -179 },
-      { lat: -85, lng: -179 },
-      { lat: -85, lng: 179 },
-      { lat: 85, lng: 179 },
-      { lat: 85, lng: -179 },
-    ],
-    polygonPath.slice().reverse(),
-  ],
-  fillColor: "#000000",
-  fillOpacity: 0.08,
-  strokeOpacity: 0,
-  clickable: false,
-  zIndex: 10,
-});
-
-searchAreaMask.setMap(googleMap);
-
-searchAreaPolygon = new google.maps.Polygon({
-    paths: polygonPath,
-    strokeColor: "#2f6f73",
-    strokeOpacity: 1,
-    strokeWeight: 4,
-    fillColor: "#2f6f73",
-    fillOpacity: 0.02,
-    clickable: false,
-    zIndex: 10,
-  });
-
-  searchAreaPolygon.setMap(googleMap);
-  areaBounds = new google.maps.LatLngBounds();
-
-  polygonPath.forEach((point) => {
-    areaBounds.extend(point);
-  });
-}
-
-     points.forEach(({ card, point }) => {
-          const marker = new google.maps.Marker({
-            position: point,
-            map: googleMap,
-            title: card.dataset.address || "Listing",
-          });
-
-          const cardId = card.dataset.listingId || card.dataset.mls || card.dataset.cardId || card.dataset.itemId || "";
-
-          let imgs = [];
-          try { imgs = JSON.parse(card.dataset.images || "[]").filter(Boolean); } catch {}
-          if (!imgs.length && card.dataset.image) imgs = [card.dataset.image];
-
-          const imgCount = imgs.length;
-          const infoContent = `
-            <div style="width:220px;font-family:inherit;opacity:0;transform:translateY(6px) scale(0.97);transition:opacity 0.2s ease,transform 0.2s ease;" id="intent-map-info-${cardId}">
-              ${imgCount > 0 ? `
-              <div style="position:relative;width:220px;height:140px;overflow:hidden;border-radius:8px 8px 0 0;cursor:pointer;" id="intent-map-info-img-${cardId}">
-                <div id="intent-map-carousel-${cardId}" style="display:flex;width:${imgCount * 220}px;height:140px;transition:transform 0.25s ease;">
-                  ${imgs.map(src => `<img src="${src}" alt="" style="width:220px;height:140px;object-fit:cover;flex-shrink:0;" />`).join("")}
-                </div>
-                ${imgCount > 1 ? `
-                <button onclick="event.stopPropagation();var t=document.getElementById('intent-map-carousel-${cardId}');var cur=parseInt(t.dataset.idx||0);var next=Math.max(0,cur-1);t.style.transform='translateX(-'+(next*220)+'px)';t.dataset.idx=next;document.getElementById('intent-map-counter-${cardId}').textContent=(next+1)+' / ${imgCount}';" style="position:absolute;left:6px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.9);border:none;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;padding:0;">&#8249;</button>
-                <button onclick="event.stopPropagation();var t=document.getElementById('intent-map-carousel-${cardId}');var cur=parseInt(t.dataset.idx||0);var next=Math.min(${imgCount-1},cur+1);t.style.transform='translateX(-'+(next*220)+'px)';t.dataset.idx=next;document.getElementById('intent-map-counter-${cardId}').textContent=(next+1)+' / ${imgCount}';" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.9);border:none;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;padding:0;">&#8250;</button>
-                <div id="intent-map-counter-${cardId}" style="position:absolute;bottom:6px;right:8px;background:rgba(0,0,0,0.45);color:#fff;font-size:10px;padding:2px 6px;border-radius:999px;">1 / ${imgCount}</div>
-                ` : ""}
-              </div>` : ""}
-              <div style="padding:10px 12px 12px;cursor:pointer;" id="intent-map-info-text-${cardId}">
-                <strong style="font-size:0.95rem;display:block;margin-bottom:2px;">${card.dataset.price || "Listing"}</strong>
-                <span style="font-size:0.8rem;color:#6b6560;display:block;margin-bottom:2px;">${card.dataset.address || ""}</span>
-                <span style="font-size:0.76rem;color:#9c9590;display:block;margin-bottom:8px;">${card.dataset.beds || "-"} bd · ${card.dataset.baths || "-"} ba</span>
-                <div style="font-size:0.76rem;font-weight:700;color:#2f6f73;">View listing &#8594;</div>
-              </div>
-            </div>`;
-
-          let intentCloseTimer = null;
-
-          function scheduleIntentClose() {
-            intentCloseTimer = setTimeout(() => {
-              if (intentActiveMarker === marker) {
-                infoWindow.close();
-                intentActiveMarker = null;
-              }
-            }, 200);
-          }
-
-          function cancelIntentClose() {
-            if (intentCloseTimer) {
-              clearTimeout(intentCloseTimer);
-              intentCloseTimer = null;
-            }
-          }
-
-          marker.addListener("mouseover", () => {
-            cancelIntentClose();
-            intentActiveMarker = marker;
-            infoWindow.setContent(infoContent);
-            infoWindow.open(googleMap, marker);
-            google.maps.event.addListenerOnce(infoWindow, "domready", () => {
-              const el = document.getElementById(`intent-map-info-${cardId}`);
-              if (!el) return;
-              requestAnimationFrame(() => {
-                el.style.opacity = "1";
-                el.style.transform = "translateY(0) scale(1)";
-              });
-              const textEl = document.getElementById(`intent-map-info-text-${cardId}`);
-              if (textEl) textEl.addEventListener("click", () => card.click());
-              const imgEl = document.getElementById(`intent-map-info-img-${cardId}`);
-              if (imgEl) imgEl.addEventListener("click", (e) => {
-                if (e.target.tagName === "BUTTON") return;
-                card.click();
-              });
-              el.addEventListener("mouseenter", cancelIntentClose);
-              el.addEventListener("mouseleave", scheduleIntentClose);
-            });
-          });
-
-          marker.addListener("mouseout", scheduleIntentClose);
-          marker.addListener("click", () => { card.click(); });
-
-          googleMarkers.push(marker);
-          bounds.extend(point);
-        });
-
-if (areaBounds && !areaBounds.isEmpty()) {
-  googleMap.fitBounds(areaBounds, {
-    top: 90,
-    right: 90,
-    bottom: 90,
-    left: 90,
-  });
-} else if (!bounds.isEmpty()) {
-  googleMap.fitBounds(bounds, {
-    top: 40,
-    right: 40,
-    bottom: 40,
-    left: 40,
-  });
-}
-
-google.maps.event.clearListeners(googleMap, "idle");
-
-googleMap.addListener("idle", () => {
-  const bounds = googleMap.getBounds();
-
-  if (!bounds) return;
-
-  const ne = bounds.getNorthEast();
-  const sw = bounds.getSouthWest();
-
-  currentIntentMapBounds = {
-    north: ne.lat(),
-    east: ne.lng(),
-    south: sw.lat(),
-    west: sw.lng(),
-  };
-});
-
-window.setTimeout(() => {
-  google.maps.event.trigger(googleMap, "resize");
-
- if (areaBounds && !areaBounds.isEmpty()) {
-  googleMap.fitBounds(areaBounds, {
-    top: 90,
-    right: 90,
-    bottom: 90,
-    left: 90,
-  });
-} else if (!bounds.isEmpty()) {
-  googleMap.fitBounds(bounds, {
-    top: 40,
-    right: 40,
-    bottom: 40,
-    left: 40,
-  });
-}
-
-  if (document.querySelector(".area-intelligence")) {
-    loadAreaAmenities("school");
-  }
-}, 150);
-      }
-async function initRefinedGoogleMap(mode = "refined") {
-  const refinedMapEl = document.getElementById("refined-intent-map");
-
-  if (!refinedMapEl) return;
-
-  const selector = mode === "refined" ? ".refined-card" : ".card";
-
-  const cards = Array.from(document.querySelectorAll(selector)).filter((card) => {
-    return card.style.display !== "none";
-  });
-
-  const points = cards
-    .map((card) => ({
-      card,
-      point: getCardLatLng(card),
-    }))
-    .filter((item) => item.point);
-
-  if (!points.length) {
-    refinedMapEl.innerHTML =
-      "<p style='padding:16px;color:#6b6560;'>No refined map locations available.</p>";
-    return;
-  }
-
-  try {
-    await loadGoogleMaps();
-  } catch (error) {
-    console.error("Google Maps failed to load:", error);
-    refinedMapEl.innerHTML =
-      "<p style='padding:16px;color:#6b6560;'>Map could not load.</p>";
-    return;
-  }
-
- if (!refinedGoogleMap) {
-  refinedGoogleMap = new google.maps.Map(refinedMapEl, {
-    center: { lat: 49.1659, lng: -123.9401 },
-    zoom: 12,
-    mapTypeControl: false,
-    streetViewControl: false,
-    fullscreenControl: false,
-  });
-}
-
-  refinedGoogleMarkers.forEach((marker) => marker.setMap(null));
-  refinedGoogleMarkers = [];
-
-  const bounds = new google.maps.LatLngBounds();
-  const infoWindow = new google.maps.InfoWindow();
-
-  points.forEach(({ card, point }) => {
-    const marker = new google.maps.Marker({
-      position: point,
-      map: refinedGoogleMap,
-      title: card.dataset.address || "Listing",
-    });
-
-    marker.addListener("click", () => {
-      infoWindow.setContent(
-        `<strong>${card.dataset.price || "Listing"}</strong><br>${card.dataset.address || ""}`
-      );
-      infoWindow.open(refinedGoogleMap, marker);
-      card.click();
-    });
-
-    refinedGoogleMarkers.push(marker);
-    bounds.extend(point);
-  });
-
-  refinedGoogleMap.fitBounds(bounds);
-
-  window.setTimeout(() => {
-    google.maps.event.trigger(refinedGoogleMap, "resize");
-    refinedGoogleMap.fitBounds(bounds);
-  }, 150);
-}
-
-      listViewBtn?.addEventListener("click", () => {
-  document.body.classList.remove("is-map-mode");
-
-  intentMapEl.hidden = true;
-  gridEl?.classList.remove("map-hidden");
-
-  listViewBtn.classList.add("active");
-  mapViewBtn?.classList.remove("active");
-});
-
-      mapViewBtn?.addEventListener("click", () => {
-  document.body.classList.add("is-map-mode");
-
-  intentMapEl.hidden = false;
-  gridEl?.classList.add("map-hidden");
-
-  mapViewBtn.classList.add("active");
-  listViewBtn?.classList.remove("active");
-
-  requestAnimationFrame(() => {
-    initIntentGoogleMap();
-  });
-});
-if (document.querySelector(".area-intelligence") && intentMapEl) {
-  intentMapEl.hidden = false;
-
-  requestAnimationFrame(() => {
-    initIntentGoogleMap();
-  });
-}
-
-      let visibleListingCount = 12;
-
-document.getElementById("show-more-listings-btn")?.addEventListener("click", () => {
-  visibleListingCount += 12;
-
-  const cards = Array.from(document.querySelectorAll(".original-card"));
-
-  cards.forEach((card, index) => {
-    if (index < visibleListingCount) {
-      card.hidden = false;
-    }
-  });
-
-  if (visibleListingCount >= cards.length) {
-    document.getElementById("show-more-listings-btn")?.setAttribute("hidden", "");
-  }
-});
-window.addEventListener("listing-filters-updated", () => {
-  if (googleMap) {
-    initIntentGoogleMap();
-  }
-});
+const accentColor = getComputedStyle(document.documentElement)
+  .getPropertyValue("--accent").trim() || "#2f6f73";
 
 const amenityCategoryMap = {
   schools: "school",
@@ -3094,19 +2968,378 @@ const amenityCategoryMap = {
   medical: "medical",
 };
 
-document.querySelectorAll(".amenity-chip").forEach((button) => {
-  button.addEventListener("click", () => {
-    document.querySelectorAll(".amenity-chip").forEach((chip) => {
-      chip.classList.remove("active");
+// --- Helpers ---
+function getCardLatLng(card) {
+  const lat = Number(card.dataset.lat || "");
+  const lng = Number(card.dataset.lng || "");
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !lat || !lng) return null;
+  return [lat, lng];
+}
+
+function makeListingIcon() {
+  return L.divIcon({
+    className: "",
+    html: `<div style="position:relative;width:28px;height:36px;">
+      <svg viewBox="0 0 28 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:28px;height:36px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
+        <path d="M14 0C6.268 0 0 6.268 0 14c0 9.333 14 22 14 22S28 23.333 28 14C28 6.268 21.732 0 14 0z" fill="${accentColor}"/>
+        <circle cx="14" cy="14" r="5" fill="white"/>
+      </svg>
+    </div>`,
+    iconSize: [28, 36],
+    iconAnchor: [14, 36],
+    popupAnchor: [0, -36],
+  });
+}
+
+function makeAmenityIcon() {
+  return L.divIcon({
+    className: "",
+  html: `<div style="width:14px;height:14px;border-radius:50%;background:${accentColor};opacity:0.6;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.25);"></div>`,
+iconSize: [14, 14],
+iconAnchor: [7, 7],
+  });
+}
+
+function buildListingPopup(card) {
+  let imgs = [];
+  try { imgs = JSON.parse(card.dataset.images || "[]").filter(Boolean); } catch {}
+  if (!imgs.length && card.dataset.image) imgs = [card.dataset.image];
+  const img = imgs[0] || "";
+
+  return `
+    <div style="width:200px;font-family:'DM Sans',system-ui,sans-serif;cursor:pointer;" onclick="document.querySelector('[data-listing-id=\\'${card.dataset.listingId || ""}\\']')?.click()">
+      ${img ? `<img src="${img}" style="width:100%;height:120px;object-fit:cover;display:block;border-radius:4px 4px 0 0;" />` : ""}
+      <div style="padding:10px 12px 12px;">
+        <strong style="font-size:0.95rem;display:block;margin-bottom:2px;">${card.dataset.price || ""}</strong>
+        <span style="font-size:0.8rem;color:#6b6560;display:block;margin-bottom:2px;">${card.dataset.address || ""}</span>
+        <span style="font-size:0.76rem;color:#9c9590;display:block;">${card.dataset.beds || "-"} bd · ${card.dataset.baths || "-"} ba</span>
+        <div style="font-size:0.76rem;font-weight:700;color:${accentColor};margin-top:6px;">View listing →</div>
+      </div>
+    </div>`;
+}
+
+// --- Draw polygon ---
+function drawSearchPolygon(map) {
+  if (!searchAreaGeojson?.coordinates?.[0]) return null;
+
+  const coords = searchAreaGeojson.coordinates[0].map(([lng, lat]) => [lat, lng]);
+
+  // Mask (darken outside polygon)
+  const worldCoords = [
+    [[-85, -180], [-85, 180], [85, 180], [85, -180]],
+    coords,
+  ];
+  maskLayer = L.polygon(worldCoords, {
+    color: "none",
+    fillColor: "#000",
+    fillOpacity: 0.06,
+    interactive: false,
+  }).addTo(map);
+
+  // Outline
+  polygonLayer = L.polygon(coords, {
+    color: accentColor,
+    weight: 3,
+    fillOpacity: 0.02,
+    interactive: false,
+  }).addTo(map);
+
+  return L.latLngBounds(coords);
+}
+
+// --- Init main map ---
+function initLeafletMap(mode = "all") {
+  if (!intentMapEl) return;
+
+  waitForLeaflet(() => {
+    const selector = mode === "refined" ? ".refined-card" : ".original-card";
+    const cards = Array.from(document.querySelectorAll(selector)).filter(
+      (c) => !c.hidden && c.style.display !== "none" && c.dataset.lat && c.dataset.lng
+    );
+
+    const points = cards.map((c) => ({ card: c, latlng: getCardLatLng(c) })).filter((i) => i.latlng);
+
+    // Init map if needed
+    if (!leafletMap) {
+    leafletMap = L.map(intentMapEl, {
+  zoomControl: true,
+  attributionControl: false,
+  scrollWheelZoom: false,
+});
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "© OpenStreetMap",
+      }).addTo(leafletMap);
+
+      L.control.attribution({ prefix: false }).addAttribution('© <a href="https://openstreetmap.org">OSM</a>').addTo(leafletMap);
+    }
+
+    // Clear existing markers
+    listingMarkers.forEach((m) => m.remove());
+    listingMarkers = [];
+    amenityMarkers.forEach((m) => m.remove());
+    amenityMarkers = [];
+    if (polygonLayer) { polygonLayer.remove(); polygonLayer = null; }
+    if (maskLayer) { maskLayer.remove(); maskLayer = null; }
+
+    // Draw polygon
+    const areaBounds = drawSearchPolygon(leafletMap);
+
+    // Add listing markers
+    points.forEach(({ card, latlng }) => {
+      const marker = L.marker(latlng, { icon: makeListingIcon() }).addTo(leafletMap);
+
+      const popup = L.popup({
+        maxWidth: 210,
+        closeButton: false,
+        offset: [0, -4],
+        className: "leaflet-listing-popup",
+      }).setContent(buildListingPopup(card));
+
+      marker.on("mouseover", () => marker.openPopup());
+      marker.on("mouseout", () => setTimeout(() => marker.closePopup(), 200));
+      marker.on("click", () => card.click());
+      marker.bindPopup(popup);
+
+      listingMarkers.push(marker);
     });
 
-    button.classList.add("active");
+    // Fit bounds
+    if (areaBounds) {
+      leafletMap.fitBounds(areaBounds, { padding: [40, 40] });
+    } else if (points.length) {
+      const bounds = L.latLngBounds(points.map((p) => p.latlng));
+      leafletMap.fitBounds(bounds, { padding: [40, 40] });
+    }
 
+    // Track bounds for refine
+    leafletMap.on("moveend", () => {
+      const b = leafletMap.getBounds();
+      currentIntentMapBounds = {
+        north: b.getNorth(),
+        east: b.getEast(),
+        south: b.getSouth(),
+        west: b.getWest(),
+      };
+    });
+
+    // Load amenities on area pages
+    if (document.querySelector(".area-intelligence") && !window.__amenitiesLoaded) {
+      window.__amenitiesLoaded = true;
+      setTimeout(() => loadAreaAmenities("school"), 200);
+    }
+
+    setTimeout(() => leafletMap.invalidateSize(), 100);
+  });
+}
+
+// --- Amenity radius (computed once from polygon size) ---
+let amenityRadius = 8;
+if (searchAreaGeojson?.coordinates?.[0]?.length) {
+  const coords = searchAreaGeojson.coordinates[0];
+  const lats = coords.map(c => c[1]);
+  const lngs = coords.map(c => c[0]);
+  const latSpan = Math.max(...lats) - Math.min(...lats);
+  const lngSpan = Math.max(...lngs) - Math.min(...lngs);
+  const spanKm = Math.max(latSpan, lngSpan) * 111;
+  amenityRadius = Math.min(Math.max(spanKm * 0.7, 8), 30);
+}
+
+// --- Load amenities ---
+async function loadAreaAmenities(category = "school") {
+  if (!leafletMap) return;
+
+  amenityMarkers.forEach((m) => m.remove());
+  amenityMarkers = [];
+
+  const osmCity = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
+  const areaEl = document.querySelector("[data-area-center-lat]");
+  const osmLat = Number(areaEl?.dataset.areaCenterLat || 0);
+  const osmLng = Number(areaEl?.dataset.areaCenterLng || 0);
+
+  if (!osmLat || !osmLng) return;
+
+  try {
+    if (searchAreaGeojson?.coordinates?.[0]?.length) {
+      const coords = searchAreaGeojson.coordinates[0];
+      const lats = coords.map(c => c[1]);
+      const lngs = coords.map(c => c[0]);
+      const latSpan = Math.max(...lats) - Math.min(...lats);
+      const lngSpan = Math.max(...lngs) - Math.min(...lngs);
+      const spanKm = Math.max(latSpan, lngSpan) * 111;
+      amenityRadius = Math.min(Math.max(spanKm * 0.7, 8), 30);
+    }
+
+    const res = await fetch(
+      `/api/osm-amenities?city=${encodeURIComponent(osmCity)}&lat=${osmLat}&lng=${osmLng}&radius=10&limit=200&maxDistKm=${amenityRadius.toFixed(1)}`
+    );
+    const payload = await res.json();
+
+    // Update chip counts
+    document.querySelectorAll(".amenity-chip").forEach((chip) => {
+      const key = amenityCategoryMap[chip.dataset.amenity] || chip.dataset.amenity;
+      const items = payload.categories?.[key] || [];
+const count = items.filter((i) => Number(i.distKm || 0) <= amenityRadius).length;
+      const strong = chip.querySelector("strong");
+      if (strong) strong.textContent = String(count);
+    });
+
+const rows = (payload.categories?.[category] || []).filter((i) => Number(i.distKm || 0) <= amenityRadius);
+
+    // Update panel
+    const activeChip = document.querySelector(".amenity-chip.active");
+    const label = activeChip?.childNodes?.[0]?.textContent?.trim() || category;
+    const panelTitle = document.querySelector("#area-amenity-panel h3");
+    const panelCopy = document.querySelector("#area-amenity-panel p");
+    const amenityList = document.querySelector("#amenity-list");
+
+    if (panelTitle) panelTitle.textContent = label;
+    if (panelCopy) panelCopy.textContent = `${rows.filter(i => i.name?.trim()).length} ${label.toLowerCase()} near ${document.querySelector("[data-slug]")?.dataset.slug?.replaceAll("-", " ") || "this area"}`;
+
+    if (amenityList) {
+      amenityList.innerHTML = rows
+        .filter((item) => item.name && item.name.trim())
+        .slice(0, 8)
+        .map((item) => `
+          <div style="display:flex;flex-direction:column;gap:3px;padding:10px 18px;border-top:1px solid rgba(0,0,0,.06);">
+            <div style="font-size:0.94rem;font-weight:600;line-height:1.35;color:#1c1914;">${item.name}</div>
+            <div style="font-size:0.82rem;font-weight:400;color:#9c9590;">${Number(item.distKm || 0).toFixed(1)} km away</div>
+          </div>`)
+        .join("") || `<div style="padding:14px 18px;color:#9c9590;font-size:0.88rem;">No named ${label.toLowerCase()} found nearby.</div>`;
+    }
+
+    // Add amenity markers
+    rows.forEach((item) => {
+      const lat = Number(item.lat);
+      const lng = Number(item.lng);
+      if (!lat || !lng) return;
+
+   const marker = L.marker([lat, lng], { icon: makeAmenityIcon() }).addTo(leafletMap);
+const popupLabel = item.name?.trim() || label || category;
+marker.bindPopup(`
+  <div style="font-family:'DM Sans',system-ui,sans-serif;padding:8px 12px;font-size:0.88rem;">
+    <strong style="display:block;font-weight:700;color:#1c1914;margin-bottom:2px;">${popupLabel}</strong>
+    <span style="font-size:0.78rem;color:#9c9590;">${Number(item.distKm || 0).toFixed(1)} km away</span>
+  </div>`, {
+  closeButton: false,
+  offset: [0, -7],
+});
+marker.on("click", () => marker.openPopup());
+amenityMarkers.push(marker);
+    });
+
+  } catch (e) {
+    console.warn("Amenity load failed:", e);
+  }
+}
+
+// --- Init refined map ---
+function initRefinedLeafletMap() {
+  const refinedMapEl = document.getElementById("refined-intent-map");
+  if (!refinedMapEl) return;
+
+  waitForLeaflet(() => {
+    const cards = Array.from(document.querySelectorAll(".refined-card")).filter(
+      (c) => c.style.display !== "none"
+    );
+    const points = cards.map((c) => ({ card: c, latlng: getCardLatLng(c) })).filter((i) => i.latlng);
+
+    if (!points.length) {
+      refinedMapEl.innerHTML = "<p style='padding:16px;color:#6b6560;'>No map locations available.</p>";
+      return;
+    }
+
+    if (!refinedLeafletMap) {
+      refinedLeafletMap = L.map(refinedMapEl, { zoomControl: true, attributionControl: false, scrollWheelZoom: false });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(refinedLeafletMap);
+    }
+
+    refinedMarkers.forEach((m) => m.remove());
+    refinedMarkers = [];
+
+    points.forEach(({ card, latlng }) => {
+      const marker = L.marker(latlng, { icon: makeListingIcon() }).addTo(refinedLeafletMap);
+      marker.bindPopup(buildListingPopup(card), { maxWidth: 210, closeButton: false });
+      marker.on("click", () => card.click());
+      refinedMarkers.push(marker);
+    });
+
+    const bounds = L.latLngBounds(points.map((p) => p.latlng));
+    refinedLeafletMap.fitBounds(bounds, { padding: [40, 40] });
+    setTimeout(() => refinedLeafletMap.invalidateSize(), 100);
+  });
+}
+
+// --- View toggle ---
+listViewBtn?.addEventListener("click", () => {
+  document.body.classList.remove("is-map-mode");
+  intentMapEl.hidden = true;
+  gridEl?.classList.remove("map-hidden");
+  listViewBtn.classList.add("active");
+  mapViewBtn?.classList.remove("active");
+});
+
+mapViewBtn?.addEventListener("click", () => {
+  document.body.classList.add("is-map-mode");
+  intentMapEl.hidden = false;
+  gridEl?.classList.add("map-hidden");
+  mapViewBtn.classList.add("active");
+  listViewBtn?.classList.remove("active");
+  requestAnimationFrame(() => initLeafletMap());
+});
+
+// Auto-init for area pages
+if (document.querySelector(".area-intelligence") && intentMapEl) {
+  intentMapEl.hidden = false;
+  waitForLeaflet(() => initLeafletMap());
+}
+
+// Show more listings
+let visibleListingCount = 12;
+document.getElementById("show-more-listings-btn")?.addEventListener("click", () => {
+  visibleListingCount += 12;
+  const cards = Array.from(document.querySelectorAll(".original-card"));
+  cards.forEach((card, index) => { if (index < visibleListingCount) card.hidden = false; });
+  if (visibleListingCount >= cards.length) {
+    document.getElementById("show-more-listings-btn")?.setAttribute("hidden", "");
+  }
+});
+
+// Re-init map on filter changes
+window.addEventListener("listing-filters-updated", () => {
+  if (leafletMap && intentMapEl && !intentMapEl.hidden) initLeafletMap();
+});
+
+// Amenity chip clicks
+document.querySelectorAll(".amenity-chip").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll(".amenity-chip").forEach((c) => c.classList.remove("active"));
+    button.classList.add("active");
     const category = amenityCategoryMap[button.dataset.amenity] || "school";
     loadAreaAmenities(category);
   });
 });
-    </script>
+
+// Expose for refined map toggle
+window.__initRefinedLeafletMap = initRefinedLeafletMap;
+window.__initLeafletMap = initLeafletMap;
+
+document.getElementById("toggle-listings-btn")?.addEventListener("click", function() {
+  const visible = this.dataset.listingsVisible === "true";
+  if (visible) {
+listingMarkers.forEach(m => m.setOpacity(0));
+    this.innerHTML = "🏠 Show listings";
+    this.dataset.listingsVisible = "false";
+this.classList.add("active");
+  } else {
+    listingMarkers.forEach(m => m.setOpacity(1));
+    this.innerHTML = "🏠 Hide listings";
+    this.dataset.listingsVisible = "true";
+    this.classList.remove("active");
+  }
+});
+</script>
 
   <script is:inline>
 const areaSelect = document.querySelector(".area-filter-select");
@@ -3176,32 +3409,8 @@ const refinedResults = document.getElementById("refined-results");
 const visibleCards = cards.filter((card) => !card.hidden);
 
 if (interruptCard) {
-  const insertAfterCard = visibleCards[11] || null;
-
-  if (insertAfterCard) {
-    insertAfterCard.after(interruptCard);
-
-    if (refinedAnchor) {
-      interruptCard.after(refinedAnchor);
-      refinedAnchor.hidden = false;
-    }
-
-    if (refinedAnchor && refinedResults) {
-      refinedAnchor.after(refinedResults);
-      refinedResults.hidden = false;
-    }
-
-    interruptCard.hidden = false;
-    interruptCard.style.display = "";
-  } else {
-    interruptCard.hidden = true;
-    interruptCard.style.display = "";
-
-    if (refinedAnchor) refinedAnchor.hidden = true;
-    if (refinedResults && !refinedResults.innerHTML.trim()) {
-      refinedResults.hidden = true;
-    }
-  }
+  interruptCard.hidden = false;
+  interruptCard.style.display = "";
 }
 if (heading) {
  const cityLabel = jsTitleCase(
@@ -3267,7 +3476,13 @@ if (sort === "sqft-desc") return Number(b.dataset.sqft || 0) - Number(a.dataset.
       );
     });
 
-    cards.forEach((card) => grid.appendChild(card));
+ cards.forEach((card) => grid.appendChild(card));
+
+    const interruptCard = document.getElementById("intent-interrupt-card");
+    if (interruptCard && cards[8]) {
+      cards[8].after(interruptCard);
+    }
+
     applyFilters();
   }
 areaSelect?.addEventListener("change", () => {
@@ -3293,6 +3508,24 @@ areaSelect?.addEventListener("change", () => {
 priceSelect?.addEventListener("change", applyFilters);
 
 typeSelect?.addEventListener("change", () => {
+  const selectedType = typeSelect.value;
+  const currentCity = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
+
+  if (selectedType && selectedType !== "all") {
+    const typeSlugMap = {
+      house: `${currentCity}-homes`,
+      condo: `${currentCity}-condos`,
+      townhouse: `${currentCity}-townhomes`,
+      mobile: `${currentCity}-mobile-homes`,
+      land: `${currentCity}-land`,
+    };
+    const targetSlug = typeSlugMap[selectedType];
+    if (targetSlug) {
+      window.location.href = `/${currentCity}/${targetSlug}`;
+      return;
+    }
+  }
+
   applyFilters();
 });
 
@@ -3576,7 +3809,7 @@ const refinedCity = String(refinedCityRaw)
 
         return `
           <article
-            class="card refined-card"
+class="card refined-card" style="border-radius:6px;overflow:hidden;transition:transform 0.28s cubic-bezier(0.25,0.46,0.45,0.94),box-shadow 0.28s cubic-bezier(0.25,0.46,0.45,0.94),border-color 0.28s cubic-bezier(0.25,0.46,0.45,0.94);"
             data-item-id="${listing.id || listing.mls_number || ""}"
             data-card-id="${listing.id || listing.mls_number || ""}"
             data-listing-id="${listing.id || listing.mls_number || ""}"
@@ -3727,10 +3960,9 @@ window.runIntentRefine = async function runIntentRefine(chip, options = {}) {   
         if (!interruptCard || !refinedResults) return;
 
         const label = chip.textContent.trim();
-        refinedGoogleMap = null;
-
-refinedGoogleMarkers.forEach((marker) => marker.setMap(null));
-refinedGoogleMarkers = [];
+        refinedLeafletMap = null;
+        refinedMarkers.forEach((m) => m.remove());
+        refinedMarkers = [];
 
         document
           .querySelectorAll(".original-card.is-hidden-by-refine")
@@ -3743,24 +3975,10 @@ refinedGoogleMarkers = [];
           .querySelectorAll(".refine-chip")
           .forEach((el) => el.classList.remove("active"));
 
-        chip.classList.add("active");
+       chip.classList.add("active");
         chip.classList.add("is-loading");
         interruptCard.classList.add("is-refining");
-
-       refinedResults.innerHTML = `
-  <div class="refined-section-title">
-    Finding better matches...
-  </div>
-
- <div class="refined-section-copy" id="refined-reason-copy">
-  Showing homes shaped by your reactions, preferred areas, and price behaviour.
-</div>
-<div class="modal-intent-chip-row" style="justify-content:flex-start;margin:0 0 18px;">
-  <span class="modal-intent-chip">Based on your reactions</span>
-  <span class="modal-intent-chip">Similar price range</span>
-  <span class="modal-intent-chip">Same property type</span>
-</div>
-`;
+        interruptCard.querySelector(".card-body").innerHTML = `<div style="padding:8px 0;color:var(--muted);font-size:0.85rem;">Finding better matches...</div>`;
 
         const visibleCards = getVisibleCards();
 
@@ -3918,76 +4136,33 @@ updateGeneratedRefineChips(generatedChips);
   card.style.display = "none";
 });
 
-interruptCard.style.display = "none";
-
-         refinedResults.innerHTML = `
-  <div class="refined-mode-banner">
-    <div class="refined-mode-kicker">Refined search active</div>
-
-    <h2>Your better matches are ready.</h2>
-
-    <p>
-      You’re now viewing homes based on the areas, features, and listings you responded to.
-    </p>
-
-    <button type="button" class="cta-button" onclick="document.querySelector('.refined-card')?.click()">
-      Continue viewing matches
-    </button>
+interruptCard.innerHTML = `
+  <div class="card-image-wrap" style="background:var(--accent-soft);display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;padding:16px;">
+    <div style="margin-bottom:4px;color:var(--accent);font-size:0.72rem;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;">Refined for</div>
+    <p style="margin:0;font-weight:600;font-size:0.95rem;line-height:1.35;color:var(--ink);">${label}</p>
   </div>
-
-  <div class="refined-section-title">
-    Better matches for "${label}"
+  <div class="card-body" style="display:flex;flex-direction:column;gap:8px;">
+    <div style="font-size:0.78rem;color:var(--muted);">${listings.length} better matches</div>
+    <button type="button" onclick="window.resetRefine()" style="background:none;border:none;color:var(--muted);font-size:0.75rem;cursor:pointer;padding:0;text-align:left;">← Reset search</button>
   </div>
-
-  <div class="refined-section-copy">
-    This is your refined match set.
-  </div>
-
-<div class="refined-controls-row">
-  <div class="view-toggle refined-view-toggle">
-    <button type="button" class="view-btn active" id="refined-list-btn">Refined List</button>
-    <button type="button" class="view-btn" id="refined-map-btn">Refined Map</button>
-  </div>
-
-  <div class="view-toggle refined-view-toggle refined-sort-toggle">
-    <button type="button" class="view-btn" data-refined-sort="newest">
-      Newest
-    </button>
-    <button type="button" class="view-btn" data-refined-sort="price-asc">
-      Price ↑
-    </button>
-    <button type="button" class="view-btn" data-refined-sort="price-desc">
-      Price ↓
-    </button>
-  </div>
-</div>
-
-<div id="refined-intent-map" class="intent-map refined-intent-map" hidden></div>
-
-<div class="refined-results-grid">
-              ${
-                listings.length
-? listings.map((listing, index) => createRefinedListingCard(listing, index)).join("")                  : `<div class="refined-section-copy">No stronger matches found yet.</div>`
-              }
-           </div>
-
-${
-  hasMore
-  ? `<button
-    type="button"
-    class="load-more-refined"
-    id="load-more-refined"
-    data-next-offset="${nextOffset}"
-    data-refine-label="${label}"
-  >
-    Load more like this
-  </button>`
-    : ""
-}
 `;
+interruptCard.style.display = "";
 
-       if (googleMap && intentMapEl && !intentMapEl.hidden) {
-  initIntentGoogleMap();
+document.querySelectorAll(".refined-card").forEach(el => el.remove());
+
+const gridEl2 = document.querySelector(".grid");
+const fragment = document.createDocumentFragment();
+listings.forEach((listing, i) => {
+  const tmp = document.createElement("div");
+  tmp.innerHTML = createRefinedListingCard(listing, i);
+  fragment.appendChild(tmp.firstElementChild);
+});
+interruptCard.after(fragment);
+
+refinedResults.innerHTML = "";
+
+    if (leafletMap && intentMapEl && !intentMapEl.hidden) {
+  initLeafletMap();
 }
 updateViewedBadges();
 if (options.openFirstResult) {
@@ -4132,7 +4307,8 @@ listViewBtn?.classList.remove("active");
 mapViewBtn?.classList.remove("active");
 
 window.setTimeout(() => {
-initRefinedGoogleMap("refined");}, 80);
+  window.__initRefinedLeafletMap?.();
+}, 80);
 });
 document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-refined-sort]");
@@ -4169,10 +4345,31 @@ document.addEventListener("click", (event) => {
 
   cards.forEach((card) => grid.appendChild(card));
 
-  if (refinedGoogleMap) {
-    initRefinedGoogleMap("refined");
+ if (refinedLeafletMap) {
+    window.__initRefinedLeafletMap?.();
   }
 });
+window.resetRefine = function () {
+  document.querySelectorAll(".refined-card").forEach(el => el.remove());
+  document.querySelectorAll(".original-card.is-hidden-by-refine").forEach(card => {
+    card.classList.remove("is-hidden-by-refine");
+    card.style.display = "";
+  });
+  const interruptCard = document.getElementById("intent-interrupt-card");
+  if (interruptCard) {
+    interruptCard.innerHTML = `
+      <div class="card-image-wrap" style="background:var(--accent-soft);display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;padding:16px;">
+        <div style="margin-bottom:4px;color:var(--accent);font-size:0.72rem;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;">Shape this search</div>
+        <p style="margin:0;font-weight:600;font-size:0.95rem;line-height:1.35;color:var(--ink);">Want to steer the next few matches?</p>
+      </div>
+      <div class="card-body">
+        <div class="interrupt-options generated-chip-target" style="gap:6px;display:flex;flex-wrap:wrap;margin-bottom:10px;"></div>
+        <button type="button" class="cta-button" style="width:100%;justify-content:center;" onclick="saveIntentPreferences()">Steer results</button>
+      </div>
+    `;
+  }
+  document.getElementById("refined-results").innerHTML = "";
+};
       window.saveIntentPreferences = function () {
         const selectedLabels = Array.from(
           document.querySelectorAll(".refine-chip.active")
@@ -4295,4 +4492,94 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 </script>
 </div>
+<script is:inline>
+(function() {
+  const dashboard = document.getElementById("area-dashboard");
+  if (!dashboard) return;
+
+  const raw = JSON.parse(dashboard.dataset.listings || "[]");
+  const accent = dashboard.dataset.accent || "#2f6f73";
+
+  const prices = raw.map(l => l.price).filter(p => p > 0);
+  if (!prices.length) return;
+
+  const script = document.createElement("script");
+  script.src = "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js";
+  script.onload = function() {
+    // Price distribution
+const sorted = [...prices].sort((a, b) => a - b);
+const p95 = sorted[Math.floor(sorted.length * 0.95)];
+const min = sorted[0];
+const max = p95;
+const bucketSize = Math.ceil((max - min) / 8 / 50000) * 50000 || 100000;
+const filteredPrices = prices.filter(p => p <= max * 1.1);
+    const buckets = {};
+    filteredPrices.forEach(p => {
+      const key = Math.floor(p / bucketSize) * bucketSize;
+      buckets[key] = (buckets[key] || 0) + 1;
+    });
+    const bucketKeys = Object.keys(buckets).map(Number).sort((a,b)=>a-b);
+
+    new Chart(document.getElementById("price-chart"), {
+      type: "bar",
+      data: {
+        labels: bucketKeys.map(k => `$${Math.round(k/1000)}k`),
+        datasets: [{
+          data: bucketKeys.map(k => buckets[k]),
+          backgroundColor: accent + "cc",
+          borderColor: accent,
+          borderWidth: 1,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { font: { size: 10 }, maxRotation: 45 }, grid: { display: false } },
+          y: { ticks: { font: { size: 10 }, stepSize: 1 }, grid: { color: "#f0efec" } }
+        }
+      }
+    });
+
+    // Property types
+    const typeCounts = {};
+    raw.forEach(l => {
+      const t = l.type || "other";
+      typeCounts[t] = (typeCounts[t] || 0) + 1;
+    });
+    const typeLabels = Object.keys(typeCounts).map(t => t.charAt(0).toUpperCase() + t.slice(1));
+    const typeData = Object.values(typeCounts);
+
+    const shades = [accent, accent + "bb", accent + "88", accent + "55", accent + "33"];
+
+    new Chart(document.getElementById("type-chart"), {
+      type: "doughnut",
+      data: {
+        labels: typeLabels,
+        datasets: [{
+          data: typeData,
+          backgroundColor: shades.slice(0, typeLabels.length),
+          borderWidth: 2,
+          borderColor: "#fff"
+        }]
+      },
+     options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: { left: 10, right: 10, top: 5, bottom: 5 } },
+        plugins: {
+          legend: {
+            display: true,
+            position: "bottom",
+            labels: { font: { size: 10 }, boxWidth: 10, padding: 8 }
+          }
+        }
+      }
+    });
+  };
+  document.head.appendChild(script);
+})();
+</script>
 </Layout>
