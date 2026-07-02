@@ -1,41 +1,19 @@
-import fs from "node:fs";
 import path from "node:path";
-import { createClient } from "@supabase/supabase-js";
 import "dotenv/config";
 
-
+import { aggregateNeighbourhoodStats } from "../lib/census/aggregateNeighbourhoodStats";
+import { extract2016Population } from "../lib/census/extract2016Population";
 import { extract2021BcDaPopulation } from "../lib/census/extract2021BcDaPopulation";
-import { matchDaToNeighbourhood } from "../lib/census/matchDaToNeighbourhood";
-import { upsertDaMatches } from "../lib/census/upsertDaMatches";
 import { loadBoundaries } from "../lib/census/loadBoundaries";
 import { loadNeighbourhoods } from "../lib/census/loadNeighbourhoods";
-import { aggregateNeighbourhoodStats } from "../lib/census/aggregateNeighbourhoodStats";
+import { matchDaToNeighbourhood } from "../lib/census/matchDaToNeighbourhood";
+import { upsertDaMatches } from "../lib/census/upsertDaMatches";
 import { upsertNeighbourhoodStats } from "../lib/census/upsertNeighbourhoodStats";
-import { extract2016Population } from "../lib/census/extract2016Population";
-const supabase = createClient(
-  process.env.PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 const DATA_DIR = path.join(process.cwd(), "data", "census");
 
-function readCsv(filePath: string) {
-  const raw = fs.readFileSync(filePath, "utf8").trim();
-  const [headerLine, ...lines] = raw.split(/\r?\n/);
-  const headers = headerLine.split(",").map((h) => h.trim());
-
-  return lines.map((line) => {
-    const values = line.split(",").map((v) => v.trim());
-    return Object.fromEntries(headers.map((h, i) => [h, values[i] ?? ""]));
-  });
-}
-
-
-
-
-
 async function run() {
-const rows2016 = await extract2016Population();
+  const rows2016 = await extract2016Population();
 
   const pop2021ByDa = await extract2021BcDaPopulation(
     path.join(
@@ -53,18 +31,37 @@ const rows2016 = await extract2016Population();
   }));
 
 const daBoundaries = await loadBoundaries();
-
 const neighbourhoods = await loadNeighbourhoods();
 
-  const { matches, unmatched } = matchDaToNeighbourhood(
-    daBoundaries,
-    neighbourhoods ?? []
-  );
+const firstDaGeometry = daBoundaries.features?.[0]?.geometry;
+const firstAreaGeojson = neighbourhoods?.[0]?.polygon_geojson;
 
-const aggregated = aggregateNeighbourhoodStats(
-  matches,
-  rows2016,
-  rows2021
+console.log("First DA geometry type:", firstDaGeometry?.type ?? null);
+
+console.log(
+  "First DA coord pair:",
+  JSON.stringify(
+    firstDaGeometry?.type === "Polygon"
+      ? firstDaGeometry.coordinates?.[0]?.[0]
+      : firstDaGeometry?.type === "MultiPolygon"
+        ? firstDaGeometry.coordinates?.[0]?.[0]?.[0]
+        : null
+  )
+);
+
+console.log("First neighbourhood geojson type:", firstAreaGeojson?.type ?? null);
+
+console.log(
+  "First neighbourhood coord pair:",
+  JSON.stringify(
+    firstAreaGeojson?.type === "Polygon"
+      ? firstAreaGeojson.coordinates?.[0]?.[0]
+      : firstAreaGeojson?.type === "MultiPolygon"
+        ? firstAreaGeojson.coordinates?.[0]?.[0]?.[0]
+        : firstAreaGeojson?.type === "Feature"
+          ? firstAreaGeojson.geometry?.coordinates?.[0]?.[0]
+          : null
+  )
 );
 
   console.log("2016 rows:", rows2016.length);
@@ -72,16 +69,27 @@ const aggregated = aggregateNeighbourhoodStats(
   console.log("DA boundaries:", daBoundaries.features?.length ?? 0);
   console.log("Neighbourhood polygons:", neighbourhoods?.length ?? 0);
 
+  const { matches, unmatched } = matchDaToNeighbourhood(
+    daBoundaries,
+    neighbourhoods ?? []
+  );
+
   console.log("Matched DAs:", matches.length);
+
   await upsertDaMatches(matches);
 
-  console.log("Unmatched DAs:", unmatched.length);
-  console.log("Aggregated:", aggregated);
 
-  // Keep this commented while using fake 2016 population CSVs.
+  console.log("Unmatched DAs:", unmatched.length);
+
+  const aggregated = aggregateNeighbourhoodStats(
+    matches,
+    rows2016,
+    rows2021
+  );
+
   await upsertNeighbourhoodStats(aggregated);
 
-console.log("Next step: enable neighbourhood census stats upsert.");
+
 }
 
 run().catch((err) => {

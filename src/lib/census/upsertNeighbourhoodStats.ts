@@ -25,7 +25,7 @@ export async function upsertNeighbourhoodStats(rows: any[]) {
   const { error } = await supabase
     .from("neighbourhood_census_data")
     .upsert(payload, {
-      onConflict: "city,neighbourhood",
+      onConflict: "city,slug",
     });
 
   if (error) throw error;

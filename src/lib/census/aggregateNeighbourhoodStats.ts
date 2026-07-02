@@ -32,6 +32,8 @@ export function aggregateNeighbourhoodStats(
     area.population_2021 += pop2021ByDa.get(match.da_uid) ?? 0;
   }
 
+
+
   return [...byArea.values()].map((area) => ({
     ...area,
     pop_change_pct:
