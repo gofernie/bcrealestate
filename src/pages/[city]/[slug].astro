@@ -95,11 +95,11 @@ const areaName = page.area
   ? page.area.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
   : null;
 
-const { data: census } = areaName ? await supabase
+const { data: census } = pageKind === "area" ? await supabase
   .from("neighbourhood_census_data")
   .select("*")
-  .eq("city", titleCaseCity)
-  .eq("neighbourhood", areaName)
+  .eq("city", String(city).toLowerCase())
+  .eq("slug", String(slug).toLowerCase())
   .maybeSingle() : { data: null };
 
 const { data: cityCensus } = await supabase
@@ -579,6 +579,14 @@ function normalizeImageUrl(url: any) {
 }
 
 const listingCount = listings?.length || 0;
+
+const listingTypeCounts = {
+  house: listings.filter((l) => String(l.normalized_type || "").toLowerCase() === "house").length,
+  condo: listings.filter((l) => String(l.normalized_type || "").toLowerCase() === "condo").length,
+  townhouse: listings.filter((l) => String(l.normalized_type || "").toLowerCase() === "townhouse").length,
+  mobile: listings.filter((l) => String(l.normalized_type || "").toLowerCase() === "mobile").length,
+  land: listings.filter((l) => String(l.normalized_type || "").toLowerCase() === "land").length,
+};
 const priceLabel = page.price_max
   ? `Under ${formatPrice(page.price_max)}`
   : page.price_min
@@ -827,7 +835,7 @@ const cleanHeroHeading = String(page.hero_heading || "").endsWith(".")
 }
 
 .intent-content-shell {
-  width: min(1400px, calc(100% - 80px));
+  width: min(1220px, calc(100% - 80px));
   margin: 0 auto;
   padding-top: 16px;
 }
@@ -2103,6 +2111,57 @@ color: var(--accent) !important;
 .leaflet-bottom {
   z-index: 10 !important;
 }
+
+.property-type-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  border: 0.5px solid rgba(0,0,0,.1);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0,0,0,.035);
+}
+
+.property-type-pill:hover,
+.property-type-pill.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.intent-controls .view-toggle,
+.intent-controls .type-filter-select,
+.intent-controls .area-filter-select {
+  display: none !important;
+}
+
+.area-intelligence h2 {
+  font-weight: 720 !important;
+}
+
+.area-intelligence [style*="font-weight:900"] {
+  font-weight: 760 !important;
+}
+
+.area-intelligence [style*="font-weight:800"] {
+  font-weight: 680 !important;
+}
+
+.area-intelligence [style*="font-weight:700"] {
+  font-weight: 620 !important;
+}
+
+.page-hero__inner {
+  width: min(1220px, calc(100% - 80px)) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
     </style>
 
 <div
@@ -2119,6 +2178,7 @@ color: var(--accent) !important;
   types={propertyTypes}
   intentPages={navIntentPages}
   showAreaNav={false}
+  activeSection={pageKind === "area" ? "areas" : ""}
 />
     <main class="page">
   <header
@@ -2329,9 +2389,11 @@ return (
     </div>
   </div>
 )}
-    </div>
+</div>
 
-    <div style="background:#fff;border:0.5px solid rgba(0,0,0,.1);border-radius:14px;padding:22px 26px;margin-bottom:14px;box-shadow:0 8px 22px rgba(0,0,0,.04);">
+
+
+<div style="background:#fff;border:0.5px solid rgba(0,0,0,.1);border-radius:14px;padding:22px 26px;margin-bottom:14px;box-shadow:0 8px 22px rgba(0,0,0,.04);">
       <div style="font-size:0.78rem;font-weight:900;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">
         📍 Local Market Snapshot
       </div>
@@ -2431,8 +2493,39 @@ return (
 </h2>
 </div>
 
-<section class="intent-controls" style="margin-bottom:20px;">
-  <div class="view-toggle">
+<div class="property-type-pills" style="display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px;">
+  {listingTypeCounts.house > 0 ? (
+    <button type="button" class="property-type-pill" data-property-type="house">
+      🏡 <strong>{listingTypeCounts.house}</strong> Homes
+    </button>
+  ) : null}
+
+  {listingTypeCounts.condo > 0 ? (
+    <button type="button" class="property-type-pill" data-property-type="condo">
+      🏢 <strong>{listingTypeCounts.condo}</strong> Condos
+    </button>
+  ) : null}
+
+  {listingTypeCounts.townhouse > 0 ? (
+    <button type="button" class="property-type-pill" data-property-type="townhouse">
+      🏘️ <strong>{listingTypeCounts.townhouse}</strong> Townhomes
+    </button>
+  ) : null}
+
+  {listingTypeCounts.mobile > 0 ? (
+    <button type="button" class="property-type-pill" data-property-type="mobile">
+      🏠 <strong>{listingTypeCounts.mobile}</strong> Mobile Homes
+    </button>
+  ) : null}
+
+  {listingTypeCounts.land > 0 ? (
+    <button type="button" class="property-type-pill" data-property-type="land">
+      🌲 <strong>{listingTypeCounts.land}</strong> Lot / Land
+    </button>
+  ) : null}
+</div>
+
+<section class="intent-controls" style="margin-bottom:20px;"> <div class="view-toggle">
     <button type="button" class="view-btn active" id="list-view-btn">☷ List</button>
     <button type="button" class="view-btn" id="map-view-btn">✦ Map</button>
   </div>
@@ -3379,12 +3472,25 @@ window.__initLeafletMap = initLeafletMap;
 document.getElementById("toggle-listings-btn")?.addEventListener("click", function() {
   const visible = this.dataset.listingsVisible === "true";
   if (visible) {
-listingMarkers.forEach(m => m.setOpacity(0));
+listingMarkers.forEach((m) => {
+  m.setOpacity(0);
+  m.off("click");
+  m.getElement()?.style.setProperty("pointer-events", "none");
+});
     this.innerHTML = "🏠 Show listings";
     this.dataset.listingsVisible = "false";
 this.classList.add("active");
   } else {
-    listingMarkers.forEach(m => m.setOpacity(1));
+   listingMarkers.forEach((m) => {
+  m.setOpacity(1);
+  m.getElement()?.style.setProperty("pointer-events", "auto");
+
+  if (m.options?.listing) {
+    m.on("click", () => {
+      window.open(m.options.listing.url, "_blank");
+    });
+  }
+});
     this.innerHTML = "🏠 Hide listings";
     this.dataset.listingsVisible = "true";
     this.classList.remove("active");
@@ -3412,7 +3518,54 @@ function jsTitleCase(value = "") {
   function getCardPrice(card) {
     return Number(card.dataset.rawPrice || "0");
   }
+function updatePropertyTypePills() {
+  const cards = Array.from(document.querySelectorAll(".original-card"));
+  const pills = Array.from(document.querySelectorAll(".property-type-pill"));
 
+  const counts = {
+    house: 0,
+    condo: 0,
+    townhouse: 0,
+    mobile: 0,
+    land: 0,
+  };
+
+  cards.forEach((card) => {
+    if (card.hidden) return;
+
+    const type = String(card.dataset.type || "").toLowerCase();
+    if (type in counts) counts[type] += 1;
+  });
+
+  pills.forEach((pill) => {
+    const type = pill.dataset.propertyType;
+    const count = counts[type] || 0;
+
+    if (!count) {
+      pill.hidden = true;
+      pill.classList.remove("active");
+      return;
+    }
+
+    pill.hidden = false;
+
+    const label =
+      type === "house" ? "Homes" :
+      type === "condo" ? "Condos" :
+      type === "townhouse" ? "Townhomes" :
+      type === "mobile" ? "Mobile Homes" :
+      "Lot / Land";
+
+    const icon =
+      type === "house" ? "🏡" :
+      type === "condo" ? "🏢" :
+      type === "townhouse" ? "🏘️" :
+      type === "mobile" ? "🏠" :
+      "🌲";
+
+    pill.innerHTML = `${icon} <strong>${count}</strong> ${label}`;
+  });
+}
 function applyFilters() {
     const areaValue = areaSelect?.value || "all";
     const area = areaValue.startsWith("/") ? "all" : areaValue;
@@ -3504,6 +3657,7 @@ if (resultsBar) {
   resultsBar.textContent = `${visibleCount} listings found`;
 }
 
+updatePropertyTypePills();
 window.dispatchEvent(new CustomEvent("listing-filters-updated"));
 }
 
@@ -3582,6 +3736,37 @@ typeSelect?.addEventListener("change", () => {
 
 sortSelect?.addEventListener("change", applySort);
 bedsSelect?.addEventListener("change", applyFilters);
+
+document.querySelectorAll(".property-type-pill").forEach((button) => {
+  button.addEventListener("click", () => {
+    const selectedType = button.dataset.propertyType || "all";
+    const wasActive = button.classList.contains("active");
+
+    document.querySelectorAll(".property-type-pill").forEach((pill) => {
+      pill.classList.remove("active");
+    });
+
+    if (wasActive) {
+      document.querySelectorAll(".original-card").forEach((card) => {
+        card.hidden = false;
+      });
+
+      updatePropertyTypePills();
+      window.dispatchEvent(new CustomEvent("listing-filters-updated"));
+      return;
+    }
+
+    button.classList.add("active");
+
+    document.querySelectorAll(".original-card").forEach((card) => {
+      const cardType = String(card.dataset.type || "").toLowerCase();
+      card.hidden = cardType !== selectedType;
+    });
+
+    updatePropertyTypePills();
+    window.dispatchEvent(new CustomEvent("listing-filters-updated"));
+  });
+});
 
 applySort();
 </script>
