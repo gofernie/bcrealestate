@@ -33,36 +33,7 @@ async function run() {
 const daBoundaries = await loadBoundaries();
 const neighbourhoods = await loadNeighbourhoods();
 
-const firstDaGeometry = daBoundaries.features?.[0]?.geometry;
-const firstAreaGeojson = neighbourhoods?.[0]?.polygon_geojson;
 
-console.log("First DA geometry type:", firstDaGeometry?.type ?? null);
-
-console.log(
-  "First DA coord pair:",
-  JSON.stringify(
-    firstDaGeometry?.type === "Polygon"
-      ? firstDaGeometry.coordinates?.[0]?.[0]
-      : firstDaGeometry?.type === "MultiPolygon"
-        ? firstDaGeometry.coordinates?.[0]?.[0]?.[0]
-        : null
-  )
-);
-
-console.log("First neighbourhood geojson type:", firstAreaGeojson?.type ?? null);
-
-console.log(
-  "First neighbourhood coord pair:",
-  JSON.stringify(
-    firstAreaGeojson?.type === "Polygon"
-      ? firstAreaGeojson.coordinates?.[0]?.[0]
-      : firstAreaGeojson?.type === "MultiPolygon"
-        ? firstAreaGeojson.coordinates?.[0]?.[0]?.[0]
-        : firstAreaGeojson?.type === "Feature"
-          ? firstAreaGeojson.geometry?.coordinates?.[0]?.[0]
-          : null
-  )
-);
 
   console.log("2016 rows:", rows2016.length);
   console.log("2021 rows:", rows2021.length);

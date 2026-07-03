@@ -340,12 +340,12 @@ No commentary.
 
 JSON SHAPE:
 {
+  "market_snapshot_ai": "1-2 sentences. What is happening now in this neighbourhood market.",
+  "buyer_insight_ai": "1-2 sentences. Who this area likely suits and why.",
+  "long_term_outlook_ai": "1-2 sentences. Long-term buyer demand factors without predicting prices.",
   "hero_summary": "1 sentence, 25-35 words. Data-informed, buyer-facing.",
-  "buyer_insight": "2-3 sentences. Explain the strongest buyer takeaway.",
-  "market_summary": "2-3 sentences. Interpret active, pending, sold, median price, and property mix where useful.",
-  "demographic_summary": "2-3 sentences. Interpret population, age, ownership, income, and dwelling value where useful.",
-  "neighbourhood_copy": "About 200 words, 2-3 paragraphs. Strong local buyer explanation with trade-offs.",
-  "seo_long": "About 280 words, 3-4 paragraphs. Cover buyer profile, housing pattern, market context, and long-term outlook."
+  "neighbourhood_copy": "About 200 words, 2-3 paragraphs.",
+  "seo_long": "About 280 words, 3-4 paragraphs."
 }
 `;
 }
@@ -458,9 +458,13 @@ async function generateCopyForArea(areaRow: any) {
   console.log(`  seo_long: ${parsed.seo_long?.length || 0} chars`);
 
   const updatePayload: any = {
-    neighbourhood_copy: parsed.neighbourhood_copy || null,
-    seo_long: parsed.seo_long || null,
-  };
+  neighbourhood_copy: parsed.neighbourhood_copy || null,
+  seo_long: parsed.seo_long || null,
+  market_snapshot_ai: parsed.market_snapshot_ai || null,
+  buyer_insight_ai: parsed.buyer_insight_ai || null,
+  long_term_outlook_ai: parsed.long_term_outlook_ai || null,
+  ai_insights_generated_at: new Date().toISOString(),
+};
 
   // These columns are optional. Add them later if they do not exist yet.
   if ("hero_summary" in areaRow) updatePayload.hero_summary = parsed.hero_summary || null;
