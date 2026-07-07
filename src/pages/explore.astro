@@ -795,6 +795,8 @@ const areaOptions = Array.from(
 :global(.map-preview-card .popup-img-next) {
   right: 7px !important;
 }
+
+
   </style>
 
 <div
@@ -807,6 +809,7 @@ const areaOptions = Array.from(
 <a
   class="return-link"
   href={area ? `/${city}/${area}` : `/${city}`}
+  data-guide-link
 >
   ← Guide
 </a>
@@ -981,9 +984,9 @@ data-images={JSON.stringify(
 data-beds={String(listing.beds || "")}
 data-baths={String(listing.baths || "")}
 data-sqft={String(listing.sqft || "")}
-data-description={listing.description || ""}
-data-property-type={listing.property_type || listing.normalized_type || "Home"}
-data-type={String(listing.normalized_type || listing.property_type || "home").toLowerCase()}
+data-description={String(listing.description || "").toLowerCase()}
+data-property-type={String(listing.property_type || "").toLowerCase()}
+data-type={String(listing.normalized_type || "").toLowerCase()}
 data-area={listing.normalized_area || listing.area || ""}
 data-liked-tags="[]"
 data-is-favourite="false"
@@ -1154,14 +1157,36 @@ const navFilters = {
           .replaceAll(">", "&gt;")
           .replaceAll('"', "&quot;");
       }
+function normalizeExplorerType(value = "") {
+  const type = String(value).toLowerCase().trim();
 
+  if (["condo", "apartment", "apartments"].includes(type)) return "condo";
+  if (["house", "home", "homes", "single family", "single family detached"].includes(type)) return "house";
+  if (["townhouse", "townhome", "townhomes"].includes(type)) return "townhouse";
+  if (["mobile", "manufactured"].includes(type)) return "mobile";
+  if (["land", "lot"].includes(type)) return "land";
+
+  return type;
+}
       function passesNavFilters(item) {
   if (item.layer !== "homes") return true;
 
   if (navFilters.location && !item.areaRaw.includes(navFilters.location)) return false;
   if (item.priceRaw < navFilters.priceMin || item.priceRaw > navFilters.priceMax) return false;
   if (navFilters.beds && item.bedsRaw < navFilters.beds) return false;
-if (navFilters.type && item.typeRaw !== navFilters.type) return false;
+const selectedType = normalizeExplorerType(navFilters.type);
+const itemType = normalizeExplorerType(item.typeRaw || item.propertyRaw);
+
+const looksLikeLand =
+  itemType === "land" ||
+  itemType === "lot" ||
+  item.propertyRaw.includes("land") ||
+  item.propertyRaw.includes("lot") ||
+  (!item.bedsRaw && !item.bathsRaw && !item.sqftRaw);
+
+if (selectedType && itemType !== selectedType) return false;
+
+if (selectedType && selectedType !== "land" && looksLikeLand) return false;
 
   return true;
 }
@@ -1374,7 +1399,11 @@ lat,
 lng,
 priceRaw: Number(card.dataset.rawPrice || 0),
 bedsRaw: Number(card.dataset.beds || 0),
-typeRaw: String(card.dataset.type || "").toLowerCase(),
+typeRaw: normalizeExplorerType(card.dataset.type || ""),
+propertyRaw: String(card.dataset.propertyType || card.dataset.type || "").toLowerCase(),
+bedsRaw: Number(card.dataset.beds || 0),
+bathsRaw: Number(card.dataset.baths || 0),
+sqftRaw: Number(card.dataset.sqft || 0),
 areaRaw: String(card.dataset.area || "").toLowerCase(),
 color: accent,
 html: card.outerHTML,
@@ -1645,15 +1674,26 @@ if (el) el.textContent = total ? String(visible) : "—";
           return `
             <section class="drawer-section" data-drawer-layer="${layerKey}">
               <div class="drawer-section-title">
-                <span>${meta.icon} ${meta.title}</span>
-                <span>${visibleItems.length} in view</span>
+               <span></span>
+              
               </div>
               ${body}
             </section>
           `;
         }).join("") || `<div class="drawer-empty">Turn on a layer to explore the map.</div>`;
 
-        if (drawerTitle) drawerTitle.textContent = titleParts.length ? titleParts.join(" · ") : "Explorer layers";
+if (drawerTitle) {
+  const selectedTypeLabel =
+    document.getElementById("nav-type-label")?.textContent?.trim();
+
+  const homesCount = layerItems.homes.filter(isVisible).length;
+
+  if (navFilters.type && selectedTypeLabel && selectedTypeLabel !== "Type") {
+    drawerTitle.textContent = `${homesCount} ${selectedTypeLabel}${homesCount === 1 ? "" : "s"}`;
+  } else {
+    drawerTitle.textContent = titleParts.length ? titleParts.join(" · ") : "Explorer layers";
+  }
+}
 
         drawerSections.querySelectorAll("[data-item-id]").forEach((card) => {
           const layerKey = card.dataset.layer;
@@ -1832,6 +1872,25 @@ function closeMenus() {
     .forEach((menu) => menu.classList.remove("is-open"));
 }
 
+function slugify(value = "") {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function updateGuideLink(label = "") {
+  const guideLink = document.querySelector("[data-guide-link]");
+  if (!guideLink) return;
+
+  const areaSlug = slugify(label || document.getElementById("nav-location-label")?.textContent || "");
+  guideLink.href = areaSlug ? `/${city}/${areaSlug}` : `/${city}`;
+}
+
+updateGuideLink();
+
 document.querySelectorAll("[data-menu-trigger]").forEach((button) => {
   button.addEventListener("click", (event) => {
     event.preventDefault();
@@ -1893,7 +1952,7 @@ document.querySelectorAll("[data-filter-location]").forEach((button) => {
     const label = navFilters.location ? button.textContent.trim() : "Nanaimo";
 
     document.getElementById("nav-location-label").textContent = label;
-
+updateGuideLink(label);
     const sidebarTitle = document.querySelector(".explorer-sidebar h1");
     if (sidebarTitle) sidebarTitle.textContent = label;
 
@@ -1942,6 +2001,10 @@ document.querySelectorAll("[data-filter-type]").forEach((button) => {
   button.addEventListener("click", () => {
     navFilters.type = button.dataset.filterType || "";
     document.getElementById("nav-type-label").textContent = button.textContent.trim();
+
+    activeHomeItem = null;
+    map.closePopup();
+
     closeMenus();
     refreshExplorer();
   });
