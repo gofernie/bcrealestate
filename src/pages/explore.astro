@@ -1,0 +1,1764 @@
+---
+import { createClient } from "@supabase/supabase-js";
+import Layout from "../layouts/Layout.astro";
+import { getSite } from "../lib/getSite";
+import IntentModalController from "../components/IntentModalController.astro";
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const city = Astro.url.searchParams.get("city") || "nanaimo";
+const area = Astro.url.searchParams.get("area") || "";
+
+const site = await getSite(Astro.url.hostname, city);
+const accentColor = site?.accent_color || "#2f6f73";
+
+let query = supabase
+  .from("listing_rows")
+  .select("*")
+  .eq("status", "A")
+  .eq("normalized_city", city)
+.order("listed_at", { ascending: false })
+.limit(1000);
+
+if (area) {
+  query = query.or(`normalized_area.eq.${area},normalized_area.eq.${area.replace(/-/g, " ")}`);
+}
+
+const { data: listings = [] } = await query;
+
+function formatPrice(price) {
+  return `$${Number(price || 0).toLocaleString()}`;
+}
+
+function formatAddress(value) {
+  if (!value) return "";
+  let obj = value;
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed.startsWith("{")) return trimmed;
+    try {
+      obj = JSON.parse(trimmed);
+    } catch {
+      return "";
+    }
+  }
+
+  return [
+    obj.streetNumber,
+    obj.streetName || obj.streetAddress,
+    obj.streetSuffix,
+    obj.unitNumber ? `#${obj.unitNumber}` : "",
+  ].filter(Boolean).join(" ");
+}
+
+function normalizeImageUrl(url) {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  if (value.startsWith("http")) return value;
+  if (value.startsWith("/")) return `https://cdn.repliers.io${value}`;
+  return `https://cdn.repliers.io/${value}`;
+}
+const areaLabel = area
+  ? area.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  : city.replace(/\b\w/g, (c) => c.toUpperCase());
+
+
+const areaOptions = Array.from(
+  new Set(
+    listings
+      .map((listing) => listing.normalized_area || listing.area)
+      .filter(Boolean)
+      .map((value) => String(value).trim())
+  )
+).sort((a, b) => a.localeCompare(b));
+---
+
+<Layout title={`${areaLabel} Explorer`} accentColor={accentColor} city={city}>
+  <style>
+    body { overflow: hidden; }
+
+    .explorer {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100dvh;
+      overflow: hidden;
+      isolation: isolate;
+      background: #e7e1d7;
+      color: var(--ink);
+    }
+
+    .explorer-main,
+    .explorer-map,
+    #explorer-map {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .explorer-map { z-index: 1; background: #e9e4dc; }
+
+    .explorer-top {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      z-index: 800 !important;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      height: 62px;
+      padding: 10px 12px;
+      border: 1px solid rgba(255,255,255,.72);
+      border-radius: 22px;
+      background: rgba(255,255,255,.88);
+      box-shadow: 0 18px 55px rgba(28,35,32,.13);
+      backdrop-filter: blur(24px) saturate(1.25);
+    }
+
+    .return-link,
+    .explorer-chip,
+    .explorer-search {
+      height: 42px;
+      border: 1px solid rgba(0,0,0,.075);
+      border-radius: 15px;
+      background: rgba(255,255,255,.78);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.82);
+    }
+
+    .return-link {
+      display: inline-flex;
+      align-items: center;
+      padding: 0 16px;
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 900;
+      font-size: .84rem;
+      white-space: nowrap;
+    }
+
+    .explorer-search {
+      display: flex;
+      align-items: center;
+      width: min(320px, 32vw);
+      padding: 0 16px;
+      font-size: .9rem;
+      font-weight: 900;
+    }
+
+    .explorer-chip {
+      padding: 0 16px;
+      color: var(--ink);
+      font: inherit;
+      font-size: .82rem;
+      font-weight: 900;
+      cursor: pointer;
+      transition: transform .18s ease, background .18s ease, box-shadow .18s ease;
+    }
+
+    .explorer-chip:hover {
+      transform: translateY(-1px);
+      background: #fff;
+      box-shadow: 0 10px 22px rgba(0,0,0,.08);
+    }
+
+    .explorer-sidebar {
+      position: absolute;
+      top: 118px;
+      left: 18px;
+      z-index: 650 !important;
+      width: 318px;
+      max-height: calc(100dvh - 230px);
+      padding: 22px 18px;
+      overflow: auto;
+      border: 1px solid rgba(255,255,255,.72);
+      border-radius: 28px;
+      background: rgba(255,255,255,.86);
+      box-shadow: 0 24px 70px rgba(28,35,32,.16);
+      backdrop-filter: blur(26px) saturate(1.25);
+    }
+
+    .explorer-sidebar h1 {
+      margin: 0 0 7px;
+      font-size: 1.42rem;
+      line-height: 1;
+      letter-spacing: -.055em;
+    }
+
+    .explorer-sidebar p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: .86rem;
+      line-height: 1.45;
+    }
+
+    .explorer-layer {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      margin-top: 9px;
+      padding: 13px 14px;
+      border: 1px solid rgba(0,0,0,.07);
+      border-radius: 17px;
+      background: rgba(255,255,255,.64);
+      color: var(--ink);
+      font: inherit;
+      font-size: .86rem;
+      text-align: left;
+      cursor: pointer;
+      transition: background .18s ease, color .18s ease, transform .18s ease, box-shadow .18s ease;
+    }
+
+    .explorer-layer:hover {
+      transform: translateY(-1px);
+      background: #fff;
+      box-shadow: 0 10px 24px rgba(0,0,0,.075);
+    }
+
+ .explorer-layer.is-active {
+  color: #fff !important;
+  border-color: #123a5a !important;
+  background: #123a5a !important;
+  box-shadow: 0 14px 30px rgba(18, 58, 90, .22);
+  text-shadow: none;
+}
+
+.explorer-layer.is-active span,
+.explorer-layer.is-active strong {
+  color: #fff !important;
+}
+
+    .explorer-layer strong {
+      font-size: .78rem;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+
+    .explorer-drawer {
+      position: absolute;
+      left: 350px;
+      right: 22px;
+      bottom: 22px;
+      z-index: 700 !important;
+      height: 210px;
+      padding: 22px 16px 15px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.74);
+      border-radius: 28px;
+      background: rgba(255,255,255,.9);
+      box-shadow: 0 26px 80px rgba(28,35,32,.18);
+      backdrop-filter: blur(28px) saturate(1.25);
+      transition: height .32s cubic-bezier(.2,.8,.2,1), transform .28s ease;
+    }
+
+    .explorer-drawer.is-expanded { height: min(58vh, 560px); }
+
+    .drawer-handle {
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      width: 44px;
+      height: 5px;
+      transform: translateX(-50%);
+      border: 0;
+      border-radius: 999px;
+      background: rgba(0,0,0,.18);
+      cursor: pointer;
+    }
+
+    .drawer-head {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 11px;
+      padding: 0 2px;
+      font-size: .9rem;
+      font-weight: 950;
+    }
+
+    #drawer-state-label {
+      color: var(--accent);
+      font-size: .8rem;
+      opacity: .9;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    .drawer-sections {
+      display: grid;
+      gap: 14px;
+      height: calc(100% - 34px);
+      overflow: auto;
+      padding: 1px 2px 10px;
+      scrollbar-width: thin;
+    }
+
+    .drawer-section[hidden] { display: none !important; }
+
+    .drawer-section-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+      font-size: .82rem;
+      font-weight: 950;
+    }
+
+    .drawer-section-title span:last-child {
+      color: var(--muted);
+      font-size: .74rem;
+      font-weight: 850;
+    }
+
+    /* FIX: .drawer-row is built at runtime via a JS template literal in
+       renderDrawer() (`<div class="drawer-row">...`), not cloned from any
+       static Astro markup — so it never receives Astro's build-time scope
+       attribute, and a normal scoped selector can never match it. Wrapped
+       in :global() so these rules actually apply, matching the pattern
+       already used below for other JS-injected elements
+       (.map-preview-card, #preview-sheet, etc). */
+    :global(.drawer-row) {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: 250px;
+      gap: 12px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      scrollbar-width: thin;
+    }
+
+    :global(.explorer-drawer.is-expanded .drawer-row) {
+      grid-auto-flow: row;
+      /* repeat(auto-fill, minmax(...)) requires the browser to resolve a
+         definite container width before it can decide how many columns
+         fit. Nested here inside an absolutely-positioned drawer with its
+         own grid ancestors, that resolution was collapsing to a single
+         column instead of several, no matter how small the minmax floor
+         was set. Switching to an explicit fixed column count sidesteps
+         that ambiguity entirely — the browser no longer has to infer
+         anything, it just divides the known container width by 4 (or
+         fewer, per breakpoint below). */
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      overflow: visible;
+    }
+
+    @media (max-width: 1300px) {
+      :global(.explorer-drawer.is-expanded .drawer-row) {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    @media (max-width: 980px) {
+      :global(.explorer-drawer.is-expanded .drawer-row) {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    /* FIX: the base .explorer-card layout (88px thumbnail + 1fr text,
+       side by side) is designed for the collapsed drawer's horizontal
+       scroll strip, where each card is a short, wide row. Reusing that
+       same layout in the expanded grid made every "column" render as a
+       full-width list row instead of a compact card, since the text
+       column still wants most of the card's width. This override, scoped
+       to only the expanded grid, restacks each card: thumbnail full-width
+       on top, details below — the shape people expect from a multi-column
+       listing grid. */
+    .explorer-drawer.is-expanded .explorer-card {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .explorer-drawer.is-expanded .explorer-card img {
+      width: 100%;
+      height: 148px;
+      object-fit: cover;
+    }
+
+    .explorer-drawer.is-expanded .explorer-card-body {
+      padding: 12px 14px 14px;
+    }
+
+    .explorer-drawer.is-expanded .explorer-address {
+      white-space: normal;
+      overflow: visible;
+      text-overflow: unset;
+      line-height: 1.3;
+    }
+
+    @media (max-width: 900px) {
+      .explorer-drawer.is-expanded .explorer-card img {
+        height: 120px;
+      }
+    }
+
+    .explorer-card,
+    .place-card {
+      border: 1px solid rgba(0,0,0,.065);
+      border-radius: 18px;
+      background: rgba(255,255,255,.9);
+      box-shadow: 0 8px 22px rgba(0,0,0,.045);
+      cursor: pointer;
+      transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+    }
+
+    .explorer-card:hover,
+    .place-card:hover,
+    .explorer-card.is-active,
+    .place-card.is-active {
+      transform: translateY(-3px);
+      border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+      background: #fff;
+      box-shadow: 0 16px 34px rgba(0,0,0,.1);
+    }
+
+    .explorer-card {
+      display: grid;
+      grid-template-columns: 88px 1fr;
+      gap: 10px;
+      overflow: hidden;
+    }
+
+    .explorer-card img {
+      width: 88px;
+      height: 88px;
+      object-fit: cover;
+    }
+
+    .explorer-card-body {
+      min-width: 0;
+      padding: 10px 11px 10px 0;
+    }
+
+    .explorer-price {
+      font-size: .96rem;
+      font-weight: 950;
+      letter-spacing: -.04em;
+    }
+
+    .explorer-address {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: .76rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .explorer-meta {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: .74rem;
+    }
+
+    .place-card {
+      min-height: 78px;
+      padding: 13px 14px;
+    }
+
+    .place-card strong {
+      display: block;
+      color: #0f2f4a;
+      font-size: .88rem;
+      font-weight: 950;
+      line-height: 1.2;
+    }
+
+    .place-card span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: .76rem;
+      line-height: 1.35;
+    }
+
+    .drawer-empty {
+      padding: 14px;
+      border: 1px dashed rgba(0,0,0,.14);
+      border-radius: 18px;
+      background: rgba(255,255,255,.72);
+      color: var(--muted);
+    }
+
+    .leaflet-container,
+    .leaflet-pane,
+    .leaflet-map-pane,
+    .leaflet-tile-pane,
+    .leaflet-overlay-pane,
+    .leaflet-shadow-pane,
+    .leaflet-marker-pane,
+    .leaflet-tooltip-pane,
+    .leaflet-popup-pane { z-index: 1 !important; }
+
+    .leaflet-control-container { z-index: 10 !important; }
+    .leaflet-control-zoom { border: 0 !important; box-shadow: 0 12px 30px rgba(0,0,0,.13) !important; }
+    .leaflet-control-zoom a { border: 0 !important; }
+
+  
+  .drawer-section-intel {
+    border-color: color-mix(in srgb, var(--accent) 24%, rgba(0,0,0,.08));
+    background: color-mix(in srgb, var(--accent) 7%, rgba(255,255,255,.9));
+  }
+
+  .intel-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(150px, 1fr));
+    gap: 10px;
+  }
+
+  .intel-card {
+    display: grid;
+    gap: 4px;
+    padding: 12px;
+    border: 1px solid rgba(0,0,0,.07);
+    border-radius: 16px;
+    background: rgba(255,255,255,.78);
+  }
+
+  .intel-card strong {
+    font-size: .82rem;
+    font-weight: 950;
+  }
+
+  .intel-card span,
+  .intel-card em {
+    color: var(--muted);
+    font-size: .74rem;
+    font-style: normal;
+    line-height: 1.3;
+  }
+
+  .intel-card em {
+    color: var(--ink);
+    opacity: .82;
+  }
+
+  @media (max-width: 1000px) {
+    .intel-grid {
+      grid-template-columns: repeat(2, minmax(150px, 1fr));
+    }
+  }
+
+  @media (max-width: 900px) {
+      .explorer-sidebar { width: 290px; }
+      .explorer-drawer { left: 18px; right: 18px; }
+    }
+
+    @media (max-width: 760px) {
+      .explorer-top {
+        top: 10px;
+        left: 10px;
+        right: 10px;
+        height: auto;
+        flex-wrap: wrap;
+        border-radius: 20px;
+      }
+
+      .explorer-search {
+        order: 2;
+        width: 100%;
+        flex-basis: 100%;
+      }
+
+      .explorer-chip {
+        height: 34px;
+        padding: 0 12px;
+        font-size: .76rem;
+      }
+
+      .explorer-sidebar { display: none; }
+      .explorer-drawer { left: 10px; right: 10px; bottom: 10px; height: 245px; border-radius: 24px; }
+      :global(.drawer-row) { grid-auto-columns: 245px; }
+    }
+
+    .explorer-section-label {
+  margin: 18px 4px 8px;
+  color: var(--muted);
+  font-size: .68rem;
+  font-weight: 950;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.explorer-layer.is-lifestyle {
+  background: color-mix(in srgb, var(--accent) 7%, rgba(255,255,255,.72));
+}
+
+:global(.map-preview-card) {
+  width: 210px;
+  display: grid;
+  gap: 6px;
+  font-family: inherit;
+}
+
+:global(.map-preview-card img) {
+  width: 100%;
+  height: 105px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+:global(.map-preview-card strong) {
+  font-size: .98rem;
+  font-weight: 950;
+  color: #111;
+}
+
+:global(.map-preview-card span),
+:global(.map-preview-card em) {
+  color: #666;
+  font-size: .78rem;
+  font-style: normal;
+}
+
+:global(.map-preview-card button) {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 950;
+  text-align: left;
+  cursor: pointer;
+}
+
+:global(#sheet-overlay),
+:global(.sheet-overlay) {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 99990 !important;
+}
+
+:global(#preview-sheet),
+:global(.preview-sheet),
+:global(.listing-sheet),
+:global(.intent-sheet) {
+  z-index: 100000 !important;
+}
+
+.explorer-search {
+  justify-content: flex-start;
+  gap: 7px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.explorer-menu {
+  position: absolute;
+  top: 64px;
+  min-width: 190px;
+  display: none;
+  padding: 8px;
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 18px;
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 20px 50px rgba(0,0,0,.14);
+  backdrop-filter: blur(20px);
+}
+
+.explorer-menu.is-open {
+  display: grid;
+  gap: 4px;
+}
+
+.explorer-menu button {
+  width: 100%;
+  padding: 11px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 850;
+  text-align: left;
+  cursor: pointer;
+}
+
+.explorer-menu button:hover {
+  background: rgba(0,0,0,.055);
+}
+
+.explorer-menu[data-menu="location"] { left: 96px; }
+.explorer-menu[data-menu="price"] { left: 386px; }
+.explorer-menu[data-menu="beds"] { left: 500px; }
+.explorer-menu[data-menu="type"] { left: 570px; }
+.explorer-menu[data-menu="more"] { left: 640px; }
+
+@media (max-width: 760px) {
+  .explorer-menu {
+    top: auto;
+    left: 10px !important;
+    right: 10px;
+    bottom: -235px;
+  }
+}
+
+.explorer-menu[data-menu="location"] {
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+}
+  </style>
+
+  <div class="explorer" data-city={city} data-area-label={areaLabel}>
+    <header class="explorer-top">
+  <a class="return-link" href={area ? `/${city}/${area}` : `/${city}`}>← Guide</a>
+
+  <button class="explorer-search" type="button" data-menu-trigger="location">
+    🔍 <span id="nav-location-label">{areaLabel}</span>
+  </button>
+
+  <button class="explorer-chip" type="button" data-menu-trigger="price">
+    <span id="nav-price-label">Any price</span>
+  </button>
+
+  <button class="explorer-chip" type="button" data-menu-trigger="beds">
+    <span id="nav-beds-label">Beds</span>
+  </button>
+
+  <button class="explorer-chip" type="button" data-menu-trigger="type">
+    <span id="nav-type-label">Type</span>
+  </button>
+
+  <button class="explorer-chip" type="button" data-menu-trigger="more">
+    More
+  </button>
+
+<div class="explorer-menu" data-menu="location">
+  <button data-filter-location="">All {areaLabel}</button>
+
+  {areaOptions.map((areaName) => (
+    <button data-filter-location={areaName.toLowerCase()}>
+      {areaName.replace(/\b\w/g, (c) => c.toUpperCase())}
+    </button>
+  ))}
+</div>
+
+  <div class="explorer-menu" data-menu="price">
+    <button data-filter-price="">Any price</button>
+    <button data-filter-price="0-700000">Under $700k</button>
+    <button data-filter-price="700000-900000">$700k–$900k</button>
+    <button data-filter-price="900000-1200000">$900k–$1.2M</button>
+    <button data-filter-price="1200000-99999999">$1.2M+</button>
+  </div>
+
+  <div class="explorer-menu" data-menu="beds">
+    <button data-filter-beds="">Any beds</button>
+    <button data-filter-beds="2">2+ beds</button>
+    <button data-filter-beds="3">3+ beds</button>
+    <button data-filter-beds="4">4+ beds</button>
+  </div>
+
+  <div class="explorer-menu" data-menu="type">
+    <button data-filter-type="">Any type</button>
+    <button data-filter-type="house">House</button>
+    <button data-filter-type="condo">Condo</button>
+    <button data-filter-type="townhouse">Townhouse</button>
+    <button data-filter-type="mobile">Mobile</button>
+    <button data-filter-type="land">Land</button>
+  </div>
+
+  <div class="explorer-menu" data-menu="more">
+    <button data-filter-reset>Reset filters</button>
+  </div>
+</header>
+
+    <section class="explorer-main">
+      <aside class="explorer-sidebar">
+        <h1>{areaLabel}</h1>
+        <p id="explorer-copy">Explorer Mode. Homes and neighbourhood context stay together.</p>
+
+       <div class="explorer-section-label">Homes</div>
+
+<button class="explorer-layer is-active" type="button" data-layer="homes">
+  <span>🏠 Homes</span>
+  <strong data-count="homes">{listings.length}</strong>
+</button>
+
+<div class="explorer-section-label">Lifestyle</div>
+
+<button class="explorer-layer is-lifestyle" type="button" data-bundle="family">
+  <span>❤️ Family</span>
+  <strong>Schools + Parks</strong>
+</button>
+
+<button class="explorer-layer is-lifestyle" type="button" data-bundle="daily">
+  <span>🛒 Daily Life</span>
+  <strong>Grocery + Medical</strong>
+</button>
+
+<button class="explorer-layer is-lifestyle" type="button" data-bundle="food">
+  <span>☕ Food</span>
+  <strong>Restaurants</strong>
+</button>
+
+<div class="explorer-section-label">Layers</div>
+
+<button class="explorer-layer" type="button" data-layer="parks">
+  <span>🌳 Parks</span>
+  <strong data-count="parks">—</strong>
+</button>
+
+<button class="explorer-layer" type="button" data-layer="schools">
+  <span>🎓 Schools</span>
+  <strong data-count="schools">—</strong>
+</button>
+
+<button class="explorer-layer" type="button" data-layer="restaurants">
+  <span>☕ Restaurants</span>
+  <strong data-count="restaurants">—</strong>
+</button>
+
+<button class="explorer-layer" type="button" data-layer="grocery">
+  <span>🛒 Grocery</span>
+  <strong data-count="grocery">—</strong>
+</button>
+
+<button class="explorer-layer" type="button" data-layer="medical">
+  <span>🏥 Medical</span>
+  <strong data-count="medical">—</strong>
+</button>
+      </aside>
+
+      <div class="explorer-map">
+        <div id="explorer-map"></div>
+      </div>
+    </section>
+
+    <section class="explorer-drawer" id="explorer-drawer">
+      <button type="button" class="drawer-handle" id="drawer-toggle" aria-label="Expand drawer"></button>
+      <div class="drawer-head">
+        <span id="drawer-title">{listings.length} Homes</span>
+        <span id="drawer-state-label">Expand</span>
+      </div>
+      <div class="drawer-sections" id="drawer-sections"></div>
+    </section>
+
+    <template id="home-card-template">
+    {listings.map((listing) => {
+        const img = normalizeImageUrl(
+          listing.image_url || listing.images?.[0]?.url || listing.images?.[0]
+        ) || "https://placehold.co/400x300?text=Home";
+        const address = formatAddress(listing.address);
+
+        return (
+          <article
+            class="explorer-card original-card"
+            data-id={listing.id || listing.mls_number || address}
+            data-item-id={String(listing.id || listing.mls_number || "")}
+data-card-id={String(listing.id || listing.mls_number || "")}
+data-listing-id={String(listing.id || listing.mls_number || "")}
+data-raw-price={String(listing.price || 0)}
+data-image={img}
+data-images={JSON.stringify(
+  [
+    ...(Array.isArray(listing.images)
+      ? listing.images.map((image) => {
+          if (typeof image === "string") return normalizeImageUrl(image);
+
+          return normalizeImageUrl(
+            image?.mediumRes ||
+            image?.highRes ||
+            image?.lowRes ||
+            image?.url ||
+            image?.src ||
+            image?.href ||
+            image?.path ||
+            ""
+          );
+        })
+      : []),
+    img,
+  ].filter(Boolean)
+)}
+data-beds={String(listing.beds || "")}
+data-baths={String(listing.baths || "")}
+data-sqft={String(listing.sqft || "")}
+data-description={listing.description || ""}
+data-property-type={listing.property_type || listing.normalized_type || "Home"}
+data-type={listing.normalized_type || listing.property_type || "Home"}
+data-area={listing.normalized_area || listing.area || ""}
+data-liked-tags="[]"
+data-is-favourite="false"
+data-decision=""
+data-city={listing.normalized_city || listing.city || city}
+data-mls={listing.mls_number || ""}
+            data-layer="homes"
+            data-lat={listing.lat || ""}
+            data-lng={listing.lng || ""}
+            data-price={formatPrice(listing.price)}
+            data-address={address}
+            data-meta={`${listing.beds || "-"} bd · ${listing.baths || "-"} ba`}
+          >
+            <img src={img} alt={address || "Listing"} loading="lazy" />
+            <div class="explorer-card-body">
+              <div class="explorer-price">{formatPrice(listing.price)}</div>
+              <div class="explorer-address">{address}</div>
+              <div class="explorer-meta">{listing.beds || "-"} bd · {listing.baths || "-"} ba</div>
+            </div>
+          </article>
+        );
+      })}
+    </template>
+  </div>
+
+  <script is:inline>
+    (function loadLeaflet() {
+      if (window.L) {
+        initExplorerV2();
+        return;
+      }
+
+      const css = document.createElement("link");
+      css.rel = "stylesheet";
+      css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      document.head.appendChild(css);
+
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.onload = initExplorerV2;
+      document.head.appendChild(script);
+    })();
+
+    // Single source of truth for closing the listing sheet. Calls
+    // window.closeSheet() (now fixed to fully reset its own inline styles
+    // and classes) and cleans up explorer-page-specific state.
+    //
+    // FIX: this used to ALSO call .remove() on #preview-sheet/#sheet-overlay
+    // as a defensive fallback from before closeSheet() itself was fixed.
+    // That was destructive: .remove() deletes those elements from the DOM
+    // entirely, not just hides them. IntentModalController.astro's
+    // initIntentReviewModal() captures `sheet`/`overlay` as closured
+    // variables ONCE at page load — once the real nodes were removed from
+    // the document, those variables still pointed at the (now detached,
+    // invisible) old nodes, so every subsequent openSheet(card) call kept
+    // manipulating an element no longer attached to the page. Nothing
+    // errored, nothing appeared: the modal opened once and then silently
+    // never came back. Removed the .remove() calls entirely — closeSheet()
+    // no longer needs a nuke-it-from-orbit fallback now that it correctly
+    // resets its own inline styles and classes.
+    function closeAnyOpenSheet() {
+      if (typeof window.closeSheet === "function") {
+        window.closeSheet();
+      }
+
+      // FIX: closing the listing sheet didn't close the Leaflet marker
+      // popup (the small "$X — address — View listing →" card that
+      // appears when clicking a map pin). That popup is a separate widget
+      // owned by the map, not by the sheet, so closeSheet() has no way to
+      // know about it. map.closePopup() is Leaflet's built-in method for
+      // closing whatever popup is currently open on that map instance.
+      window.explorerMap?.closePopup();
+
+      document.body.classList.remove("sheet-open", "modal-open");
+    }
+
+    function initExplorerV2() {
+      const explorer = document.querySelector(".explorer");
+      const mapEl = document.getElementById("explorer-map");
+      const drawer = document.getElementById("explorer-drawer");
+      const drawerSections = document.getElementById("drawer-sections");
+      const drawerTitle = document.getElementById("drawer-title");
+      const drawerState = document.getElementById("drawer-state-label");
+      const homeTemplate = document.getElementById("home-card-template");
+
+      if (!explorer || !mapEl || !window.L || !drawerSections || !homeTemplate) return;
+
+      const city = explorer.dataset.city || "nanaimo";
+      const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#2f6f73";
+
+      const activeLayers = {
+        homes: true,
+        parks: false,
+        schools: false,
+        restaurants: false,
+        grocery: false,
+        medical: false,
+      };
+
+      const layerMeta = {
+        homes: { title: "Homes", icon: "🏠", color: accent, apiKey: null },
+        parks: { title: "Parks", icon: "🌳", color: "#2f9e44", apiKey: "park" },
+        schools: { title: "Schools", icon: "🎓", color: "#3b82f6", apiKey: "school" },
+        restaurants: { title: "Restaurants", icon: "☕", color: "#b7791f", apiKey: "restaurant" },
+        grocery: { title: "Grocery", icon: "🛒", color: "#0f766e", apiKey: "grocery" },
+        medical: { title: "Medical", icon: "🏥", color: "#be123c", apiKey: "medical" },
+      };
+
+      const map = L.map(mapEl, {
+        zoomControl: true,
+        attributionControl: false,
+        scrollWheelZoom: false,
+      });
+
+      window.explorerMap = map;
+      window.explorerLayerState = activeLayers;
+
+      L.tileLayer("https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d0562bb6d/{z}/{x}/{y}{r}.png?access-token=b1s1QJemw8edeXxh4KJ8TlNOiv65lYOzNehwlDLXuuCmoOvTqxTmnl9aSmIQGu1R", {
+        maxZoom: 22,
+        attribution: '&copy; <a href="https://jawg.io">Jawg</a> &copy; <a href="https://www.openstreetmap.org">OpenStreetMap</a>',
+      }).addTo(map);
+
+      const layerGroups = Object.fromEntries(
+        Object.keys(activeLayers).map((key) => [key, L.layerGroup()])
+      );
+
+      const layerItems = {
+        homes: [],
+        parks: [],
+        schools: [],
+        restaurants: [],
+        grocery: [],
+        medical: [],
+      };
+
+      const amenityCache = {};
+   let activeHomeItem = null;
+
+const navFilters = {
+  location: "",
+  priceMin: 0,
+  priceMax: Infinity,
+  beds: 0,
+  type: "",
+};
+
+      function escapeHtml(value = "") {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      function passesNavFilters(item) {
+  if (item.layer !== "homes") return true;
+
+  if (navFilters.location && !item.areaRaw.includes(navFilters.location)) return false;
+  if (item.priceRaw < navFilters.priceMin || item.priceRaw > navFilters.priceMax) return false;
+  if (navFilters.beds && item.bedsRaw < navFilters.beds) return false;
+  if (navFilters.type && !item.typeRaw.includes(navFilters.type)) return false;
+
+  return true;
+}
+
+function isVisible(item) {
+  if (!Number.isFinite(item.lat) || !Number.isFinite(item.lng)) return false;
+  if (!passesNavFilters(item)) return false;
+  return map.getBounds().contains([item.lat, item.lng]);
+}
+
+      function setMarkerActive(item, active) {
+        if (!item.marker?.setStyle) return;
+        item.marker.setStyle({
+          radius: active ? 13 : 8,
+          weight: active ? 4 : 3,
+          color: "#ffffff",
+          fillColor: active ? "#0f2f4a" : item.color,
+          fillOpacity: 1,
+        });
+      }
+
+         function clearActiveCards() {
+        document.querySelectorAll(".explorer-card.is-active, .place-card.is-active")
+          .forEach((card) => card.classList.remove("is-active"));
+
+        Object.values(layerItems).flat().forEach((item) => setMarkerActive(item, false));
+      }
+
+function openListingFromExplorerItem(item, sourceCard = null) {
+  if (!item) return;
+
+  const id = String(item.id || "").trim();
+  if (!id) return;
+
+  let card = sourceCard;
+
+  if (!card) {
+    card = Array.from(
+      document.querySelectorAll(`.original-card[data-item-id="${CSS.escape(id)}"]`)
+    ).find((el) => !el.closest("template"));
+  }
+
+  if (!card && item.html) {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = item.html.trim();
+    card = wrap.firstElementChild;
+    card.style.position = "fixed";
+    card.style.left = "-9999px";
+    card.style.top = "-9999px";
+    document.body.appendChild(card);
+  }
+
+  if (!card) {
+    console.warn("No listing card found for modal", id);
+    return;
+  }
+
+  card.classList.add("card", "original-card");
+  card.dataset.itemId = id;
+  card.dataset.cardId = id;
+  card.dataset.listingId = id;
+
+if (typeof window.openSheet === "function") {
+  window.openSheet(card);
+
+requestAnimationFrame(() => {
+  document.body.classList.add("sheet-open");
+
+  const overlay =
+    document.querySelector("#sheet-overlay") ||
+    document.querySelector(".sheet-overlay");
+
+  if (overlay) {
+    Object.assign(overlay.style, {
+      zIndex: "99990",
+      filter: "none",
+      backdropFilter: "blur(10px)",
+    });
+  }
+
+  const sheet =
+    document.querySelector("#preview-sheet") ||
+    document.querySelector(".preview-sheet") ||
+    document.querySelector(".listing-sheet") ||
+    document.querySelector(".intent-sheet");
+
+  if (!sheet) return;
+
+  // FIX: anchor the modal to the top of the screen on the explore page
+  // instead of vertically centering it. `top` is now a fixed offset from
+  // the viewport top instead of "50%", and the transform only needs to
+  // handle horizontal centering (translateX(-50%)) since `left: 50%` sets
+  // the panel's LEFT EDGE to the horizontal midpoint — the -50% X
+  // translation is still required to actually center it, but there's no
+  // longer a -50% Y component pulling it back down to vertical center.
+  // maxHeight is adjusted so it still fits within the viewport with equal
+  // breathing room top and bottom now that it starts near the top.
+  Object.assign(sheet.style, {
+    position: "fixed",
+    top: "0",
+    left: "50%",
+    right: "auto",
+    bottom: "auto",
+    transform: "translateX(-50%)",
+    width: "min(760px, calc(100vw - 44px))",
+    maxWidth: "760px",
+    maxHeight: "calc(100dvh - 24px)",
+    overflow: "auto",
+    zIndex: "100000",
+    filter: "none",
+    backdropFilter: "none",
+  });
+});
+
+  return;
+}
+
+  card.dispatchEvent(new MouseEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    view: window
+  }));
+}
+
+          function openHomeModal(item, card) {
+        if (!item || item.layer !== "homes" || !card) return;
+
+        const modalCard = card.cloneNode(true);
+
+        modalCard.classList.add("card", "original-card");
+        modalCard.dataset.cardId = item.id;
+        modalCard.dataset.listingId = item.id;
+        modalCard.dataset.itemId = item.id;
+
+        modalCard.style.position = "fixed";
+        modalCard.style.left = "-9999px";
+        modalCard.style.top = "-9999px";
+
+        document.body.appendChild(modalCard);
+
+        modalCard.dispatchEvent(new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          view: window
+        }));
+
+        window.setTimeout(() => modalCard.remove(), 250);
+      }
+
+      async function focusItem(item, card) {
+        clearActiveCards();
+        card?.classList.add("is-active");
+        setMarkerActive(item, true);
+        item.marker?.openPopup();
+
+                           if (item.layer === "homes") {
+          activeHomeItem = item;
+          await loadAmenities();
+          renderDrawer();
+
+          requestAnimationFrame(() => {
+            const freshCard = document.querySelector(
+              `.original-card[data-item-id="${CSS.escape(item.id)}"]`
+            );
+
+           openListingFromExplorerItem(item, freshCard);
+          });
+        }
+
+        if (Number.isFinite(item.lat) && Number.isFinite(item.lng)) {
+          map.flyTo([item.lat, item.lng], Math.max(map.getZoom(), 14), { duration: 0.45 });
+        }
+
+        drawerSections?.scrollTo({
+          top: 0,
+          behavior: "smooth"
+        });
+
+        if (item.layer !== "homes") {
+          card?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+        }
+      }
+
+      function buildHomeLayer() {
+        const fragment = homeTemplate.content.cloneNode(true);
+        const cards = Array.from(fragment.querySelectorAll(".explorer-card"));
+
+        cards.forEach((card, index) => {
+          const lat = Number(card.dataset.lat);
+          const lng = Number(card.dataset.lng);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+          const item = {
+            id: card.dataset.id || `home-${index}`,
+            layer: "homes",
+            title: card.dataset.price || "Home",
+            subtitle: card.dataset.address || "",
+           meta: card.dataset.meta || "",
+lat,
+lng,
+priceRaw: Number(card.dataset.rawPrice || 0),
+bedsRaw: Number(card.dataset.beds || 0),
+typeRaw: String(card.dataset.type || "").toLowerCase(),
+areaRaw: String(card.dataset.area || "").toLowerCase(),
+color: accent,
+html: card.outerHTML,
+image: card.dataset.image || "",
+marker: null,
+          };
+
+          const marker = L.circleMarker([lat, lng], {
+            radius: 8,
+            weight: 3,
+            color: "#ffffff",
+            fillColor: item.color,
+            fillOpacity: 1,
+          });
+
+marker.bindPopup(`
+  <article class="map-preview-card">
+    ${item.image ? `<img src="${escapeHtml(item.image)}" alt="">` : ""}
+    <strong>${escapeHtml(item.title)}</strong>
+    <span>${escapeHtml(item.subtitle)}</span>
+    <em>${escapeHtml(item.meta)}</em>
+    <button type="button" data-preview-listing-id="${escapeHtml(item.id)}">
+      View listing →
+    </button>
+  </article>
+`, {
+  maxWidth: 240,
+  className: "listing-preview-popup"
+});
+marker.on("click", () => {
+  item.marker?.openPopup();
+  activeHomeItem = item;
+  loadAmenities().then(() => {
+    renderDrawer();
+    drawerSections?.scrollTo({ top: 0, behavior: "smooth" });
+  });
+});
+
+          item.marker = marker;
+          layerGroups.homes.addLayer(marker);
+          layerItems.homes.push(item);
+        });
+      }
+
+      async function loadAmenities() {
+        if (Object.keys(amenityCache).length) return;
+
+const visibleHomes = layerItems.homes.filter((home) => passesNavFilters(home));
+
+const centre = visibleHomes.length
+  ? L.latLngBounds(visibleHomes.map((home) => [home.lat, home.lng])).getCenter()
+  : map.getCenter();
+
+const res = await fetch(
+  `/api/osm-amenities?city=${encodeURIComponent(city)}&lat=${centre.lat}&lng=${centre.lng}&radius=5&limit=250`
+);
+        const json = await res.json();
+        Object.assign(amenityCache, json.categories || {});
+
+        Object.entries(layerMeta).forEach(([layerKey, meta]) => {
+          if (!meta.apiKey) return;
+          const rows = amenityCache[meta.apiKey] || [];
+
+          layerItems[layerKey] = rows
+            .map((place, index) => {
+              const lat = Number(place.lat);
+              const lng = Number(place.lng);
+              if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+              const item = {
+                id: `${layerKey}-${index}-${String(place.name || place.osm_id || "place").replace(/[^a-z0-9]+/gi, "-")}`,
+                layer: layerKey,
+                title: place.name || place.osm_type || meta.title,
+                subtitle: place.type || place.osm_type || meta.title,
+                meta: place.distKm ? `${Number(place.distKm).toFixed(1)} km from centre` : meta.title,
+                lat,
+                lng,
+                color: meta.color,
+                marker: null,
+              };
+
+              const marker = L.circleMarker([lat, lng], {
+                radius: 8,
+                weight: 3,
+                color: "#ffffff",
+                fillColor: item.color,
+                fillOpacity: 1,
+              });
+
+          marker.bindPopup(`
+            <article class="map-preview-card">
+              ${item.image ? `<img src="${escapeHtml(item.image)}" alt="">` : ""}
+              <strong>${escapeHtml(item.title)}</strong>
+              <span>${escapeHtml(item.subtitle)}</span>
+              <em>${escapeHtml(item.meta)}</em>
+              <button type="button" data-preview-listing-id="${escapeHtml(item.id)}">
+                View listing →
+              </button>
+            </article>
+          `);
+
+          marker.on("click", () => {
+            activeHomeItem = item;
+            item.marker?.openPopup();
+
+            loadAmenities().then(() => {
+              renderDrawer();
+              drawerSections?.scrollTo({ top: 0, behavior: "smooth" });
+            });
+          });
+
+              item.marker = marker;
+              layerGroups[layerKey].addLayer(marker);
+              return item;
+            })
+            .filter(Boolean);
+        });
+      }
+
+      function syncMapLayers() {
+  Object.keys(activeLayers).forEach((layerKey) => {
+    const group = layerGroups[layerKey];
+    if (!group) return;
+
+    if (activeLayers[layerKey] && !map.hasLayer(group)) group.addTo(map);
+    if (!activeLayers[layerKey] && map.hasLayer(group)) map.removeLayer(group);
+  });
+
+  layerItems.homes.forEach((item) => {
+    if (!item.marker) return;
+
+    const shouldShow = activeLayers.homes && passesNavFilters(item);
+
+    if (shouldShow && !layerGroups.homes.hasLayer(item.marker)) {
+      layerGroups.homes.addLayer(item.marker);
+    }
+
+    if (!shouldShow && layerGroups.homes.hasLayer(item.marker)) {
+      layerGroups.homes.removeLayer(item.marker);
+    }
+  });
+}
+
+      function updateToggleUi() {
+        document.querySelectorAll(".explorer-layer[data-layer]").forEach((button) => {
+          const layerKey = button.dataset.layer;
+          button.classList.toggle("is-active", Boolean(activeLayers[layerKey]));
+        });
+      }
+
+      function updateCounts() {
+        Object.keys(layerItems).forEach((layerKey) => {
+          const total = layerItems[layerKey].length;
+          const visible = layerItems[layerKey].filter(isVisible).length;
+          const el = document.querySelector(`[data-count="${layerKey}"]`);
+if (el) el.textContent = total ? String(visible) : "—";
+        });
+      }
+
+      function distanceKm(a, b) {
+        const earthKm = 6371;
+        const dLat = (b.lat - a.lat) * Math.PI / 180;
+        const dLng = (b.lng - a.lng) * Math.PI / 180;
+        const lat1 = a.lat * Math.PI / 180;
+        const lat2 = b.lat * Math.PI / 180;
+        const x = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+        return earthKm * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+      }
+
+      function nearestItem(home, layerKey) {
+        const rows = layerItems[layerKey] || [];
+        return rows
+          .map((item) => ({ ...item, km: distanceKm(home, item) }))
+          .filter((item) => Number.isFinite(item.km))
+          .sort((a, b) => a.km - b.km)[0] || null;
+      }
+
+      function countWithin(home, layerKey, kmLimit) {
+        return (layerItems[layerKey] || [])
+          .filter((item) => distanceKm(home, item) <= kmLimit)
+          .length;
+      }
+
+      function renderHomeIntelligence(home) {
+        if (!home || home.layer !== "homes") return "";
+
+        const rows = [
+          { key: "parks", label: "Parks", icon: "🌳", radius: 1.5 },
+          { key: "schools", label: "Schools", icon: "🎓", radius: 2.5 },
+          { key: "restaurants", label: "Food", icon: "☕", radius: 1.5 },
+          { key: "grocery", label: "Grocery", icon: "🛒", radius: 2.5 },
+          { key: "medical", label: "Medical", icon: "🏥", radius: 3 },
+        ];
+
+        const cards = rows.map((row) => {
+          const nearest = nearestItem(home, row.key);
+          const count = countWithin(home, row.key, row.radius);
+          const nearestText = nearest
+            ? `${escapeHtml(nearest.title)} · ${nearest.km.toFixed(1)} km`
+            : "No nearby data yet";
+
+          return `
+            <article class="intel-card">
+              <strong>${row.icon} ${count} ${row.label}</strong>
+              <span>within ${row.radius} km</span>
+              <em>${nearestText}</em>
+            </article>
+          `;
+        }).join("");
+
+        return `
+          <section class="drawer-section drawer-section-intel">
+            <div class="drawer-section-title">
+              <span>✨ Around this home</span>
+              <span>${escapeHtml(home.subtitle || "Neighbourhood intelligence")}</span>
+            </div>
+            <div class="intel-grid">${cards}</div>
+          </section>
+        `;
+      }
+
+  function cardHtml(item) {
+  if (item.layer === "homes") {
+    return item.html || "";
+  }
+
+  return `
+    <article class="place-card" data-layer="${escapeHtml(item.layer)}" data-item-id="${escapeHtml(item.id)}">
+      <strong>${escapeHtml(item.title)}</strong>
+      <span>${escapeHtml(item.subtitle || item.meta || "")}</span>
+    </article>
+  `;
+}
+
+      function renderDrawer() {
+        const activeKeys = Object.keys(activeLayers).filter((key) => activeLayers[key]);
+        const titleParts = [];
+
+        const intelligenceHtml = activeHomeItem ? renderHomeIntelligence(activeHomeItem) : "";
+
+        drawerSections.innerHTML = intelligenceHtml + activeKeys.map((layerKey) => {
+          const meta = layerMeta[layerKey];
+          const visibleItems = layerItems[layerKey].filter(isVisible);
+          titleParts.push(`${visibleItems.length} ${meta.title}`);
+
+          const body = visibleItems.length
+            ? `<div class="drawer-row">${visibleItems.slice(0, 36).map(cardHtml).join("")}</div>`
+            : `<div class="drawer-empty">No ${meta.title.toLowerCase()} visible in this map view.</div>`;
+
+          return `
+            <section class="drawer-section" data-drawer-layer="${layerKey}">
+              <div class="drawer-section-title">
+                <span>${meta.icon} ${meta.title}</span>
+                <span>${visibleItems.length} in view</span>
+              </div>
+              ${body}
+            </section>
+          `;
+        }).join("") || `<div class="drawer-empty">Turn on a layer to explore the map.</div>`;
+
+        if (drawerTitle) drawerTitle.textContent = titleParts.length ? titleParts.join(" · ") : "Explorer layers";
+
+        drawerSections.querySelectorAll("[data-item-id]").forEach((card) => {
+          const layerKey = card.dataset.layer;
+          const id = card.dataset.itemId;
+          const item = layerItems[layerKey]?.find((row) => row.id === id);
+          if (!item) return;
+
+          card.addEventListener("click", () => focusItem(item, card));
+          card.addEventListener("mouseenter", () => item.marker?.openPopup());
+          card.addEventListener("mouseleave", () => {
+            if (!card.classList.contains("is-active")) item.marker?.closePopup();
+          });
+        });
+      }
+
+      function refreshExplorer() {
+        syncMapLayers();
+        updateToggleUi();
+        updateCounts();
+        renderDrawer();
+      }
+
+      function fitActiveLayers() {
+        const points = Object.keys(activeLayers)
+          .filter((key) => activeLayers[key])
+          .flatMap((key) => layerItems[key])
+          .filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng))
+          .map((item) => [item.lat, item.lng]);
+
+        if (points.length) {
+          map.flyToBounds(points, { padding: [70, 70], duration: 0.45 });
+        }
+      }
+
+      buildHomeLayer();
+      layerGroups.homes.addTo(map);
+
+      const homePoints = layerItems.homes.map((item) => [item.lat, item.lng]);
+      if (homePoints.length) {
+        map.fitBounds(homePoints, { padding: [40, 40] });
+      } else {
+        map.setView([49.1659, -123.9401], 11);
+      }
+
+      refreshExplorer();
+      setTimeout(() => map.invalidateSize(), 100);
+
+      document.querySelectorAll(".explorer-layer[data-layer]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const layerKey = button.dataset.layer;
+          if (!layerKey) return;
+
+          if (layerKey !== "homes") await loadAmenities();
+          activeLayers[layerKey] = !activeLayers[layerKey];
+
+          refreshExplorer();
+        });
+      });
+           const lifestyleBundles = {
+        family: ["schools", "parks"],
+        daily: ["grocery", "medical"],
+        food: ["restaurants"],
+      };
+
+      const bundleButtons = document.querySelectorAll(".explorer-layer[data-bundle]");
+
+      bundleButtons.forEach((button) => {
+        button.addEventListener("click", async () => {
+          const bundleKey = button.dataset.bundle;
+          const layers = lifestyleBundles[bundleKey] || [];
+
+          await loadAmenities();
+
+          const isAlreadyActive = button.classList.contains("is-active");
+
+          Object.keys(activeLayers).forEach((layerKey) => {
+            activeLayers[layerKey] = layerKey === "homes";
+          });
+
+          bundleButtons.forEach((btn) => btn.classList.remove("is-active"));
+
+          if (!isAlreadyActive) {
+            layers.forEach((layerKey) => {
+              activeLayers[layerKey] = true;
+            });
+
+            button.classList.add("is-active");
+          }
+
+          refreshExplorer();
+        });
+      });
+      map.on("moveend zoomend", async () => {
+        await loadAmenities();
+        updateCounts();
+        renderDrawer();
+      });
+                      document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-preview-listing-id]");
+  if (!button) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const id = button.dataset.previewListingId;
+  const item = layerItems.homes.find((home) => String(home.id) === String(id));
+
+  openListingFromExplorerItem(item);
+}, true);
+
+// Close button now always closes, regardless of window.closeSheet's
+// existence/timing, via the shared closeAnyOpenSheet() helper defined above.
+document.addEventListener("click", (event) => {
+  const closeButton = event.target.closest(
+    "#sheet-close, [data-close-sheet], [aria-label='Close'], .sheet-close, .modal-close"
+  );
+
+  if (!closeButton) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  closeAnyOpenSheet();
+});
+
+// Clicking the backdrop/overlay itself (outside the sheet content) also
+// closes the modal.
+document.addEventListener("click", (event) => {
+  const overlay = event.target.closest("#sheet-overlay, .sheet-overlay");
+  if (!overlay) return;
+  // Only close if the click was on the overlay itself, not something
+  // inside the sheet that happens to sit visually above it.
+  if (event.target !== overlay) return;
+
+  closeAnyOpenSheet();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  closeAnyOpenSheet();
+});
+function closeMenus() {
+  document.querySelectorAll(".explorer-menu.is-open")
+    .forEach((menu) => menu.classList.remove("is-open"));
+}
+
+document.querySelectorAll("[data-menu-trigger]").forEach((button) => {
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const key = button.dataset.menuTrigger;
+    const menu = document.querySelector(`.explorer-menu[data-menu="${key}"]`);
+    const wasOpen = menu?.classList.contains("is-open");
+
+    closeMenus();
+
+    if (menu && !wasOpen) menu.classList.add("is-open");
+  });
+});
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest(".explorer-top")) return;
+  closeMenus();
+});
+
+document.querySelectorAll("[data-filter-location]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    navFilters.location = button.dataset.filterLocation || "";
+    const label = navFilters.location ? button.textContent.trim() : "Nanaimo";
+
+    document.getElementById("nav-location-label").textContent = label;
+
+    const sidebarTitle = document.querySelector(".explorer-sidebar h1");
+    if (sidebarTitle) sidebarTitle.textContent = label;
+
+    Object.keys(amenityCache).forEach((key) => delete amenityCache[key]);
+
+    Object.keys(layerItems).forEach((key) => {
+      if (key !== "homes") {
+        layerGroups[key]?.clearLayers();
+        layerItems[key] = [];
+      }
+    });
+
+    closeMenus();
+    await loadAmenities();
+    refreshExplorer();
+  });
+});
+
+document.querySelectorAll("[data-filter-price]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const value = button.dataset.filterPrice || "";
+    const [min, max] = value.split("-").map(Number);
+
+    navFilters.priceMin = Number.isFinite(min) ? min : 0;
+    navFilters.priceMax = Number.isFinite(max) ? max : Infinity;
+
+    document.getElementById("nav-price-label").textContent = button.textContent.trim();
+    closeMenus();
+    refreshExplorer();
+  });
+});
+
+document.querySelectorAll("[data-filter-beds]").forEach((button) => {
+  button.addEventListener("click", () => {
+    navFilters.beds = Number(button.dataset.filterBeds || 0);
+    document.getElementById("nav-beds-label").textContent = button.textContent.trim();
+    closeMenus();
+    refreshExplorer();
+  });
+});
+
+document.querySelectorAll("[data-filter-type]").forEach((button) => {
+  button.addEventListener("click", () => {
+    navFilters.type = button.dataset.filterType || "";
+    document.getElementById("nav-type-label").textContent = button.textContent.trim();
+    closeMenus();
+    refreshExplorer();
+  });
+});
+
+document.querySelector("[data-filter-reset]")?.addEventListener("click", () => {
+  navFilters.location = "";
+  navFilters.priceMin = 0;
+  navFilters.priceMax = Infinity;
+  navFilters.beds = 0;
+  navFilters.type = "";
+
+  document.getElementById("nav-location-label").textContent = "Nanaimo";
+  document.getElementById("nav-price-label").textContent = "Any price";
+  document.getElementById("nav-beds-label").textContent = "Beds";
+  document.getElementById("nav-type-label").textContent = "Type";
+
+  closeMenus();
+  refreshExplorer();
+});
+      document.getElementById("drawer-toggle")?.addEventListener("click", () => {
+        drawer?.classList.toggle("is-expanded");
+        if (drawerState && drawer) {
+          drawerState.textContent = drawer.classList.contains("is-expanded") ? "Collapse" : "Expand";
+        }
+        window.setTimeout(() => map.invalidateSize(), 300);
+      });
+    }
+  </script>
+  <IntentModalController listings={listings} />
+</Layout>
