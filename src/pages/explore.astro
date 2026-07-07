@@ -24,9 +24,7 @@ let query = supabase
 .order("listed_at", { ascending: false })
 .limit(1000);
 
-if (area) {
-  query = query.or(`normalized_area.eq.${area},normalized_area.eq.${area.replace(/-/g, " ")}`);
-}
+
 
 const { data: listings = [] } = await query;
 
@@ -68,10 +66,17 @@ const areaLabel = area
   : city.replace(/\b\w/g, (c) => c.toUpperCase());
 
 
+const { data: allAreaRows = [] } = await supabase
+  .from("listing_rows")
+  .select("normalized_area")
+  .eq("status", "A")
+  .eq("normalized_city", city)
+  .not("normalized_area", "is", null);
+
 const areaOptions = Array.from(
   new Set(
-    listings
-      .map((listing) => listing.normalized_area || listing.area)
+    allAreaRows
+      .map((listing) => listing.normalized_area)
       .filter(Boolean)
       .map((value) => String(value).trim())
   )
@@ -717,9 +722,87 @@ const areaOptions = Array.from(
   max-height: min(70vh, 520px);
   overflow-y: auto;
 }
+:global(.map-preview-image-wrap) {
+  position: relative;
+}
+
+:global(.popup-img-nav) {
+  position: absolute;
+  top: 50%;
+  z-index: 5;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 1px solid rgba(255,255,255,.75);
+  border-radius: 999px;
+  background: rgba(255,255,255,.94);
+  color: #123a5a;
+  box-shadow: 0 8px 24px rgba(0,0,0,.24);
+  font-size: 1.7rem;
+  font-weight: 950;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 1;
+}
+
+:global(.popup-img-nav:hover) {
+  background: #fff;
+  transform: translateY(-50%) scale(1.05);
+}
+
+:global(.popup-img-prev) { left: 10px; }
+:global(.popup-img-next) { right: 10px; }
+
+:global(.listing-preview-popup .popup-img-nav) {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+:global(.listing-preview-popup .leaflet-popup-content-wrapper) {
+  overflow: visible;
+}
+
+:global(.map-preview-card .popup-img-nav) {
+  position: absolute !important;
+  top: 50% !important;
+  z-index: 20 !important;
+  width: 30px !important;
+  height: 30px !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+  transform: translateY(-50%) !important;
+  border: 1px solid rgba(255,255,255,.9) !important;
+  border-radius: 999px !important;
+  background: rgba(255,255,255,.96) !important;
+  color: #123a5a !important;
+  box-shadow: 0 6px 18px rgba(0,0,0,.24) !important;
+  font-size: 1.25rem !important;
+  font-weight: 950 !important;
+  line-height: 1 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+:global(.map-preview-card .popup-img-prev) {
+  left: 7px !important;
+}
+
+:global(.map-preview-card .popup-img-next) {
+  right: 7px !important;
+}
   </style>
 
-  <div class="explorer" data-city={city} data-area-label={areaLabel}>
+<div
+  class="explorer"
+  data-city={city}
+  data-area-label={areaLabel}
+  data-area-filter={area ? area.replace(/-/g, " ").toLowerCase() : ""}
+>
     <header class="explorer-top">
   <a class="return-link" href={area ? `/${city}/${area}` : `/${city}`}>← Guide</a>
 
@@ -1052,7 +1135,7 @@ data-mls={listing.mls_number || ""}
    let activeHomeItem = null;
 
 const navFilters = {
-  location: "",
+  location: String(explorer.dataset.areaFilter || "").toLowerCase(),
   priceMin: 0,
   priceMax: Infinity,
   beds: 0,
@@ -1303,11 +1386,17 @@ marker: null,
           });
 
 marker.bindPopup(`
-  <article class="map-preview-card">
-    ${item.image ? `<img src="${escapeHtml(item.image)}" alt="">` : ""}
+  <article class="map-preview-card" data-popup-images='${escapeHtml(card.dataset.images || "[]")}' data-popup-index="0">
+    <div class="map-preview-image-wrap">
+      <button type="button" class="popup-img-nav popup-img-prev" data-popup-prev>‹</button>
+      <img src="${escapeHtml(item.image)}" alt="">
+      <button type="button" class="popup-img-nav popup-img-next" data-popup-next>›</button>
+    </div>
+
     <strong>${escapeHtml(item.title)}</strong>
     <span>${escapeHtml(item.subtitle)}</span>
     <em>${escapeHtml(item.meta)}</em>
+
     <button type="button" data-preview-listing-id="${escapeHtml(item.id)}">
       View listing →
     </button>
@@ -1348,7 +1437,19 @@ const res = await fetch(
 
         Object.entries(layerMeta).forEach(([layerKey, meta]) => {
           if (!meta.apiKey) return;
-          const rows = amenityCache[meta.apiKey] || [];
+        const selectedHomes = layerItems.homes.filter((home) => passesNavFilters(home));
+
+const rows = (amenityCache[meta.apiKey] || []).filter((place) => {
+  if (!selectedHomes.length) return true;
+
+  const lat = Number(place.lat);
+  const lng = Number(place.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+
+ return selectedHomes.some((home) => {
+  return distanceKm(home, { lat, lng }) <= 1.5;
+});
+});
 
           layerItems[layerKey] = rows
             .map((place, index) => {
@@ -1660,6 +1761,39 @@ if (el) el.textContent = total ? String(visible) : "—";
 
 // Close button now always closes, regardless of window.closeSheet's
 // existence/timing, via the shared closeAnyOpenSheet() helper defined above.
+document.addEventListener("click", (event) => {
+  const nav = event.target.closest("[data-popup-prev], [data-popup-next]");
+  if (!nav) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const card = nav.closest(".map-preview-card");
+  const img = card?.querySelector("img");
+  if (!card || !img) return;
+
+  let images = [];
+
+  try {
+    images = JSON.parse(card.dataset.popupImages || "[]").filter(Boolean);
+  } catch {}
+
+if (!images.length) return;
+
+images.forEach((src) => {
+  const preload = new Image();
+  preload.src = src;
+});
+
+  let index = Number(card.dataset.popupIndex || 0);
+  index += nav.matches("[data-popup-next]") ? 1 : -1;
+
+  if (index < 0) index = images.length - 1;
+  if (index >= images.length) index = 0;
+
+  card.dataset.popupIndex = String(index);
+  img.src = images[index];
+}, true);
 document.addEventListener("click", (event) => {
   const closeButton = event.target.closest(
     "#sheet-close, [data-close-sheet], [aria-label='Close'], .sheet-close, .modal-close, button[aria-label='Close']"
