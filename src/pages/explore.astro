@@ -804,7 +804,12 @@ const areaOptions = Array.from(
   data-area-filter={area ? area.replace(/-/g, " ").toLowerCase() : ""}
 >
     <header class="explorer-top">
-  <a class="return-link" href={area ? `/${city}/${area}` : `/${city}`}>← Guide</a>
+<a
+  class="return-link"
+  href={area ? `/${city}/${area}` : `/${city}`}
+>
+  ← Guide
+</a>
 
   <button class="explorer-search" type="button" data-menu-trigger="location">
     🔍 <span id="nav-location-label">{areaLabel}</span>
@@ -1864,15 +1869,35 @@ document.addEventListener("click", (event) => {
   window.setTimeout(() => map.invalidateSize(), 300);
 });
 
+function focusFilteredHomesOnMap() {
+  const homes = layerItems.homes
+    .filter((home) => passesNavFilters(home))
+    .filter((home) => Number.isFinite(home.lat) && Number.isFinite(home.lng));
+
+  if (!homes.length) return;
+
+  const bounds = L.latLngBounds(homes.map((home) => [home.lat, home.lng]));
+  const center = bounds.getCenter();
+
+  map.flyTo(center, 13, { duration: 0.45 });
+
+  window.setTimeout(() => {
+    map.panBy([-130, 0], { animate: true, duration: 0.25 });
+  }, 480);
+}
+
 document.querySelectorAll("[data-filter-location]").forEach((button) => {
   button.addEventListener("click", async () => {
     navFilters.location = button.dataset.filterLocation || "";
+
     const label = navFilters.location ? button.textContent.trim() : "Nanaimo";
 
     document.getElementById("nav-location-label").textContent = label;
 
     const sidebarTitle = document.querySelector(".explorer-sidebar h1");
     if (sidebarTitle) sidebarTitle.textContent = label;
+
+    activeHomeItem = null;
 
     Object.keys(amenityCache).forEach((key) => delete amenityCache[key]);
 
@@ -1886,6 +1911,7 @@ document.querySelectorAll("[data-filter-location]").forEach((button) => {
     closeMenus();
     await loadAmenities();
     refreshExplorer();
+    focusFilteredHomesOnMap();
   });
 });
 
