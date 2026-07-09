@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import Layout from "../layouts/Layout.astro";
 import { getSite } from "../lib/getSite";
 import IntentModalController from "../components/IntentModalController.astro";
+import AreaInsights from "../components/AreaInsights.astro";
 export const prerender = false;
 
 const supabase = createClient(
@@ -15,7 +16,27 @@ const area = Astro.url.searchParams.get("area") || "";
 
 const site = await getSite(Astro.url.hostname, city);
 const accentColor = site?.accent_color || "#2f6f73";
+const { data: boundaryRow } = area
+  ? await supabase
+      .from("area_boundaries")
+      .select("polygon_geojson")
+      .eq("city", city)
+      .eq("area_slug", area)
+      .maybeSingle()
+  : { data: null };
+const { data: boundaryRows = [] } = await supabase
+  .from("area_boundaries")
+  .select("area_slug, area_name, polygon_geojson, ai_insights")
+  .eq("city", city);
 
+const { data: areaInsightRowsRaw = [] } = await supabase
+  .from("neighbourhood_census_data")
+  .select("*")
+  .eq("city", String(city).toLowerCase());
+
+const areaInsightRows = Array.isArray(areaInsightRowsRaw)
+  ? areaInsightRowsRaw
+  : [];
 let query = supabase
   .from("listing_rows")
   .select("*")
@@ -65,6 +86,32 @@ const areaLabel = area
   ? area.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
   : city.replace(/\b\w/g, (c) => c.toUpperCase());
 
+const visibleListingsForInsights = area
+  ? listings.filter((listing) =>
+      String(listing.normalized_area || listing.area || "")
+        .toLowerCase()
+        .trim() === areaLabel.toLowerCase().trim()
+    )
+  : listings;
+
+const pricesForInsights = visibleListingsForInsights
+  .map((listing) => Number(listing.price || 0))
+  .filter((price) => price > 0)
+  .sort((a, b) => a - b);
+
+const medianPriceForInsights = pricesForInsights.length
+  ? pricesForInsights[Math.floor(pricesForInsights.length / 2)]
+  : 0;
+
+const areaProfileForInsights = (areaInsightRows || []).find((row) => {
+  const rowSlug = String(row.area_slug || "").toLowerCase().trim();
+  const rowName = String(row.area_name || "").toLowerCase().trim();
+  const currentSlug = String(area || "").toLowerCase().trim();
+  const currentName = String(areaLabel || "").toLowerCase().trim();
+
+  return rowSlug === currentSlug || rowName === currentName;
+});
+
 
 const { data: allAreaRows = [] } = await supabase
   .from("listing_rows")
@@ -107,25 +154,114 @@ const areaOptions = Array.from(
       height: 100%;
     }
 
-    .explorer-map { z-index: 1; background: #e9e4dc; }
+   .explorer-map { z-index: 1; background: #e9e4dc; }
 
-    .explorer-top {
-      position: absolute;
-      top: 16px;
-      left: 16px;
-      right: 16px;
-      z-index: 800 !important;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      height: 52px;
-      padding: 7px 10px;
-      border: 1px solid rgba(255,255,255,.72);
-      border-radius: 18px;
-      background: rgba(255,255,255,.88);
-      box-shadow: 0 18px 55px rgba(28,35,32,.13);
-      backdrop-filter: blur(24px) saturate(1.25);
-    }
+.explorer-top {
+  position: absolute;
+  top: 14px;
+  left: 18px;
+  right: 18px;
+  z-index: 800 !important;
+
+  display: grid;
+  grid-template-columns: 230px minmax(360px, 1fr) auto;
+  gap: 12px;
+  padding: 10px 16px 14px;
+
+  border: 1px solid rgba(255,255,255,.72);
+  border-radius: 22px;
+  background: rgba(255,255,255,.9);
+  box-shadow: 0 18px 55px rgba(28,35,32,.13);
+  backdrop-filter: blur(24px) saturate(1.25);
+}
+
+.explorer-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.explorer-brand-mark {
+  font-size: 1.3rem;
+}
+
+.explorer-brand strong {
+  display: block;
+  font-size: .96rem;
+  font-weight: 950;
+}
+
+.explorer-brand span {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 750;
+}
+
+.explorer-top-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.explorer-command-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0,0,0,.06);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.explorer-command-row::-webkit-scrollbar {
+  display: none;
+}
+
+.top-group {
+  flex: 0 0 auto;
+}
+
+.top-divider {
+  display: none;
+}
+
+.top-label {
+  display: none;
+}
+
+.explorer-command-row .drawer-tabs {
+  margin-right: 18px;
+}
+
+.explorer-command-row .top-divider {
+  display: none;
+}
+
+.explorer-command-row .top-group:nth-of-type(3),
+.explorer-command-row .top-group:nth-of-type(5) {
+  justify-content: flex-start;
+}
+
+.top-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.top-label {
+  color: var(--ink);
+  font-size: .76rem;
+  font-weight: 950;
+}
+
+.top-divider {
+  width: 1px;
+  height: 28px;
+  background: rgba(0,0,0,.1);
+}
 
     .return-link,
     .explorer-chip,
@@ -253,7 +389,7 @@ const areaOptions = Array.from(
   right: 22px;
   bottom: 18px;
   z-index: 700 !important;
-  height: 104px;
+  height: 118px;
   padding: 14px 14px 10px;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,.74);
@@ -263,7 +399,15 @@ const areaOptions = Array.from(
   backdrop-filter: blur(28px) saturate(1.25);
   transition: height .32s cubic-bezier(.2,.8,.2,1), transform .28s ease;
 }
+.explorer-drawer .drawer-tabs,
+.explorer-drawer .drawer-head,
+.explorer-drawer .drawer-handle {
+  display: none !important;
+}
 
+.drawer-section {
+  margin-top: 0;
+}
     .explorer-drawer.is-expanded { height: min(58vh, 560px); }
 
     .drawer-handle {
@@ -304,14 +448,22 @@ const areaOptions = Array.from(
       text-underline-offset: 3px;
     }
 
-    .drawer-sections {
-      display: grid;
-      gap: 14px;
-      height: calc(100% - 28px);
-      overflow: auto;
-      padding: 1px 2px 10px;
-      scrollbar-width: thin;
-    }
+.drawer-sections {
+  display: block;
+  height: auto;
+  max-height: calc(100% - 28px);
+  overflow: auto;
+  padding: 1px 2px 10px;
+  scrollbar-width: thin;
+}
+
+.drawer-section {
+  margin-top: 24px;
+}
+
+#drawer-places .drawer-empty{
+  margin-bottom:28px;
+}
 
     .drawer-section[hidden] { display: none !important; }
 
@@ -566,32 +718,116 @@ const areaOptions = Array.from(
       .explorer-drawer { left: 18px; right: 18px; }
     }
 
-    @media (max-width: 760px) {
-      .explorer-top {
-        top: 10px;
-        left: 10px;
-        right: 10px;
-        height: auto;
-        flex-wrap: wrap;
-        border-radius: 20px;
-      }
+  @media (max-width: 760px) {
+.explorer-top {
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  height: auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
 
-      .explorer-search {
-        order: 2;
-        width: 100%;
-        flex-basis: 100%;
-      }
+  .return-link {
+    height: 34px;
+    padding: 0 13px;
+    font-size: .78rem;
+  }
 
-      .explorer-chip {
-        height: 34px;
-        padding: 0 12px;
-        font-size: .76rem;
-      }
+.explorer-search {
+  order: 2;
+  width: 100%;
+  flex-basis: 100%;
+  height: 40px;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0 18px;
+  border-radius: 18px;
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 12px 30px rgba(28,35,32,.10);
+  font-size: 1rem;
+  font-weight: 950;
+  letter-spacing: -.02em;
+}
 
-      .explorer-sidebar { display: none; }
-      .explorer-drawer { left: 10px; right: 10px; bottom: 10px; height: 245px; border-radius: 24px; }
-      :global(.drawer-row) { grid-auto-columns: 245px; }
-    }
+.return-link,
+.explorer-chip {
+  background: rgba(255,255,255,.92);
+  box-shadow: 0 10px 24px rgba(28,35,32,.10);
+}
+
+  .explorer-chip {
+    height: 34px;
+    padding: 0 12px;
+    font-size: .76rem;
+  }
+
+  .explorer-sidebar {
+    display: none;
+  }
+
+.explorer-drawer {
+  left: 22px;
+  right: 22px;
+  bottom: 18px;
+  height: 92px;
+  padding: 16px 14px 10px;
+  border-radius: 24px;
+}
+
+  .explorer-drawer.is-expanded {
+    height: min(58dvh, 470px);
+  }
+
+.drawer-head {
+  height: auto;
+  min-height: 42px;
+  margin: 10px 0 0;
+  justify-content: center;
+  gap: 8px;
+  font-size: .92rem;
+}
+
+#drawer-title::before {
+  content: "🏠 ";
+}
+
+#drawer-state-label {
+  display: none !important;
+}
+
+  .drawer-sections {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px);
+    transition: opacity .2s ease, transform .2s ease;
+  }
+
+  .explorer-drawer.is-expanded .drawer-sections {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+
+  :global(.drawer-row) {
+    grid-auto-columns: 270px;
+  }
+
+  .explorer-card {
+    grid-template-columns: 104px 1fr;
+  }
+
+  .explorer-card img {
+    width: 96px;
+    height: 86px;
+  }
+}
 
     .explorer-section-label {
   margin: 14px 4px 6px;
@@ -796,53 +1032,827 @@ const areaOptions = Array.from(
   right: 7px !important;
 }
 
+.drawer-summary{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:2px;
+    flex:1;
+}
 
+.drawer-place{
+    font-size:.78rem;
+    font-weight:700;
+    color:var(--muted);
+    letter-spacing:.02em;
+}
+
+.drawer-meta{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:.96rem;
+    font-weight:900;
+}
+
+.drawer-dot{
+    opacity:.35;
+}
+
+.drawer-tabs{
+    display:flex;
+    justify-content:center;
+    gap:8px;
+    margin:8px 0 10px;
+    padding:0 8px;
+}
+
+.drawer-tab{
+    flex:0 0 160px;
+    max-width:160px;
+    height:32px;
+
+    border:0;
+    border-radius:999px;
+
+    background:#eef2f4;
+    color:#4b5563;
+
+    font:inherit;
+    font-size:.8rem;
+    font-weight:850;
+
+    cursor:pointer;
+    transition:.18s ease;
+}
+
+.drawer-tab:hover{
+    background:#e5eaee;
+}
+
+.drawer-tab.is-active{
+    background:#123a5a;
+    color:#fff;
+}
+
+.drawer-tab.is-active{
+  position:relative;
+  overflow:hidden;
+}
+
+.drawer-tab.should-shimmer::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  transform:translateX(-120%);
+  background:linear-gradient(
+    90deg,
+    transparent,
+    rgba(255,255,255,.28),
+    transparent
+  );
+  animation:drawerTabShimmer 2.8s ease-in-out 5;
+}
+
+@keyframes drawerTabShimmer{
+  0%, 45%{
+    transform:translateX(-120%);
+  }
+
+  70%, 100%{
+    transform:translateX(120%);
+  }
+}
+
+.drawer-sections[hidden] {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+:global(.drawer-insight-panel) {
+  display: grid;
+  gap: 10px;
+}
+
+:global(.drawer-insight-head) {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+:global(.drawer-insight-head strong) {
+  font-size: .82rem;
+  font-weight: 950;
+}
+
+:global(.drawer-insight-head p) {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: .78rem;
+}
+
+:global(.drawer-insight-head span) {
+  color: var(--muted);
+  font-size: .7rem;
+  font-weight: 900;
+}
+
+:global(.drawer-insight-grid) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+:global(.drawer-insight-grid article) {
+  flex: 0 0 150px;
+  width: 150px;
+  min-height: 46px;
+  padding: 10px 13px;
+  border: 1px solid rgba(0,0,0,.07);
+  border-radius: 13px;
+  background: #fbfcfd;
+}
+
+:global(.drawer-insight-grid strong) {
+  display: block;
+  font-size: .8rem;
+  font-weight: 950;
+  line-height: 1.15;
+}
+
+:global(.drawer-insight-grid span) {
+  display: block;
+  margin-top: 4px;
+  font-size: .64rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+
+:global(.layer-grid),
+:global(.mobile-layer-switcher){
+  display:flex !important;
+  flex-wrap:wrap !important;
+  align-items:center !important;
+justify-content:flex-start !important;
+  gap:8px !important;
+  margin:8px 0 14px !important;
+}
+
+:global(.layer-grid button),
+:global(.mobile-layer-switcher button),
+:global(.layer-pill){
+  appearance:none !important;
+  -webkit-appearance:none !important;
+
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  gap:6px !important;
+
+  width:auto !important;
+  min-width:0 !important;
+  max-width:none !important;
+  height:32px !important;
+  min-height:32px !important;
+  padding:0 14px !important;
+
+  border:1px solid rgba(15,47,74,.12) !important;
+  border-radius:999px !important;
+
+  background:#f2f5f7 !important;
+  color:#334155 !important;
+
+  font:inherit !important;
+  font-size:.78rem !important;
+  font-weight:850 !important;
+  line-height:1 !important;
+
+  cursor:pointer !important;
+  box-shadow:none !important;
+  white-space:nowrap !important;
+}
+
+:global(.layer-grid button:hover),
+:global(.mobile-layer-switcher button:hover),
+:global(.layer-pill:hover){
+  background:#e8eef2 !important;
+}
+
+:global(.layer-grid button.is-active),
+:global(.mobile-layer-switcher button.is-active),
+:global(.layer-pill.is-active){
+  background:#123a5a !important;
+  border-color:#123a5a !important;
+  color:#fff !important;
+}
+
+:global(body:has(.explorer) footer),
+:global(body:has(.explorer) .site-footer),
+:global(body:has(.explorer) .mobile-nav),
+:global(body:has(.explorer) .bottom-nav),
+:global(body:has(.explorer) .mobile-bottom-nav),
+:global(body:has(.explorer) .site-mobile-nav),
+:global(body:has(.explorer) [data-mobile-nav]),
+:global(body:has(.explorer) nav[aria-label*="Mobile"]),
+:global(body:has(.explorer) nav:has(a[href*="areas"])),
+:global(body:has(.explorer) nav:has(a[href*="search"])),
+:global(body:has(.explorer) nav:has(a[href*="saved"])) {
+  display: none !important;
+}
+
+
+.places-results-spacer{
+  height:24px;
+}
+
+:global(.drawer-ai-insights) {
+  display: grid;
+  gap: 18px;
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(0,0,0,.08);
+}
+
+:global(.drawer-ai-overview) {
+  max-width: 760px;
+}
+
+:global(.drawer-ai-overview strong) {
+  display: block;
+  margin-bottom: 8px;
+  color: #123a5a;
+  font-size: .72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+
+:global(.drawer-ai-overview p) {
+  margin: 0;
+  color: #142033;
+  font-size: .96rem;
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+:global(.drawer-ai-chips) {
+  display: none !important;
+}
+
+:global(.drawer-ai-notes) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  width: 100%;
+}
+
+:global(.drawer-ai-notes article) {
+  min-height: 155px;
+  padding: 17px;
+  border: 1px solid rgba(0,0,0,.075);
+  border-radius: 18px;
+background: rgba(255,255,255,.84);
+box-shadow: 0 10px 26px rgba(0,0,0,.045);
+}
+
+:global(.drawer-ai-notes article > span) {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 12px;
+  border-radius: 999px;
+  background: rgba(18,58,90,.07);
+  font-size: 1rem;
+}
+
+:global(.drawer-ai-notes strong) {
+  display: block;
+  margin-bottom: 8px;
+  color: #123a5a;
+  font-size: .88rem;
+  font-weight: 950;
+  letter-spacing: -.01em;
+}
+
+:global(.drawer-ai-notes p) {
+  margin: 0;
+  color: #475569;
+  font-size: .82rem;
+  line-height: 1.6;
+}
+
+:global(.drawer-ai-highlights) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 22px;
+}
+
+:global(.drawer-ai-highlights span) {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid rgba(18,58,90,.08);
+  border-radius: 999px;
+  background: rgba(255,255,255,.78);
+  color: #123a5a;
+  box-shadow: 0 6px 16px rgba(0,0,0,.035);
+  font-size: .76rem;
+  font-weight: 850;
+  white-space: nowrap;
+  transition: .18s ease;
+  cursor: default;
+}
+
+:global(.drawer-ai-highlights span:hover) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(0,0,0,.06);
+}
+
+:global(.drawer-ai-hero) {
+  display: grid;
+  gap: 10px;
+  max-width: 760px;
+}
+
+:global(.drawer-ai-hero h2) {
+  margin: 0;
+  color: #10243a;
+  font-size: 2rem;
+  font-weight: 950;
+  letter-spacing: -.05em;
+  line-height: 1.05;
+}
+
+:global(.drawer-ai-hero .drawer-ai-overview) {
+  margin: 0;
+  color: #475569;
+  font-size: .95rem;
+  font-weight: 650;
+  line-height: 1.6;
+}
+
+:global(.drawer-ai-hero + .drawer-insight-grid) {
+  margin-top: 8px;
+}
+
+:global(.drawer-insight-grid) {
+  margin-bottom: 16px;
+}
+
+:global(.drawer-insight-panel) {
+  overflow: hidden;
+}
+
+:global(.drawer-insight-grid) {
+  padding-bottom: 24px;
+  margin-bottom: 26px;
+  border-bottom: 1px solid rgba(0,0,0,.06);
+}
+
+.explorer-sidebar {
+  display: none !important;
+}
+
+.explorer-drawer {
+  left: 22px;
+}
+
+.explorer-brand span {
+  display: none;
+}
+
+.explorer-top {
+  padding: 10px 16px;
+}
+
+.explorer-command-row {
+  padding-top: 8px;
+}
+
+.explorer-search,
+.return-link,
+.explorer-chip,
+.drawer-tab,
+:global(.layer-pill) {
+  height: 30px !important;
+}
+
+.drawer-tab {
+  max-width: 145px;
+  flex-basis: 145px;
+}
+
+.explorer-map {
+  top: 0;
+}
+
+.explorer-drawer {
+  height: 102px;
+  padding: 10px 16px;
+}
+
+.drawer-sections {
+  max-height: 100%;
+  padding: 0 2px 4px;
+}
+
+.drawer-section-title {
+  display: none;
+}
+
+:global(.drawer-row) {
+  align-items: center;
+  grid-auto-columns: 230px;
+  gap: 12px;
+}
+
+.explorer-card {
+  min-height: 76px;
+}
+
+.explorer-card img {
+  width: 82px;
+  height: 76px;
+}
+
+.explorer-card-body {
+  padding: 9px 10px 9px 0;
+}
+
+.explorer-drawer.is-insights-mode {
+  height: min(46dvh, 480px);
+}
+
+.explorer-drawer.is-insights-mode .drawer-sections {
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.explorer-drawer.is-insights-mode :global(.drawer-insight-panel) {
+  padding: 4px 8px 18px;
+}
+
+.explorer-drawer.is-insights-mode :global(.drawer-ai-hero h2) {
+  font-size: 1.55rem;
+}
+
+.explorer-drawer.is-insights-mode :global(.drawer-ai-notes) {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.explorer-drawer.is-homes-mode,
+.explorer-drawer.is-places-mode,
+.explorer-drawer.is-insights-mode {
+  height: min(46dvh, 480px);
+}
+
+.explorer-drawer.is-homes-mode .drawer-sections,
+.explorer-drawer.is-places-mode .drawer-sections,
+.explorer-drawer.is-insights-mode .drawer-sections {
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.explorer-drawer.is-homes-mode :global(.drawer-row) {
+  display: grid;
+  grid-auto-flow: row;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  align-items: stretch;
+  overflow-y: auto;
+  overflow-x: hidden;
+  gap: 14px;
+}
+
+.explorer-drawer.is-homes-mode .explorer-card {
+  display: grid;
+  grid-template-columns: 104px 1fr;
+  min-height: 94px;
+}
+
+.explorer-drawer.is-homes-mode .explorer-card img {
+  width: 104px;
+  height: 94px;
+}
+
+.explorer-drawer.is-homes-mode .explorer-card-body {
+  padding: 12px 12px 12px 0;
+}
+
+.explorer-drawer.is-places-mode .places-results-spacer {
+  height: 8px;
+}
+
+.explorer-drawer.is-places-mode #drawer-places .drawer-empty {
+  margin-bottom: 14px;
+}
+
+.explorer-drawer.is-places-mode #drawer-places {
+  height: 100%;
+  overflow-y: auto;
+  padding: 0 4px 24px;
+}
+
+.explorer-drawer.is-places-mode #drawer-places .drawer-row {
+  display: grid !important;
+  grid-auto-flow: unset !important;
+  grid-auto-columns: unset !important;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)) !important;
+  align-items: stretch;
+  overflow: visible !important;
+  gap: 12px;
+}
+
+.explorer-drawer.is-places-mode #drawer-places .drawer-section {
+  padding-top: 10px !important;
+}
+
+.explorer-drawer.is-places-mode #drawer-places .place-card {
+  min-height: 92px;
+  padding: 14px;
+}
+
+.explorer-drawer.is-places-mode #drawer-places .place-card strong {
+  font-size: .9rem;
+}
+
+.explorer-drawer.is-places-mode #drawer-places .place-card span {
+  font-size: .76rem;
+}
+:global(.explorer-drawer.is-places-mode #drawer-places) {
+  height: 100%;
+  overflow-y: auto;
+  padding: 0 4px 24px;
+}
+
+:global(.explorer-drawer.is-places-mode #drawer-places .drawer-row) {
+  display: grid !important;
+  grid-auto-flow: row !important;
+  grid-auto-columns: unset !important;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)) !important;
+  overflow: visible !important;
+  gap: 12px !important;
+}
+
+:global(.explorer-drawer.is-places-mode #drawer-places .place-card) {
+  min-height: 92px;
+  padding: 14px;
+}
+
+@media (max-width: 760px) {
+  .explorer-top {
+    top: 10px !important;
+    left: 10px !important;
+    right: 10px !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+    padding: 10px 12px !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+    background: rgba(255,255,255,.82) !important;
+  }
+
+  .explorer-top-row,
+  .explorer-command-row,
+  .drawer-tabs,
+  .top-group {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+    gap: 8px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+  }
+
+  .explorer-search {
+    width: 100% !important;
+    height: 36px !important;
+    border-radius: 999px !important;
+  }
+
+  .return-link,
+  .explorer-chip,
+  .drawer-tab,
+  :global(.layer-pill) {
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 0 12px !important;
+    border-radius: 999px !important;
+    font-size: .72rem !important;
+    white-space: nowrap !important;
+  }
+
+  .drawer-tab {
+    flex: 1 1 calc(33.333% - 6px) !important;
+    max-width: none !important;
+  }
+
+  :global(.layer-pill) {
+    flex: 1 1 calc(50% - 8px) !important;
+  }
+
+  .explorer-drawer {
+    left: 14px !important;
+    right: 14px !important;
+    bottom: 18px !important;
+    height: 34dvh !important;
+    max-height: 330px !important;
+    padding: 12px !important;
+    border-radius: 22px !important;
+    overflow: hidden !important;
+  }
+
+  .drawer-sections {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: none !important;
+    max-height: 100% !important;
+    overflow-y: auto !important;
+    padding: 0 2px 10px !important;
+  }
+
+  .explorer-drawer.is-homes-mode :global(.drawer-row),
+  .explorer-drawer.is-places-mode :global(.drawer-row) {
+    display: grid !important;
+    grid-auto-flow: row !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    overflow: visible !important;
+  }
+
+  .explorer-card {
+    grid-template-columns: 96px 1fr !important;
+    min-height: 86px !important;
+  }
+
+  .explorer-card img {
+    width: 96px !important;
+    height: 86px !important;
+  }
+
+  .explorer-card-body {
+    padding: 10px 10px 10px 0 !important;
+  }
+
+  .leaflet-control-zoom {
+    display: none !important;
+  }
+}
+@media (max-width: 760px) {
+  .explorer-drawer {
+    height: 86px !important;
+  }
+
+  .explorer-drawer.is-expanded,
+  .explorer-drawer.is-homes-mode,
+  .explorer-drawer.is-places-mode,
+  .explorer-drawer.is-insights-mode {
+    height: 36dvh !important;
+    max-height: 340px !important;
+  }
+
+  .explorer-drawer.is-expanded .drawer-sections,
+  .explorer-drawer.is-homes-mode .drawer-sections,
+  .explorer-drawer.is-places-mode .drawer-sections,
+  .explorer-drawer.is-insights-mode .drawer-sections {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .explorer-command-row > .top-group:last-child {
+    display: none !important;
+  }
+
+  .explorer-top {
+    padding: 10px 12px !important;
+    gap: 7px !important;
+  }
+
+  .return-link,
+  .explorer-chip,
+  .drawer-tab {
+    height: 29px !important;
+  }
+
+  .explorer-drawer {
+    bottom: 14px !important;
+  }
+}
+@media (max-width: 760px) {
+  .explorer-top-row:has(.explorer-search) {
+    display: none !important;
+  }
+
+  .explorer-top {
+    padding: 10px 12px !important;
+    gap: 8px !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .explorer-brand {
+    display: none !important;
+  }
+}
   </style>
 
 <div
   class="explorer"
   data-city={city}
   data-area-label={areaLabel}
-  data-area-filter={area ? area.replace(/-/g, " ").toLowerCase() : ""}
+data-area-filter={area ? area.replace(/-/g, " ").toLowerCase() : ""}
+data-boundary={boundaryRow?.polygon_geojson ? JSON.stringify(boundaryRow.polygon_geojson) : ""}
+data-boundaries={JSON.stringify(boundaryRows || [])}
+data-area-insights={JSON.stringify(areaInsightRows ?? [])}
 >
-    <header class="explorer-top">
-<a
-  class="return-link"
-  href={area ? `/${city}/${area}` : `/${city}`}
-  data-guide-link
->
-  ← Guide
-</a>
+   <header class="explorer-top">
 
-  <button class="explorer-search" type="button" data-menu-trigger="location">
-    🔍 <span id="nav-location-label">{areaLabel}</span>
-  </button>
+  <div class="explorer-brand">
+    <span class="explorer-brand-mark">⌖</span>
+    <div>
+      <strong>{areaLabel} Explorer</strong>
+      <span>Homes and neighbourhood context stay together.</span>
+    </div>
+  </div>
 
-  <button class="explorer-chip" type="button" data-menu-trigger="price">
-    <span id="nav-price-label">Any price</span>
-  </button>
-
-  <button class="explorer-chip" type="button" data-menu-trigger="beds">
-    <span id="nav-beds-label">Beds</span>
-  </button>
-
-  <button class="explorer-chip" type="button" data-menu-trigger="type">
-    <span id="nav-type-label">Type</span>
-  </button>
-
-  <button class="explorer-chip" type="button" data-menu-trigger="more">
-    More
-  </button>
-
-<div class="explorer-menu" data-menu="location">
-  <button data-filter-location="">All {areaLabel}</button>
-
-  {areaOptions.map((areaName) => (
-    <button data-filter-location={areaName.toLowerCase()}>
-      {areaName.replace(/\b\w/g, (c) => c.toUpperCase())}
+  <div class="explorer-top-row">
+    <button class="explorer-search" type="button" data-menu-trigger="location">
+      🔎 <span>Search areas, amenities, or places</span>
     </button>
-  ))}
-</div>
+  </div>
+
+  <div class="explorer-top-row">
+    <a class="return-link" href={area ? `/${city}/${area}` : `/${city}`} data-guide-link>
+      ← Guide
+    </a>
+
+    <button class="explorer-chip" type="button" data-menu-trigger="location">
+      📍 <span id="nav-location-label">{areaLabel}</span>
+    </button>
+
+    <button class="explorer-chip" type="button" data-menu-trigger="price">
+      <span id="nav-price-label">Any price</span>
+    </button>
+
+    <button class="explorer-chip" type="button" data-menu-trigger="beds">
+      <span id="nav-beds-label">Beds</span>
+    </button>
+
+    <button class="explorer-chip" type="button" data-menu-trigger="type">
+      <span id="nav-type-label">Type</span>
+    </button>
+  </div>
+
+  <div class="explorer-command-row">
+
+    <div class="top-group drawer-tabs">
+      <button class="drawer-tab is-active" data-drawer-tab="homes">🏠 Homes</button>
+      <button class="drawer-tab" data-drawer-tab="places">📍 Places</button>
+      <button class="drawer-tab" data-drawer-tab="insights">📊 Insights</button>
+    </div>
+
+    <div class="top-divider"></div>
+
+    
+
+    <div class="top-divider"></div>
+
+    <div class="top-group">
+      <span class="top-label">Layers</span>
+      <button class="layer-pill" data-mobile-layer="parks">🌳 Parks</button>
+      <button class="layer-pill" data-mobile-layer="schools">🎓 Schools</button>
+      <button class="layer-pill" data-mobile-layer="restaurants">☕ Restaurants</button>
+      <button class="layer-pill" data-mobile-layer="grocery">🛒 Grocery</button>
+      <button class="layer-pill" data-mobile-layer="medical">🏥 Medical</button>
+    </div>
+
+  </div>
+
+  <div class="explorer-menu" data-menu="location">
+    <button data-filter-location="">All {areaLabel}</button>
+
+    {areaOptions.map((areaName) => (
+      <button data-filter-location={areaName.toLowerCase()}>
+        {areaName.replace(/\b\w/g, (c) => c.toUpperCase())}
+      </button>
+    ))}
+  </div>
 
   <div class="explorer-menu" data-menu="price">
     <button data-filter-price="">Any price</button>
@@ -868,9 +1878,6 @@ const areaOptions = Array.from(
     <button data-filter-type="land">Land</button>
   </div>
 
-  <div class="explorer-menu" data-menu="more">
-    <button data-filter-reset>Reset filters</button>
-  </div>
 </header>
 
     <section class="explorer-main">
@@ -938,10 +1945,66 @@ const areaOptions = Array.from(
     <section class="explorer-drawer" id="explorer-drawer">
       <button type="button" class="drawer-handle" id="drawer-toggle" aria-label="Expand drawer"></button>
    <button type="button" class="drawer-head" id="drawer-head-toggle">
-  <span id="drawer-title">{listings.length} Homes</span>
- <span id="drawer-state-label" aria-hidden="true"></span>
+
+  <div class="drawer-summary">
+
+    <div class="drawer-place" id="drawer-place">
+      {areaLabel}
+    </div>
+
+    <div class="drawer-meta">
+      <span id="drawer-title">{listings.length} Homes</span>
+
+      <span class="drawer-dot">•</span>
+
+      <span id="drawer-layer-count">1 Layer</span>
+    </div>
+
+  </div>
+
+  <span id="drawer-state-label" aria-hidden="true"></span>
+
 </button>
-      <div class="drawer-sections" id="drawer-sections"></div>
+    <div class="drawer-tabs">
+
+  <button class="drawer-tab is-active"
+          data-drawer-tab="homes">
+      Homes
+  </button>
+
+  <button class="drawer-tab"
+          data-drawer-tab="places">
+      Places
+  </button>
+
+  <button class="drawer-tab"
+          data-drawer-tab="insights">
+      Insights
+  </button>
+
+</div>
+
+<div
+    class="drawer-sections"
+    id="drawer-sections">
+
+</div>
+
+<div
+    class="drawer-sections"
+    id="drawer-places"
+    hidden>
+
+</div>
+
+<div
+  class="drawer-sections"
+  id="drawer-insights"
+  hidden>
+
+<div id="drawer-insights-content"></div>
+
+</div>
     </section>
 
     <template id="home-card-template">
@@ -986,7 +2049,7 @@ data-baths={String(listing.baths || "")}
 data-sqft={String(listing.sqft || "")}
 data-description={String(listing.description || "").toLowerCase()}
 data-property-type={String(listing.property_type || "").toLowerCase()}
-data-type={String(listing.normalized_type || "").toLowerCase()}
+data-type={String(listing.normalized_type || listing.property_type || "home").toLowerCase()}
 data-area={listing.normalized_area || listing.area || ""}
 data-liked-tags="[]"
 data-is-favourite="false"
@@ -1084,7 +2147,9 @@ data-mls={listing.mls_number || ""}
       const explorer = document.querySelector(".explorer");
       const mapEl = document.getElementById("explorer-map");
       const drawer = document.getElementById("explorer-drawer");
-      const drawerSections = document.getElementById("drawer-sections");
+const drawerSections = document.getElementById("drawer-sections");
+const drawerPlaces = document.getElementById("drawer-places");
+const drawerInsights = document.getElementById("drawer-insights");
       const drawerTitle = document.getElementById("drawer-title");
       const drawerState = document.getElementById("drawer-state-label");
       const homeTemplate = document.getElementById("home-card-template");
@@ -1125,6 +2190,36 @@ data-mls={listing.mls_number || ""}
         maxZoom: 22,
         attribution: '&copy; <a href="https://jawg.io">Jawg</a> &copy; <a href="https://www.openstreetmap.org">OpenStreetMap</a>',
       }).addTo(map);
+let boundaryLayer = null;
+
+function drawAreaBoundary(areaName = "") {
+  if (boundaryLayer) {
+    map.removeLayer(boundaryLayer);
+    boundaryLayer = null;
+  }
+
+  const slug = slugify(areaName || navFilters.location || "");
+  if (!slug) return;
+
+  let rows = [];
+
+  try {
+    rows = JSON.parse(explorer.dataset.boundaries || "[]");
+  } catch {}
+
+  const row = rows.find((item) => slugify(item.area_slug || "") === slug);
+  if (!row?.polygon_geojson) return;
+
+  boundaryLayer = L.geoJSON(row.polygon_geojson, {
+    style: {
+     color: "#123a5a",
+weight: 4,
+opacity: 1,
+fillColor: "#123a5a",
+fillOpacity: 0.12,
+    },
+  }).addTo(map);
+}
 
       const layerGroups = Object.fromEntries(
         Object.keys(activeLayers).map((key) => [key, L.layerGroup()])
@@ -1149,7 +2244,7 @@ const navFilters = {
   beds: 0,
   type: "",
 };
-
+drawAreaBoundary(explorer.dataset.areaLabel || navFilters.location);
       function escapeHtml(value = "") {
         return String(value)
           .replaceAll("&", "&amp;")
@@ -1160,11 +2255,11 @@ const navFilters = {
 function normalizeExplorerType(value = "") {
   const type = String(value).toLowerCase().trim();
 
-  if (["condo", "apartment", "apartments"].includes(type)) return "condo";
-  if (["house", "home", "homes", "single family", "single family detached"].includes(type)) return "house";
-  if (["townhouse", "townhome", "townhomes"].includes(type)) return "townhouse";
-  if (["mobile", "manufactured"].includes(type)) return "mobile";
-  if (["land", "lot"].includes(type)) return "land";
+  if (type.includes("townhouse") || type.includes("townhome") || type.includes("row")) return "townhouse";
+  if (type.includes("condo") || type.includes("apartment")) return "condo";
+  if (type.includes("manufactured") || type.includes("mobile")) return "mobile";
+  if (type.includes("land") || type.includes("lot")) return "land";
+  if (type.includes("house") || type.includes("single family") || type.includes("detached")) return "house";
 
   return type;
 }
@@ -1473,16 +2568,23 @@ const res = await fetch(
           if (!meta.apiKey) return;
         const selectedHomes = layerItems.homes.filter((home) => passesNavFilters(home));
 
-const rows = (amenityCache[meta.apiKey] || []).filter((place) => {
-  if (!selectedHomes.length) return true;
+const polygon = currentAreaPolygon();
 
+const rows = (amenityCache[meta.apiKey] || []).filter((place) => {
   const lat = Number(place.lat);
   const lng = Number(place.lng);
+
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
 
- return selectedHomes.some((home) => {
-  return distanceKm(home, { lat, lng }) <= 1.5;
-});
+  if (polygon) {
+    return pointInPolygon(lat, lng, polygon);
+  }
+
+  if (!selectedHomes.length) return true;
+
+  return selectedHomes.some((home) => {
+    return distanceKm(home, { lat, lng }) <= 1.5;
+  });
 });
 
           layerItems[layerKey] = rows
@@ -1580,7 +2682,53 @@ const rows = (amenityCache[meta.apiKey] || []).filter((place) => {
 if (el) el.textContent = total ? String(visible) : "—";
         });
       }
+function pointInPolygon(lat, lng, polygon) {
+  const coords = polygon?.coordinates?.[0];
+  if (!coords?.length) return false;
 
+  let inside = false;
+
+  for (let i = 0, j = coords.length - 1; i < coords.length; j = i++) {
+    const xi = coords[i][0];
+    const yi = coords[i][1];
+    const xj = coords[j][0];
+    const yj = coords[j][1];
+
+    const intersect =
+      yi > lat !== yj > lat &&
+      lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+
+    if (intersect) inside = !inside;
+  }
+
+  return inside;
+}
+
+function currentAreaPolygon() {
+  const label =
+    document.getElementById("nav-location-label")?.textContent?.trim() ||
+    explorer.dataset.areaLabel ||
+    "";
+
+  const currentSlug = slugify(label);
+
+  let rows = [];
+
+  try {
+    rows = JSON.parse(explorer.dataset.boundaries || "[]");
+  } catch {}
+
+  const row = rows.find((item) => {
+    return (
+      slugify(item.area_slug || "") === currentSlug ||
+      slugify(item.area_name || "") === currentSlug
+    );
+  });
+
+  return row?.polygon_geojson?.type === "Polygon"
+    ? row.polygon_geojson
+    : null;
+}
       function distanceKm(a, b) {
         const earthKm = 6371;
         const dLat = (b.lat - a.lat) * Math.PI / 180;
@@ -1643,21 +2791,32 @@ if (el) el.textContent = total ? String(visible) : "—";
         `;
       }
 
-  function cardHtml(item) {
+function cardHtml(item) {
   if (item.layer === "homes") {
     return item.html || "";
   }
 
   return `
-    <article class="place-card" data-layer="${escapeHtml(item.layer)}" data-item-id="${escapeHtml(item.id)}">
+    <article
+      class="place-card"
+      data-layer="${escapeHtml(item.layer)}"
+      data-item-id="${escapeHtml(item.id)}"
+    >
       <strong>${escapeHtml(item.title)}</strong>
-      <span>${escapeHtml(item.subtitle || item.meta || "")}</span>
+      <span>${escapeHtml(item.subtitle || "")}</span>
+      <span>${escapeHtml(item.meta || "")}</span>
     </article>
   `;
 }
 
       function renderDrawer() {
-        const activeKeys = Object.keys(activeLayers).filter((key) => activeLayers[key]);
+const activeTab =
+  document.querySelector(".drawer-tab.is-active")?.dataset.drawerTab || "homes";
+
+const activeKeys =
+  activeTab === "homes"
+    ? ["homes"]
+    : Object.keys(activeLayers).filter((key) => activeLayers[key]);
         const titleParts = [];
 
         const intelligenceHtml = activeHomeItem ? renderHomeIntelligence(activeHomeItem) : "";
@@ -1681,7 +2840,35 @@ if (el) el.textContent = total ? String(visible) : "—";
             </section>
           `;
         }).join("") || `<div class="drawer-empty">Turn on a layer to explore the map.</div>`;
+const drawerPlace = document.getElementById("drawer-place");
+const drawerLayerCount = document.getElementById("drawer-layer-count");
 
+if (drawerPlace) {
+  drawerPlace.textContent =
+    document.getElementById("nav-location-label")?.textContent || "";
+}
+
+if (drawerLayerCount) {
+  const count = Object.keys(activeLayers)
+    .filter((k) => activeLayers[k])
+    .length;
+
+const enabled = Object.keys(activeLayers)
+  .filter(key => key !== "homes")
+  .filter(key => activeLayers[key])
+  .map(key => layerMeta[key].title);
+
+const visiblePlacesCount = Object.keys(layerItems)
+  .filter(key => key !== "homes")
+  .flatMap(key => layerItems[key] || [])
+  .filter(isVisible)
+  .length;
+
+drawerLayerCount.textContent =
+  visiblePlacesCount
+    ? `${visiblePlacesCount} Places`
+    : "No places";
+}
 if (drawerTitle) {
   const selectedTypeLabel =
     document.getElementById("nav-type-label")?.textContent?.trim();
@@ -1691,7 +2878,8 @@ if (drawerTitle) {
   if (navFilters.type && selectedTypeLabel && selectedTypeLabel !== "Type") {
     drawerTitle.textContent = `${homesCount} ${selectedTypeLabel}${homesCount === 1 ? "" : "s"}`;
   } else {
-    drawerTitle.textContent = titleParts.length ? titleParts.join(" · ") : "Explorer layers";
+const homesCount = layerItems.homes.filter(isVisible).length;
+drawerTitle.textContent = `${homesCount} Homes`;
   }
 }
 
@@ -1708,13 +2896,231 @@ if (drawerTitle) {
           });
         });
       }
+function renderInsights() {
+  const target = document.getElementById("drawer-insights-content");
+  if (!target) return;
 
-      function refreshExplorer() {
-        syncMapLayers();
-        updateToggleUi();
-        updateCounts();
-        renderDrawer();
+  let rows = [];
+  let boundaryRows = [];
+
+  try {
+    rows = JSON.parse(explorer.dataset.areaInsights || "[]");
+  } catch {}
+
+  try {
+    boundaryRows = JSON.parse(explorer.dataset.boundaries || "[]");
+  } catch {}
+
+  const currentLabel =
+    document.getElementById("nav-location-label")?.textContent?.trim() ||
+    explorer.dataset.areaLabel ||
+    "";
+
+  const currentSlug = slugify(currentLabel);
+
+  const boundaryProfile = boundaryRows.find((row) => {
+    return (
+      slugify(row.area_slug || "") === currentSlug ||
+      slugify(row.area_name || "") === currentSlug
+    );
+  }) || {};
+
+  const ai = boundaryProfile.ai_insights || {};
+
+  const profile = rows.find((row) => {
+    return (
+      slugify(row.slug || "") === currentSlug ||
+      slugify(row.area_slug || "") === currentSlug ||
+      slugify(row.area_name || "") === currentSlug
+    );
+  }) || {};
+
+  const homes = layerItems.homes.filter((home) => {
+    if (!passesNavFilters(home)) return false;
+    if (navFilters.location) return home.areaRaw.includes(navFilters.location);
+    return true;
+  });
+
+  const prices = homes
+    .map((home) => Number(home.priceRaw || 0))
+    .filter((price) => price > 0)
+    .sort((a, b) => a - b);
+
+  const median = prices.length ? prices[Math.floor(prices.length / 2)] : 0;
+
+  const money = (value) =>
+    Number(value || 0) > 0 ? `$${Number(value).toLocaleString()}` : "";
+
+  const number = (value) =>
+    Number(value || 0) > 0 ? Number(value).toLocaleString() : "";
+
+  const percent = (value) =>
+    value !== null && value !== undefined && value !== ""
+      ? `${Number(value).toFixed(2)}%`
+      : "";
+
+  const population =
+    profile.population_2021 ||
+    profile.population ||
+    profile.total_population ||
+    profile.pop ||
+    profile.census_population;
+
+  const populationChange =
+    profile.pop_change_pct ||
+    profile.population_change ||
+    profile.population_change_percent ||
+    profile.pop_change ||
+    profile.growth_rate;
+
+  const income =
+    profile.median_household_income ||
+    profile.household_income ||
+    profile.median_income ||
+    profile.income;
+
+  target.innerHTML = `
+    <section class="drawer-insight-panel">
+
+      <div class="drawer-ai-hero">
+        <h2>${escapeHtml(currentLabel)}</h2>
+
+        ${
+          ai.overview || ai.summary
+            ? `<p class="drawer-ai-overview">${escapeHtml(ai.overview || ai.summary)}</p>`
+            : `<p class="drawer-ai-overview">A quick neighbourhood snapshot using market activity, local profile data, and visible listings.</p>`
+        }
+
+        ${
+          Array.isArray(ai.highlights) && ai.highlights.length
+            ? `
+              <div class="drawer-ai-highlights">
+                ${ai.highlights.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+              </div>
+            `
+            : ""
+        }
+      </div>
+
+      <div class="drawer-insight-grid">
+        ${homes.length ? `<article><strong>${number(homes.length)}</strong><span>Homes for sale</span></article>` : ""}
+        ${median ? `<article><strong>${money(median)}</strong><span>Median price</span></article>` : ""}
+        ${population ? `<article><strong>${number(population)}</strong><span>Population</span></article>` : ""}
+        ${populationChange !== null && populationChange !== undefined && populationChange !== "" ? `<article><strong>${percent(populationChange)}</strong><span>Population change</span></article>` : ""}
+        ${income ? `<article><strong>${money(income)}</strong><span>Household income</span></article>` : ""}
+      </div>
+
+      ${
+        ai.market || ai.buyers || ai.lifestyle || ai.demographics || ai.watch
+          ? `
+            <div class="drawer-ai-notes">
+              ${ai.market ? `<article><span>📈</span><strong>Market context</strong><p>${escapeHtml(ai.market)}</p></article>` : ""}
+              ${ai.buyers ? `<article><span>👀</span><strong>Buyer fit</strong><p>${escapeHtml(ai.buyers)}</p></article>` : ""}
+              ${ai.lifestyle ? `<article><span>🌿</span><strong>Lifestyle</strong><p>${escapeHtml(ai.lifestyle)}</p></article>` : ""}
+              ${ai.demographics ? `<article><span>👥</span><strong>Neighbourhood trend</strong><p>${escapeHtml(ai.demographics)}</p></article>` : ""}
+              ${ai.watch ? `<article><span>💡</span><strong>Worth knowing</strong><p>${escapeHtml(ai.watch)}</p></article>` : ""}
+            </div>
+          `
+          : ""
       }
+
+    </section>
+  `;
+}
+  function refreshExplorer() {
+  syncMapLayers();
+  updateToggleUi();
+  updateCounts();
+  renderDrawer();
+  renderInsights();
+
+ if (drawerPlaces) {
+
+  const sections = Object.keys(activeLayers)
+    .filter((key) => key !== "homes")
+    .filter((key) => activeLayers[key])
+    .map((key) => {
+
+      const meta = layerMeta[key];
+
+const rows = layerItems[key]
+  .filter(isVisible);
+
+      if (!rows.length) return "";
+
+return `
+        <section class="drawer-section" style="padding-top:24px;">
+
+          <div class="drawer-section-title">
+
+            <span>${meta.icon} ${meta.title}</span>
+
+            <span>${rows.length}</span>
+
+          </div>
+
+          <div class="drawer-row">
+
+            ${rows.map(cardHtml).join("")}
+
+          </div>
+
+        </section>
+      `;
+
+    })
+    .join("");
+
+  const activeAmenityLayers = Object.keys(activeLayers)
+  .filter(key => key !== "homes")
+  .filter(key => activeLayers[key]);
+
+if (!activeAmenityLayers.length) {
+
+drawerPlaces.innerHTML = `
+  <div class="drawer-empty">
+
+    <h3>Nearby Places</h3>
+
+    <p>Choose what you want to see nearby.</p>
+
+    <div class="layer-grid">
+      <button class="layer-pill" data-mobile-layer="parks">🌳 Parks</button>
+      <button class="layer-pill" data-mobile-layer="schools">🎓 Schools</button>
+      <button class="layer-pill" data-mobile-layer="restaurants">☕ Restaurants</button>
+      <button class="layer-pill" data-mobile-layer="grocery">🛒 Grocery</button>
+      <button class="layer-pill" data-mobile-layer="medical">🏥 Medical</button>
+    </div>
+
+  </div>
+`;
+
+} else {
+
+  drawerPlaces.innerHTML = `
+    <div class="drawer-empty">
+      <h3>Nearby Places</h3>
+      <p>Choose what you want to see nearby.</p>
+
+      <div class="mobile-layer-switcher">
+      <button class="layer-pill ${activeLayers.parks ? "is-active" : ""}" data-mobile-layer="parks">🌳 Parks</button>
+      <button class="layer-pill ${activeLayers.schools ? "is-active" : ""}" data-mobile-layer="schools">🎓 Schools</button>
+      <button class="layer-pill ${activeLayers.restaurants ? "is-active" : ""}" data-mobile-layer="restaurants">☕ Food</button>
+      <button class="layer-pill ${activeLayers.grocery ? "is-active" : ""}" data-mobile-layer="grocery">🛒 Grocery</button>
+      <button class="layer-pill ${activeLayers.medical ? "is-active" : ""}" data-mobile-layer="medical">🏥 Medical</button>
+      </div>
+    </div>
+
+<div class="places-results-spacer"></div>
+
+${sections}
+  `;
+
+}
+
+}
+
+}
 
       function fitActiveLayers() {
         const points = Object.keys(activeLayers)
@@ -1731,15 +3137,46 @@ if (drawerTitle) {
       buildHomeLayer();
       layerGroups.homes.addTo(map);
 
-      const homePoints = layerItems.homes.map((item) => [item.lat, item.lng]);
-      if (homePoints.length) {
-        map.fitBounds(homePoints, { padding: [40, 40] });
+     const homePoints = layerItems.homes
+  .filter((item) => passesNavFilters(item))
+  .map((item) => [item.lat, item.lng]);
+if (boundaryLayer) {
+  const isMobile = window.matchMedia("(max-width: 760px)").matches;
+
+  map.fitBounds(boundaryLayer.getBounds(), {
+    paddingTopLeft: isMobile ? [36, 120] : [330, 95],
+    paddingBottomRight: isMobile ? [36, 120] : [70, 150],
+  });
+
+  window.setTimeout(() => {
+    if (!isMobile) {
+      map.setZoom(Math.max(map.getZoom(), 13));
+      map.panBy([-130, 0], { animate: false });
+    }
+  }, 120);
+} else if (homePoints.length) {
+   map.fitBounds(homePoints, {
+  paddingTopLeft: [330, 95],
+  paddingBottomRight: [70, 150]
+});
+
+window.setTimeout(() => {
+  const isMobile = window.matchMedia("(max-width: 760px)").matches;
+
+  if (!isMobile) {
+    map.setZoom(Math.max(map.getZoom(), 13));
+    map.panBy([-130, 0], { animate: false });
+  }
+}, 80);
       } else {
         map.setView([49.1659, -123.9401], 11);
       }
 
-      refreshExplorer();
-      setTimeout(() => map.invalidateSize(), 100);
+loadAmenities().then(() => {
+  refreshExplorer();
+});
+
+setTimeout(() => map.invalidateSize(), 100);
 
       document.querySelectorAll(".explorer-layer[data-layer]").forEach((button) => {
         button.addEventListener("click", async () => {
@@ -1777,7 +3214,7 @@ if (drawerTitle) {
 
           if (!isAlreadyActive) {
             layers.forEach((layerKey) => {
-              activeLayers[layerKey] = true;
+             activeLayers[layerKey] = !activeLayers[layerKey];
             });
 
             button.classList.add("is-active");
@@ -1786,11 +3223,10 @@ if (drawerTitle) {
           refreshExplorer();
         });
       });
-      map.on("moveend zoomend", async () => {
-        await loadAmenities();
-        updateCounts();
-        renderDrawer();
-      });
+    map.on("moveend zoomend", async () => {
+  await loadAmenities();
+  refreshExplorer();
+});
                       document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-preview-listing-id]");
   if (!button) return;
@@ -1911,17 +3347,22 @@ document.addEventListener("click", (event) => {
   closeMenus();
 });
 document.addEventListener("click", (event) => {
-  if (!drawer?.classList.contains("is-expanded")) return;
+  if (!drawer) return;
 
   if (
     event.target.closest(".explorer-drawer") ||
-    event.target.closest(".leaflet-popup") ||
-    event.target.closest(".leaflet-marker-icon")
+    event.target.closest(".explorer-top") ||
+    event.target.closest(".leaflet-popup")
   ) {
     return;
   }
 
-  drawer.classList.remove("is-expanded");
+  drawer.classList.remove(
+    "is-expanded",
+    "is-homes-mode",
+    "is-places-mode",
+    "is-insights-mode"
+  );
 
   if (drawerState) drawerState.textContent = "";
 
@@ -1935,7 +3376,17 @@ function focusFilteredHomesOnMap() {
 
   if (!homes.length) return;
 
+  const isMobile = window.matchMedia("(max-width: 760px)").matches;
   const bounds = L.latLngBounds(homes.map((home) => [home.lat, home.lng]));
+
+  if (isMobile) {
+    map.fitBounds(bounds, {
+      padding: [36, 120],
+      maxZoom: 14,
+    });
+    return;
+  }
+
   const center = bounds.getCenter();
 
   map.flyTo(center, 13, { duration: 0.45 });
@@ -1953,10 +3404,12 @@ document.querySelectorAll("[data-filter-location]").forEach((button) => {
 
     document.getElementById("nav-location-label").textContent = label;
 updateGuideLink(label);
-    const sidebarTitle = document.querySelector(".explorer-sidebar h1");
-    if (sidebarTitle) sidebarTitle.textContent = label;
+drawAreaBoundary(label);
 
-    activeHomeItem = null;
+const sidebarTitle = document.querySelector(".explorer-sidebar h1");
+if (sidebarTitle) sidebarTitle.textContent = label;
+
+activeHomeItem = null;
 
     Object.keys(amenityCache).forEach((key) => delete amenityCache[key]);
 
@@ -1975,7 +3428,7 @@ updateGuideLink(label);
 });
 
 document.querySelectorAll("[data-filter-price]").forEach((button) => {
-  button.addEventListener("click", () => {
+ button.addEventListener("click", async () => {
     const value = button.dataset.filterPrice || "";
     const [min, max] = value.split("-").map(Number);
 
@@ -2033,6 +3486,110 @@ drawerState.textContent = "";
         }
         window.setTimeout(() => map.invalidateSize(), 300);
      });
+});
+document.querySelectorAll(".drawer-tab").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const wasActive = button.classList.contains("is-active");
+const currentMode = `is-${button.dataset.drawerTab}-mode`;
+
+if (wasActive && drawer?.classList.contains(currentMode)) {
+  drawer.classList.remove(
+    "is-expanded",
+    "is-homes-mode",
+    "is-places-mode",
+    "is-insights-mode"
+  );
+  return;
+}
+    document.querySelectorAll(".drawer-tab").forEach((tab) => {
+      tab.classList.remove("is-active");
+    });
+
+    button.classList.add("is-active");
+button.dataset.userSelected = "true";
+button.classList.remove("should-shimmer");
+if (!button.dataset.shimmerDone && !button.dataset.userSelected) {
+      button.classList.add("should-shimmer");
+      button.dataset.shimmerDone = "true";
+
+      window.setTimeout(() => {
+        button.classList.remove("should-shimmer");
+      }, 14000);
+    }
+
+drawer?.classList.add("is-expanded");
+
+    if (drawerState) drawerState.textContent = "";
+
+    window.setTimeout(() => map.invalidateSize(), 300);
+
+    drawerSections.hidden = true;
+    drawerPlaces.hidden = true;
+    drawerInsights.hidden = true;
+
+ const shouldCollapse =
+  wasActive &&
+  (
+    drawer?.classList.contains("is-insights-mode") ||
+    drawer?.classList.contains("is-homes-mode") ||
+    drawer?.classList.contains("is-places-mode")
+  );
+
+drawer?.classList.remove("is-insights-mode", "is-homes-mode", "is-places-mode");
+
+switch (button.dataset.drawerTab) {
+  case "homes":
+    drawerSections.hidden = false;
+
+    if (!shouldCollapse) {
+      drawer?.classList.add("is-homes-mode");
+    }
+
+    break;
+
+  case "places":
+    drawerPlaces.hidden = false;
+
+    if (!shouldCollapse) {
+      drawer?.classList.add("is-places-mode");
+    }
+
+    if (!Object.keys(activeLayers).some((key) => key !== "homes" && activeLayers[key])) {
+      await loadAmenities();
+      activeLayers.parks = true;
+      refreshExplorer();
+    }
+
+    break;
+
+  case "insights":
+    drawerInsights.hidden = false;
+
+    if (!shouldCollapse) {
+      drawer?.classList.add("is-insights-mode");
+    }
+
+    break;
+}
+  });
+});
+
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-mobile-layer]");
+  if (!button) return;
+
+  const layerKey = button.dataset.mobileLayer;
+  if (!layerKey || !(layerKey in activeLayers)) return;
+
+  await loadAmenities();
+
+  Object.keys(activeLayers).forEach((key) => {
+    activeLayers[key] = key === "homes";
+  });
+
+  activeLayers[layerKey] = true;
+
+  refreshExplorer();
 });
     }
   </script>
