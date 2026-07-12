@@ -40,6 +40,21 @@ export async function getSite(hostname: string, city?: string) {
 
   if (!error && data) return data;
 
-  console.error("Site lookup failed:", error);
+   console.error("Site lookup failed:", error);
   return null;
+}
+
+export async function getSiteMarkets(siteId: string) {
+  const { data, error } = await supabase
+    .from("site_markets")
+    .select("*")
+    .eq("site_id", siteId)
+    .order("sort_order", { ascending: true });
+
+  if (error) {
+    console.error("Market lookup failed:", error);
+    return [];
+  }
+
+  return data ?? [];
 }

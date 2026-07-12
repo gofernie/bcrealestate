@@ -27,10 +27,10 @@ const limit = Math.min(
     import.meta.env.SUPABASE_SERVICE_ROLE_KEY
   );
 
-  const { data, error } = await supabase
-    .from("osm_amenities")
-    .select("name, category, osm_type, lat, lng")
-    .eq("city", city);
+const { data, error } = await supabase
+  .from("osm_amenities")
+  .select("name, category, osm_type, lat, lng")
+  .eq("city", city);
 
   if (error) {
     return new Response(JSON.stringify({ categories: {}, error: error.message }), {
@@ -52,7 +52,30 @@ const limit = Math.min(
 
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
+function normalizeOsmImage(row: any) {
+  const directImage = String(row.image || "").trim();
 
+  if (
+    directImage.startsWith("https://") ||
+    directImage.startsWith("http://")
+  ) {
+    return directImage;
+  }
+
+  const commons = String(row.wikimedia_commons || "").trim();
+
+  if (commons) {
+    return `/api/commons-image?file=${encodeURIComponent(commons)}`;
+  }
+
+  const wikidata = String(row.wikidata || "").trim();
+
+  if (wikidata) {
+    return `/api/wikidata-image?id=${encodeURIComponent(wikidata)}`;
+  }
+
+  return "";
+}
   const categories: Record<string, any[]> = {};
 
   for (const row of data || []) {
@@ -84,11 +107,11 @@ const limit = Math.min(
 
     if (!categories[normalizedCategory]) categories[normalizedCategory] = [];
 
-    categories[normalizedCategory].push({
-      ...row,
-      category: normalizedCategory,
-      distKm,
-    });
+ categories[normalizedCategory].push({
+  ...row,
+  category: normalizedCategory,
+  distKm,
+});
   }
 
   for (const cat of Object.keys(categories)) {

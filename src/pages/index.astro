@@ -2,7 +2,7 @@
 import { createClient } from "@supabase/supabase-js";
 import Layout from "../layouts/Layout.astro";
 import SiteNav from "../components/SiteNav.astro";
-import { getSite } from "../lib/getSite";
+import { getSite, getSiteMarkets } from "../lib/getSite";
 import "../styles/page-hero.css";
 import "../styles/area-page.css";
 
@@ -13,18 +13,47 @@ const supabase = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const site = await getSite(Astro.url.hostname);
+const hostname = Astro.url.hostname
+  .toLowerCase()
+  .replace(/^www\./, "");
 
-const { data: sites = [] } = await supabase
+const site = await getSite(hostname);
+
+const siteMarkets = site
+  ? await getSiteMarkets(site.id)
+  : [];
+
+const allowedCities = siteMarkets
+  .map((market) => String(market.city || "").toLowerCase().trim())
+  .filter(Boolean);
+
+const isBcRealEstate =
+  hostname === "bc.realestate" ||
+  hostname === "bcrealestate.netlify.app" ||
+  hostname === "localhost";
+
+let sitesQuery = supabase
   .from("sites")
   .select("city, site_name, domain, accent_color")
   .not("city", "is", null)
   .order("city");
 
-const { data: listings = [] } = await supabase
+if (!isBcRealEstate && allowedCities.length > 0) {
+  sitesQuery = sitesQuery.in("city", allowedCities);
+}
+
+const { data: sites = [] } = await sitesQuery;
+
+let listingsQuery = supabase
   .from("listing_rows")
   .select("normalized_city, status")
   .eq("status", "A");
+
+if (!isBcRealEstate && allowedCities.length > 0) {
+  listingsQuery = listingsQuery.in("normalized_city", allowedCities);
+}
+
+const { data: listings = [] } = await listingsQuery;
 
 const cityCounts = listings.reduce((acc, row) => {
   const city = String(row.normalized_city || "").toLowerCase().trim();
@@ -39,8 +68,20 @@ const titleCase = (value = "") =>
     .replace(/-/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
+const marketRows = !isBcRealEstate && siteMarkets.length > 0
+  ? siteMarkets.map((market) => ({
+      city: String(market.city || "").toLowerCase().trim(),
+      site_name: site?.site_name,
+      accent_color: site?.accent_color,
+      sort_order: market.sort_order ?? 0,
+    }))
+  : sites.map((row) => ({
+      ...row,
+      sort_order: 0,
+    }));
+
 const cityCards = Object.values(
-  sites.reduce((acc, row) => {
+  marketRows.reduce((acc, row) => {
     const city = String(row.city || "").toLowerCase().trim();
     if (!city) return acc;
 
@@ -51,16 +92,17 @@ const cityCards = Object.values(
         city,
         label,
         siteName: row.site_name || `${label} Real Estate`,
-        href: `/${city}`,
-        areasHref: `/${city}/areas`,
+        href: `/${city.replace(/\s+/g, "-")}`,
+        areasHref: `/${city.replace(/\s+/g, "-")}/areas`,
         count: cityCounts[city] || 0,
         accent: row.accent_color || site?.accent_color || "#2f6f73",
+        sortOrder: row.sort_order ?? 0,
       };
     }
 
     return acc;
   }, {})
-).sort((a, b) => b.count - a.count);
+).sort((a, b) => a.sortOrder - b.sortOrder);
 
 const pageTitle = "BC Real Estate";
 const pageDescription =

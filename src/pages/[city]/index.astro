@@ -7,7 +7,7 @@ import SiteNav from "../../components/SiteNav.astro";
 import "../../styles/intent-modal.css";
 import "../../styles/page-hero.css";
 import { getNavIntentPages } from "../../lib/getNavIntentPages";
-
+import { getSite, getSiteMarkets } from "../../lib/getSite";
 export const prerender = false;
 
 const routeCity = String(Astro.params.city || "nanaimo").toLowerCase();
@@ -21,21 +21,71 @@ const supabase = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const host = Astro.request.headers.get("x-forwarded-host") || Astro.request.headers.get("host") || "";
-const domain = host.split(",")[0].trim().replace(/^www\./, "").split(":")[0];
-const isLocal = domain === "localhost" || domain.startsWith("localhost:");
+const host =
+  Astro.request.headers.get("x-forwarded-host") ||
+  Astro.request.headers.get("host") ||
+  Astro.url.hostname ||
+  "";
 
-const siteQuery = supabase.from("sites").select("*").eq("city", routeCity);
-if (!isLocal) siteQuery.eq("domain", domain);
-const { data: siteRow } = await siteQuery.maybeSingle();
+const domain = host
+  .split(",")[0]
+  .trim()
+  .toLowerCase()
+  .replace(/^www\./, "")
+  .split(":")[0];
+
+const isLocal =
+  domain === "localhost" ||
+  domain.startsWith("localhost:");
+
+const siteRow = await getSite(
+  domain,
+  isLocal ? routeCity : undefined
+);
+
+const siteMarkets = siteRow
+  ? await getSiteMarkets(siteRow.id)
+  : [];
+
+const allowedCities = siteMarkets.map((market) =>
+  String(market.city || "").toLowerCase()
+);
+
+const primaryMarket =
+  siteMarkets.find((market) => market.is_primary)?.city ||
+  siteRow?.city ||
+  routeCity;
+
+// Prevent a branded site from opening a market it has not been assigned.
+if (
+  !isLocal &&
+  siteRow &&
+  allowedCities.length > 0 &&
+  !allowedCities.includes(routeCity)
+) {
+  return Astro.redirect(`/${primaryMarket}`);
+}
 
 const site = {
+  id: siteRow?.id || null,
   city: routeCity,
-  site_name: siteRow?.site_name || `${cityLabel} Real Estate`,
-  accent_color: siteRow?.accent_color || "#2f6f73",
-  hero_eyebrow: siteRow?.hero_eyebrow || "Homes worth watching",
-  hero_heading: siteRow?.hero_heading || `${cityLabel} Homes For Sale`,
-  hero_copy: siteRow?.hero_copy || "Browse active homes for sale, including houses, condos, and townhomes.",
+  primary_city: primaryMarket,
+  allowed_cities: allowedCities,
+  site_name:
+    siteRow?.site_name ||
+    `${cityLabel} Real Estate`,
+  accent_color:
+    siteRow?.accent_color ||
+    "#2f6f73",
+  hero_eyebrow:
+    siteRow?.hero_eyebrow ||
+    "Homes worth watching",
+  hero_heading:
+    siteRow?.hero_heading ||
+    `${cityLabel} Homes For Sale`,
+  hero_copy:
+    siteRow?.hero_copy ||
+    "Browse active homes for sale, including houses, condos, and townhomes.",
 };
 
 const siteCity = site.city;
