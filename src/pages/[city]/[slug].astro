@@ -38,18 +38,130 @@ let { data: page } = await supabase
 let pageKind = "intent";
 
 if (!page) {
-  const { data: areaPage } = await supabase
-    .from("area_boundaries")
-    .select("*")
-    .eq("city", city)
-    .eq("area_slug", slug)
-    .maybeSingle();
+  const typePageMap: Record<string, {
+    property_type: string;
+    label: string;
+    singular: string;
+  }> = {
+    homes: {
+      property_type: "house",
+      label: "Homes",
+      singular: "home",
+    },
+    houses: {
+      property_type: "house",
+      label: "Homes",
+      singular: "home",
+    },
+    condos: {
+      property_type: "condo",
+      label: "Condos",
+      singular: "condo",
+    },
+    condo: {
+      property_type: "condo",
+      label: "Condos",
+      singular: "condo",
+    },
+    townhomes: {
+      property_type: "townhouse",
+      label: "Townhomes",
+      singular: "townhome",
+    },
+    townhouses: {
+      property_type: "townhouse",
+      label: "Townhomes",
+      singular: "townhome",
+    },
+    "mobile-homes": {
+      property_type: "mobile",
+      label: "Mobile Homes",
+      singular: "mobile home",
+    },
+    mobiles: {
+      property_type: "mobile",
+      label: "Mobile Homes",
+      singular: "mobile home",
+    },
+    land: {
+      property_type: "land",
+      label: "Land",
+      singular: "property",
+    },
+    lots: {
+      property_type: "land",
+      label: "Land",
+      singular: "property",
+    },
+  };
 
-  if (!areaPage) {
-    return Astro.redirect("/404");
-  }
+  const typePage = typePageMap[String(slug).toLowerCase()];
 
-  pageKind = "area";
+  if (typePage) {
+    pageKind = "intent";
+
+    const cityLabel =
+      city.charAt(0).toUpperCase() +
+      city.slice(1).toLowerCase();
+
+    page = {
+      id: `type-${city}-${slug}`,
+      slug,
+      city,
+      area: null,
+      property_type: typePage.property_type,
+
+      hero_heading:
+        typePage.property_type === "condo"
+          ? `${cityLabel} Condos worth a closer look`
+          : `${cityLabel} ${typePage.label}`,
+
+      eyebrow: `${cityLabel} Real Estate`,
+
+      intro_copy:
+        `Browse every ${typePage.singular} currently for sale in ${cityLabel}. Compare pricing, features, locations and new opportunities as they reach the market.`,
+
+      seo_title:
+        `${cityLabel} ${typePage.label} for Sale`,
+
+      meta_description:
+        `Browse ${typePage.label.toLowerCase()} for sale in ${cityLabel}. Compare active MLS® listings, prices, features and locations.`,
+
+      seo_heading:
+        `${cityLabel} ${typePage.label}`,
+
+      seo_intro:
+        `Explore ${cityLabel} ${typePage.label.toLowerCase()} currently available on the MLS®. Compare listings, pricing, features and locations while monitoring new opportunities as they come to market.`,
+
+      seo_body: "",
+      seo_long: "",
+
+      hero_image_url: null,
+      default_sort: "price-asc",
+
+      price_min: null,
+      price_max: null,
+
+      waterfront_type: null,
+      requires_waterfront: false,
+      requires_ocean_view: false,
+
+      polygon_geojson: null,
+      faq_json: [],
+    };
+  } else {
+    const { data: areaPage } = await supabase
+      .from("area_boundaries")
+      .select("*")
+      .eq("city", city)
+      .eq("area_slug", slug)
+      .maybeSingle();
+
+    if (!areaPage) {
+      return Astro.redirect("/404");
+    }
+
+    pageKind = "area";
 
   page = {
     id: `area-${areaPage.area_slug}`,
@@ -88,11 +200,13 @@ polygon_geojson: areaPage.polygon_geojson,
     price_min: null,
     price_max: null,
     waterfront_type: null,
-    requires_waterfront: false,
+       requires_waterfront: false,
     requires_ocean_view: false,
     faq_json: [],
   };
+  }
 }
+
 const titleCaseCity = city.charAt(0).toUpperCase() + city.slice(1).toLowerCase();
 const areaName = page.area
   ? page.area.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
@@ -583,6 +697,54 @@ function normalizeImageUrl(url: any) {
 
 const listingCount = listings?.length || 0;
 
+const listingPrices = listings
+  .map((listing) => Number(listing.price || 0))
+  .filter((price) => price > 0)
+  .sort((a, b) => a - b);
+
+const typePageMedianPrice = listingPrices.length
+  ? listingPrices[Math.floor(listingPrices.length / 2)]
+  : 0;
+
+const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+const typePageNewThisWeek = listings.filter((listing) => {
+  const listedTime = new Date(listing.listed_at || "").getTime();
+  return Number.isFinite(listedTime) && listedTime >= sevenDaysAgo;
+}).length;
+
+const typePageLabel =
+  normalizedPropertyType === "house"
+    ? "Homes"
+    : normalizedPropertyType === "townhouse"
+      ? "Townhomes"
+      : normalizedPropertyType === "mobile"
+        ? "Mobile Homes"
+        : normalizedPropertyType === "land"
+          ? "Land"
+          : normalizedPropertyType === "condo"
+            ? "Condos"
+            : "Homes";
+
+const typePageSingular =
+  normalizedPropertyType === "house"
+    ? "home"
+    : normalizedPropertyType === "townhouse"
+      ? "townhome"
+      : normalizedPropertyType === "mobile"
+        ? "mobile home"
+        : normalizedPropertyType === "land"
+          ? "property"
+          : normalizedPropertyType === "condo"
+            ? "condo"
+            : "home";
+
+const typePageExploreHref =
+  `/explore?city=${encodeURIComponent(city)}${
+    normalizedPropertyType
+      ? `&type=${encodeURIComponent(normalizedPropertyType)}`
+      : ""
+  }`;
 const listingTypeCounts = {
   house: listings.filter((l) => String(l.normalized_type || "").toLowerCase() === "house").length,
   condo: listings.filter((l) => String(l.normalized_type || "").toLowerCase() === "condo").length,
@@ -1185,12 +1347,13 @@ const cleanHeroHeading = String(page.hero_heading || "").endsWith(".")
         margin-bottom: 22px;
       }
 
-  .grid {
+.grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
   width: 100%;
-  overflow: hidden;
+  overflow: visible;
+  padding-top: 10px;
 }
 
 @media (max-width: 1200px) {
@@ -2294,6 +2457,46 @@ color: var(--accent) !important;
     transform: translateX(420%) rotate(12deg);
   }
 }
+
+.is-type-page .intent-controls {
+  margin-top: 0 !important;
+  margin-bottom: 8px !important;
+}
+
+.is-type-page .grid {
+  padding-top: 14px;
+}
+
+.is-type-page .section-head {
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+  padding: 16px 20px 14px !important;
+  align-items: center !important;
+}
+
+.is-type-page .section-head h2 {
+  display: block !important;
+  margin: 0 !important;
+  padding: 2px 0 3px !important;
+  line-height: 1.25 !important;
+  overflow: visible !important;
+}
+
+.is-type-page .section-head {
+  border: 1px solid rgba(18, 58, 90, 0.08) !important;
+  border-bottom: 1px solid rgba(18, 58, 90, 0.08) !important;
+  border-radius: 12px !important;
+  margin-bottom: 14px !important;
+  background: #fff !important;
+}
+
+.is-type-page .intent-controls {
+  border: 1px solid rgba(18, 58, 90, 0.08) !important;
+  border-radius: 12px !important;
+  padding: 12px 14px !important;
+  background: #fff !important;
+}
     </style>
 
 <div
@@ -2312,51 +2515,313 @@ color: var(--accent) !important;
   showAreaNav={false}
   activeSection={pageKind === "area" ? "areas" : ""}
 />
-    <main class="page">
-  <header
-  class="page-hero"
-  style={`--hero-image: url('${page.hero_image_url || "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=70"}')`}
->
-  <div class="page-hero__inner">
-<p class="page-hero__eyebrow">{page.eyebrow || `${city.charAt(0).toUpperCase() + city.slice(1)} Intent Search`}</p>
-   <h1 set:html={`${cleanHeroHeading.replace(/\|/g, '<br>')}<span style="color:${accentColor} !important">.</span>`} />
+<main class="page is-type-page">
 
 
 
+  <nav class="intent-secondary-nav" style="display:none;"></nav>
 
+  <div class="intent-content-shell">
 
-   <!-- Hero buttons removed -->
-  </div>
-</header>
+    <nav class="type-breadcrumb" aria-label="Breadcrumb">
+      <a href={`/${city}`}>Home</a>
+      <span>›</span>
+     <span>
+  {pageKind === "area"
+    ? titleCase(page.area || slug)
+    : typePageLabel}
+</span>
+    </nav>
+{pageKind === "area" && (
+  <>
+    <section class="type-hero area-type-hero">
+      <div class="type-hero__copy">
+        <p class="type-hero__eyebrow">
+          {titleCase(city)} Neighbourhood
+        </p>
 
+        <h1>
+          {cleanHeroHeading ||
+            `${titleCase(page.area || slug)} Real Estate`}
+          <span>.</span>
+        </h1>
 
+        <p>
+          {page.intro_copy ||
+            page.seo_intro ||
+            `Explore homes for sale, neighbourhood information, market activity and nearby amenities in ${titleCase(page.area || slug)}.`}
+        </p>
 
-<nav class="intent-secondary-nav" style="display:none;"></nav>
+        <div class="type-hero__actions">
+          <a
+            class="type-button type-button--primary"
+            href="#type-listings"
+          >
+            Browse {listingCount} Homes
+          </a>
 
-<div style="height:60px;background:linear-gradient(to bottom, rgba(0,0,0,0.10), transparent);margin-bottom:-60px;pointer-events:none;"></div>
-<div class="intent-content-shell">
+          <a
+            class="type-button type-button--secondary"
+            href={`/explore?city=${encodeURIComponent(city)}&area=${encodeURIComponent(
+              slug
+            )}`}
+          >
+            <span>⌖</span>
+            Open Explorer
+          </a>
+        </div>
+      </div>
 
-  <nav aria-label="Breadcrumb" style="margin:16px 0 8px;font-size:0.82rem;color:var(--muted);font-weight:600;">
-    <a href={`/${city}`} style="color:var(--muted);text-decoration:none;">{titleCase(city)} Homes</a>
-    <span style="margin:0 6px;opacity:0.5;">›</span>
-    <span style="color:var(--ink);">
-      {pageKind === "area"
-        ? titleCase(page.area || slug)
-        : page.hero_heading || titleCase(slug.replace(/-/g, " "))}
-    </span>
-  </nav>
+      <div class="type-map-card">
+        <div
+          id="type-hero-map"
+          class="type-map-card__canvas"
+          aria-label={`${titleCase(page.area || slug)} map preview`}
+        ></div>
 
-{pageKind !== "area" && (page.seo_intro || seo.intro) && (
-    <p style="margin:28px 0 20px;color:var(--muted);font-size:1rem;line-height:1.65;max-width:780px;">
-      {page.seo_intro || seo.intro}
+        <div class="type-map-card__panel">
+          <div class="type-map-card__title">
+            <span>⌖</span>
+            Explore {titleCase(page.area || slug)}
+          </div>
+
+          <p>
+            See homes, schools, parks, shopping, restaurants and
+            neighbourhood context on one interactive map.
+          </p>
+
+          <a
+            class="type-button type-button--primary"
+            href={`/explore?city=${encodeURIComponent(city)}&area=${encodeURIComponent(
+              slug
+            )}`}
+          >
+            Open Explorer →
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="type-stats area-hero-stats">
+      <article>
+        <span class="type-stat-icon">⌂</span>
+
+        <div>
+          <strong>{listingCount}</strong>
+          <span>Homes for sale</span>
+          <small>Active MLS® listings</small>
+        </div>
+      </article>
+
+      <article>
+        <span class="type-stat-icon">◇</span>
+
+        <div>
+          <strong>
+            {typePageMedianPrice
+              ? formatPrice(typePageMedianPrice)
+              : "—"}
+          </strong>
+          <span>Median price</span>
+          <small>Current area inventory</small>
+        </div>
+      </article>
+
+      <article>
+        <span class="type-stat-icon">□</span>
+
+        <div>
+          <strong>{typePageNewThisWeek}</strong>
+          <span>New this week</span>
+          <small>Recently listed</small>
+        </div>
+      </article>
+
+      <article>
+        <span class="type-stat-icon">⌖</span>
+
+        <div>
+          <strong>
+            {osmSummary.schools +
+              osmSummary.parks +
+              osmSummary.grocery +
+              osmSummary.restaurants}
+          </strong>
+          <span>Nearby places</span>
+          <small>Within roughly 2 km</small>
+        </div>
+      </article>
+    </section>
+  </>
+)}
+    {pageKind !== "area" && (
+      <>
+        <section class="type-hero">
+          <div class="type-hero__copy">
+            <p class="type-hero__eyebrow">
+              {titleCase(city)} Real Estate
+            </p>
+
+            <h1>
+              {cleanHeroHeading || `${titleCase(city)} ${typePageLabel}`}
+              <span>.</span>
+            </h1>
+
+            <p>
+              {page.seo_intro ||
+                seo.intro ||
+                `Browse every ${typePageSingular} currently for sale in ${titleCase(city)}. Compare prices, features, locations and new listings as they reach the market.`}
+            </p>
+
+            <div class="type-hero__actions">
+              <a class="type-button type-button--primary" href="#type-listings">
+                Browse {typePageLabel}
+              </a>
+
+              <a class="type-button type-button--secondary" href={typePageExploreHref}>
+                <span>⌖</span>
+                Open Explorer
+              </a>
+            </div>
+          </div>
+
+        <div class="type-map-card">
+  <div
+    id="type-hero-map"
+    class="type-map-card__canvas"
+    aria-label={`${titleCase(city)} ${typePageLabel} map preview`}
+  ></div>
+
+  <div class="type-map-card__panel">
+    <div class="type-map-card__title">
+      <span>⌖</span>
+      Explore {typePageLabel}
+    </div>
+
+    <p>
+      See every {typePageSingular}, nearby amenity, school, park
+      and neighbourhood on one interactive map.
     </p>
-  )}
+
+    <a
+      class="type-button type-button--primary"
+      href={typePageExploreHref}
+    >
+      Open Explorer →
+    </a>
+  </div>
+</div>
+        </section>
+
+        <section class="type-stats" aria-label={`${typePageLabel} market snapshot`}>
+          <article>
+            <span class="type-stat-icon">▥</span>
+            <div>
+              <strong>{listingCount}</strong>
+              <span>{typePageLabel} for sale</span>
+              <small>Active on the MLS®</small>
+            </div>
+          </article>
+
+          <article>
+            <span class="type-stat-icon">◇</span>
+            <div>
+              <strong>
+                {typePageMedianPrice
+                  ? formatPrice(typePageMedianPrice)
+                  : "—"}
+              </strong>
+              <span>Median price</span>
+              <small>Current listings</small>
+            </div>
+          </article>
+
+          <article>
+            <span class="type-stat-icon">□</span>
+            <div>
+              <strong>{typePageNewThisWeek}</strong>
+              <span>New this week</span>
+              <small>New listings</small>
+            </div>
+          </article>
+
+          <article>
+            <span class="type-stat-icon">↗</span>
+            <div>
+              <strong>
+                {marketMetric?.price_change_yoy != null
+                  ? `${Number(marketMetric.price_change_yoy) > 0 ? "+" : ""}${Number(
+                      marketMetric.price_change_yoy
+                    ).toFixed(1)}%`
+                  : "Live"}
+              </strong>
+              <span>
+                {marketMetric?.price_change_yoy != null
+                  ? "Price change"
+                  : "Market data"}
+              </span>
+              <small>
+                {marketMetric?.price_change_yoy != null
+                  ? "Year over year"
+                  : "Updated regularly"}
+              </small>
+            </div>
+          </article>
+        </section>
+
+        <section class="type-tools">
+          <a href="#type-listings">
+            <span class="type-tool-icon type-tool-icon--purple">▥</span>
+            <span>
+              <strong>Compare Listings</strong>
+              <small>
+                Compare prices, features and availability.
+              </small>
+            </span>
+            <b>›</b>
+          </a>
+
+          <a href={`/${city}/${slug}#guide`}>
+            <span class="type-tool-icon type-tool-icon--green">▤</span>
+            <span>
+              <strong>{typePageLabel} Guide</strong>
+              <small>
+                Learn about buying {typePageLabel.toLowerCase()} in {titleCase(city)}.
+              </small>
+            </span>
+            <b>›</b>
+          </a>
+
+          <a href={`/${city}-real-estate-market`}>
+            <span class="type-tool-icon type-tool-icon--gold">⌖</span>
+            <span>
+              <strong>Neighbourhoods</strong>
+              <small>
+                Explore areas with matching inventory and lifestyle.
+              </small>
+            </span>
+            <b>›</b>
+          </a>
+
+          <a href="#type-listings">
+            <span class="type-tool-icon type-tool-icon--red">♡</span>
+            <span>
+              <strong>Save &amp; Track</strong>
+              <small>
+                Save favourites and compare the homes you like.
+              </small>
+            </span>
+            <b>›</b>
+          </a>
+        </section>
+      </>
+    )}
 {pageKind === "area" && (
  <section class="area-intelligence">
 
   <div style="margin-bottom:22px;">
     <div style="font-size:0.72rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">
-      Neighbourhood Snapshot
+      Know the Area
     </div>
 
     <h2 style="margin:0;font-size:2rem;font-weight:800;letter-spacing:-0.04em;">
@@ -2439,26 +2904,8 @@ return (
       </div>
     )}
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:18px;">
-      {medianPrice > 0 && (
-        <div style="display:flex;align-items:center;gap:14px;background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:14px;padding:18px 20px;box-shadow:0 8px 22px rgba(0,0,0,.045);">
-          <div style="width:48px;height:48px;border-radius:14px;background:#fff0f5;display:flex;align-items:center;justify-content:center;font-size:1.35rem;">🏠</div>
-          <div>
-            <div style="font-size:1.25rem;font-weight:900;letter-spacing:-0.04em;color:var(--ink);">{fmt(medianPrice)}</div>
-            <div style="font-size:0.76rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Median price</div>
-          </div>
-        </div>
-      )}
-
-      <div style="display:flex;align-items:center;gap:14px;background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:14px;padding:18px 20px;box-shadow:0 8px 22px rgba(0,0,0,.045);">
-        <div style="width:48px;height:48px;border-radius:14px;background:#f3f0ff;display:flex;align-items:center;justify-content:center;font-size:1.35rem;">🏘️</div>
-        <div>
-          <div style="font-size:1.25rem;font-weight:900;letter-spacing:-0.04em;color:var(--ink);">{listings.length}</div>
-          <div style="font-size:0.76rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Homes for sale</div>
-        </div>
-      </div>
-
-      {marketMetric?.pending != null && (
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:18px;">
+  {marketMetric?.pending != null && (
         <div style="display:flex;align-items:center;gap:14px;background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:14px;padding:18px 20px;box-shadow:0 8px 22px rgba(0,0,0,.045);">
           <div style="width:48px;height:48px;border-radius:14px;background:#eafaf0;display:flex;align-items:center;justify-content:center;font-size:1.35rem;">🤝</div>
           <div>
@@ -2505,10 +2952,31 @@ return (
       <div style="font-size:1.25rem;font-weight:900;letter-spacing:-0.04em;color:var(--ink);">
         {censusData.pop_change_pct > 0 ? "+" : ""}{censusData.pop_change_pct}%
       </div>
-      <div style="font-size:0.76rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Population change</div>
+      <div style="font-size:0.76rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">
+        Population change
+      </div>
     </div>
   </div>
 )}
+
+<div style="display:flex;align-items:center;gap:14px;background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:14px;padding:18px 20px;box-shadow:0 8px 22px rgba(0,0,0,.045);">
+  <div style="width:48px;height:48px;border-radius:14px;background:#eef8f1;display:flex;align-items:center;justify-content:center;font-size:1.35rem;">
+    📍
+  </div>
+
+  <div>
+    <div style="font-size:1.25rem;font-weight:900;letter-spacing:-0.04em;color:var(--ink);">
+      {osmSummary.schools +
+        osmSummary.parks +
+        osmSummary.grocery +
+        osmSummary.restaurants}
+    </div>
+
+    <div style="font-size:0.76rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">
+      Nearby places
+    </div>
+  </div>
+</div>
 
 {censusData?.median_household_income && (
   <div style="display:flex;align-items:center;gap:14px;background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:14px;padding:18px 20px;box-shadow:0 8px 22px rgba(0,0,0,.045);">
@@ -2631,7 +3099,11 @@ return (
 })()}
   </section>
 )}
-      <div class="section-head" style="margin:0 0 14px;">
+      <div
+  class="section-head"
+  id="type-listings"
+  style="margin:0 0 14px;"
+>
 <h2
   id="dynamic-results-heading"
   style="margin:0;font-family:var(--serif);font-size:clamp(1.2rem,2vw,1.6rem);font-weight:500;letter-spacing:-0.02em;"
@@ -3271,7 +3743,591 @@ style="display:grid;grid-template-columns:1fr 1fr;gap:18px;"
   box-shadow: 0 16px 48px rgba(28, 25, 23, 0.1) !important;
   border-color: var(--accent-light) !important;
 }
+/* =========================================================
+   IMAGELESS TYPE PAGE
+   Condos, homes, townhomes, mobile homes and land
+   ========================================================= */
 
+.is-type-page {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(18, 58, 90, 0.025), transparent 36%),
+    #fbfcfd;
+}
+
+.is-type-page .intent-content-shell {
+  width: min(1220px, calc(100% - 64px));
+  padding-top: 24px;
+}
+
+.type-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 24px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.type-breadcrumb a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.type-breadcrumb a:hover {
+  color: var(--accent);
+}
+
+.type-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 0.88fr) minmax(460px, 1.12fr);
+  gap: 44px;
+  align-items: stretch;
+  margin-bottom: 26px;
+}
+
+.type-hero__copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 390px;
+  padding: 28px 0;
+}
+
+.type-hero__eyebrow {
+  margin: 0 0 16px;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.type-hero h1 {
+  max-width: 630px;
+  margin: 0;
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2.9rem, 5vw, 5rem);
+  font-weight: 500;
+  letter-spacing: -0.058em;
+  line-height: 0.98;
+}
+
+.type-hero h1 > span {
+  color: var(--accent);
+}
+
+.type-hero__copy > p:not(.type-hero__eyebrow) {
+  max-width: 590px;
+  margin: 22px 0 0;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.type-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.type-button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 18px;
+  border-radius: 7px;
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1;
+  text-decoration: none;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+}
+
+.type-button:hover {
+  transform: translateY(-1px);
+}
+
+.type-button--primary {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.type-button--secondary {
+  border: 1px solid rgba(18, 58, 90, 0.16);
+  background: #fff;
+  color: var(--accent);
+}
+
+.type-map-card {
+  position: relative;
+  min-height: 390px;
+  overflow: hidden;
+  border: 1px solid rgba(18, 58, 90, 0.09);
+  border-radius: 14px;
+  background: #eef6fb;
+  color: inherit;
+  text-decoration: none;
+  box-shadow: 0 16px 50px rgba(24, 45, 68, 0.07);
+}
+
+.type-map-card__canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  background: #e9f1f5;
+}
+
+.type-map-card .leaflet-container {
+  width: 100%;
+  height: 100%;
+  background: #e9f1f5;
+  font-family: var(--sans);
+}
+
+.type-map-card .leaflet-control-zoom {
+  margin-top: 14px;
+  margin-right: 14px;
+  border: 0;
+  box-shadow: 0 6px 18px rgba(18, 58, 90, 0.15);
+}
+
+.type-map-card .leaflet-control-zoom a {
+  color: var(--accent);
+  border: 0;
+}
+
+.type-map-card .leaflet-control-attribution {
+  display: none;
+}
+
+.type-map-card .leaflet-popup-content-wrapper {
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(18, 58, 90, 0.18);
+}
+
+.type-map-card .leaflet-popup-content {
+  margin: 10px 12px;
+}
+
+.type-map-card__panel {
+  pointer-events: auto;
+}
+
+.type-map-card__panel .type-button {
+  position: relative;
+  z-index: 5;
+}
+
+.type-map-card__panel {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  left: 28px;
+  width: min(260px, calc(100% - 56px));
+  padding: 24px;
+  border: 1px solid rgba(18,58,90,.1);
+  border-radius: 12px;
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 18px 50px rgba(18,58,90,.12);
+  transform: translateY(-50%);
+  backdrop-filter: blur(12px);
+}
+
+.type-map-card__title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  font-size: 1.05rem;
+  font-weight: 850;
+}
+
+.type-map-card__title > span {
+  color: var(--accent);
+}
+
+.type-map-card__panel p {
+  margin: 16px 0 20px;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.type-map-card__panel .type-button {
+  min-height: 40px;
+  width: fit-content;
+}
+
+.type-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 20px;
+  border: 1px solid rgba(18,58,90,.08);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 9px 30px rgba(24,45,68,.045);
+}
+
+.type-stats article {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 22px 24px;
+}
+
+.type-stats article + article {
+  border-left: 1px solid rgba(18,58,90,.08);
+}
+
+.type-stat-icon {
+  width: 45px;
+  height: 45px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  background: #edf4fb;
+  color: var(--accent);
+  font-size: 1.12rem;
+  font-weight: 900;
+}
+
+.type-stats strong,
+.type-stats span,
+.type-stats small {
+  display: block;
+}
+
+.type-stats strong {
+  margin-bottom: 3px;
+  color: var(--ink);
+  font-size: 1.35rem;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.type-stats article div > span {
+  color: var(--ink);
+  font-size: 0.77rem;
+  font-weight: 700;
+}
+
+.type-stats small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.type-tools {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 30px;
+}
+
+.type-tools > a {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  min-height: 96px;
+  padding: 16px;
+  border: 1px solid rgba(18,58,90,.08);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--ink);
+  text-decoration: none;
+  box-shadow: 0 7px 22px rgba(24,45,68,.035);
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.type-tools > a:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  box-shadow: 0 13px 34px rgba(24,45,68,.07);
+}
+
+.type-tool-icon {
+  width: 43px;
+  height: 43px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 10px;
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+
+.type-tool-icon--purple {
+  background: #f0ecfc;
+  color: #54449a;
+}
+
+.type-tool-icon--green {
+  background: #eaf6eb;
+  color: #347343;
+}
+
+.type-tool-icon--gold {
+  background: #fff4d9;
+  color: #d28a00;
+}
+
+.type-tool-icon--red {
+  background: #fff0f2;
+  color: #e35462;
+}
+
+.type-tools strong,
+.type-tools small {
+  display: block;
+}
+
+.type-tools strong {
+  margin-bottom: 5px;
+  font-size: 0.84rem;
+  font-weight: 850;
+}
+
+.type-tools small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.69rem;
+  line-height: 1.45;
+}
+
+.type-tools b {
+  color: var(--muted);
+  font-size: 1.1rem;
+}
+
+.is-type-page .section-head {
+  margin-top: 0 !important;
+  padding: 16px 20px 0;
+  border: 1px solid rgba(18,58,90,.08);
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  background: #fff;
+}
+
+.is-type-page .property-type-pills {
+  display: none !important;
+}
+
+.is-type-page .intent-controls {
+  margin: 0 0 22px !important;
+  padding: 12px 20px 18px;
+  border: 1px solid rgba(18,58,90,.08);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  background: #fff;
+}
+
+.is-type-page .grid {
+  gap: 16px;
+}
+
+.is-type-page .card {
+  border-color: rgba(18,58,90,.1);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.is-type-page .card-image-wrap {
+  aspect-ratio: 4 / 3;
+}
+
+.is-type-page .card-body {
+  min-height: 138px;
+}
+
+@media (max-width: 980px) {
+  .type-hero {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+
+  .type-hero__copy {
+    min-height: 0;
+    padding: 16px 0;
+  }
+
+  .type-map-card {
+    min-height: 340px;
+  }
+
+  .type-stats,
+  .type-tools {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .type-stats article:nth-child(3) {
+    border-left: 0;
+    border-top: 1px solid rgba(18,58,90,.08);
+  }
+
+  .type-stats article:nth-child(4) {
+    border-top: 1px solid rgba(18,58,90,.08);
+  }
+}
+
+@media (max-width: 640px) {
+  .is-type-page .intent-content-shell {
+    width: 100%;
+    padding: 16px 14px 0;
+  }
+
+  .type-breadcrumb {
+    margin-bottom: 18px;
+  }
+
+  .type-hero {
+    gap: 18px;
+  }
+
+  .type-hero__copy {
+    padding: 5px 2px 0;
+  }
+
+  .type-hero h1 {
+    max-width: 340px;
+    font-size: clamp(2.45rem, 12vw, 3.4rem);
+  }
+
+  .type-hero__copy > p:not(.type-hero__eyebrow) {
+    margin-top: 17px;
+    font-size: 0.92rem;
+    line-height: 1.6;
+  }
+
+  .type-hero__actions {
+    margin-top: 22px;
+  }
+
+  .type-button {
+    min-height: 42px;
+    padding: 0 15px;
+    font-size: 0.79rem;
+  }
+
+  .type-map-card {
+    min-height: 315px;
+  }
+
+  .type-map-card__panel {
+    top: auto;
+    right: 16px;
+    bottom: 16px;
+    left: 16px;
+    width: auto;
+    padding: 19px;
+    transform: none;
+  }
+
+  .type-map-card__panel p {
+    margin: 11px 0 15px;
+  }
+
+  .type-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .type-stats article {
+    gap: 10px;
+    padding: 17px 13px;
+  }
+
+  .type-stats article:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .type-stats article:nth-child(n + 3) {
+    border-top: 1px solid rgba(18,58,90,.08);
+  }
+
+  .type-stat-icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .type-stats strong {
+    font-size: 1.05rem;
+  }
+
+  .type-stats article div > span {
+    font-size: 0.69rem;
+  }
+
+  .type-stats small {
+    font-size: 0.61rem;
+  }
+
+  .type-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .type-tools > a {
+    min-height: 82px;
+  }
+
+  .is-type-page .section-head {
+    width: 100% !important;
+    padding: 15px 14px 0;
+  }
+
+  .is-type-page .intent-controls {
+    width: 100% !important;
+    padding: 10px 14px 15px;
+  }
+}
+
+.type-button--primary,
+.type-map-card__panel .type-button--primary {
+  color: #fff !important;
+}
+
+.type-button--primary:visited,
+.type-map-card__panel .type-button--primary:visited {
+  color: #fff !important;
+}
+
+.area-type-hero {
+  padding-top: 8px;
+}
+
+.area-hero-stats {
+  margin-bottom: 28px;
+}
+
+.area-type-hero .type-hero__copy > p:not(.type-hero__eyebrow) {
+  max-width: 610px;
+}
+
+@media (max-width: 640px) {
+  .area-type-hero {
+    padding-top: 0;
+  }
+
+  .area-hero-stats {
+    margin-bottom: 22px;
+  }
+}
     </style>
 
     <script is:inline>
@@ -3298,6 +4354,177 @@ style="display:grid;grid-template-columns:1fr 1fr;gap:18px;"
 function waitForLeaflet(cb) {
   if (window.L) return cb();
   const t = setInterval(() => { if (window.L) { clearInterval(t); cb(); } }, 50);
+}
+
+function initTypeHeroMap() {
+  const heroMapEl = document.getElementById("type-hero-map");
+
+  if (!heroMapEl || heroMapEl.dataset.mapReady === "true") {
+    return;
+  }
+
+  waitForLeaflet(() => {
+    if (!document.body.contains(heroMapEl)) return;
+
+    const listingCards = Array.from(
+      document.querySelectorAll(".grid .card[data-lat][data-lng]")
+    );
+
+    const points = listingCards
+      .map((card) => {
+        const lat = Number(card.dataset.lat || "");
+        const lng = Number(card.dataset.lng || "");
+
+        if (
+          !Number.isFinite(lat) ||
+          !Number.isFinite(lng) ||
+          !lat ||
+          !lng
+        ) {
+          return null;
+        }
+
+        return {
+          lat,
+          lng,
+          price:
+            card.querySelector(".price")?.textContent?.trim() || "",
+          address:
+            card.querySelector(".address")?.textContent?.trim() || "",
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 60);
+
+    if (!points.length) {
+      heroMapEl.innerHTML = `
+        <div style="
+          height:100%;
+          display:grid;
+          place-items:center;
+          padding:24px;
+          color:#6b7280;
+          font-size:.85rem;
+          text-align:center;
+        ">
+          Map locations are not available for these listings.
+        </div>
+      `;
+      return;
+    }
+
+    heroMapEl.dataset.mapReady = "true";
+
+    const heroMap = L.map(heroMapEl, {
+      zoomControl: false,
+      attributionControl: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      dragging: true,
+      tap: true,
+    });
+
+    L.tileLayer(
+      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      {
+        maxZoom: 19,
+      }
+    ).addTo(heroMap);
+
+    L.control
+      .zoom({
+        position: "topright",
+      })
+      .addTo(heroMap);
+
+    const heroMarkerIcon = L.divIcon({
+      className: "",
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+      popupAnchor: [0, -10],
+      html: `
+        <div style="
+          width:24px;
+          height:24px;
+          display:grid;
+          place-items:center;
+          border:3px solid rgba(255,255,255,.96);
+          border-radius:50%;
+          background:${accentColor};
+          color:#fff;
+          box-shadow:0 5px 14px rgba(18,58,90,.28);
+          font-size:10px;
+          font-weight:900;
+        ">▥</div>
+      `,
+    });
+
+    const bounds = L.latLngBounds([]);
+
+    points.forEach((point) => {
+      const marker = L.marker(
+        [point.lat, point.lng],
+        { icon: heroMarkerIcon }
+      ).addTo(heroMap);
+
+      marker.bindPopup(
+        `
+          <div style="
+            min-width:140px;
+            font-family:DM Sans,system-ui,sans-serif;
+          ">
+            ${
+              point.price
+                ? `<strong style="
+                    display:block;
+                    margin-bottom:3px;
+                    color:#172033;
+                    font-size:.9rem;
+                  ">${point.price}</strong>`
+                : ""
+            }
+
+            ${
+              point.address
+                ? `<span style="
+                    display:block;
+                    color:#687080;
+                    font-size:.72rem;
+                    line-height:1.35;
+                  ">${point.address}</span>`
+                : ""
+            }
+          </div>
+        `,
+        {
+          closeButton: false,
+          offset: [0, -5],
+        }
+      );
+
+      bounds.extend([point.lat, point.lng]);
+    });
+
+    if (bounds.isValid()) {
+      heroMap.fitBounds(bounds, {
+        paddingTopLeft: [205, 34],
+        paddingBottomRight: [34, 34],
+        maxZoom: 13,
+      });
+    }
+
+    setTimeout(() => {
+      heroMap.invalidateSize();
+    }, 150);
+  });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initTypeHeroMap, {
+    once: true,
+  });
+} else {
+  initTypeHeroMap();
 }
 
 // --- State ---
