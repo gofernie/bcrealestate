@@ -151,10 +151,12 @@ export const GET: APIRoute = async ({ url }) => {
 };
 
 export const POST: APIRoute = async ({ request }) => {
-  let body: {
-    listingId?: string;
-    guess?: number;
-  };
+ let body: {
+  listingId?: string;
+  guess?: number;
+  secondsRemaining?: number;
+  timedOut?: boolean;
+};
 
   try {
     body = await request.json();
@@ -162,15 +164,28 @@ export const POST: APIRoute = async ({ request }) => {
     return json({ ok: false, error: "Invalid request." }, 400);
   }
 
-  const listingId = String(body.listingId || "").trim();
-  const guess = Number(body.guess);
+ const listingId = String(body.listingId || "").trim();
+const guess = Number(body.guess || 0);
+const timedOut = Boolean(body.timedOut);
 
-  if (!listingId || !Number.isFinite(guess) || guess <= 0) {
-    return json(
-      { ok: false, error: "Choose a valid price." },
-      400
-    );
-  }
+const secondsRemaining = Math.max(
+  0,
+  Math.min(10, Math.floor(Number(body.secondsRemaining || 0)))
+);
+
+if (!listingId) {
+  return json(
+    { ok: false, error: "Listing is missing." },
+    400
+  );
+}
+
+if (!timedOut && (!Number.isFinite(guess) || guess <= 0)) {
+  return json(
+    { ok: false, error: "Choose a valid price." },
+    400
+  );
+}
 
   const { data, error } = await supabase
     .from("listing_rows")
@@ -189,25 +204,59 @@ export const POST: APIRoute = async ({ request }) => {
     );
   }
 
-  const askingPrice = Number(data.price);
-  const difference = Math.abs(guess - askingPrice);
-  const isCorrect = guess === askingPrice;
-  const direction =
-    isCorrect ? "exact" : guess > askingPrice ? "high" : "low";
+const askingPrice = Number(data.price);
 
-  return json({
-    ok: true,
-    result: {
-      askingPrice,
-      guess: Math.round(guess),
-      difference: Math.round(difference),
-      direction,
-      isCorrect,
-      points: isCorrect ? 1000 : 0,
-      rating: isCorrect ? "Correct" : "Not quite",
-      address: data.address,
-      area: data.normalized_area,
-      city: data.normalized_city,
-    },
-  });
+const difference = timedOut
+  ? askingPrice
+  : Math.abs(guess - askingPrice);
+
+const isCorrect = !timedOut && guess === askingPrice;
+
+const direction = timedOut
+  ? "timeout"
+  : isCorrect
+    ? "exact"
+    : guess > askingPrice
+      ? "high"
+      : "low";
+
+const percentError =
+  askingPrice > 0
+    ? (difference / askingPrice) * 100
+    : 100;
+
+let points = 0;
+let rating = "Time's up";
+
+if (!timedOut) {
+  if (isCorrect) {
+    points = 1000 + secondsRemaining * 50;
+    rating = "Correct";
+  } else if (percentError <= 10) {
+    points = 400 + secondsRemaining * 25;
+    rating = "Very close";
+  } else {
+    points = 150 + secondsRemaining * 10;
+    rating = "Good try";
+  }
+}
+
+return json({
+  ok: true,
+  result: {
+    askingPrice,
+    guess: Math.round(guess),
+    difference: Math.round(difference),
+    direction,
+    percentError: Number(percentError.toFixed(1)),
+    isCorrect,
+    timedOut,
+    secondsRemaining,
+    points,
+    rating,
+    address: data.address,
+    area: data.normalized_area,
+    city: data.normalized_city,
+  },
+});
 };
