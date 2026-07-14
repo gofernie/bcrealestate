@@ -1,5 +1,6 @@
 ﻿import "dotenv/config";
 
+import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -990,21 +991,26 @@ const getListedAt = (listing: any, snapshot: any) =>
   snapshot?.created_at ||
   null;
 
-const run = async () => {
+export const rebuildListingRows = async (targetCity = "") => {
   console.log("Fetching snapshots...");
 
-   const TARGET_CITY = process.argv[2]?.trim() || "";
+  const TARGET_CITY = targetCity.trim();
 
   let snapshotsQuery = supabase
     .from("listing_snapshots")
     .select("id, city, search_key, created_at, listings")
     .order("created_at", { ascending: false });
 
-  if (TARGET_CITY) {
-    snapshotsQuery = snapshotsQuery.ilike("city", `%${TARGET_CITY}%`);
-  }
+if (TARGET_CITY) {
+  snapshotsQuery = snapshotsQuery.eq(
+    "search_key",
+    clean(TARGET_CITY)
+  );
+}
 
-  const { data: snapshots, error } = await snapshotsQuery.limit(20);
+const snapshotLimit = TARGET_CITY ? 1 : 20;
+
+const { data: snapshots, error } = await snapshotsQuery.limit(snapshotLimit);
 
   if (error) {
     console.error("Snapshot fetch failed:", error);
@@ -1088,16 +1094,8 @@ function getAreaFromPolygon(city: string, lat: number, lng: number): string | nu
       // Keep first version only because snapshots are newest-first.
       if (rowMap.has(id)) continue;
 
-      const snapshotCity = text(snapshot?.city || snapshot?.search_key || "");
-      const city = snapshotCity || getCity(listing, snapshot);
-      const rawCity = clean(city);
-if (
-  TARGET_CITY &&
-  clean(TARGET_CITY) === "nanaimo" &&
-  rawCity !== "nanaimo"
-) {
-  continue;
-}
+   const city = getCity(listing, snapshot) || snapshot.search_key || snapshot.city;
+const rawCity = clean(city);
 
 
 const normalized_city =
@@ -1486,13 +1484,23 @@ console.dir(rows[0], { depth: null });
 const BATCH = 50;
 
 const cleanupCity = String(
-  rows[0]?.normalized_city || process.argv[2] || ""
+  rows[0]?.normalized_city || TARGET_CITY || ""
 )
   .trim()
   .toLowerCase();
 
 console.log(`Marking existing ${cleanupCity} rows inactive before rebuild...`);
+if (!cleanupCity) {
+  throw new Error(
+    "Could not determine cleanup city. Rebuild stopped before changing listing_rows."
+  );
+}
 
+if (uniqueRows.length === 0) {
+  throw new Error(
+    `No normalized rows were created for ${cleanupCity}. Existing listings were not changed.`
+  );
+}
 const { error: preCleanError } = await supabase
   .from("listing_rows")
   .update({ status: "inactive" })
@@ -1522,6 +1530,31 @@ console.log(
 }
 
 console.log("Done.");
+
+return {
+  ok: true,
+  city: cleanupCity,
+  snapshotsFound: snapshots?.length || 0,
+  rowsNormalized: rows.length,
+  rowsUpserted: uniqueRows.length,
+  missingCoords,
+  missingImages,
+  typeCounts,
+  areaCounts
+};
 }
 
-run();
+const isDirectExecution =
+  Boolean(process.argv[1]) &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isDirectExecution) {
+  rebuildListingRows(process.argv[2] || "")
+    .then((result) => {
+      console.log("Rebuild result:", result);
+    })
+    .catch((error) => {
+      console.error("Rebuild failed:", error);
+      process.exitCode = 1;
+    });
+}
