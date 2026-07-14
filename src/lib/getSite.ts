@@ -6,42 +6,91 @@ const supabase = createClient(
 );
 
 export async function getSite(hostname: string, city?: string) {
-  const host = hostname.replace(/^www\./, "");
+  const host = String(hostname || "")
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .split(":")[0];
 
-  // Local dev default
-  if (host === "localhost" || host.startsWith("localhost:")) {
-    const { data: fallback } = await supabase
-      .from("sites")
-      .select("*")
-      .eq("city", city || "nanaimo")
-      .maybeSingle();
+  const cleanCity = String(city || "")
+    .toLowerCase()
+    .replace(/-/g, " ")
+    .trim();
 
-    return fallback;
-  }
+  const isLocal =
+    host === "localhost" ||
+    host === "127.0.0.1";
 
-  // Try city-specific record first
-  if (city) {
-    const { data: cityData } = await supabase
+  // 1. Try an exact domain + city match first.
+  if (cleanCity && !isLocal) {
+    const { data: exactSite, error: exactError } = await supabase
       .from("sites")
       .select("*")
       .or(`domain.eq.${host},domain.eq.www.${host}`)
-      .eq("city", city)
+      .eq("city", cleanCity)
+      .limit(1)
       .maybeSingle();
 
-    if (cityData) return cityData;
+    if (exactError) {
+      console.error("Exact site lookup failed:", exactError);
+    }
+
+    if (exactSite) {
+      return exactSite;
+    }
   }
 
-  // Fall back to domain-only match
-  const { data, error } = await supabase
+  // 2. Fall back to the saved site record for the requested city.
+  // This lets bc.realestate/fernie use Fernie's saved accent colour,
+  // even if Fernie's site record uses another domain.
+  if (cleanCity) {
+    const { data: citySite, error: cityError } = await supabase
+      .from("sites")
+      .select("*")
+      .eq("city", cleanCity)
+      .not("accent_color", "is", null)
+      .limit(1)
+      .maybeSingle();
+
+    if (cityError) {
+      console.error("City site lookup failed:", cityError);
+    }
+
+    if (citySite) {
+      return citySite;
+    }
+  }
+
+  // 3. For a custom domain, fall back to a domain-only match.
+  if (!isLocal) {
+    const { data: domainSite, error: domainError } = await supabase
+      .from("sites")
+      .select("*")
+      .or(`domain.eq.${host},domain.eq.www.${host}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (domainError) {
+      console.error("Domain site lookup failed:", domainError);
+    }
+
+    if (domainSite) {
+      return domainSite;
+    }
+  }
+
+  // 4. Final fallback to the requested city, or Nanaimo.
+  const { data: fallback, error: fallbackError } = await supabase
     .from("sites")
     .select("*")
-    .or(`domain.eq.${host},domain.eq.www.${host}`)
+    .eq("city", cleanCity || "nanaimo")
+    .limit(1)
     .maybeSingle();
 
-  if (!error && data) return data;
+  if (fallbackError) {
+    console.error("Fallback site lookup failed:", fallbackError);
+  }
 
-   console.error("Site lookup failed:", error);
-  return null;
+  return fallback ?? null;
 }
 
 export async function getSiteMarkets(siteId: string) {

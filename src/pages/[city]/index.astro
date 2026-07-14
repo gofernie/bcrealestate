@@ -1,1978 +1,1987 @@
 ---
 import { createClient } from "@supabase/supabase-js";
 import Layout from "../../layouts/Layout.astro";
+import ListingCard from "../../components/ListingCard.astro";
 import ShortlistReviewModal from "../../components/ShortlistReviewModal.astro";
 import IntentModalController from "../../components/IntentModalController.astro";
 import SiteNav from "../../components/SiteNav.astro";
-import "../../styles/intent-modal.css";
+import { getSite } from "../../lib/getSite";
+import "../../styles/area-page.css";
 import "../../styles/page-hero.css";
+import "../../styles/intent-modal.css";
 import { getNavIntentPages } from "../../lib/getNavIntentPages";
-import { getSite, getSiteMarkets } from "../../lib/getSite";
+
 export const prerender = false;
-
-const routeCity = String(Astro.params.city || "nanaimo").toLowerCase();
-
-const cityLabel = routeCity
-  .replace(/-/g, " ")
-  .replace(/\b\w/g, (c) => c.toUpperCase());
-
 const supabase = createClient(
   import.meta.env.PUBLIC_SUPABASE_URL,
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const host =
-  Astro.request.headers.get("x-forwarded-host") ||
-  Astro.request.headers.get("host") ||
-  Astro.url.hostname ||
-  "";
-
-const domain = host
-  .split(",")[0]
-  .trim()
-  .toLowerCase()
-  .replace(/^www\./, "")
-  .split(":")[0];
-
-const isLocal =
-  domain === "localhost" ||
-  domain.startsWith("localhost:");
-
-const siteRow = await getSite(
-  domain,
-  isLocal ? routeCity : undefined
-);
-
-const siteMarkets = siteRow
-  ? await getSiteMarkets(siteRow.id)
-  : [];
-
-const allowedCities = siteMarkets.map((market) =>
-  String(market.city || "").toLowerCase()
-);
-
-const primaryMarket =
-  siteMarkets.find((market) => market.is_primary)?.city ||
-  siteRow?.city ||
-  routeCity;
-
-// Prevent a branded site from opening a market it has not been assigned.
-if (
-  !isLocal &&
-  siteRow &&
-  allowedCities.length > 0 &&
-  !allowedCities.includes(routeCity)
-) {
-  return Astro.redirect(`/${primaryMarket}`);
-}
-
-const site = {
-  id: siteRow?.id || null,
-  city: routeCity,
-  primary_city: primaryMarket,
-  allowed_cities: allowedCities,
-  site_name:
-    siteRow?.site_name ||
-    `${cityLabel} Real Estate`,
-  accent_color:
-    siteRow?.accent_color ||
-    "#2f6f73",
-  hero_eyebrow:
-    siteRow?.hero_eyebrow ||
-    "Homes worth watching",
-  hero_heading:
-    siteRow?.hero_heading ||
-    `${cityLabel} Homes For Sale`,
-  hero_copy:
-    siteRow?.hero_copy ||
-    "Browse active homes for sale, including houses, condos, and townhomes.",
-};
-
-const siteCity = site.city;
-const siteName = site.site_name;
-const accentColor = site.accent_color;
-
-
-const url = Astro.url;
-
-const city = routeCity;
-const area = url.searchParams.get("area") || "";
-const type = url.searchParams.get("type") || "";
-const minPrice = Number(url.searchParams.get("minPrice") || 0);
-const maxPrice = Number(url.searchParams.get("maxPrice") || 0);
-const beds = Number(url.searchParams.get("beds") || 0);
-const sort = url.searchParams.get("sort") || "newest";
-
-const navIntentPages = await getNavIntentPages(
-  supabase,
-  city
-);
-
-const clean = (value: any) =>
-  String(value || "")
+const city =
+  String(
+    Astro.url.searchParams.get("city") ||
+    Astro.params.city ||
+    "nanaimo"
+  )
     .toLowerCase()
     .trim();
 
-const getListingMls = (listing: any) =>
-  String(
-    listing.mls_number ||
-      listing.mlsNumber ||
-      listing.id ||
-      listing.repliers_listing_id ||
-      listing.raw?.mlsNumber ||
-      listing.raw?.id ||
-      ""
-  ).replace(/[^0-9]/g, "");
+const site = await getSite(Astro.url.hostname, city);
 
-const getListingPrice = (listing: any) => {
-  const num = Number(listing.price ?? listing.listPrice ?? listing.priceNumber ?? 0);
-  if (Number.isFinite(num) && num > 1000) return `$${Math.round(num).toLocaleString()}`;
-  return listing.price_text || listing.priceText || "Price on request";
-};
+    console.log({
+  hostname: Astro.url.hostname,
+  paramCity: Astro.params.city,
+  siteCity: site?.city,
+  finalCity: city,
+});
 
-const formatAddressValue = (value: any): string => {
-  if (!value) return "";
-  let obj = value;
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed.startsWith("{")) return trimmed;
-    try { obj = JSON.parse(trimmed); } catch { return ""; }
-  }
-  if (typeof obj !== "object" || Array.isArray(obj)) return "";
-  return [obj.streetNumber, obj.streetName || obj.streetAddress, obj.streetSuffix, obj.unitNumber ? `#${obj.unitNumber}` : ""]
-    .filter(Boolean).join(" ").trim();
-};
-const getListingAddress = (listing: any) =>
-  formatAddressValue(listing.address) ||
-  formatAddressValue(listing.full_address) ||
-  listing.addressText ||
-  listing.addressObj?.streetAddress ||
-  [listing.addressObj?.streetNumber, listing.addressObj?.streetName, listing.addressObj?.streetSuffix]
-    .filter(Boolean)
-    .join(" ") ||
-  "Address available";
+
+
+const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+const agentPageSlug =
+  site?.city?.toLowerCase() === "parksville"
+    ? "parksville"
+    : "chris-crump";
+
+const { data: agentPage } = await supabase
+  .from("agent_pages")
+  .select("data")
+  .eq("slug", agentPageSlug)
+  .maybeSingle();
+
+const accentColor =
+  site?.accent_color ||
+  "#2f6f73";
+
+console.log("COLOUR SOURCE DEBUG", {
+  city,
+  agentPageSlug,
+  agentPageAccent: agentPage?.data?.accentColor,
+  siteAccent: site?.accent_color,
+  finalAccent: accentColor,
+});
+
+const { data: allListings = [], error } = await supabase
+  .from("listing_rows")
+  .select("*")
+  .eq("normalized_city", city)
+  .eq("status", "A");
+
+const { data: featuredIntentPages = [], error: featuredIntentError } =
+  await supabase
+    .from("intent_pages")
+    .select("slug, hero_heading, intro_copy")
+    .eq("site_id", site?.id || "00000000-0000-0000-0000-000000000000")
+    .limit(6);
+
+console.log("FEATURED INTENT PAGES", {
+  count: featuredIntentPages.length,
+  rows: featuredIntentPages,
+  error: featuredIntentError,
+});
+
+if (error) {
+  console.error(`${cityLabel} market page error:`, error);
+}
 
 const normalizeListingImageUrl = (value: any) => {
   if (!value) return "";
-  const raw = typeof value === "string" ? value : value.highRes || value.mediumRes || value.lowRes || value.url || value.src || value.href || value.path || "";
+  const raw =
+    typeof value === "string"
+      ? value
+      : value.highRes ||
+        value.mediumRes ||
+        value.lowRes ||
+        value.url ||
+        value.src ||
+        value.href ||
+        value.path ||
+        "";
   if (!raw) return "";
   if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
   const cleaned = raw.startsWith("/") ? raw : `/${raw}`;
-  if (cleaned.startsWith("/vreb/")) return `https://cdn.repliers.io${cleaned}`;
-  if (cleaned.startsWith("/crea2/")) return `https://cdn.repliers.io${cleaned}`;
-  return cleaned;
+ return `https://cdn.repliers.io${cleaned}`;
 };
 
-const getListingImage = (listing: any) => {
-  const image = listing.image_url || listing.image || listing.photo || listing.images?.[0] || listing.images?.[1] || listing.raw?.images?.[0] || listing.raw?.images?.[1] || listing.raw?.images?.[0]?.url || listing.raw?.images?.[1]?.url;
-  return normalizeListingImageUrl(image);
-};
-
-const getListingImages = (listing: any) => {
-  const rawImages = listing.images || listing.photo_urls || listing.photos || listing.raw?.images || [];
-  const images = Array.isArray(rawImages)
-    ? rawImages.map((img: any) => typeof img === "string" ? normalizeListingImageUrl(img) : normalizeListingImageUrl(img.highRes || img.mediumRes || img.lowRes || img.url || img.src || img.href || img.path || "")).filter(Boolean)
-    : [];
-  const firstImage = getListingImage(listing);
-  return Array.from(new Set([firstImage, ...images].filter(Boolean)));
-};
-
-const getListingBeds = (listing: any) => listing.beds || listing.bedrooms || listing.details?.numBedrooms || listing.raw?.details?.numBedrooms || 0;
-const getListingBaths = (listing: any) => listing.baths || listing.bathrooms || listing.details?.numBathrooms || listing.raw?.details?.numBathrooms || 0;
-const getListingSqft = (listing: any) => listing.sqft || listing.square_feet || listing.squareFeet || listing.details?.sqft || listing.details?.squareFeet || listing.raw?.details?.sqft || listing.raw?.details?.squareFeet || "";
-const getListingDescription = (listing: any) => listing.description || listing.publicRemarks || listing.remarks || listing.details?.description || listing.details?.publicRemarks || listing.details?.remarks || listing.raw?.description || listing.raw?.publicRemarks || listing.raw?.remarks || listing.raw?.details?.description || listing.raw?.details?.publicRemarks || listing.raw?.details?.remarks || "A quiet preview of this property.";
-const getListingYearBuilt = (listing: any) => listing.year_built || listing.yearBuilt || listing.details?.yearBuilt || listing.raw?.details?.yearBuilt || "";
-const getListingLotSize = (listing: any) => listing.lot_size || listing.lotSize || listing.details?.lotSize || listing.raw?.details?.lotSize || "";
-const getListingArea = (listing: any) => listing.normalized_area || listing.area || listing.neighborhood || listing.addressObj?.neighborhood || listing.address?.neighborhood || listing.details?.area || listing.details?.subArea || listing.raw?.address?.neighborhood || listing.raw?.details?.area || listing.raw?.details?.subArea || "";
-const getListingPropertyType = (listing: any) => String(listing.normalized_type || listing.property_type || listing.propertyType || listing.type || listing.details?.propertyType || listing.raw?.details?.propertyType || "Home").replace(/[_-]+/g, " ").replace(/\b\w/g, (char: string) => char.toUpperCase());
-
-const titleCase = (value: any) =>
-  String(value || "")
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (char: string) => char.toUpperCase());
-
-const cityName = titleCase(city || "nanaimo");
-
-const selectedAreaName = area ? titleCase(area) : "";
-
-const pageSubject = selectedAreaName
-  ? `${selectedAreaName} ${cityName} Real Estate`
-  : `${cityName} Real Estate`;
-
-const propertyLabel = type
-  ? titleCase(type === "house" ? "homes" : `${type}s`)
-  : "Homes";
-
-const seoTitle = `${pageSubject} & ${propertyLabel} For Sale | MLS® Listings`;
-
-const seoDescription = `Browse ${pageSubject.toLowerCase()} including ${propertyLabel.toLowerCase()} for sale. View active MLS® listings with photos, prices, maps, and local search details.`;
-
-const heroHeading =
-  site?.hero_heading ||
-  `${(city || "Nanaimo").replace(/\b\w/g, (char) => char.toUpperCase())} Homes For Sale`;
-
-
-const buildFilterUrl = (updates: Record<string, string | number | null>) => {
-  const params = new URLSearchParams();
-
-  params.set("city", city || "nanaimo");
-
-  if (area) params.set("area", area);
-  if (type) params.set("type", type);
-  if (minPrice) params.set("minPrice", String(minPrice));
-  if (maxPrice) params.set("maxPrice", String(maxPrice));
-  if (sort && sort !== "newest") params.set("sort", sort);
-
-  Object.entries(updates).forEach(([key, value]) => {
-    if (value === null || value === "" || value === 0) {
-      params.delete(key);
-    } else {
-      params.set(key, String(value));
-    }
-  });
-
-  return `?${params.toString()}`;
-};
-let intentPagesQuery = supabase
-  .from("intent_pages")
-  .select(`
-    *,
-    intent_page_features (
-      feature_key
-    )
-  `)
-  .eq("city", city || siteCity || "nanaimo")
-  .or("is_published.eq.true,status.eq.published")
-  .order("created_at", { ascending: false });
-
-if (site?.id) {
-  intentPagesQuery = intentPagesQuery.or(`site_id.eq.${site.id},site_id.is.null`);
-}
-
-const { data: intentPageRows } = await intentPagesQuery;
-
-function shortenIntentTitle(title: string) {
-  const t = title.toLowerCase();
-
-  if (t.includes("first time buyers condos") && t.includes("500")) {
-    return "First-Time Buyer Condos Under $500K";
-  }
-
-  if (t.includes("first time buyers mobiles")) {
-    return "First-Time Buyer Mobile Homes";
-  }
-
-  if (t.includes("homes") && t.includes("1,000,000")) {
-    return "Homes Over $1M";
-  }
-
-  if (t.includes("ocean view condos")) {
-    return "Ocean View Condos";
-  }
-
-  if (t.includes("walkable condos")) {
-    return "Walkable Condos";
-  }
-
-  if (t.includes("downsizers")) {
-    return "Condos for Downsizers";
-  }
-
-  return title
-    .replace(/worth a closer look/gi, "")
-    .replace(/in nanaimo$/gi, "")
-    .replace(/^nanaimo\s+/i, "Nanaimo ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function shortenIntentDescription(text: string, title = "") {
-  const t = title.toLowerCase();
-
-  if (t.includes("first-time buyer condos")) {
-    return "Affordable Nanaimo condos shaped around first-time buyers.";
-  }
-
-  if (t.includes("mobile homes")) {
-    return "Entry-level mobile homes for buyers looking for a practical starting point.";
-  }
-
-  if (t.includes("homes over")) {
-    return "Higher-end Nanaimo homes with more space, finish, and lifestyle upside.";
-  }
-
-  if (t.includes("nanaimo homes")) {
-    return "A broad look at active Nanaimo homes across different areas and price points.";
-  }
-
-  if (t.includes("townhomes")) {
-    return "Nanaimo townhomes for buyers who want more space without full detached-home upkeep.";
-  }
-
-  if (t.includes("ocean view")) {
-    return "Condos with ocean-view potential, coastal appeal, and low-maintenance living.";
-  }
-
-  if (t.includes("downsizers")) {
-    return "Lower-maintenance condos suited to comfort, convenience, and simpler living.";
-  }
-
-  if (t.includes("walkable")) {
-    return "Condos close to amenities, services, parks, and daily conveniences.";
-  }
-
-  return String(text || "")
-    .replace(/react to listings as you browse and the page will help surface better matches\.?/gi, "")
-    .replace(/browse active nanaimo /gi, "")
-    .replace(/explore nanaimo /gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-const allIntentCollections = (intentPageRows || []).map((page: any) => ({
-  type: String(page.property_type || "").toLowerCase(),
-  title: shortenIntentTitle(page.hero_heading || page.slug),
-  href: `/${page.city}/${page.slug}`,
-description: shortenIntentDescription(page.intro_copy || "", shortenIntentTitle(page.hero_heading || page.slug)),  features: (page.intent_page_features || []).map((feature: any) => feature.feature_key),
-}));
-
-let intentCollections = allIntentCollections;
-
-if (type) {
-  intentCollections = allIntentCollections.filter(
-    (card) => card.type === clean(type)
+const getListingImage = (listing: any) =>
+  normalizeListingImageUrl(
+    listing.image_url ||
+      listing.image ||
+      listing.photo ||
+      listing.images?.[0] ||
+      listing.images?.[1] ||
+      listing.raw?.images?.[0] ||
+      listing.raw?.images?.[1] ||
+      listing.raw?.images?.[0]?.url ||
+      listing.raw?.images?.[1]?.url ||
+      listing.raw?.images?.[0]?.mediumRes ||
+      listing.raw?.images?.[1]?.mediumRes ||
+      listing.raw?.images?.[0]?.highRes ||
+      listing.raw?.images?.[1]?.highRes
   );
-}
 
-intentCollections = intentCollections.slice(0, 8);
-const propertyTypeOrder = ["homes", "condo", "townhouse", "mobile"];
-
-const propertyTypeOptions = Array.from(
-  new Set(
-    allIntentCollections
-      .map((card) => {
-        const type = String(card.type || "").toLowerCase().trim();
-        return type === "house" ? "homes" : type;
-      })
-      .filter(Boolean)
-  )
-).sort((a, b) => propertyTypeOrder.indexOf(a) - propertyTypeOrder.indexOf(b));
-
-const groupLabel = [  area || "",
-  type ? type.replace(/-/g, " ") : "",
-  maxPrice ? `under $${maxPrice}k` : "",
-  minPrice ? `over $${minPrice}k` : ""
-].filter(Boolean).join(" · ");
-
-let areaOptions: string[] = [];
-let homepageAreaCards: any[] = [];
-
-try {
-   const { data: boundaries = [] } = await supabase
-    .from("area_boundaries")
-    .select("area_slug, area_name, polygon_geojson")
-    .eq("city", clean(city || "nanaimo"));
-
-  const allowedAreas = (boundaries || [])
-    .map((boundary: any) =>
-      String(boundary.area_slug || boundary.area_name || "")
-        .replace(/-/g, " ")
-        .toLowerCase()
-        .trim()
-    )
-    .filter(Boolean)
-    .sort();
-
-  const { data: listingsForAreaCounts = [] } = await supabase
-    .from("listing_rows")
-    .select("lat,lng")
-    .eq("status", "A")
-    .eq("normalized_city", clean(city || "nanaimo"))
-    .not("lat", "is", null)
-    .not("lng", "is", null);
-
-
-
-  function pointInRing(point: [number, number], ring: any[]) {
-    const [x, y] = point;
-    let inside = false;
-
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const xi = ring[i][0];
-      const yi = ring[i][1];
-      const xj = ring[j][0];
-      const yj = ring[j][1];
-
-      const intersect =
-        yi > y !== yj > y &&
-        x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
-
-      if (intersect) inside = !inside;
-    }
-
-    return inside;
-  }
-
-  function polygonContainsPoint(geojson: any, lat: number, lng: number) {
-    if (!geojson) return false;
-
-    const geometry = geojson.type === "Feature"
-      ? geojson.geometry
-      : geojson;
-
-    if (!geometry) return false;
-
-    const point: [number, number] = [lng, lat];
-
-    if (geometry.type === "Polygon") {
-      return geometry.coordinates.some((ring: any[]) =>
-        pointInRing(point, ring)
-      );
-    }
-
-    if (geometry.type === "MultiPolygon") {
-      return geometry.coordinates.some((poly: any[]) =>
-        poly.some((ring: any[]) => pointInRing(point, ring))
-      );
-    }
-
-    return false;
-  }
-
-  const areaCounts = new Map<string, number>();
-
-  (boundaries || []).forEach((boundary: any) => {
-    const slug = String(boundary.area_slug || boundary.area_name || "")
-      .replace(/-/g, " ")
-      .toLowerCase()
-      .trim();
-
-    if (!slug || !allowedAreas.includes(slug)) return;
-
-    const count = (listingsForAreaCounts || []).filter((listing: any) =>
-      polygonContainsPoint(
-        boundary.polygon_geojson,
-        Number(listing.lat),
-        Number(listing.lng)
-      )
-    ).length;
-
-    areaCounts.set(slug, count);
-  });
-
-  areaOptions = allowedAreas.filter((area) => areaCounts.has(area));
-
-  homepageAreaCards = (boundaries || [])
-  .map((boundary: any) => {
-    const slug = String(boundary.area_slug || boundary.area_name || "")
-      .replace(/-/g, " ")
-      .toLowerCase()
-      .trim();
-
-    return {
-      name: slug,
-      count: areaCounts.get(slug) || 0,
-href: `/${city || "nanaimo"}/${String(boundary.area_slug || slug.replace(/\s+/g, "-")).trim()}`,
-    };
+const listings = [...allListings]
+  .sort((a, b) => {
+    const da = new Date(a.listed_at || a.updated_at || 0).getTime();
+    const db = new Date(b.listed_at || b.updated_at || 0).getTime();
+    return db - da;
   })
-  .filter((card) => card.count > 0)
-  .sort((a, b) => b.count - a.count)
-  .slice(0, 5);
-} catch {}
+  .slice(0, 12);
 
-let listings: any[] = [];
-let errorMessage = "";
+const activeListings = allListings.length;
 
-try {
-let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(500);  if (city) query = query.eq("normalized_city", clean(city));
+const prices = allListings
+  .map((l) => Number(l.price || 0))
+  .filter((p) => p > 0)
+  .sort((a, b) => a - b);
 
-  // Homepage discovery preloads a broad pool.
-  // Filters are applied client-side for instant UX.
+const avgPrice =
+  prices.length > 0
+    ? Math.round(prices.reduce((sum, p) => sum + p, 0) / prices.length)
+    : 0;
 
-  if (sort === "price-low" || sort === "price-asc") query = query.order("price", { ascending: true });
-  else if (sort === "price-high" || sort === "price-desc") query = query.order("price", { ascending: false });
-  else if (sort === "beds-high") query = query.order("beds", { ascending: false });
-  else query = query.order("listed_at", { ascending: false });
+const medianPrice = prices.length > 0 ? prices[Math.floor(prices.length / 2)] : 0;
 
-  const { data, error } = await query;
-  if (error) throw error;
-  listings = data || [];
+const condoCount    = allListings.filter((l) => l.normalized_type === "condo").length;
+const houseCount    = allListings.filter((l) => l.normalized_type === "house").length;
+const townhomeCount = allListings.filter((l) => l.normalized_type === "townhouse").length;
 
- 
+let areaCounts = allListings.reduce((acc, listing) => {
+  const area = listing.normalized_area || "other";
+  acc[area] = (acc[area] || 0) + 1;
+  return acc;
+}, {});
 
-} catch (error: any) {
-  errorMessage = error?.message || "Could not load listings.";
+let topAreas = Object.entries(areaCounts)
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 10);
+
+const areaToSlug = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/\//g, "-")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const { data: areaMetaRows = [] } = await supabase
+  .from("area_boundaries")
+  .select("area_slug, area_name, short_description, polygon_geojson")
+  .ilike("city", city);
+
+const navAreaCountMap = Object.fromEntries(
+  Object.entries(areaCounts).map(([label, count]) => [label.toLowerCase(), count])
+);
+
+const navAreas = areaMetaRows
+  .map((r) => r.area_name || String(r.area_slug || "").replace(/-/g, " "))
+  .filter(Boolean)
+  .sort((a, b) => (navAreaCountMap[b.toLowerCase()] || 0) - (navAreaCountMap[a.toLowerCase()] || 0));
+
+const navTypes = ["house", "condo", "townhouse", "land"];
+
+const cleanAreaName = (value) =>
+  String(value || "")
+    .replace(/^pq[\s-]+/i, "")
+    .split("-")
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const labelize = (value) =>
+  cleanAreaName(value)
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
+function areaHue(areaName, index) {
+  let hash = 0;
+
+  for (const char of String(areaName || "")) {
+    hash = char.charCodeAt(0) + ((hash << 5) - hash);
+  }
+
+  const hues = [355, 18, 34, 48, 205, 178, 155, 285, 315, 12, 92, 230];
+  return hues[Math.abs(hash + index * 7) % hues.length];
 }
+
+const priceBuckets = [
+  { label: "Under $500k", min: 0, max: 500000 },
+  { label: "$500k–$750k", min: 500000, max: 750000 },
+  { label: "$750k–$1M", min: 750000, max: 1000000 },
+  { label: "$1M–$1.5M", min: 1000000, max: 1500000 },
+  { label: "$1.5M+", min: 1500000, max: Infinity },
+];
+
+const priceBucketCounts = priceBuckets.map((bucket) =>
+  allListings.filter((listing) => {
+    const price = Number(listing.price || 0);
+    return price >= bucket.min && price < bucket.max;
+  }).length
+);
+
+
+
+
+
+  const areaBoundariesBySlug = Object.fromEntries(
+  areaMetaRows
+    .filter((row) => row.polygon_geojson?.coordinates?.[0]?.length)
+    .map((row) => [row.area_slug, row.polygon_geojson])
+);
+
+function pointInPolygon(point, polygon) {
+  const [lng, lat] = point;
+  let inside = false;
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+
+    const intersect =
+      yi > lat !== yj > lat &&
+      lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+
+    if (intersect) inside = !inside;
+  }
+
+  return inside;
+}
+
+areaCounts = Object.fromEntries(
+  (areaMetaRows || []).map((row: any) => {
+    const slug = areaToSlug(row.area_slug || row.area_name);
+    const label = row.area_name || String(row.area_slug || "").replace(/-/g, " ");
+    const polygon = row.polygon_geojson?.coordinates?.[0];
+
+   const count = polygon?.length
+  ? allListings.filter((listing) => {
+      const lat = Number(listing.lat || 0);
+      const lng = Number(listing.lng || 0);
+
+      if (!lat || !lng) return false;
+
+      return pointInPolygon([lng, lat], polygon);
+    }).length
+  : 0;
+
+    return [label, count];
+  })
+);
+
+topAreas = Object.entries(areaCounts)
+  .sort((a, b) => Number(b[1]) - Number(a[1]));
+
+function getAreaCardCount(area, fallbackCount) {
+  const boundary = areaBoundariesBySlug[areaToSlug(area)];
+  const polygon = boundary?.coordinates?.[0];
+
+  if (!polygon?.length) {
+    return fallbackCount;
+  }
+
+const normalizedAreaListings = allListings.filter(
+  (listing) => areaToSlug(listing.normalized_area) === areaToSlug(area)
+);
+
+return normalizedAreaListings.length;
+}
+
+const areaDescriptions = Object.fromEntries(
+  areaMetaRows.map((row) => [
+    row.area_slug,
+    row.short_description,
+  ])
+);
+
+
+
+function areaTagIcon(tag: string) {
+  const clean = String(tag || "").toLowerCase();
+
+  if (clean.includes("ocean") || clean.includes("waterfront") || clean.includes("beach") || clean.includes("harbour")) return "🏖";
+  if (clean.includes("shopping") || clean.includes("services") || clean.includes("convenience")) return "🛍";
+  if (clean.includes("park") || clean.includes("trail") || clean.includes("recreation")) return "🌳";
+  if (clean.includes("walk")) return "🚶";
+  if (clean.includes("viu") || clean.includes("school")) return "🎓";
+  if (clean.includes("investment") || clean.includes("value")) return "💰";
+  if (clean.includes("family")) return "🏡";
+  if (clean.includes("character")) return "🏛";
+  if (clean.includes("rural") || clean.includes("space") || clean.includes("lots")) return "🌲";
+  if (clean.includes("quiet")) return "🌿";
+  if (clean.includes("condos")) return "🏢";
+  if (clean.includes("ferry")) return "⛴️";
+
+  return "📍";
+}
+
+const chartData = {
+  priceLabels: priceBuckets.map((b) => b.label),
+  priceCounts: priceBucketCounts,
+
+  areaLabels: topAreas.map(([area]) =>
+    labelize(area)
+      .replace("North Nanaimo", "North")
+      .replace("South Nanaimo", "South")
+      .replace("Central Nanaimo", "Central")
+      .replace("University District", "University")
+      .replace("Departure Bay", "Departure")
+      .replace("Pleasant Valley", "Pleasant")
+  ),
+
+  areaCounts: topAreas.map(([, count]) => count),
+};
+
+const navIntentPages = await getNavIntentPages(supabase, city);
+
 ---
+{console.log("LAYOUT ACCENT", {
+  city,
+  agentPageSlug,
+  agentPage,
+  accentColor
+})}
+<Layout title={`${cityLabel} Real Estate Market Report`} accentColor={accentColor} city={city}>
+ 
+  
 
-<Layout
-  title={seoTitle}
-  accentColor={accentColor}
-  city={city}
->
- <meta
-  name="description"
-  content={seoDescription}
-  slot="head"
-/>
 
-  <script
-    type="application/ld+json"
-    slot="head"
-    set:html={JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "ItemList",
-      "name": city ? `${city} ${type ? type.replace(/-/g, " ") + "s" : "homes"} for sale` : "Homes for sale",
-      "description": city ? `${listings.length} active listings in ${city}` : "Active real estate listings",
-      "numberOfItems": listings.length,
-      "url": Astro.url.href
-    })}
-  />
-
-  <script
-    id="home-intent-collections-json"
-    type="application/json"
-    set:html={JSON.stringify(allIntentCollections)}
-  />
-<script
-    id="home-all-listings-json"
-    type="application/json"
-    set:html={JSON.stringify(listings.map((l: any) => ({
-      lat: l.lat,
-      lng: l.lng,
-      price: l.price ? `$${Number(l.price).toLocaleString()}` : "",
-      address: (() => { const v = l.address; if (!v) return ""; if (typeof v === "string" && !v.startsWith("{")) return v; try { const o = typeof v === "string" ? JSON.parse(v) : v; return [o.streetNumber, o.streetName || o.streetAddress, o.streetSuffix].filter(Boolean).join(" ").trim(); } catch { return ""; } })(),
-    })))}
-  />
-  <div
-    data-intent-page-id="homepage"
-    data-city={city || "nanaimo"}
-    data-slug="homepage"
-   
-  >
 <SiteNav
   city={city}
-  areas={areaOptions}
-  types={propertyTypeOptions}
+  areas={navAreas}
+  types={navTypes}
   intentPages={navIntentPages}
   showAreaNav={false}
 />
-<header
-  class="page-hero"
-  style={`--hero-image: url("https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1200&q=70")`}
->
-  <div class="page-hero__inner">
-    <div>
-    <p class="page-hero__eyebrow">
-  {site?.hero_eyebrow || "Homes worth watching"}
-</p>
+<!-- ── Imageless market hero ── -->
+<main class="page is-type-page">
+  <div class="intent-content-shell">
 
-<h1 set:html={
-  heroHeading
-    .replace(/\.$/, "")
-    .replace(/\s*\|\s*/g, "<br />")
-    + '<span class="accent-period">.</span>'
-} />
+<section class="market-hero market-hero--split">
 
+  <div class="market-hero__visual">
+    <img
+      class="market-hero-image"
+      src={`https://images.unsplash.com/photo-1650747826627-8b0f01b9721a?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D`}
+      alt={`${cityLabel} real estate`}
+    />
 
+    <div class="market-hero-overlay"></div>
 
-<p class="page-hero__copy">
-  {site?.hero_copy ||
-    "Browse active homes for sale, including houses, condos, and townhomes."}
-</p>
+    <div class="market-hero-content">
+      <p class="type-hero__eyebrow">
+        {cityLabel} Market Report
+      </p>
+
+      <h1>
+        {cityLabel}<br />
+        Real Estate<span>.</span>
+      </h1>
+
+      <p class="market-hero-description">
+        Search active listings, browse neighbourhoods and explore the
+        {cityLabel} real estate market.
+      </p>
+
+      <div class="type-hero__actions">
+        <a
+          class="type-button type-button--primary"
+          href="#browse-by-area"
+        >
+          Browse Areas
+        </a>
+
+        <a
+          class="type-button type-button--secondary"
+          href={`/explore?city=${encodeURIComponent(city)}`}
+        >
+          Open Explorer
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="market-summary-card">
+    <div class="market-summary-card__inner">
+
+      <div class="market-dashboard__head">
+        <div>
+          <span>Current Market</span>
+          <strong>{cityLabel} at a glance</strong>
         </div>
 
-       
+        <span class="market-dashboard__live">Live data</span>
       </div>
-       </header>
 
-    <main class="section">
-      <div class="intent-content-shell">
-           <section class="homepage-neighbourhoods">
-  <div class="homepage-neighbourhoods-head">
-    <div>
-      <h2>Browse {cityName} by neighbourhood</h2>
-      <p>Start with an area, then filter by property type, price, beds, and more.</p>
-    </div>
+      <div class="market-dashboard__primary">
+       <span>Typical asking price</span>
 
-<a href={`/${city || "nanaimo"}/areas`} class="see-all-areas">
-      See all areas →
-    </a>
-  </div>
+        <strong>
+          {medianPrice ? `$${medianPrice.toLocaleString()}` : "—"}
+        </strong>
 
-  <div class="homepage-area-grid">
-    {homepageAreaCards.map((card) => (
-      <a href={card.href} class="homepage-area-card">
-        <strong>{titleCase(card.name).replace(/^Pq\s+/i, "")}</strong>
-        <span>{card.count} listings</span>
-       <small>Browse homes in this area</small>
+        <small>Median price across all active Fernie listings</small>
+      </div>
+
+      <div class="market-dashboard__grid">
+        <article>
+          <span class="market-dashboard__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M3 11.5 12 4l9 7.5" />
+              <path d="M5.5 10.5V20h13v-9.5" />
+              <path d="M9.5 20v-6h5v6" />
+            </svg>
+          </span>
+
+          <div>
+            <strong>{activeListings}</strong>
+            <small>Homes currently for sale</small>
+          </div>
+        </article>
+
+        <article>
+          <span class="market-dashboard__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M20 13 13 20l-9-9V4h7l9 9Z" />
+              <circle cx="8.5" cy="8.5" r="1.25" />
+            </svg>
+          </span>
+
+          <div>
+            <strong>
+              {avgPrice ? `$${avgPrice.toLocaleString()}` : "—"}
+            </strong>
+            <small>Average asking price</small>
+          </div>
+        </article>
+
+        <article>
+          <span class="market-dashboard__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <rect x="4" y="4" width="16" height="16" rx="2" />
+              <path d="M8 8v8M12 8v8M16 8v8" />
+            </svg>
+          </span>
+
+          <div>
+            <strong>{condoCount}</strong>
+            <small>Condo listings available</small>
+          </div>
+        </article>
+
+        <article>
+          <span class="market-dashboard__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M4 20V9.5L12 4l8 5.5V20" />
+              <path d="M8 20v-6h8v6" />
+            </svg>
+          </span>
+
+          <div>
+            <strong>{houseCount}</strong>
+           <small>House listings available</small>
+          </div>
+        </article>
+      </div>
+
+      <a
+        class="market-dashboard__explore"
+        href={`/explore?city=${encodeURIComponent(city)}`}
+      >
+        <span>
+          <strong>Explore the full market</strong>
+          <small>Listings, areas, schools, parks and amenities.</small>
+        </span>
+
+        <b>→</b>
       </a>
-    ))}
 
-<a href={`/${city || "nanaimo"}/areas`} class="homepage-area-card homepage-area-card--soft">
-      <strong>See all areas</strong>
-      <span>Explore every neighbourhood</span>
-      <small>View full area guide →</small>
-    </a>
+    </div>
   </div>
+
 </section>
 
-<div class="explore-toolbar">
-          <div class="view-pill">
-           <button type="button" class="view-pill__btn active" id="list-view-btn">☷ List</button>
-<button type="button" class="view-pill__btn" id="map-view-btn">⌖ Map</button>
-          </div>
-              <form class="filter-form" method="get" id="home-filter-form">
-  <input type="hidden" name="city" value={city || "nanaimo"} />
-<select name="area" class="filter-select" aria-label="Area">
-  <option value="" selected={!area}>All Areas</option>
-  {areaOptions.map((areaOption) => (
-    <option value={areaOption} selected={area === areaOption}>
-      {areaOption.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())}
+    <!-- ── Area browse nav ── -->
+    <nav class="area-browse-nav">
+      <div class="area-browse-nav__inner">
+    <span>Explore more {cityLabel} areas</span>
+
+   {navAreas.slice(0, 4).map((item) => (
+<a href={`/${city}/${areaToSlug(item)}`}>
+  {labelize(item)}
+</a>
+))}
+
+    {navAreas.length > 4 && (
+   <select id="area-nav-select">
+  <option value="">+{navAreas.length - 4} more areas</option>
+  {navAreas.slice(4).map((item) => (
+    <option value={`/${city}/${areaToSlug(item)}`}>
+      {labelize(item)}
     </option>
   ))}
 </select>
-<select name="type" class="filter-select" aria-label="Property type">
-  <option value="" selected={!type}>All Types</option>
+    )}
+      </div>
+    </nav>
 
-  {propertyTypeOptions.map((propertyType) => (
-    <option value={propertyType === "homes" ? "house" : propertyType} selected={type === propertyType || type === "house" && propertyType === "homes"}>
-      {propertyType === "homes"
-  ? "Homes"
-  : propertyType === "condo"
-  ? "Condos"
-  : propertyType === "mobile"
-  ? "Mobile Homes"
-  : propertyType === "townhouse"
-  ? "Townhomes"
-  : propertyType.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())}
-    </option>
+    <div class="market-index-content">
+
+      <section class="content-card area-picker">
+  <div class="section-heading">
+   <span class="eyebrow">Browse by Area</span>
+    <h2 id="browse-by-area">Choose a {cityLabel} neighbourhood</h2>
+    <p>Start with an area, then filter by property type, price, beds, and more.</p>
+  </div>
+
+ <div class="area-card-grid">
+  {topAreas.map(([area, count], index) => (
+    <a
+      class="area-pick-card"
+      href={`/${city}/${areaToSlug(area)}`}
+      style={`--card-tint: ${3 + (index % 6)}%`}
+    >
+    <strong>{labelize(area)}</strong>
+      <div class="area-pick-count">
+        {getAreaCardCount(area, count) === 1 ? "1 listing" : `${getAreaCardCount(area, count)} listings`}
+      </div>
+     <span class="area-card-link">View area →</span>
+    </a>
   ))}
-</select>
-
- <select name="maxPrice" class="filter-select" aria-label="Max price">
-  <option value="" selected={!maxPrice}>Any Price</option>
-  <option value="500" selected={maxPrice === 500}>Under $500k</option>
-  <option value="800" selected={maxPrice === 800}>Under $800k</option>
-  <option value="1200" selected={maxPrice === 1200}>Under $1.2M</option>
-</select>
-
-<select name="beds" class="filter-select" aria-label="Bedrooms">
-  <option value="" selected={!beds}>Any Beds</option>
-  <option value="2" selected={beds === 2}>2+ Beds</option>
-  <option value="3" selected={beds === 3}>3+ Beds</option>
-  <option value="4" selected={beds === 4}>4+ Beds</option>
-  <option value="5" selected={beds === 5}>5+ Beds</option>
-</select>
-
-  <select name="sort" class="filter-select" aria-label="Sort listings">
-    <option value="newest" selected={sort === "newest"}>Newest first</option>
-    <option value="price-low" selected={sort === "price-low"}>Price low to high</option>
-    <option value="price-high" selected={sort === "price-high"}>Price high to low</option>
-  </select>
-
-  <a href="?" class="filter-clear">Clear</a>
-</form>
-
-          </div>
-
-       <div class="results-heading">
-  <h2 id="results-heading">
-    {(city || "Nanaimo").replace(/\b\w/g, (char) => char.toUpperCase())} Homes For Sale
-  </h2>
-
-  <p id="results-update-note">
-    <span id="results-count">{listings.length}</span> Active Listings
-  </p>
 </div>
+</section>
 
-        {errorMessage && <div class="empty">{errorMessage}</div>}
-
-               {!errorMessage && listings.length === 0 && (
-          <div class="empty">No matching homes found yet.</div>
-        )}
-
-      {!errorMessage && listings.length > 0 && (
-  <>
-    <div id="intent-map" class="intent-map" hidden></div>
-
-<section class="grid" aria-label={`${listings.length} listings${city ? ` in ${city}` : ""}`}> {listings.map((listing: any) => {              const image = getListingImage(listing);
-              const address = getListingAddress(listing);
-              const price = getListingPrice(listing);
-              const beds = getListingBeds(listing);
-              const baths = getListingBaths(listing);
-              const sqft = getListingSqft(listing);
-              const mls = getListingMls(listing);
-              const propertyType = getListingPropertyType(listing);
-              const description = getListingDescription(listing);
-              const images = getListingImages(listing);
-
-          return (
-                                  <article
-                    class="card original-card"
-                    hidden={listings.indexOf(listing) >= 8}
-                    data-item-id={String(listing?.id || listing?.mls_number || "")}
-                    data-card-id={String(listing?.id || listing?.mls_number || "")}
-                    data-listing-id={String(listing?.id || listing?.mls_number || "")}
-                    data-price={price}
-                    data-raw-price={String(listing?.price || 0)}
-                    data-listed-at={String(listing?.listed_at || listing?.created_at || "")}
-                    data-address={address}
-                    data-meta={`${beds || "-"} bed · ${baths || "-"} bath`}
-                    data-image={image}
-                    data-images={JSON.stringify(images)}
-                    data-beds={String(beds)}
-                    data-baths={String(baths)}
-                    data-sqft={String(sqft)}
-                    data-description={description}
-                    data-property-type={propertyType}
-                    data-type={String(listing?.normalized_type || listing?.property_type || type || "Home")}
-                    data-year={String(getListingYearBuilt(listing))}
-                    data-lot-size={String(getListingLotSize(listing))}
-                    data-area={String(getListingArea(listing))}
-                    data-liked-tags="[]"
-                    data-is-favourite="false"
-                    data-decision=""
-                    data-lat={listing?.lat || ""}
-                    data-lng={listing?.lng || ""}
-                    data-city={String(listing?.normalized_city || listing?.city || city || "")}
-                    data-mls={mls}
-                    aria-label={`${price} — ${address}`}
-                  >
-               <div class="card-image-wrap">
-  <img src={image || "https://placehold.co/800x600?text=Listing"} alt={address || "Listing"} />
-</div>
-
-                    <div class="card-body">
-                      <div class="price">{price}</div>
-                      <div class="address">{address}</div>
-<div class="card-city">{(city || "Nanaimo").replace(/\b\w/g, (char) => char.toUpperCase())}, BC</div>
-                      <div class="meta">
-                        <span>🛏 {beds || "-"} bd</span>
-                        <span>🛁 {baths || "-"} ba</span>
-                        {sqft && <span>↗ {Number(sqft).toLocaleString()} sq ft</span>}
-                      </div>
-
-                      <div class="card-decision-badge" hidden></div>
-                    </div>
-                                    </article>
-              );
-            })}
-                 </section>
-<button type="button" id="home-load-more" class="home-load-more-btn">Load more listings</button>
-<div class="homepage-interruptor">
-  <div class="homepage-interruptor-copy">
-    <strong>Not seeing what you're looking for?</strong>
+   <!-- ── Latest listings ── -->
+<section class="listings-section">
+  <div class="section-heading" style="margin-bottom: 24px;">
+    <span class="eyebrow">Latest Listings</span>
+    <h2>Newest {cityLabel} Listings</h2>
     <p>
-      Refine your search or get new listings sent to you.
+      A quick look at some of the newest active listings currently available
+      across {cityLabel}.
     </p>
   </div>
 
-  <div class="homepage-interruptor-actions">
-  <button class="interrupt-btn interrupt-secondary" id="refine-search-btn" type="button">
-  Refine My Search
-</button>
-
-  <button class="interrupt-btn interrupt-primary" id="save-search-btn" type="button">
-  Save Search
-</button>
-  </div>
-  <div class="homepage-refine-panel" id="homepage-refine-panel" hidden>
-<p>
-  Refine the listings above:
- <div id="refine-update-note" class="refine-update-note" hidden>
-  Showing updated matches above ↑
-</div>
-</p>  <div class="homepage-refine-chips">
-    <button type="button" data-refine="views">Views</button>
-    <button type="button" data-refine="garage">Garage</button>
-    <button type="button" data-refine="yard">Yard</button>
-    <button type="button" data-refine="suite">Suite</button>
-    <button type="button" data-refine="updated">Updated</button>
-    <button type="button" data-refine="walkability">Walkable</button>
-  </div>
-</div>
-</div>
-
-  </>
-)}
-
-        <section class="intent-collections">
-          <div class="intent-collections-head">
-            <h2>Search by what matters.</h2>
-
-            <p>
-              Explore focused search paths based on lifestyle,
-              property type, price point, and buyer priorities.
-            </p>
-          </div>
-
-                            <div class="intent-collections-grid" id="intent-collections-grid">
-  {intentCollections.map((card) => (
-              <a href={card.href} class="intent-card" data-type={card.type}>
-                <span class="intent-type">{card.type}</span>
-
-                <h3>{card.title}</h3>
-
-                <p>{card.description}</p>
-
-                <span class="intent-link">View search →</span>
-              </a>
-            ))}
-          </div>
-        </section>
+  <div class="listing-grid">
+    {listings.map((listing, index) => (
+      <div
+        class="listing-card-wrap"
+        data-type={listing.normalized_type || ""}
+        data-price={listing.price || 0}
+        data-beds={listing.beds || 0}
+        data-listed={listing.listed_at || ""}
+      >
+        <ListingCard
+  listing={listing}
+  image={getListingImage(listing)}
+  priority={index < 3}
+/>
       </div>
-    </main>
+    ))}
+  </div>
+</section>
 
-<ShortlistReviewModal />
-<IntentModalController loadMapScript={false} />
+<!-- ── Stats ── -->
+<section class="area-stats">
+  <div class="stat-card">
+    <strong>{activeListings}</strong>
+    <span>Active Listings</span>
+  </div>
+  <div class="stat-card">
+    <strong>${avgPrice.toLocaleString()}</strong>
+    <span>Average Price</span>
+  </div>
+  <div class="stat-card">
+    <strong>${medianPrice.toLocaleString()}</strong>
+    <span>Median Price</span>
+  </div>
+  <div class="stat-card">
+    <strong>{houseCount}</strong>
+    <span>Houses</span>
+  </div>
+  <div class="stat-card">
+    <strong>{condoCount}</strong>
+    <span>Condos</span>
+  </div>
+  <div class="stat-card">
+    <strong>{townhomeCount}</strong>
+    <span>Townhomes</span>
+  </div>
+</section>
 
-<style is:global>
+<!-- ── Charts ── -->
+<section class="market-row">
+  <section class="chart-card">
+    <div>
+      <span class="eyebrow">Price Distribution</span>
+      <h2>Where {cityLabel} Inventory Sits by Price</h2>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="priceChart"></canvas>
+    </div>
+  </section>
 
-  .accent-period {
-  color: var(--accent);
+  <section class="chart-card">
+    <div>
+      <span class="eyebrow">Area Activity</span>
+      <h2>Top Areas by Listing Count</h2>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="areaChart"></canvas>
+    </div>
+  </section>
+</section>
+
+    <!-- ── Intent interrupter ── -->
+    <section class="intent-interrupter">
+      <div class="intent-interrupter__inner">
+        <span class="eyebrow" style="color: rgba(255,255,255,0.6);">Explore {cityLabel} Homes</span>
+        <h2>Browse Curated Collections</h2>
+        <p>
+          Looking for something specific? Explore some of {cityLabel}'s most popular
+home searches.
+        </p>
+        <div class="intent-grid">
+          {featuredIntentPages.map((intentPage) => (
+            <a href={`/${city}/${intentPage.slug}`} class="intent-tile">
+              <strong>{intentPage.hero_heading}</strong>
+              <span>
+                {intentPage.intro_copy ||
+                  `Explore this curated ${cityLabel} real estate search.`}
+              </span>
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    
+
+    <!-- ── Popular searches ── -->
+    <section class="content-card">
+    <h2>Popular {cityLabel} Searches</h2>
+     <ul>
+  {featuredIntentPages.map((intentPage) => (
+    <li>
+      <a href={`/${city}/${intentPage.slug}`}>
+        {intentPage.hero_heading}
+      </a>
+    </li>
+  ))}
+</ul>
+    </section>
+
+    </div>
+  </div>
+</main>
+
+  <ShortlistReviewModal />
+  <IntentModalController />
+
+ <script is:inline define:vars={{ chartData }}>
+  window.addEventListener("DOMContentLoaded", () => {
+      if (!window.Chart) {
+        console.error("Chart.js did not load");
+        return;
+      }
+
+      const priceCanvas = document.getElementById("priceChart");
+      const areaCanvas  = document.getElementById("areaChart");
+      if (!priceCanvas || !areaCanvas) return;
+
+      const sharedOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { displayColors: false },
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { maxRotation: 0, minRotation: 0, font: { size: 10 } },
+          },
+          y: {
+            beginAtZero: true,
+            border: { display: false },
+            grid: { color: "rgba(28,25,23,0.08)" },
+            ticks: { precision: 0, font: { size: 10 } },
+          },
+        },
+      };
+
+      new Chart(priceCanvas, {
+        type: "bar",
+        data: {
+          labels: chartData.priceLabels,
+          datasets: [{ label: "Listings", data: chartData.priceCounts }],
+        },
+        options: sharedOptions,
+      });
+
+      new Chart(areaCanvas, {
+        type: "bar",
+        data: {
+          labels: chartData.areaLabels,
+          datasets: [{ label: "Listings", data: chartData.areaCounts }],
+        },
+        options: sharedOptions,
+      });
+    });
+  </script>
+  <script is:inline>
+  document.addEventListener("DOMContentLoaded", () => {
+    const select = document.getElementById("area-nav-select");
+
+    select?.addEventListener("change", (e) => {
+      const value = e.target.value;
+      if (value) {
+        window.location.href = value;
+      }
+    });
+  });
+</script>
+</Layout>
+
+<style>
+  /* ── Shell / layout ── */
+.shell {
+  width: min(1220px, calc(100% - 64px));
+  margin: 0 auto;
+  padding: 0;
 }
-  [data-intent-page-id="homepage"] .section {
-    padding: 28px 0 100px;
-    background: var(--bg);
+
+@media (max-width: 640px) {
+  .shell {
+    width: 100%;
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+}
+
+  /* ── Area browse nav ── */
+  .area-browse-nav {
+    background: #fff;
+    border-bottom: 1px solid rgba(28,25,23,0.1);
+    position: sticky;
+    top: 0;
+    z-index: 40;
   }
 
-[data-intent-page-id="homepage"] .intent-content-shell {
-    width: min(1400px, calc(100% - 32px));
-    margin: 0 auto;
+.area-browse-nav__inner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 18px 0 20px;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
   }
 
-.homepage-neighbourhoods {
-  margin: 0 0 26px;
-}
+  .area-browse-nav__inner::-webkit-scrollbar { display: none; }
 
-.homepage-neighbourhoods-head {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 18px;
-}
+.area-browse-nav__inner > span {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    flex-shrink: 0;
+    margin-right: 8px;
+  }
 
-.homepage-neighbourhoods h2 {
-  margin: 0 0 6px;
-  font-size: 1.9rem;
-  letter-spacing: -0.04em;
-}
+.area-browse-nav a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 0 15px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--accent) 7%, white);
+    border: 0.5px solid rgba(0,0,0,0.12);
+    font-size: 0.84rem;
+    font-weight: 750;
+    color: var(--muted);
+    text-decoration: none;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+  }
 
-.homepage-neighbourhoods p {
+  .area-browse-nav a:hover,
+  .area-browse-nav a.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+
+  .area-browse-nav select {
+    appearance: none;
+    border: 1px solid rgba(28,25,23,0.22);
+    border-radius: 6px;
+    background: #fff;
+    color: #332f2b;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 7px 34px 7px 14px;
+    cursor: pointer;
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
+
+  /* ── Main shell spacing ── */
+  main.shell { padding-top: 40px; padding-bottom: 100px; }
+
+  /* ── Section heading ── */
+  .section-heading { margin-bottom: 28px; }
+  .section-heading .eyebrow {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.7rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .section-heading h2 {
+    margin: 0 0 8px;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+    line-height: 1.0;
+    letter-spacing: -0.045em;
+    font-weight: 500;
+  }
+  .section-heading p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.6;
+    max-width: 560px;
+  }
+
+  /* ── Stats row ── */
+  .area-stats {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    margin-bottom: 40px;
+  }
+
+  .stat-card {
+    background: #fff;
+    border: 0.5px solid rgba(0,0,0,0.1);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+
+  .stat-card strong {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 4px;
+    letter-spacing: -0.03em;
+  }
+
+  .stat-card span {
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Listings section ── */
+  .listings-section { margin-bottom: 54px; }
+
+  .listing-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+   
+  }
+
+  /* ── Market insights (mi-*) — matches area slug ── */
+  .market-row { display: flex; flex-direction: column; gap: 12px; margin-bottom: 54px; }
+
+  .mi-stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .mi-stat { background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 8px; padding: 12px 16px; }
+  .mi-stat-label { font-size: 11px; color: #888; margin: 0 0 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .mi-stat-val { font-size: 24px; font-weight: 700; color: #1a1a1a; margin: 0 0 2px; }
+  .mi-stat-sub { font-size: 11px; color: #aaa; margin: 0; }
+
+  .mi-top { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .mi-bottom-row { display: flex; flex-direction: column; gap: 12px; }
+
+  .mi-card {
+    background: #fff;
+    border: 0.5px solid rgba(0,0,0,0.1);
+    border-radius: 12px;
+    padding: 1.25rem;
+  }
+
+  .mi-card .eyebrow {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+
+  .mi-card h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 1rem;
+    color: #1a1a1a;
+  }
+
+  /* ── Area card grid (Browse by Area) ── */
+  .content-card { padding: 0 0 54px; }
+
+  .area-picker { padding-top: 0; }
+  .area-picker .section-heading { max-width: 720px; margin-bottom: 22px; }
+
+  .area-card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+.area-pick-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 18px;
+    border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: color-mix(in srgb, var(--accent) calc(var(--card-tint, 6%)), white);
+    color: inherit;
+    text-decoration: none;
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  }
+
+  .area-pick-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(0,0,0,0.18);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.07);
+  }
+
+  .area-pick-card strong {
+    display: block;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.2;
+    font-family: inherit;
+    letter-spacing: normal;
+    padding: 0;
+    background: none;
+    border: none;
+  }
+
+.area-pick-count {
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--muted);
+  }
+
+  .area-card-link {
+    margin-top: 4px;
+    color: var(--accent);
+    font-size: 0.84rem;
+    font-weight: 700;
+  }
+
+  /* ── Charts ── */
+  .chart-card {
+    background: #fff;
+    border: 0.5px solid rgba(0,0,0,0.1);
+    border-radius: 12px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .chart-card .eyebrow {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+
+  .chart-card h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    color: #1a1a1a;
+  }
+
+  .chart-wrap {
+    position: relative;
+    height: 220px;
+    min-height: 220px;
+  }
+
+  .chart-wrap canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* ── Intent interrupter ── */
+  .intent-interrupter { margin: 0 0 54px; }
+
+ .intent-interrupter__inner {
+    padding: 48px;
+    border-radius: 10px;
+    background: #181614;
+    color: #fff;
+  }
+
+  .intent-interrupter h2 {
+    margin: 0 0 12px;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(2.4rem, 4vw, 4rem);
+    line-height: 0.95;
+    letter-spacing: -0.06em;
+    font-weight: 500;
+    color: #fff;
+  }
+
+  .intent-interrupter p {
+    max-width: 620px;
+    margin-bottom: 30px;
+    color: rgba(255,255,255,0.72);
+  }
+
+  .intent-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+.intent-tile {
+    display: block;
+    padding: 22px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    text-decoration: none;
+    transition: all 0.2s ease;
+  }
+
+  .intent-tile:hover {
+    transform: translateY(-3px);
+    background: rgba(255,255,255,0.1);
+  }
+
+  .intent-tile strong { display: block; margin-bottom: 8px; font-size: 1rem; color: #fff; }
+  .intent-tile span { display: block; color: rgba(255,255,255,0.68); font-size: 0.9rem; line-height: 1.5; }
+
+  /* ── Popular searches ── */
+  .content-card h2 {
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(1.8rem, 3vw, 2.4rem);
+    line-height: 0.98;
+    letter-spacing: -0.05em;
+    font-weight: 500;
+    margin-bottom: 20px;
+  }
+
+  .content-card ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    list-style: none;
+    margin-top: 18px;
+    padding: 0;
+  }
+
+.content-card li a {
+    display: block;
+    padding: 18px;
+    border-radius: 6px;
+    background: #fff;
+    border: 1px solid rgba(28,25,23,0.1);
+    font-weight: 700;
+    color: var(--ink);
+    text-decoration: none;
+    transition: all 0.2s ease;
+  }
+
+  .content-card li a:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-light);
+    box-shadow: 0 12px 28px rgba(28,25,23,0.08);
+  }
+.listing-grid {
+  margin-bottom: 32px;
+}
+  /* ── Responsive ── */
+  @media (max-width: 1100px) {
+    .area-stats { grid-template-columns: repeat(3, 1fr); }
+    .listing-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .area-card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+
+  @media (max-width: 760px) {
+    .area-stats { grid-template-columns: repeat(2, 1fr); }
+    .listing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .area-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .mi-top { grid-template-columns: 1fr; }
+    .intent-grid { grid-template-columns: 1fr; }
+    .intent-interrupter__inner { padding: 28px; }
+    .mi-stats-row { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 500px) {
+    .area-stats { grid-template-columns: 1fr; }
+    .listing-grid { grid-template-columns: 1fr; }
+    .area-card-grid { grid-template-columns: 1fr; }
+  }
+
+  @media (min-width: 760px) {
+    .area-card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+
+  @media (min-width: 1100px) {
+    .area-card-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+/* =========================================================
+   SAME GEOMETRY AS SLUG PAGES
+   ========================================================= */
+
+.page {
+  width: 100%;
+  max-width: none;
   margin: 0;
-  color: var(--muted);
-  line-height: 1.6;
+  padding: 0 0 80px;
 }
 
-.see-all-areas {
-  color: var(--accent);
-  text-decoration: none;
-  font-weight: 850;
-  white-space: nowrap;
+.is-type-page {
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(18, 58, 90, 0.025),
+      transparent 36%
+    ),
+    #fbfcfd;
 }
 
-.homepage-area-grid {
+.is-type-page .intent-content-shell {
+  width: min(1220px, calc(100% - 80px));
+  margin: 0 auto;
+  padding: 24px 20px 0;
+}
+
+
+
+.type-hero {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
-  gap: 16px;
-}
-
-.homepage-area-card {
-  min-height: 130px;
-  padding: 18px;
-  border-radius: 6px;
-  border: 0.5px solid rgba(0,0,0,0.1);
-  background: #fff;
-  color: inherit;
-  text-decoration: none;
-  box-shadow: none;
-  transition: all 0.22s ease;
-  overflow-wrap: anywhere;
-}
-
-.homepage-area-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(0,0,0,0.2);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.07);
-}
-
-.homepage-area-card strong {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 1.03rem;
-}
-
-.homepage-area-card span {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 850;
-}
-
-.homepage-area-card small {
-  color: var(--muted);
-  line-height: 1.45;
-}
-
-.homepage-area-card--soft {
-  background: var(--accent-soft);
-}
-
-.explore-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  grid-template-columns:
+    minmax(0, 0.88fr)
+    minmax(460px, 1.12fr);
+  gap: 44px;
+  align-items: stretch;
   margin-bottom: 26px;
 }
 
-.filter-form {
+.type-hero__copy {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  flex: 1;
-  min-width: 0;
-}
-
-.filter-clear {
-  white-space: nowrap;
-}
-
- .view-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-  flex: 0 0 auto;
-  flex-wrap: nowrap;
-  white-space: nowrap;
-  min-width: max-content;
-}
-
-.view-pill__btn,
-.filter-select,
-.filter-clear {
-  height: 34px;
-  min-height: 34px;
-  padding: 0 32px 0 15px;
-  border-radius: 6px;
-  border: 0.5px solid rgba(0,0,0,0.12);
-  background: var(--surface);
-  color: var(--ink);
-  font: inherit;
-  font-size: 0.82rem;
-  font-weight: 750;
-  cursor: pointer;
-  box-sizing: border-box;
-}
-
-.view-pill__btn {
-  display: inline-flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: center;
-  flex: 0 0 auto;
-  height: 28px;
-  min-height: 28px;
-  padding: 0 13px;
-  white-space: nowrap;
-  line-height: 1;
-}
-
-.view-pill__btn + .view-pill__btn {
-  margin-left: -1px;
-}
-
-.view-pill__btn:first-child {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-}
-
-.view-pill__btn:last-child {
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-  border-left: none;
-}
-
-.view-pill__btn.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-.filter-select {
   min-width: 0;
-  width: auto;
-  flex: 1 1 120px;
-  max-width: 180px;
-  padding-right: 34px;
+  min-height: 390px;
+  padding: 28px 0;
 }
 
-.filter-clear {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.home-load-more-btn,
-.interrupt-btn {
-  height: 44px;
-  min-height: 44px;
-  padding: 0 20px;
-  border-radius: 6px;
-  border: 0.5px solid rgba(0,0,0,0.12);
-  background: var(--surface);
-  color: var(--ink);
-  font: inherit;
-  font-size: 0.95rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.home-load-more-btn {
-  display: block;
-  margin: 34px auto 54px;
-}
-
-.interrupt-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-.grid {
-  display: grid;
-  width: 100%;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 18px;
-  align-items: start;
-}
-
-.grid > * {
-  width: 100%;
-  min-width: 0;
-}
-
-  .grid.map-hidden {
-    display: none;
-  }
-
-.card {
-  position: relative;
-  width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  border-radius: 6px;
-  border: 0.5px solid rgba(0,0,0,0.1);
-  background: #fff;
-  cursor: pointer;
-  box-shadow: none;
-}
-
-  .card-image-wrap {
-    width: 100%;
-    height: 190px;
-    overflow: hidden;
-    background: var(--accent-soft);
-  }
-
-  .card-image-wrap img {
-    display: block;
-    width: 100%;
-    height: 190px;
-    object-fit: cover;
-  }
-
-  .card-body {
-  position: relative;
-  min-height: 128px;
-  padding: 14px 16px;
-  background: #fff;
-}
-
-.grid > .card,
-.grid > article {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-}
-
-.card-image-wrap {
-  width: 100%;
-  max-width: 100%;
-  overflow: hidden;
-}
-
-.card-image-wrap img {
-  width: 100%;
-  max-width: 100%;
-}
-
-   .price {
-  margin-bottom: 6px;
-  padding-right: 104px;
-  font-size: 1.22rem;
-  line-height: 1.15;
-  font-weight: 800;
-  letter-spacing: -0.025em;
-}
-
-.address {
-  margin-bottom: 2px;
-  color: var(--ink);
-  line-height: 1.35;
-  font-size: 0.9rem;
-  font-weight: 650;
-}
-
-.card-city {
-  margin-bottom: 14px;
-  color: var(--muted);
-  font-size: 0.86rem;
-  font-weight: 500;
-}
-
-.meta {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  font-size: 0.86rem;
-  color: var(--ink-soft);
-  font-weight: 500;
-}
-
-  .meta span {
-    white-space: nowrap;
-  }
-
-.card-decision-badge {
-  position: absolute;
-  top: 16px;
-  right: 14px;
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  margin: 0;
-  padding: 5px 9px;
-  border-radius: 999px;
-  font-size: 0.66rem;
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: 0.05em;
+.type-hero__eyebrow {
+  margin: 0 0 16px;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.card-decision-badge[hidden] {
-  display: none;
+.type-hero h1 {
+  max-width: 630px;
+  margin: 0;
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2.9rem, 5vw, 5rem);
+  font-weight: 500;
+  letter-spacing: -0.058em;
+  line-height: 0.98;
 }
 
-.card-decision-badge.is-love {
-  background: #ff3b30;
-  color: #fff;
+.type-hero h1 > span {
+  color: var(--accent);
 }
 
-.card-decision-badge.is-maybe {
-  background: #f59e0b;
-  color: #fff;
-}
-
-.card-decision-badge.is-pass {
-  background: rgba(24, 22, 20, 0.08);
-  color: rgba(24, 22, 20, 0.56);
-}
-
-.card.is-passed {
-  opacity: 0.32;
-  filter: grayscale(0.55);
-}
-
-.card.is-passed:hover {
-  opacity: 0.65;
-}
-
-.intent-map {
-    height: 62vh;
-    min-height: 460px;
-    border: 0.5px solid rgba(0,0,0,0.1);
-    border-radius: 6px;
-    overflow: hidden;
-    margin-bottom: 22px;
-    background: var(--accent-soft);
-  }
-
-  .homepage-interruptor {
-    margin: 56px 0 70px;
-    padding: 22px 26px;
-    background: var(--surface);
-    border: 0.5px solid rgba(0,0,0,0.1);
-    border-radius: 6px;
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 20px 24px;
-    align-items: center;
-  }
-
-  .homepage-interruptor-actions,
-  .homepage-refine-chips {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  .homepage-refine-panel {
-    grid-column: 1 / -1;
-    padding-top: 18px;
-    border-top: 1px solid var(--line-warm);
-  }
-
-  .homepage-refine-panel p {
-  margin: 0 0 12px;
+.type-hero__copy > p:not(.type-hero__eyebrow) {
+  max-width: 590px;
+  margin: 22px 0 0;
   color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.type-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.type-button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 18px;
+  border-radius: 7px;
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.type-button--primary {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff !important;
+}
+
+.type-button--secondary {
+  border: 1px solid rgba(18, 58, 90, 0.16);
+  background: #fff;
+  color: var(--accent);
+}
+
+.market-page-hero__dashboard {
+  min-width: 0;
+  min-height: 390px;
+}
+
+@media (max-width: 980px) {
+  .type-hero {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+
+  .type-hero__copy {
+    min-height: 0;
+    padding: 16px 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .is-type-page .intent-content-shell {
+    width: 100%;
+    padding: 16px 14px 0;
+  }
+
+
+
+  .type-hero {
+    gap: 18px;
+  }
+
+  .type-hero__copy {
+    padding: 5px 2px 0;
+  }
+
+  .type-hero h1 {
+    max-width: 340px;
+    font-size: clamp(2.45rem, 12vw, 3.4rem);
+  }
+
+  .type-hero__copy > p:not(.type-hero__eyebrow) {
+    margin-top: 17px;
+    font-size: 0.92rem;
+    line-height: 1.6;
+  }
+
+  .type-hero__actions {
+    margin-top: 22px;
+  }
+
+  .type-button {
+    min-height: 42px;
+    padding: 0 15px;
+    font-size: 0.79rem;
+  }
+}
+/* =========================================================
+   AREAS PAGE DASHBOARD — REFINED
+   ========================================================= */
+
+.market-summary-card {
+  min-height: 390px;
+  overflow: hidden;
+  border: 1px solid rgba(18, 58, 90, 0.08);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 14px 40px rgba(24, 45, 68, 0.055);
+}
+
+.market-summary-card__inner {
+  min-height: 390px;
+  display: flex;
+  flex-direction: column;
+  padding: 26px;
+}
+
+.market-dashboard__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(18, 58, 90, 0.07);
+}
+
+.market-dashboard__head div > span,
+.market-dashboard__head div > strong {
+  display: block;
+}
+
+.market-dashboard__head div > span {
+  margin-bottom: 5px;
+  color: var(--accent);
+  font-size: 0.66rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.market-dashboard__head div > strong {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 850;
+  letter-spacing: -0.015em;
+}
+
+.market-dashboard__live {
+  flex: none;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 7%, white);
+  color: var(--accent);
+  font-size: 0.63rem;
   font-weight: 800;
 }
 
-.homepage-refine-chips button {
-  min-height: 38px;
-  padding: 0 14px;
-  border-radius: 6px;
-  border: 0.5px solid rgba(0,0,0,0.12);
-  background: var(--surface);
+.market-dashboard__primary {
+  padding: 24px 4px 20px;
+}
+
+.market-dashboard__primary span,
+.market-dashboard__primary strong,
+.market-dashboard__primary small {
+  display: block;
+}
+
+.market-dashboard__primary span {
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.market-dashboard__primary strong {
   color: var(--ink);
-  cursor: pointer;
-  font: inherit;
+  font-size: clamp(2.15rem, 3vw, 3rem);
+  font-weight: 900;
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+.market-dashboard__primary small {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.market-dashboard__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.market-dashboard__grid article {
+  min-width: 0;
+  min-height: 84px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 15px 16px;
+  border: 1px solid rgba(18, 58, 90, 0.075);
+  border-radius: 11px;
+  background: #fbfcfd;
+}
+
+.market-dashboard__icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 7%, white);
+  color: color-mix(in srgb, var(--accent) 72%, #7f8a96);
+  line-height: 0;
+}
+
+.market-dashboard__icon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.45;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.market-dashboard__grid strong,
+.market-dashboard__grid small {
+  display: block;
+}
+
+.market-dashboard__grid strong {
+  overflow: hidden;
+  margin-bottom: 3px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 850;
+  letter-spacing: -0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-dashboard__grid small {
+  color: var(--muted);
+  font-size: 0.67rem;
+  line-height: 1.35;
+}
+
+.market-dashboard__explore {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 12px;
+  padding: 15px 17px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff !important;
+  text-decoration: none;
+}
+
+.market-dashboard__explore strong,
+.market-dashboard__explore small {
+  display: block;
+}
+
+.market-dashboard__explore strong {
+  margin-bottom: 4px;
+  font-size: 0.8rem;
   font-weight: 850;
 }
 
-.homepage-refine-chips button.active,
-.homepage-refine-chips button:hover {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+.market-dashboard__explore small {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.64rem;
 }
 
-.refine-update-note {
-  display: block;
-  width: fit-content;
-  margin: 12px 0 14px;
-  padding: 9px 14px;
-  border-radius: 6px;
-  background: var(--accent-soft);
-  border: 0.5px solid rgba(0,0,0,0.1);
+.market-dashboard__explore b {
+  flex: none;
+  font-size: 0.95rem;
+  transition: transform 160ms ease;
+}
+
+.market-dashboard__explore:hover b {
+  transform: translateX(3px);
+}
+
+/* Calm the lower area nav */
+
+.area-browse-nav {
+  position: static;
+  z-index: auto;
+  width: 100%;
+  margin: 0 0 34px;
+  overflow: hidden;
+  border: 1px solid rgba(18, 58, 90, 0.075);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 6px 20px rgba(24, 45, 68, 0.025);
+}
+
+.area-browse-nav__inner {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.area-browse-nav__inner > span {
+  margin-right: 8px;
   color: var(--accent);
+  font-size: 0.66rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.area-browse-nav a,
+.area-browse-nav select {
+  min-height: 36px;
+}
+
+.area-browse-nav a {
+  padding: 0 14px;
+  border: 1px solid rgba(18, 58, 90, 0.09);
+  border-radius: 8px;
+  background: #fbfcfd;
+  color: var(--ink-soft);
   font-size: 0.78rem;
-  font-weight: 900;
-  cursor: pointer;
+  font-weight: 700;
 }
 
-.refine-update-note[hidden] {
-  display: none;
+.area-browse-nav a:hover {
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, white);
+  color: var(--accent);
 }
 
-  .intent-collections {
-    margin-top: 80px;
+.area-browse-nav select {
+  min-width: 150px;
+  border: 1px solid rgba(18, 58, 90, 0.09);
+  border-radius: 8px;
+  background-color: #fbfcfd;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.market-index-content {
+  padding-top: 2px;
+}
+
+.area-picker .section-heading {
+  max-width: 720px;
+  margin-bottom: 26px;
+}
+
+@media (max-width: 980px) {
+  .market-summary-card,
+  .market-summary-card__inner {
+    min-height: 340px;
+  }
+}
+
+@media (max-width: 640px) {
+  .market-summary-card,
+  .market-summary-card__inner {
+    min-height: 315px;
   }
 
-  .intent-collections-head {
-    display: grid;
-    grid-template-columns: 1.2fr 0.8fr;
-    gap: 40px;
-    margin-bottom: 34px;
+  .market-summary-card__inner {
+    padding: 18px;
   }
 
-  .intent-collections-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-    gap: 18px;
+  .market-dashboard__grid {
+    gap: 8px;
   }
- .intent-card {
+
+  .market-dashboard__grid article {
+    min-height: 74px;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .market-dashboard__icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .area-browse-nav {
+    margin-bottom: 24px;
+  }
+
+  .area-browse-nav__inner {
+    min-height: 54px;
+    padding: 9px 11px;
+  }
+}
+/* =========================================================
+   MARKET HOMEPAGE HERO
+   ========================================================= */
+
+.market-hero {
+  margin-bottom: 34px;
+}
+
+.market-hero__visual {
+  position: relative;
+  min-height: 510px;
+  overflow: hidden;
+  border-radius: 20px 20px 0 0;
+  background:
+    linear-gradient(135deg, #53605d, #bac1c0);
+}
+
+.market-hero-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.market-hero-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(10, 19, 18, 0.82) 0%,
+      rgba(10, 19, 18, 0.58) 38%,
+      rgba(10, 19, 18, 0.16) 74%,
+      rgba(10, 19, 18, 0.08) 100%
+    );
+}
+
+.market-hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 650px;
+  padding: 76px 64px 90px;
+}
+
+.market-hero-content .type-hero__eyebrow {
+  margin-bottom: 18px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.market-hero-content h1 {
+  max-width: 620px;
+  margin: 0;
+  color: #fff;
+  font-family: Georgia, "Times New Roman", serif;
+ font-size: clamp(3.4rem, 5.4vw, 5.2rem);
+  font-weight: 500;
+  line-height: 0.91;
+  letter-spacing: -0.065em;
+}
+
+.market-hero-content h1 span {
+  color: color-mix(in srgb, var(--accent) 78%, white);
+}
+
+.market-hero-description {
+  max-width: 510px;
+  margin: 26px 0 0;
+  color: rgba(255, 255, 255, 0.87);
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+.market-hero-content .type-hero__actions {
+  margin-top: 30px;
+}
+
+.market-hero-content .type-button--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff !important;
+}
+
+.market-hero-content .type-button--secondary {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--accent);
+}
+
+.market-hero > .market-summary-card {
+  min-height: 0;
+  margin: 0;
+  border: 1px solid rgba(18, 58, 90, 0.08);
+  border-top: 0;
+  border-radius: 0 0 20px 20px;
+  box-shadow: 0 18px 48px rgba(24, 45, 68, 0.09);
+}
+
+.market-hero > .market-summary-card .market-summary-card__inner {
+  min-height: 0;
+  padding: 26px;
+}
+
+.market-dashboard__body {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.7fr) minmax(0, 2fr);
+  gap: 26px;
+  align-items: stretch;
+  padding: 22px 0 0;
+}
+
+.market-dashboard__body .market-dashboard__primary {
   display: flex;
   flex-direction: column;
-  min-height: 220px;
-  padding: 22px;
-  border-radius: 6px;
+  justify-content: center;
+  padding: 18px 22px;
+  border: 1px solid rgba(18, 58, 90, 0.075);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 4%, white);
+}
+
+.market-dashboard__body .market-dashboard__grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.market-dashboard__body .market-dashboard__grid article {
+  min-height: 110px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.market-dashboard__body + .market-dashboard__explore {
+  margin-top: 14px;
+}
+
+@media (max-width: 980px) {
+  .market-hero__visual {
+    min-height: 480px;
+  }
+
+  .market-hero-content {
+    padding: 62px 48px 74px;
+  }
+
+  .market-dashboard__body {
+    grid-template-columns: 1fr;
+  }
+
+  .market-dashboard__body .market-dashboard__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .market-dashboard__body .market-dashboard__grid article {
+    min-height: 84px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .market-hero {
+    margin-bottom: 24px;
+  }
+
+  .market-hero__visual {
+    min-height: 470px;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .market-hero-overlay {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(10, 19, 18, 0.32) 0%,
+        rgba(10, 19, 18, 0.72) 58%,
+        rgba(10, 19, 18, 0.9) 100%
+      );
+  }
+
+  .market-hero-content {
+    min-height: 470px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 36px 24px;
+  }
+
+  .market-hero-content h1 {
+    max-width: 340px;
+    font-size: clamp(2.9rem, 14vw, 4rem);
+  }
+
+  .market-hero-description {
+    margin-top: 18px;
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+
+  .market-hero-content .type-hero__actions {
+    margin-top: 22px;
+  }
+
+  .market-hero > .market-summary-card {
+    border-radius: 0 0 16px 16px;
+  }
+
+  .market-hero > .market-summary-card .market-summary-card__inner {
+    padding: 18px;
+  }
+
+  .market-dashboard__body {
+    gap: 10px;
+    padding-top: 16px;
+  }
+
+  .market-dashboard__body .market-dashboard__primary {
+    padding: 18px;
+  }
+
+  .market-dashboard__body .market-dashboard__grid {
+    gap: 8px;
+  }
+
+  .market-dashboard__body .market-dashboard__grid article {
+    min-height: 76px;
+    padding: 12px;
+  }
+}
+
+/* Split hero: image left, dashboard right */
+
+.market-hero--split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(390px, 0.65fr);
+  align-items: stretch;
+  margin-bottom: 34px;
+  overflow: hidden;
+  border-radius: 20px;
   background: #fff;
-  border: 0.5px solid rgba(0,0,0,0.1);
-  color: inherit;
-  text-decoration: none;
-  transition: all 0.25s ease;
+  box-shadow: 0 18px 48px rgba(24, 45, 68, 0.09);
 }
 
-.intent-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(0,0,0,0.2);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.07);
+.market-hero--split .market-hero__visual {
+  min-height: 610px;
+  border-radius: 20px 0 0 20px;
 }
 
-.intent-type {
-  margin-bottom: 14px;
-  color: var(--accent);
-  font-size: 0.72rem;
+.market-hero--split > .market-summary-card {
+  min-height: 610px;
+  margin: 0;
+  border: 0;
+  border-left: 1px solid rgba(18, 58, 90, 0.08);
+  border-radius: 0 20px 20px 0;
+  box-shadow: none;
+}
+
+.market-hero--split > .market-summary-card .market-summary-card__inner {
+  min-height: 610px;
+  padding: 28px;
+}
+
+.market-hero--split .market-dashboard__primary {
+  padding: 26px 4px 22px;
+}
+
+.market-hero--split .market-dashboard__grid {
+  grid-template-columns: 1fr;
+}
+
+.market-hero--split .market-dashboard__grid article {
+  min-height: 78px;
+}
+
+.market-hero--split .market-dashboard__explore {
+  margin-top: auto;
+}
+
+@media (max-width: 980px) {
+  .market-hero--split {
+    grid-template-columns: 1fr;
+  }
+
+  .market-hero--split .market-hero__visual {
+    min-height: 500px;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .market-hero--split > .market-summary-card {
+    min-height: 0;
+    border-left: 0;
+    border-top: 1px solid rgba(18, 58, 90, 0.08);
+    border-radius: 0 0 20px 20px;
+  }
+
+  .market-hero--split > .market-summary-card .market-summary-card__inner {
+    min-height: 0;
+  }
+
+  .market-hero--split .market-dashboard__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .market-hero--split {
+    border-radius: 16px;
+  }
+
+  .market-hero--split .market-hero__visual {
+    min-height: 470px;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .market-hero--split > .market-summary-card {
+    border-radius: 0 0 16px 16px;
+  }
+
+  .market-hero--split .market-dashboard__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.market-hero--split .market-dashboard__grid strong {
+  margin-bottom: 5px;
+  font-size: 1.18rem;
   font-weight: 900;
+}
+
+.market-hero--split .market-dashboard__grid small {
+  max-width: 160px;
+  color: var(--muted);
+  font-size: 0.73rem;
+  line-height: 1.4;
+}
+
+.market-hero--split .market-dashboard__primary > span {
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.intent-card h3 {
-  margin: 0 0 12px;
-  font-family: var(--serif, Georgia, serif);
-  font-size: 1.8rem;
-  line-height: 1.05;
-  letter-spacing: -0.04em;
-  font-weight: 500;
+.market-hero--split .market-dashboard__primary > strong {
+  font-size: clamp(2.3rem, 3vw, 3.1rem);
 }
 
-.intent-card p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.92rem;
-  line-height: 1.7;
-}
-
-.intent-link {
-  margin-top: auto;
-  padding-top: 22px;
-  color: var(--accent);
-  font-weight: 800;
-}
-
- @media (max-width: 1200px) {
-  .grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 850px) {
-  .grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 700px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 900px) {
-  .intent-content-shell {
-    width: calc(100% - 32px);
-  }
-
-  .explore-toolbar,
-  .filter-form {
-    flex-wrap: wrap;
-  }
-
-  .homepage-neighbourhoods-head {
-    align-items: start;
-    flex-direction: column;
-  }
-
-  .homepage-area-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .homepage-interruptor,
-  .intent-collections-head {
-    grid-template-columns: 1fr;
-  }
+.market-hero--split .market-dashboard__primary > small {
+  max-width: 240px;
+  margin-top: 10px;
+  font-size: 0.74rem;
+  line-height: 1.45;
 }
 </style>
-
-
- 
-  
-<script is:inline>
-  const listViewBtn = document.getElementById("list-view-btn");
-  const mapViewBtn = document.getElementById("map-view-btn");
-  const intentMapEl = document.getElementById("intent-map");
-  const gridEl = document.querySelector(".grid");
-
-  let leafletMap = null;
-  let leafletMarkers = [];
-  window.currentHomeMapListings = [];
-
-  function loadLeaflet() {
-    return new Promise((resolve) => {
-      if (window.L) return resolve();
-      if (!document.querySelector('link[href*="leaflet"]')) {
-        const link = document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-        document.head.appendChild(link);
-      }
-      if (!document.querySelector('script[src*="leaflet"]')) {
-        const script = document.createElement("script");
-        script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-        script.onload = resolve;
-        document.head.appendChild(script);
-      } else {
-        const wait = setInterval(() => { if (window.L) { clearInterval(wait); resolve(); } }, 50);
-      }
-    });
-  }
-
-  async function initIntentGoogleMap() {
-    if (!intentMapEl) return;
-
-    let mapListings = Array.isArray(window.currentHomeMapListings)
-      ? window.currentHomeMapListings
-      : [];
-// Use all-listings JSON for unfiltered map, visible cards when filtered
-    const allListingsEl = document.getElementById("home-all-listings-json");
-    const hasActiveFilters = (() => {
-      const form = document.getElementById("home-filter-form");
-      if (!form) return false;
-      return (form.elements.area?.value || "") !== "" ||
-             (form.elements.type?.value || "") !== "" ||
-             (form.elements.maxPrice?.value || "") !== "" ||
-             (form.elements.beds?.value || "") !== "" ||
-             Array.from(document.querySelectorAll("#homepage-refine-panel [data-refine].active")).length > 0;
-    })();
-
-    if (hasActiveFilters) {
-      // Only show markers for cards matching current filters (ignore hidden/pagination)
-      mapListings = Array.from(document.querySelectorAll(".grid .card")).map((card) => ({
-        lat: card.dataset.lat,
-        lng: card.dataset.lng,
-        price: card.dataset.price,
-        address: card.dataset.address,
-        _hidden: card.hidden,
-      })).filter((l) => l.lat && l.lng && !l._hidden);
-      // But we want ALL matching cards, not just the paginated 8 — unhide logic runs separately
-      // so read all cards and check filter match directly
-      const form = document.getElementById("home-filter-form");
-      const areaVal = String(form?.elements?.area?.value || "").trim().toLowerCase();
-      const typeVal = String(form?.elements?.type?.value || "").trim().toLowerCase();
-      const maxPriceVal = Number(form?.elements?.maxPrice?.value || 0) * 1000;
-      const bedsVal = Number(form?.elements?.beds?.value || 0);
-      mapListings = Array.from(document.querySelectorAll(".grid .card"))
-        .filter((card) => {
-          const cardArea = String(card.dataset.area || "").toLowerCase();
-          const cardType = String(card.dataset.type || "").toLowerCase();
-          const cardPrice = Number(card.dataset.rawPrice || 0);
-          const cardBeds = Number(card.dataset.beds || 0);
-          return (!areaVal || cardArea.includes(areaVal)) &&
-                 (!typeVal || cardType === typeVal) &&
-                 (!maxPriceVal || cardPrice <= maxPriceVal) &&
-                 (!bedsVal || cardBeds >= bedsVal);
-        })
-        .map((card) => ({ lat: card.dataset.lat, lng: card.dataset.lng, price: card.dataset.price, address: card.dataset.address }))
-        .filter((l) => l.lat && l.lng);
-    } else if (allListingsEl) {
-      try { mapListings = JSON.parse(allListingsEl.textContent || "[]"); } catch {}
-    }
-
-    if (!mapListings.length) {
-      mapListings = Array.from(document.querySelectorAll(".grid .card")).map((card) => ({
-        lat: card.dataset.lat,
-        lng: card.dataset.lng,
-        price: card.dataset.price,
-        address: card.dataset.address,
-      })).filter((l) => l.lat && l.lng);
-    }
-
-    const points = mapListings
-      .map((l) => ({ listing: l, lat: Number(l.lat || 0), lng: Number(l.lng || 0) }))
-      .filter((p) => p.lat && p.lng);
-
-    if (!points.length) {
-      intentMapEl.innerHTML = "<p style='padding:16px;color:#6b6560;'>No map locations available.</p>";
-      return;
-    }
-
-    await loadLeaflet();
-
-    if (!leafletMap) {
-      leafletMap = L.map(intentMapEl, { zoomControl: true, attributionControl: false, scrollWheelZoom: false });
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(leafletMap);
-      L.control.attribution({ prefix: false }).addAttribution('© <a href="https://openstreetmap.org">OSM</a>').addTo(leafletMap);
-    }
-
-    leafletMarkers.forEach((m) => m.remove());
-    leafletMarkers = [];
-
-    const accentColor = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#2f6f73";
-    const icon = L.divIcon({
-      className: "",
-      html: `<svg viewBox="0 0 28 36" width="28" height="36" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3))"><path d="M14 0C6.268 0 0 6.268 0 14c0 9.333 14 22 14 22S28 23.333 28 14C28 6.268 21.732 0 14 0z" fill="${accentColor}"/><circle cx="14" cy="14" r="5" fill="white"/></svg>`,
-      iconSize: [28, 36], iconAnchor: [14, 36], popupAnchor: [0, -36],
-    });
-
-    const latlngs = [];
-    points.forEach(({ listing, lat, lng }) => {
-      const marker = L.marker([lat, lng], { icon }).addTo(leafletMap);
-      marker.bindPopup(`<div style="font-family:'DM Sans',system-ui,sans-serif;padding:6px 8px;"><strong>${listing.price || ""}</strong><br><span style="font-size:0.82rem;color:#6b6560;">${listing.address || ""}</span></div>`, { closeButton: false });
-      marker.on("mouseover", () => marker.openPopup());
-      marker.on("mouseout", () => setTimeout(() => marker.closePopup(), 200));
-      leafletMarkers.push(marker);
-      latlngs.push([lat, lng]);
-    });
-
-    if (latlngs.length) leafletMap.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] });
-    setTimeout(() => leafletMap.invalidateSize(), 100);
-  }
-
-  window.initIntentGoogleMap = initIntentGoogleMap;
-
-  listViewBtn?.addEventListener("click", () => {
-    if (intentMapEl) intentMapEl.hidden = true;
-    gridEl?.classList.remove("map-hidden");
-
-    listViewBtn.classList.add("active");
-    mapViewBtn?.classList.remove("active");
-  });
-
-  mapViewBtn?.addEventListener("click", () => {
-    if (intentMapEl) intentMapEl.hidden = false;
-    gridEl?.classList.add("map-hidden");
-
-    mapViewBtn.classList.add("active");
-    listViewBtn?.classList.remove("active");
-
-    requestAnimationFrame(() => {
-      initIntentGoogleMap();
-    });
-  });
-</script>
-  <script is:inline>
-  (() => {
-    const form = document.getElementById("home-filter-form");
-    const resultsHeading = document.getElementById("results-heading");
-const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";    let homeOffset = 0;
-    let homeTotal = 0;
-    let homeLoading = false;
-
-    function esc(value) {
-      return String(value || "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;");
-    }
-
-   function cardHtml(listing) {
-  const sqft = listing.sqft ? Number(listing.sqft).toLocaleString() : "";
-
-  return `
-    <article
-      class="card original-card"
-      data-item-id="${esc(listing.id)}"
-      data-card-id="${esc(listing.id)}"
-      data-listing-id="${esc(listing.id)}"
-      data-price="${esc(listing.price)}"
-      data-raw-price="${esc(listing.rawPrice)}"
-      data-listed-at="${esc(listing.listedAt)}"
-      data-address="${esc(listing.address)}"
-      data-meta="${esc(`${listing.beds || "-"} bed · ${listing.baths || "-"} bath`)}"
-      data-image="${esc(listing.image)}"
-      data-images='${esc(JSON.stringify(listing.images || []))}'
-      data-beds="${esc(listing.beds)}"
-      data-baths="${esc(listing.baths)}"
-      data-sqft="${esc(listing.sqft)}"
-      data-description="${esc(listing.description)}"
-      data-property-type="${esc(listing.propertyType)}"
-      data-type="${esc(listing.type)}"
-      data-year="${esc(listing.year)}"
-      data-lot-size="${esc(listing.lotSize)}"
-      data-area="${esc(listing.area)}"
-      data-liked-tags="[]"
-      data-is-favourite="false"
-      data-decision=""
-      data-lat="${esc(listing.lat)}"
-      data-lng="${esc(listing.lng)}"
-      data-city="${esc(listing.city)}"
-      data-mls="${esc(listing.mls)}"
-      aria-label="${esc(`${listing.price} — ${listing.address}`)}"
-    >
-      <div class="card-image-wrap">
-        <img src="${esc(listing.image || "https://placehold.co/800x600?text=Listing")}" alt="${esc(listing.address || "Listing")}" />
-      </div>
-
-      <div class="card-body">
-        <div class="price">${esc(listing.price)}</div>
-        <div class="address">${esc(listing.address)}</div>
-<div class="card-city">${esc(String(listing.city || city || "Nanaimo").replace(/\b\w/g, (char) => char.toUpperCase()))}, BC</div>
-        <div class="meta">
-          <span>🛏 ${esc(listing.beds || "-")} bd</span>
-          <span>🛁 ${esc(listing.baths || "-")} ba</span>
-          ${sqft ? `<span>↗ ${esc(sqft)} sq ft</span>` : ""}
-        </div>
-
-        <div class="card-decision-badge" hidden></div>
-      </div>
-    </article>
-  `;
-}
-
-   let visibleCount = 8;
-
-    function getLoadMoreButton() {
-      return document.getElementById("home-load-more");
-    }
-
-    function updateLoadMoreBtn() {
-      const btn = getLoadMoreButton();
-      if (!btn) return;
-      const allCards = Array.from(document.querySelectorAll(".grid .card"));
-      btn.style.display = allCards.length > visibleCount ? "block" : "none";
-    }
-
-function showMoreCards() {
-      visibleCount += 8;
-      fetchHomeListings({ resetVisible: false });
-    }
-
-    document.getElementById("home-load-more")?.addEventListener("click", showMoreCards);
-    updateLoadMoreBtn();
-
-   function fetchHomeListings({ append = false, resetVisible = true } = {}) {
-      const grid = document.querySelector(".grid");
-      if (!grid) return;
-
-      const areaVal = String(form?.elements?.area?.value || "").trim().toLowerCase();
-      const typeVal = String(form?.elements?.type?.value || "").trim().toLowerCase();
-      const maxPriceVal = Number(form?.elements?.maxPrice?.value || 0) * 1000;
-      const bedsVal = Number(form?.elements?.beds?.value || 0);
-      const sortVal = String(form?.elements?.sort?.value || "newest").trim();
-
-      const refinements = Array.from(
-        document.querySelectorAll("#homepage-refine-panel [data-refine].active")
-      ).map((b) => b.dataset.refine).filter(Boolean);
-
-      const featureKeywords = {
-        views: ["view", "ocean view", "water view"],
-        garage: ["garage"],
-        yard: ["yard", "fenced"],
-        suite: ["suite", "income", "mortgage helper"],
-        updated: ["updated", "renovated", "new kitchen", "new roof"],
-        walkability: ["walkable", "walk", "downtown"],
-      };
-
-      const allCards = Array.from(grid.querySelectorAll(".card"));
-
-      if (resetVisible) {
-        allCards.sort((a, b) => {
-          if (sortVal === "price-low") return Number(a.dataset.rawPrice || 0) - Number(b.dataset.rawPrice || 0);
-          if (sortVal === "price-high") return Number(b.dataset.rawPrice || 0) - Number(a.dataset.rawPrice || 0);
-          return new Date(b.dataset.listedAt || 0).getTime() - new Date(a.dataset.listedAt || 0).getTime();
-        });
-        allCards.forEach((card) => grid.appendChild(card));
-        visibleCount = 8;
-      }
-
-      let shown = 0;
-
-      allCards.forEach((card) => {
-        const cardArea = String(card.dataset.area || "").toLowerCase();
-        const cardType = String(card.dataset.type || "").toLowerCase();
-        const cardPrice = Number(card.dataset.rawPrice || 0);
-        const cardBeds = Number(card.dataset.beds || 0);
-        const cardDesc = String(card.dataset.description || "").toLowerCase();
-
-        const matchArea = !areaVal || cardArea.includes(areaVal);
-        const matchType = !typeVal || cardType === typeVal || (typeVal === "house" && cardType === "house");
-        const matchPrice = !maxPriceVal || cardPrice <= maxPriceVal;
-        const matchBeds = !bedsVal || cardBeds >= bedsVal;
-        const matchFeatures = refinements.every((ref) =>
-          (featureKeywords[ref] || [ref]).some((kw) => cardDesc.includes(kw))
-        );
-
-        const visible = matchArea && matchType && matchPrice && matchBeds && matchFeatures;
-        card.hidden = !visible || shown >= visibleCount;
-        if (visible) shown++;
-      });
-
-      updateLoadMoreBtn();
-
-      const resultsCount = document.getElementById("results-count");
-      const totalVisible = allCards.filter((c) => {
-        const cardArea = String(c.dataset.area || "").toLowerCase();
-        const cardType = String(c.dataset.type || "").toLowerCase();
-        const cardPrice = Number(c.dataset.rawPrice || 0);
-        const cardBeds = Number(c.dataset.beds || 0);
-        const cardDesc = String(c.dataset.description || "").toLowerCase();
-        return (!areaVal || cardArea.includes(areaVal)) &&
-          (!typeVal || cardType === typeVal) &&
-          (!maxPriceVal || cardPrice <= maxPriceVal) &&
-          (!bedsVal || cardBeds >= bedsVal) &&
-          refinements.every((ref) => (featureKeywords[ref] || [ref]).some((kw) => cardDesc.includes(kw)));
-      }).length;
-
-      if (resultsCount) resultsCount.textContent = String(totalVisible);
-
-      const map = document.getElementById("intent-map");
-      if (map && !map.hidden) initIntentGoogleMap();
-
-      applySavedHomeDecisions();
-      window.dispatchEvent(new CustomEvent("intent:cards-updated"));
-    }
-const HOME_INTENT_COLLECTIONS = JSON.parse(
-  document.getElementById("home-intent-collections-json")?.textContent || "[]"
-);function renderHomeIntentCards() {
-  const wrap = document.getElementById("intent-collections-grid");
-  if (!wrap) return;
-
-  let wanted = HOME_INTENT_COLLECTIONS;
-
-  const selectedType = String(form?.elements?.type?.value || "").toLowerCase();
-
-  if (selectedType) {
-    wanted = HOME_INTENT_COLLECTIONS.filter((card) => card.type === selectedType);
-  }
-
-  wrap.innerHTML = wanted.slice(0, 8).map((card) => `
-    <a href="${esc(card.href)}" class="intent-card" data-rendered-card="true">
-      <span class="intent-type">${esc(card.type)}</span>
-      <h3>${esc(card.title)}</h3>
-      <p>${esc(card.description)}</p>
-      <span class="intent-link">View search →</span>
-    </a>
-  `).join("");
-}
-
-const refineSearchBtn = document.getElementById("refine-search-btn");
-const homepageRefinePanel = document.getElementById("homepage-refine-panel");
-
-refineSearchBtn?.addEventListener("click", () => {
-  if (!homepageRefinePanel) return;
-  homepageRefinePanel.hidden = !homepageRefinePanel.hidden;
-});
-
-let hasScrolledToListingsAfterRefine = false;
-
-homepageRefinePanel?.querySelectorAll("[data-refine]").forEach((button) => {
-  button.addEventListener("click", () => {
-    button.classList.toggle("active");
-    fetchHomeListings({ append: false });
-const note = document.getElementById("refine-update-note");
-
-if (note) {
-  note.hidden = false;
-  note.textContent = "Showing updated matches above ↑";
-
-  note.onclick = () => {
-    document.querySelector(".results-heading")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  };
-
-  window.clearTimeout(window.homeResultsUpdateTimer);
-
-  window.homeResultsUpdateTimer = window.setTimeout(() => {
-    note.hidden = true;
-  }, 2800);
-}
-    if (!hasScrolledToListingsAfterRefine) {
-      hasScrolledToListingsAfterRefine = true;
-
-      document.querySelector(".results-heading")?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }
-  });
-});
-
-renderHomeIntentCards();
-
-window.addEventListener("intent:cards-updated", () => {
-  renderHomeIntentCards();
-});
-
-window.addEventListener("resize", () => {
-  renderHomeIntentCards();
-});
-   form?.addEventListener("change", () => {
-  const areaText =
-    form.elements.area?.selectedOptions?.[0]?.text || "Nanaimo";
-
-  const typeValue = String(form.elements.type?.value || "").toLowerCase();
-
-  const typeText =
-    !typeValue
-      ? "Homes"
-      : typeValue === "house"
-      ? "Homes"
-      : typeValue === "condo"
-      ? "Condos"
-      : typeValue === "townhouse"
-      ? "Townhomes"
-      : `${typeValue.charAt(0).toUpperCase()}${typeValue.slice(1)}s`;
-
-  const priceValue = form.elements.maxPrice?.value || "";
-
-  let priceText = "";
-const bedsValue = form.elements.beds?.value || "";
-let bedsText = "";
-
-if (bedsValue) {
-  bedsText = ` ${bedsValue}+ Bed`;
-}
-  if (priceValue === "500") priceText = " Under $500k";
-  else if (priceValue === "800") priceText = " Under $800k";
-  else if (priceValue === "1200") priceText = " Under $1.2M";
-
-  if (resultsHeading) {
-    resultsHeading.textContent =
-      `${areaText} ${typeText}${bedsText}${priceText}`;
-  }
-
- fetchHomeListings({ resetVisible: true });
-});
-
-    form?.addEventListener("submit", (event) => {
-      event.preventDefault();
-      fetchHomeListings({ append: false });
-    });
-
-   function getHomeDecisionKey(card) {
-  return card?.dataset?.listingId || card?.dataset?.cardId || card?.dataset?.itemId || "";
-}
-
-function saveHomeDecision(card) {
-  const key = getHomeDecisionKey(card);
-  if (!key) return;
-
-  const badge = card.querySelector(".card-decision-badge");
-  const text = String(badge?.textContent || "").trim();
-
-  const decision =
-    card.dataset.decision ||
-    (badge?.classList.contains("is-love") ? "love" : "") ||
-    (badge?.classList.contains("is-maybe") ? "maybe" : "") ||
-    (badge?.classList.contains("is-pass") ? "pass" : "");
-
-  if (!decision && !text) return;
-
-  sessionStorage.setItem(
-    `home_listing_decision_${key}`,
-    JSON.stringify({
-      decision,
-      text,
-      badgeClass: badge?.className || "",
-      isPassed: card.classList.contains("is-passed"),
-    })
-  );
-}
-
-function applySavedHomeDecisions() {
-  document.querySelectorAll(".grid > .card").forEach((card) => {
-    const key = getHomeDecisionKey(card);
-    if (!key) return;
-
-    const raw = sessionStorage.getItem(`home_listing_decision_${key}`);
-    if (!raw) return;
-
-    try {
-      const saved = JSON.parse(raw);
-      const badge = card.querySelector(".card-decision-badge");
-
-      card.dataset.decision = saved.decision || "";
-      card.classList.toggle("is-passed", !!saved.isPassed || saved.decision === "pass");
-
-      if (badge && saved.text) {
-        badge.hidden = false;
-        badge.textContent = saved.text;
-        badge.className = saved.badgeClass || "card-decision-badge";
-      }
-    } catch {}
-  });
-}
-
-const decisionObserver = new MutationObserver(() => {
-  document.querySelectorAll(".grid > .card").forEach(saveHomeDecision);
-});
-
-const homeGrid = document.querySelector(".grid");
-if (homeGrid) {
-  decisionObserver.observe(homeGrid, {
-    subtree: true,
-    attributes: true,
-    childList: true,
-    characterData: true,
-    attributeFilter: ["class", "hidden", "data-decision"],
-  });
-}
-
-applySavedHomeDecisions();
-fetchHomeListings();
-document.documentElement.style.visibility = "";
-  })();
-</script>
-<script is:inline>
-  document.querySelectorAll(".filter-select").forEach(function(el) {
-    el.style.appearance = "none";
-    el.style.webkitAppearance = "none";
-    el.style.backgroundRepeat = "no-repeat";
-    el.style.backgroundPosition = "right 12px center";
-    el.style.backgroundSize = "10px 6px";
-    el.style.backgroundImage = "url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSI2Ij48cGF0aCBkPSJNMCAwbDUgNiA1LTZ6IiBmaWxsPSIjOTk5Ii8+PC9zdmc+)";
-  });
-</script>
-<style is:global>
-  .section .grid {
-    display: grid !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-    gap: 18px !important;
-    overflow: visible !important;
-  }
-
- .section .grid > article.card {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-    overflow: hidden !important;
-  }
-
-  .section .grid > article.card:not([hidden]) {
-    display: block !important;
-  }
-
-  .section .grid .card-image-wrap {
-    width: 100% !important;
-    height: 190px !important;
-    max-width: 100% !important;
-    overflow: hidden !important;
-  }
-
-  .section .grid .card-image-wrap img {
-    display: block !important;
-    width: 100% !important;
-    height: 190px !important;
-    max-width: 100% !important;
-    object-fit: cover !important;
-  }
-
-  .section .grid .card-body {
-    display: block !important;
-    min-height: 128px !important;
-    padding: 14px 16px !important;
-    background: #fff !important;
-  }
-
-  @media (max-width: 1200px) {
-    .section .grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    }
-  }
-
-  @media (max-width: 850px) {
-    .section .grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    }
-  }
-
-  @media (max-width: 700px) {
-    .section .grid {
-      grid-template-columns: 1fr !important;
-    }
-  }
-</style>
-  </div>
-</Layout>
