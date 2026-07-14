@@ -1457,8 +1457,14 @@ const uniqueRows = Array.from(
 );
 
 console.log("Rows after dedupe:", uniqueRows.length);
-console.log("SAMPLE ROW");
-console.dir(rows[0], { depth: null });
+console.log("SAMPLE ROW", {
+  id: rows[0]?.id,
+  city: rows[0]?.normalized_city,
+  area: rows[0]?.normalized_area,
+  type: rows[0]?.normalized_type,
+  price: rows[0]?.price,
+  address: rows[0]?.address
+});
 
   const typeCounts: Record<string, number> = {};
   const areaCounts: Record<string, number> = {};

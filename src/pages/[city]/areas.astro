@@ -72,7 +72,8 @@ const { data: featuredIntentPages = [], error: featuredIntentError } =
   await supabase
     .from("intent_pages")
     .select("slug, hero_heading, intro_copy")
-    .eq("site_id", site?.id || "00000000-0000-0000-0000-000000000000")
+    .eq("city", city)
+    .order("sort_order", { ascending: true })
     .limit(6);
 
 console.log("FEATURED INTENT PAGES", {
@@ -577,7 +578,106 @@ const areasHeroMapData = areaMetaRows
     ))}
   </div>
 </section>
+<!-- ── Market Snapshot ── -->
+<section class="market-row market-mini-grid">
 
+  <section class="market-mini-card">
+    <div class="market-mini-head">
+      <span class="eyebrow">Price Distribution</span>
+      <h2>Inventory by Price</h2>
+
+      <p>
+        Most listings currently fall in the
+        <strong>
+          {priceBuckets[
+            priceBucketCounts.indexOf(Math.max(...priceBucketCounts))
+          ]?.label || "most active price range"}
+        </strong>
+        range.
+      </p>
+    </div>
+
+    <div class="mini-bars">
+      {priceBuckets.map((bucket, index) => {
+        const count = priceBucketCounts[index];
+        const maxCount = Math.max(...priceBucketCounts, 1);
+        const width = Math.max(6, (count / maxCount) * 100);
+        const percentage = activeListings
+          ? Math.round((count / activeListings) * 100)
+          : 0;
+
+        return (
+          <div class="mini-bar">
+            <span>{bucket.label}</span>
+
+            <div class="mini-bar-track">
+              <div
+                class="mini-bar-fill"
+                style={`width: ${width}%`}
+              ></div>
+            </div>
+
+            <strong>
+              {count}
+              <small>{percentage}%</small>
+            </strong>
+          </div>
+        );
+      })}
+    </div>
+  </section>
+
+  <section class="market-mini-card">
+    <div class="market-mini-head">
+      <span class="eyebrow">Area Activity</span>
+      <h2>Most Active Areas</h2>
+
+      <p>
+        <strong>
+          {topAreas.length ? labelize(topAreas[0][0]) : cityLabel}
+        </strong>
+        currently has the largest selection of active listings.
+      </p>
+    </div>
+
+    <div class="mini-bars">
+      {topAreas.slice(0, 5).map(([area, count]) => {
+        const largestAreaCount = Number(topAreas[0]?.[1] || 1);
+        const numericCount = Number(count || 0);
+        const width = Math.max(
+          6,
+          (numericCount / largestAreaCount) * 100
+        );
+
+        const percentage = activeListings
+          ? Math.round((numericCount / activeListings) * 100)
+          : 0;
+
+        return (
+          <a
+            class="mini-bar mini-area"
+            href={`/${city}/${areaToSlug(area)}`}
+          >
+            <span>{labelize(area)}</span>
+
+            <div class="mini-bar-track">
+              <div
+                class="mini-bar-fill"
+                style={`width: ${width}%`}
+              ></div>
+            </div>
+
+            <strong>
+              {numericCount}
+              <small>{percentage}%</small>
+            </strong>
+          </a>
+        );
+      })}
+    </div>
+  </section>
+
+</section>
 <!-- ── Stats ── -->
 <section class="area-stats">
   <div class="stat-card">
@@ -606,27 +706,10 @@ const areasHeroMapData = areaMetaRows
   </div>
 </section>
 
-<!-- ── Charts ── -->
-<section class="market-row">
-  <section class="chart-card">
-    <div>
-      <span class="eyebrow">Price Distribution</span>
-      <h2>Where {cityLabel} Inventory Sits by Price</h2>
-    </div>
-    <div class="chart-wrap">
-      <canvas id="priceChart"></canvas>
-    </div>
-  </section>
 
-  <section class="chart-card">
-    <div>
-      <span class="eyebrow">Area Activity</span>
-      <h2>Top Areas by Listing Count</h2>
-    </div>
-    <div class="chart-wrap">
-      <canvas id="areaChart"></canvas>
-    </div>
-  </section>
+
+ 
+
 </section>
 
     <!-- ── Intent interrupter ── -->
@@ -675,57 +758,7 @@ home searches.
   <ShortlistReviewModal />
   <IntentModalController />
 
- <script is:inline define:vars={{ chartData }}>
-  window.addEventListener("DOMContentLoaded", () => {
-      if (!window.Chart) {
-        console.error("Chart.js did not load");
-        return;
-      }
-
-      const priceCanvas = document.getElementById("priceChart");
-      const areaCanvas  = document.getElementById("areaChart");
-      if (!priceCanvas || !areaCanvas) return;
-
-      const sharedOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: { displayColors: false },
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: { maxRotation: 0, minRotation: 0, font: { size: 10 } },
-          },
-          y: {
-            beginAtZero: true,
-            border: { display: false },
-            grid: { color: "rgba(28,25,23,0.08)" },
-            ticks: { precision: 0, font: { size: 10 } },
-          },
-        },
-      };
-
-      new Chart(priceCanvas, {
-        type: "bar",
-        data: {
-          labels: chartData.priceLabels,
-          datasets: [{ label: "Listings", data: chartData.priceCounts }],
-        },
-        options: sharedOptions,
-      });
-
-      new Chart(areaCanvas, {
-        type: "bar",
-        data: {
-          labels: chartData.areaLabels,
-          datasets: [{ label: "Listings", data: chartData.areaCounts }],
-        },
-        options: sharedOptions,
-      });
-    });
-  </script>
+ 
 <script
   is:inline
   define:vars={{
@@ -1199,45 +1232,168 @@ areaLayers.push(layer);
     font-weight: 700;
   }
 
-  /* ── Charts ── */
-  .chart-card {
-    background: #fff;
-    border: 0.5px solid rgba(0,0,0,0.1);
-    border-radius: 12px;
-    padding: 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
+ /* ── Compact market snapshot ── */
+
+.market-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin: 0 0 28px;
+}
+
+.market-mini-card {
+  min-width: 0;
+  padding: 16px 20px 18px;
+  border: 1px solid rgba(18, 58, 90, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(24, 45, 68, 0.04);
+}
+
+.market-mini-head {
+  margin-bottom: 14px;
+}
+
+.market-mini-head .eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.market-mini-head h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+
+.market-mini-head p {
+  max-width: 440px;
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.market-mini-head p strong {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.mini-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mini-bar {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr) 62px;
+  align-items: center;
+  gap: 12px;
+
+  min-width: 0;
+  padding: 2px 0;
+
+  color: inherit;
+  text-decoration: none;
+}
+
+.mini-bar > span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-bar-track {
+  position: relative;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(18, 58, 90, 0.08);
+}
+
+.mini-bar-fill {
+  height: 100%;
+  min-width: 6px;
+  border-radius: inherit;
+  background: var(--accent);
+  opacity: 0.68;
+}
+
+.mini-bar:first-child .mini-bar-fill {
+  opacity: 1;
+}
+
+.mini-bar > strong {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 4px;
+
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1;
+  text-align: right;
+}
+
+.mini-bar > strong small {
+  color: var(--muted);
+  font-size: 0.61rem;
+  font-weight: 700;
+}
+
+.mini-area {
+  border-radius: 6px;
+  transition:
+    background 0.16s ease,
+    transform 0.16s ease;
+}
+
+.mini-area:hover {
+  transform: translateX(2px);
+}
+
+.mini-area:hover > span,
+.mini-area:hover > strong {
+  color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .market-mini-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .market-mini-card {
+    padding: 16px;
   }
 
-  .chart-card .eyebrow {
-    display: block;
+  .mini-bar {
+    grid-template-columns: 102px minmax(0, 1fr) 52px;
+    gap: 9px;
+  }
+
+  .mini-bar > span,
+  .mini-bar > strong {
     font-size: 0.7rem;
-    font-weight: 900;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 4px;
   }
 
-  .chart-card h2 {
-    font-size: 16px;
-    font-weight: 600;
-    margin: 0;
-    color: #1a1a1a;
+  .mini-bar > strong small {
+    font-size: 0.56rem;
   }
-
-  .chart-wrap {
-    position: relative;
-    height: 220px;
-    min-height: 220px;
-  }
-
-  .chart-wrap canvas {
-    width: 100% !important;
-    height: 100% !important;
-  }
-
+}
   /* ── Intent interrupter ── */
   .intent-interrupter { margin: 0 0 54px; }
 
