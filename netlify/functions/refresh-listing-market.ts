@@ -33,17 +33,27 @@ export default async function handler(request: Request) {
     throw new Error("Missing PUBLIC_SITE_URL");
   }
 
-  let body: RefreshRequest = {};
+const requestUrl = new URL(request.url);
 
-  try {
-    body = await request.json();
-  } catch {
-    throw new Error("Invalid request body");
+let body: RefreshRequest = {};
+
+try {
+  const rawBody = await request.text();
+
+  if (rawBody) {
+    body = JSON.parse(rawBody);
   }
+} catch (error) {
+  console.warn("Could not parse worker request body:", error);
+}
 
-  const city = String(body.city || "")
-    .trim()
-    .toLowerCase();
+const city = String(
+  requestUrl.searchParams.get("city") ||
+  body.city ||
+  ""
+)
+  .trim()
+  .toLowerCase();
 
   if (!city) {
     throw new Error("Missing city");
@@ -75,6 +85,19 @@ export default async function handler(request: Request) {
 
   console.log(`Completed background listing refresh for ${city}`);
   console.log(resultText);
+  return new Response(
+  JSON.stringify({
+    ok: true,
+    city,
+    message: "Background listing refresh completed"
+  }),
+  {
+    status: 200,
+    headers: {
+      "content-type": "application/json"
+    }
+  }
+);
 }
 
 export const config: Config = {
