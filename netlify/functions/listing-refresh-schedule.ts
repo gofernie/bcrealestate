@@ -7,10 +7,15 @@ const supabase = createClient(
 );
 
 const PUBLIC_SITE_URL = process.env.PUBLIC_SITE_URL;
+const CRON_SECRET = process.env.CRON_SECRET;
 
 export default async function handler() {
   if (!PUBLIC_SITE_URL) {
     throw new Error("Missing PUBLIC_SITE_URL");
+  }
+
+  if (!CRON_SECRET) {
+    throw new Error("Missing CRON_SECRET");
   }
 
   const { data: markets, error } = await supabase
@@ -51,9 +56,10 @@ export default async function handler() {
         `${baseUrl}/.netlify/functions/refresh-listing-market`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
+         headers: {
+  Authorization: `Bearer ${CRON_SECRET}`,
+  "Content-Type": "application/json"
+},
           body: JSON.stringify({ city })
         }
       );

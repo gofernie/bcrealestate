@@ -12,6 +12,23 @@ export default async function handler(request: Request) {
     throw new Error("Missing CRON_SECRET");
   }
 
+  const authorization = request.headers.get("authorization");
+
+  if (authorization !== `Bearer ${CRON_SECRET}`) {
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: "Unauthorized"
+      }),
+      {
+        status: 401,
+        headers: {
+          "content-type": "application/json"
+        }
+      }
+    );
+  }
+
   if (!PUBLIC_SITE_URL) {
     throw new Error("Missing PUBLIC_SITE_URL");
   }
