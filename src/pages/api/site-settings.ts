@@ -80,7 +80,18 @@ export const POST: APIRoute = async ({ request }) => {
     .update({
       site_name: data.siteName || data.site_name,
       accent_color: data.accentColor,
+
+      // Existing primary city field
       city: data.city,
+
+      // Strategy
+      site_type: data.siteType || "general",
+      homepage_style: data.homepageStyle || "city",
+      primary_city: data.primaryCity || data.city || null,
+      primary_type: data.primaryType || null,
+      use_root_homepage: Boolean(data.useRootHomepage),
+
+      // Homepage content
       hero_eyebrow: data.heroEyebrow,
       hero_heading: data.heroHeading,
       hero_copy: data.heroIntro,

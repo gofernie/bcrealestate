@@ -113,19 +113,28 @@ async function handle(
     });
 
     return json(result);
-  } catch (error: any) {
-    return json(
-      {
-        ok: false,
-        city: input.city,
-        error:
-          error?.message ||
-          "Unknown refresh error",
-        ...(error?.details || {})
-      },
-      error?.status || 500
-    );
-  }
+} catch (error: any) {
+  console.error("Listing refresh failed", {
+    city: input.city,
+    boardId: input.boardId,
+    trigger: input.trigger,
+    message: error?.message,
+    status: error?.status,
+    details: error?.details,
+    stack: error?.stack
+  });
+
+  return json(
+    {
+      ok: false,
+      city: input.city,
+      error: error?.message || "Unknown refresh error",
+      status: error?.status || 500,
+      details: error?.details || null
+    },
+    error?.status || 500
+  );
+}
 }
 
 export const GET: APIRoute = async ({

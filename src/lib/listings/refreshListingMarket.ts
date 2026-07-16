@@ -3,7 +3,98 @@ import { rebuildListingRows } from "../../scripts/rebuild-listing-rows";
 
 const PAGE_SIZE = 50;
 const RUN_LOCK_MINUTES = 45;
+const REPLIER_RETRY_DELAYS = [0, 5000, 15000];
 
+const sleep = (milliseconds: number) =>
+  new Promise((resolve) =>
+    setTimeout(resolve, milliseconds)
+  );
+
+async function fetchRepliersWithRetry(
+  url: string,
+  apiKey: string,
+  context: {
+    city: string;
+    page: number;
+  }
+) {
+  let lastError: Error | null = null;
+
+  for (
+    let attempt = 0;
+    attempt < REPLIER_RETRY_DELAYS.length;
+    attempt += 1
+  ) {
+    const delay = REPLIER_RETRY_DELAYS[attempt];
+
+    if (delay > 0) {
+      console.warn(
+        `Retrying Repliers request for ${context.city}, page ${context.page}, attempt ${attempt + 1} after ${delay}ms`
+      );
+
+      await sleep(delay);
+    }
+
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "REPLIERS-API-KEY": apiKey,
+          "Content-Type": "application/json"
+        }
+      });
+
+      console.log("REPLIERS RESPONSE:", {
+        city: context.city,
+        page: context.page,
+        attempt: attempt + 1,
+        status: response.status
+      });
+
+      if (response.ok) {
+        return response;
+      }
+
+      const responseText = await response.text();
+
+      const error = new Error(
+        `Repliers error ${response.status} for ${context.city}, page ${context.page}: ${responseText.slice(
+          0,
+          1000
+        )}`
+      );
+
+      lastError = error;
+
+      const retryable =
+        response.status === 429 ||
+        response.status === 500 ||
+        response.status === 502 ||
+        response.status === 503 ||
+        response.status === 504;
+
+      if (!retryable) {
+        throw error;
+      }
+    } catch (error) {
+      lastError =
+        error instanceof Error
+          ? error
+          : new Error("Unknown Repliers request error");
+
+      if (
+        attempt ===
+        REPLIER_RETRY_DELAYS.length - 1
+      ) {
+        throw lastError;
+      }
+    }
+  }
+
+  throw (
+    lastError ||
+    new Error("Repliers request failed")
+  );
+}
 export type RefreshListingMarketOptions = {
   city: string;
   boardId?: string;
@@ -276,29 +367,14 @@ export async function refreshListingMarket(
           params.toString()
         );
 
-        const response = await fetch(
-          `${REPLIERS_BASE_URL}/listings?${params.toString()}`,
-          {
-            headers: {
-              "REPLIERS-API-KEY":
-                REPLIERS_API_KEY,
-              "Content-Type":
-                "application/json"
-            }
-          }
-        );
-
-        if (!response.ok) {
-          const responseText =
-            await response.text();
-
-          throw new Error(
-            `Repliers error ${response.status}: ${responseText.slice(
-              0,
-              1000
-            )}`
-          );
-        }
+     const response = await fetchRepliersWithRetry(
+  `${REPLIERS_BASE_URL}/listings?${params.toString()}`,
+  REPLIERS_API_KEY,
+  {
+    city: fetchCity,
+    page
+  }
+);
 
         const data = await response.json();
 

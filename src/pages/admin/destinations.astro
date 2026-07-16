@@ -1,0 +1,900 @@
+---
+import { createClient } from "@supabase/supabase-js";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const cleanText = (value: FormDataEntryValue | null) =>
+  String(value || "").trim();
+
+const cleanNumber = (value: FormDataEntryValue | null) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+let message = "";
+let errorMessage = "";
+
+if (Astro.request.method === "POST") {
+  const formData = await Astro.request.formData();
+  const action = cleanText(formData.get("action"));
+
+  if (action === "save") {
+    const id = cleanText(formData.get("id"));
+    const city = cleanText(formData.get("city")).toLowerCase();
+    const name = cleanText(formData.get("name"));
+    const category = cleanText(formData.get("category")) || "destination";
+    const icon = cleanText(formData.get("icon")) || "car";
+    const travelMode = cleanText(formData.get("travel_mode")) || "drive";
+    const latitude = cleanNumber(formData.get("latitude"));
+    const longitude = cleanNumber(formData.get("longitude"));
+    const sortOrder = cleanNumber(formData.get("sort_order")) ?? 0;
+    const isActive = formData.get("is_active") === "on";
+
+    if (!city || !name || latitude === null || longitude === null) {
+      errorMessage =
+        "City, name, latitude and longitude are required.";
+    } else {
+      const payload = {
+        city,
+        name,
+        category,
+        icon,
+        travel_mode: travelMode,
+        latitude,
+        longitude,
+        sort_order: sortOrder,
+        is_active: isActive,
+        updated_at: new Date().toISOString(),
+      };
+
+      const result = id
+        ? await supabase
+            .from("city_destinations")
+            .update(payload)
+            .eq("id", id)
+        : await supabase
+            .from("city_destinations")
+            .insert(payload);
+
+      if (result.error) {
+        errorMessage = result.error.message;
+      } else {
+        return Astro.redirect(
+          `/admin/destinations?city=${encodeURIComponent(city)}&saved=1`
+        );
+      }
+    }
+  }
+
+  if (action === "delete") {
+    const id = cleanText(formData.get("id"));
+    const city = cleanText(formData.get("city"));
+
+    if (!id) {
+      errorMessage = "Missing destination ID.";
+    } else {
+      const { error } = await supabase
+        .from("city_destinations")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        errorMessage = error.message;
+      } else {
+        return Astro.redirect(
+          `/admin/destinations?city=${encodeURIComponent(city)}&deleted=1`
+        );
+      }
+    }
+  }
+}
+
+const selectedCity = String(
+  Astro.url.searchParams.get("city") || "nanaimo"
+)
+  .trim()
+  .toLowerCase();
+
+const editId = String(
+  Astro.url.searchParams.get("edit") || ""
+).trim();
+
+if (Astro.url.searchParams.get("saved") === "1") {
+  message = "Destination saved.";
+}
+
+if (Astro.url.searchParams.get("deleted") === "1") {
+  message = "Destination deleted.";
+}
+
+const { data: areaRows = [] } = await supabase
+  .from("area_boundaries")
+  .select("city")
+  .not("city", "is", null);
+
+const { data: destinationCityRows = [] } = await supabase
+  .from("city_destinations")
+  .select("city")
+  .not("city", "is", null);
+
+const citySet = new Set<string>();
+
+for (const row of [...areaRows, ...destinationCityRows]) {
+  const city = String(row.city || "").trim().toLowerCase();
+
+  if (city) {
+    citySet.add(city);
+  }
+}
+
+citySet.add("nanaimo");
+
+const cities = Array.from(citySet).sort((a, b) =>
+  a.localeCompare(b)
+);
+
+const { data: destinations = [], error: destinationsError } =
+  await supabase
+    .from("city_destinations")
+    .select("*")
+    .eq("city", selectedCity)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+
+if (destinationsError) {
+  errorMessage = destinationsError.message;
+}
+
+const editDestination = editId
+  ? destinations.find((destination) => destination.id === editId)
+  : null;
+
+const titleCase = (value: string) =>
+  value
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const iconOptions = [
+  "car",
+  "downtown",
+  "ferry",
+  "shopping",
+  "recreation",
+  "education",
+  "hospital",
+  "airport",
+  "beach",
+  "park",
+];
+
+const categoryOptions = [
+  "destination",
+  "downtown",
+  "transport",
+  "shopping",
+  "recreation",
+  "education",
+  "health",
+  "airport",
+];
+
+const modeOptions = ["drive", "walk", "bike"];
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <title>City Destinations</title>
+
+    <style>
+      :root {
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        color: #172033;
+        background: #f5f7fa;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: #f5f7fa;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      .page-shell {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 36px 0 80px;
+      }
+
+      .page-header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+
+      .eyebrow {
+        margin: 0 0 7px;
+        color: #667085;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.8rem, 3vw, 2.5rem);
+        letter-spacing: -0.04em;
+      }
+
+      .subtitle {
+        margin: 8px 0 0;
+        color: #667085;
+      }
+
+      .city-picker {
+        display: grid;
+        gap: 7px;
+        min-width: 230px;
+      }
+
+      .city-picker label {
+        color: #667085;
+        font-size: 0.8rem;
+        font-weight: 700;
+      }
+
+      .city-picker select {
+        width: 100%;
+        padding: 11px 38px 11px 13px;
+        border: 1px solid #d8dee8;
+        border-radius: 10px;
+        background: #fff;
+        color: #172033;
+      }
+
+      .notice {
+        margin-bottom: 18px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        font-size: 0.92rem;
+      }
+
+      .notice.success {
+        border: 1px solid #b7e4c7;
+        background: #edf9f1;
+        color: #24613b;
+      }
+
+      .notice.error {
+        border: 1px solid #efc3c3;
+        background: #fff1f1;
+        color: #8b2424;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 370px;
+        gap: 24px;
+        align-items: start;
+      }
+
+      .panel {
+        overflow: hidden;
+        border: 1px solid #e1e5ec;
+        border-radius: 16px;
+        background: #fff;
+        box-shadow: 0 8px 28px rgba(16, 24, 40, 0.05);
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px 20px;
+        border-bottom: 1px solid #edf0f4;
+      }
+
+      .panel-header h2 {
+        margin: 0;
+        font-size: 1.05rem;
+      }
+
+      .count {
+        color: #667085;
+        font-size: 0.84rem;
+      }
+
+      .destination-list {
+        display: grid;
+      }
+
+      .destination-row {
+        display: grid;
+        grid-template-columns: 44px minmax(0, 1fr) 110px 80px 96px;
+        gap: 12px;
+        align-items: center;
+        padding: 15px 20px;
+        border-bottom: 1px solid #edf0f4;
+      }
+
+      .destination-row:last-child {
+        border-bottom: 0;
+      }
+
+      .destination-icon {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        border: 1px solid #dde3eb;
+        border-radius: 50%;
+        background: #f7f9fb;
+        color: #667085;
+        font-size: 0.72rem;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .destination-name {
+        min-width: 0;
+      }
+
+      .destination-name strong {
+        display: block;
+        overflow: hidden;
+        color: #172033;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .destination-name span {
+        display: block;
+        margin-top: 3px;
+        color: #7b8494;
+        font-size: 0.8rem;
+      }
+
+      .pill {
+        justify-self: start;
+        padding: 6px 9px;
+        border-radius: 999px;
+        background: #f2f4f7;
+        color: #475467;
+        font-size: 0.76rem;
+        font-weight: 700;
+        text-transform: capitalize;
+      }
+
+      .order {
+        color: #667085;
+        font-size: 0.84rem;
+      }
+
+      .row-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 7px;
+      }
+
+      .button {
+        display: inline-flex;
+        min-height: 36px;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 12px;
+        border: 0;
+        border-radius: 9px;
+        cursor: pointer;
+        text-decoration: none;
+        font-size: 0.83rem;
+        font-weight: 750;
+      }
+
+      .button.primary {
+        background: #172033;
+        color: #fff;
+      }
+
+      .button.secondary {
+        border: 1px solid #d8dee8;
+        background: #fff;
+        color: #344054;
+      }
+
+      .button.danger {
+        border: 1px solid #efc3c3;
+        background: #fff;
+        color: #a02c2c;
+      }
+
+      .empty-state {
+        padding: 48px 20px;
+        color: #667085;
+        text-align: center;
+      }
+
+      .form-panel {
+        position: sticky;
+        top: 24px;
+      }
+
+      .form-body {
+        display: grid;
+        gap: 15px;
+        padding: 20px;
+      }
+
+      .field {
+        display: grid;
+        gap: 7px;
+      }
+
+      .field label {
+        color: #475467;
+        font-size: 0.8rem;
+        font-weight: 750;
+      }
+
+      .field input,
+      .field select {
+        width: 100%;
+        padding: 11px 12px;
+        border: 1px solid #d8dee8;
+        border-radius: 10px;
+        outline: none;
+        background: #fff;
+        color: #172033;
+      }
+
+      .field input:focus,
+      .field select:focus {
+        border-color: #98a2b3;
+        box-shadow: 0 0 0 3px rgba(152, 162, 179, 0.15);
+      }
+
+      .field-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        color: #475467;
+        font-size: 0.88rem;
+        font-weight: 650;
+      }
+
+      .checkbox-row input {
+        width: 17px;
+        height: 17px;
+      }
+
+      .form-actions {
+        display: flex;
+        gap: 9px;
+        padding-top: 4px;
+      }
+
+      .form-actions .button {
+        flex: 1;
+      }
+
+      @media (max-width: 920px) {
+        .page-header {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .city-picker {
+          min-width: 0;
+        }
+
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .form-panel {
+          position: static;
+          order: -1;
+        }
+
+        .destination-row {
+          grid-template-columns: 42px minmax(0, 1fr) auto;
+        }
+
+        .destination-row .pill,
+        .destination-row .order {
+          display: none;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .page-shell {
+          width: min(100% - 20px, 1180px);
+          padding-top: 22px;
+        }
+
+        .destination-row {
+          padding: 14px;
+        }
+
+        .field-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <main class="page-shell">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">Locus Admin</p>
+          <h1>City Destinations</h1>
+          <p class="subtitle">
+            Curate the places used for neighbourhood drive times.
+          </p>
+        </div>
+
+        <form class="city-picker" method="get">
+          <label for="city">City</label>
+
+          <select
+            id="city"
+            name="city"
+            onchange="this.form.submit()"
+          >
+            {
+              cities.map((city) => (
+                <option
+                  value={city}
+                  selected={city === selectedCity}
+                >
+                  {titleCase(city)}
+                </option>
+              ))
+            }
+          </select>
+        </form>
+      </header>
+
+      {
+        message && (
+          <div class="notice success">{message}</div>
+        )
+      }
+
+      {
+        errorMessage && (
+          <div class="notice error">{errorMessage}</div>
+        )
+      }
+
+      <div class="layout">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>{titleCase(selectedCity)} destinations</h2>
+
+            <span class="count">
+              {destinations.length} total
+            </span>
+          </div>
+
+          {
+            destinations.length ? (
+              <div class="destination-list">
+                {destinations.map((destination) => (
+                  <article class="destination-row">
+                    <div class="destination-icon">
+                      {String(destination.icon || "car").slice(0, 2)}
+                    </div>
+
+                    <div class="destination-name">
+                      <strong>{destination.name}</strong>
+
+                      <span>
+                        {Number(destination.latitude).toFixed(5)},{" "}
+                        {Number(destination.longitude).toFixed(5)}
+                      </span>
+                    </div>
+
+                    <span class="pill">
+                      {destination.travel_mode || "drive"}
+                    </span>
+
+                    <span class="order">
+                      #{destination.sort_order}
+                    </span>
+
+                    <div class="row-actions">
+                      <a
+                        class="button secondary"
+                        href={`/admin/destinations?city=${encodeURIComponent(
+                          selectedCity
+                        )}&edit=${destination.id}`}
+                      >
+                        Edit
+                      </a>
+
+                      <form
+                        method="post"
+                        onsubmit="return confirm('Delete this destination?')"
+                      >
+                        <input
+                          type="hidden"
+                          name="action"
+                          value="delete"
+                        />
+
+                        <input
+                          type="hidden"
+                          name="id"
+                          value={destination.id}
+                        />
+
+                        <input
+                          type="hidden"
+                          name="city"
+                          value={selectedCity}
+                        />
+
+                        <button
+                          class="button danger"
+                          type="submit"
+                        >
+                          Delete
+                        </button>
+                      </form>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div class="empty-state">
+                No destinations have been added for{" "}
+                {titleCase(selectedCity)} yet.
+              </div>
+            )
+          }
+        </section>
+
+        <aside class="panel form-panel">
+          <div class="panel-header">
+            <h2>
+              {editDestination
+                ? "Edit destination"
+                : "Add destination"}
+            </h2>
+
+            {
+              editDestination && (
+                <a
+                  class="button secondary"
+                  href={`/admin/destinations?city=${encodeURIComponent(
+                    selectedCity
+                  )}`}
+                >
+                  Cancel
+                </a>
+              )
+            }
+          </div>
+
+          <form class="form-body" method="post">
+            <input type="hidden" name="action" value="save" />
+
+            <input
+              type="hidden"
+              name="id"
+              value={editDestination?.id || ""}
+            />
+
+            <div class="field">
+              <label for="destination-city">City</label>
+
+              <select
+                id="destination-city"
+                name="city"
+                required
+              >
+                {
+                  cities.map((city) => (
+                    <option
+                      value={city}
+                      selected={
+                        city ===
+                        String(
+                          editDestination?.city || selectedCity
+                        ).toLowerCase()
+                      }
+                    >
+                      {titleCase(city)}
+                    </option>
+                  ))
+                }
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="name">Destination name</label>
+
+              <input
+                id="name"
+                name="name"
+                type="text"
+                value={editDestination?.name || ""}
+                placeholder="Departure Bay Ferry"
+                required
+              />
+            </div>
+
+            <div class="field-grid">
+              <div class="field">
+                <label for="category">Category</label>
+
+                <select id="category" name="category">
+                  {
+                    categoryOptions.map((category) => (
+                      <option
+                        value={category}
+                        selected={
+                          category ===
+                          (editDestination?.category ||
+                            "destination")
+                        }
+                      >
+                        {titleCase(category)}
+                      </option>
+                    ))
+                  }
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="icon">Icon</label>
+
+                <select id="icon" name="icon">
+                  {
+                    iconOptions.map((icon) => (
+                      <option
+                        value={icon}
+                        selected={
+                          icon ===
+                          (editDestination?.icon || "car")
+                        }
+                      >
+                        {titleCase(icon)}
+                      </option>
+                    ))
+                  }
+                </select>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="travel-mode">Travel mode</label>
+
+              <select
+                id="travel-mode"
+                name="travel_mode"
+              >
+                {
+                  modeOptions.map((mode) => (
+                    <option
+                      value={mode}
+                      selected={
+                        mode ===
+                        (editDestination?.travel_mode ||
+                          "drive")
+                      }
+                    >
+                      {titleCase(mode)}
+                    </option>
+                  ))
+                }
+              </select>
+            </div>
+
+            <div class="field-grid">
+              <div class="field">
+                <label for="latitude">Latitude</label>
+
+                <input
+                  id="latitude"
+                  name="latitude"
+                  type="number"
+                  step="any"
+                  value={editDestination?.latitude || ""}
+                  placeholder="49.1887"
+                  required
+                />
+              </div>
+
+              <div class="field">
+                <label for="longitude">Longitude</label>
+
+                <input
+                  id="longitude"
+                  name="longitude"
+                  type="number"
+                  step="any"
+                  value={editDestination?.longitude || ""}
+                  placeholder="-123.9440"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="sort-order">Sort order</label>
+
+              <input
+                id="sort-order"
+                name="sort_order"
+                type="number"
+                step="1"
+                value={editDestination?.sort_order ?? 0}
+              />
+            </div>
+
+            <label class="checkbox-row">
+              <input
+                type="checkbox"
+                name="is_active"
+                checked={
+                  editDestination
+                    ? editDestination.is_active !== false
+                    : true
+                }
+              />
+
+              Active destination
+            </label>
+
+            <div class="form-actions">
+              <button
+                class="button primary"
+                type="submit"
+              >
+                {editDestination
+                  ? "Save changes"
+                  : "Add destination"}
+              </button>
+            </div>
+          </form>
+        </aside>
+      </div>
+    </main>
+  </body>
+</html>

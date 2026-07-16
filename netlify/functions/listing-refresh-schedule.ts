@@ -53,7 +53,7 @@ export default async function handler() {
 
     try {
       const response = await fetch(
-`${baseUrl}/.netlify/functions/refresh-listing-market?city=${encodeURIComponent(city)}`,
+`${baseUrl}/.netlify/functions/refresh-listing-market-background?city=${encodeURIComponent(city)}`,
         {
           method: "POST",
          headers: {

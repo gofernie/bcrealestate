@@ -329,8 +329,72 @@ const { data: featureRows } = await supabase
 const features = (featureRows || []).map((f) => f.feature_key);
 const { data: areaBoundaryRows = [] } = await supabase
   .from("area_boundaries")
-  .select("area_slug, area_name")
+  .select("id, area_slug, area_name")
   .eq("city", city);
+
+const currentAreaBoundary =
+  pageKind === "area"
+    ? areaBoundaryRows.find(
+        (row) =>
+          String(row.area_slug || "").toLowerCase() ===
+          String(slug || "").toLowerCase()
+      )
+    : null;
+
+let gettingAround: any[] = [];
+
+if (pageKind === "area" && currentAreaBoundary?.id) {
+  const { data: driveTimeRows = [], error: driveTimeError } =
+    await supabase
+      .from("area_drive_times")
+      .select(`
+        duration_seconds,
+        distance_metres,
+        duration_text,
+        distance_text,
+        destination:city_destinations!inner (
+          id,
+          name,
+          category,
+          icon,
+          sort_order,
+          is_active
+        )
+      `)
+      .eq("area_boundary_id", currentAreaBoundary.id)
+      .eq("destination.is_active", true);
+
+  if (!driveTimeError) {
+    const sortedDriveTimes = [...driveTimeRows].sort(
+      (a: any, b: any) =>
+        Number(a.destination?.sort_order || 0) -
+        Number(b.destination?.sort_order || 0)
+    );
+
+    /*
+     * Show a useful mix instead of displaying two ferries
+     * and two shopping destinations in the first six rows.
+     */
+    const preferredCategories = [
+      "downtown",
+      "transport",
+      "shopping",
+      "education",
+      "health",
+      "recreation",
+    ];
+
+    gettingAround = preferredCategories
+      .map((category) =>
+        sortedDriveTimes.find(
+          (row: any) =>
+            String(row.destination?.category || "").toLowerCase() ===
+            category
+        )
+      )
+      .filter(Boolean);
+  }
+}
 
 const areas = areaBoundaryRows
   .map((r) => r.area_name || String(r.area_slug || "").replace(/-/g, " "))
@@ -1392,6 +1456,171 @@ body.is-map-mode .bottom-refine-cta {
 
 .area-intelligence {
   margin: 22px 0 36px;
+}
+
+.getting-around {
+  margin: 24px 0;
+  overflow: hidden;
+  border: 0.5px solid rgba(0, 0, 0, 0.1);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+}
+
+.getting-around__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.getting-around__eyebrow {
+  margin-bottom: 6px;
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.getting-around__header h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.35rem;
+  font-weight: 760;
+  letter-spacing: -0.03em;
+}
+
+.getting-around__header p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.getting-around__mode {
+  flex: none;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 8%, white);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.getting-around__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.getting-around__item {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.getting-around__item:nth-child(odd) {
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.getting-around__item:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.getting-around__icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid
+    color-mix(in srgb, var(--accent) 18%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 7%, white);
+  color: color-mix(in srgb, var(--accent) 76%, #555);
+}
+
+.getting-around__icon svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.getting-around__copy {
+  min-width: 0;
+}
+
+.getting-around__copy strong {
+  display: block;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 680;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.getting-around__copy span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.getting-around__time {
+  padding-left: 12px;
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 780;
+  white-space: nowrap;
+}
+
+.getting-around__note {
+  margin: 0;
+  padding: 11px 20px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(0, 0, 0, 0.018);
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 700px) {
+  .getting-around__header {
+    padding: 18px;
+  }
+
+  .getting-around__mode {
+    display: none;
+  }
+
+  .getting-around__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .getting-around__item {
+    padding: 14px 16px;
+    border-right: 0 !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+  }
+
+  .getting-around__item:last-child {
+    border-bottom: 0 !important;
+  }
+
+  .getting-around__note {
+    padding: 10px 16px;
+  }
 }
 
 .area-intelligence__chips {
@@ -3136,6 +3365,117 @@ return (
   )}
 </div>
 
+{
+  gettingAround.length > 0 && (
+    <section class="getting-around">
+      <div class="getting-around__header">
+        <div>
+          <div class="getting-around__eyebrow">
+            Local Connections
+          </div>
+
+          <h3>Getting Around</h3>
+
+          <p>
+Approximate driving times from{" "}
+{titleCase(page.area || city)}.
+          </p>
+        </div>
+
+        <span class="getting-around__mode">
+          Drive times
+        </span>
+      </div>
+
+      <div class="getting-around__grid">
+        {gettingAround.map((route: any) => {
+          const destination = route.destination || {};
+          const icon = String(destination.icon || "car");
+
+          return (
+            <article class="getting-around__item">
+              <div class="getting-around__icon" aria-hidden="true">
+                {icon === "downtown" && (
+                  <svg viewBox="0 0 24 24">
+                    <path d="M4 21V10l5-3v14M9 21V4l6-2v19M15 21V8l5 2v11M2 21h20M12 6h.01M12 10h.01M12 14h.01M6.5 12h.01M6.5 16h.01M17.5 13h.01M17.5 17h.01" />
+                  </svg>
+                )}
+
+                {icon === "ferry" && (
+                  <svg viewBox="0 0 24 24">
+                    <path d="M4 18h16l-2 3H6l-2-3ZM6 18V9h12v9M8 9V5h8v4M3 14h18M8 12h2M14 12h2" />
+                  </svg>
+                )}
+
+                {icon === "shopping" && (
+                  <svg viewBox="0 0 24 24">
+                    <path d="M6 8h12l1 13H5L6 8ZM9 9V6a3 3 0 0 1 6 0v3" />
+                  </svg>
+                )}
+
+                {icon === "education" && (
+                  <svg viewBox="0 0 24 24">
+                    <path d="m2 9 10-5 10 5-10 5L2 9Zm4 2.5V16c3 3 9 3 12 0v-4.5M22 9v6" />
+                  </svg>
+                )}
+
+                {icon === "hospital" && (
+                  <svg viewBox="0 0 24 24">
+                    <path d="M4 21V5h16v16M9 5V3h6v2M12 9v7M8.5 12.5h7M8 21v-3h8v3" />
+                  </svg>
+                )}
+
+                {(icon === "park" || icon === "recreation") && (
+                  <svg viewBox="0 0 24 24">
+                    <path d="M12 3 7 10h3l-4 6h5v5h2v-5h5l-4-6h3l-5-7ZM4 21h16" />
+                  </svg>
+                )}
+
+                {icon === "airport" && (
+                  <svg viewBox="0 0 24 24">
+                    <path d="m22 16-8-4V5c0-1.7-.9-3-2-3s-2 1.3-2 3v7l-8 4v2l8-2v4l-2 1v1l4-1 4 1v-1l-2-1v-4l8 2v-2Z" />
+                  </svg>
+                )}
+
+                {![
+                  "downtown",
+                  "ferry",
+                  "shopping",
+                  "education",
+                  "hospital",
+                  "park",
+                  "recreation",
+                  "airport",
+                ].includes(icon) && (
+                  <svg viewBox="0 0 24 24">
+                    <path d="M5 17h14M7 17l1-7h8l1 7M8.5 10l1-4h5l1 4M7 20h.01M17 20h.01" />
+                  </svg>
+                )}
+              </div>
+
+              <div class="getting-around__copy">
+                <strong>{destination.name}</strong>
+
+                <span>
+                  {route.distance_text || "Driving route"}
+                </span>
+              </div>
+
+              <div class="getting-around__time">
+                {route.duration_text}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <p class="getting-around__note">
+        Approximate off-peak driving times. Actual travel times
+        may vary with traffic, weather and route conditions.
+      </p>
+    </section>
+  )
+}
 
 <a
   class="explore-callout"

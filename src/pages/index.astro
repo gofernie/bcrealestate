@@ -24,7 +24,11 @@ const siteMarkets = site
   : [];
 
 const allowedCities = siteMarkets
-  .map((market) => String(market.city || "").toLowerCase().trim())
+  .map((market) =>
+    String(market.city || "")
+      .toLowerCase()
+      .trim()
+  )
   .filter(Boolean);
 
 const isBcRealEstate =
@@ -32,6 +36,39 @@ const isBcRealEstate =
   hostname === "bcrealestate.netlify.app" ||
   hostname === "localhost";
 
+/*
+ * Strategy settings
+ */
+const primaryCity =
+  site?.primaryCity ||
+  allowedCities[0] ||
+  "nanaimo";
+
+const primaryType =
+  site?.primaryType || "";
+
+const isPropertyTypeSite =
+  Boolean(
+    site?.isPropertyTypeSite &&
+    site?.usesPropertyTypeHomepage
+  );
+
+const isMobileHomeSite =
+  isPropertyTypeSite &&
+  primaryType === "mobile";
+
+const citySlug = primaryCity.replace(/\s+/g, "-");
+
+const titleCase = (value = "") =>
+  String(value)
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const primaryCityLabel = titleCase(primaryCity);
+
+/*
+ * Market directory sites
+ */
 let sitesQuery = supabase
   .from("sites")
   .select("city, site_name, domain, accent_color")
@@ -44,129 +81,836 @@ if (!isBcRealEstate && allowedCities.length > 0) {
 
 const { data: sites = [] } = await sitesQuery;
 
+/*
+ * Listings
+ */
 let listingsQuery = supabase
   .from("listing_rows")
-  .select("normalized_city, status")
+  .select(`
+    normalized_city,
+    normalized_type,
+    area,
+    price,
+    listed_at,
+    status
+  `)
   .eq("status", "A");
 
-if (!isBcRealEstate && allowedCities.length > 0) {
-  listingsQuery = listingsQuery.in("normalized_city", allowedCities);
+if (isPropertyTypeSite) {
+  listingsQuery = listingsQuery
+    .eq("normalized_city", primaryCity)
+    .eq("normalized_type", primaryType);
+} else if (!isBcRealEstate && allowedCities.length > 0) {
+  listingsQuery = listingsQuery.in(
+    "normalized_city",
+    allowedCities
+  );
 }
 
 const { data: listings = [] } = await listingsQuery;
 
-const cityCounts = listings.reduce((acc, row) => {
-  const city = String(row.normalized_city || "").toLowerCase().trim();
-  if (!city) return acc;
+/*
+ * General city counts
+ */
+const cityCounts = listings.reduce(
+  (acc: Record<string, number>, row) => {
+    const city = String(row.normalized_city || "")
+      .toLowerCase()
+      .trim();
 
-  acc[city] = (acc[city] || 0) + 1;
-  return acc;
-}, {});
-
-const titleCase = (value = "") =>
-  String(value)
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-
-const marketRows = !isBcRealEstate && siteMarkets.length > 0
-  ? siteMarkets.map((market) => ({
-      city: String(market.city || "").toLowerCase().trim(),
-      site_name: site?.site_name,
-      accent_color: site?.accent_color,
-      sort_order: market.sort_order ?? 0,
-    }))
-  : sites.map((row) => ({
-      ...row,
-      sort_order: 0,
-    }));
-
-const cityCards = Object.values(
-  marketRows.reduce((acc, row) => {
-    const city = String(row.city || "").toLowerCase().trim();
     if (!city) return acc;
 
-    const label = titleCase(city);
-
-    if (!acc[city]) {
-      acc[city] = {
-        city,
-        label,
-        siteName: row.site_name || `${label} Real Estate`,
-        href: `/${city.replace(/\s+/g, "-")}`,
-        areasHref: `/${city.replace(/\s+/g, "-")}/areas`,
-        count: cityCounts[city] || 0,
-        accent: row.accent_color || site?.accent_color || "#2f6f73",
-        sortOrder: row.sort_order ?? 0,
-      };
-    }
-
+    acc[city] = (acc[city] || 0) + 1;
     return acc;
-  }, {})
-).sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+  {}
+);
 
-const pageTitle = "BC Real Estate";
-const pageDescription =
-  "Browse British Columbia real estate by city, area, neighbourhood, and property type.";
+const marketRows =
+  !isBcRealEstate && siteMarkets.length > 0
+    ? siteMarkets.map((market) => ({
+        city: String(market.city || "")
+          .toLowerCase()
+          .trim(),
+        site_name: site?.site_name,
+        accent_color: site?.accent_color,
+        sort_order: market.sort_order ?? 0,
+      }))
+    : sites.map((row) => ({
+        ...row,
+        sort_order: 0,
+      }));
+
+const cityCards = Object.values(
+  marketRows.reduce(
+    (acc: Record<string, any>, row: any) => {
+      const city = String(row.city || "")
+        .toLowerCase()
+        .trim();
+
+      if (!city) return acc;
+
+      const label = titleCase(city);
+
+      if (!acc[city]) {
+        acc[city] = {
+          city,
+          label,
+          siteName:
+            row.site_name ||
+            `${label} Real Estate`,
+          href: `/${city.replace(/\s+/g, "-")}`,
+          areasHref: `/${city.replace(/\s+/g, "-")}/areas`,
+          count: cityCounts[city] || 0,
+          accent:
+            row.accent_color ||
+            site?.accent_color ||
+            "#2f6f73",
+          sortOrder: row.sort_order ?? 0,
+        };
+      }
+
+      return acc;
+    },
+    {}
+  )
+).sort(
+  (a: any, b: any) =>
+    a.sortOrder - b.sortOrder
+);
+
+/*
+ * Property-type site statistics
+ */
+const activeListingCount = listings.length;
+
+const prices = listings
+  .map((listing) => Number(listing.price))
+  .filter(
+    (price) =>
+      Number.isFinite(price) &&
+      price > 0
+  )
+  .sort((a, b) => a - b);
+
+const medianPrice =
+  prices.length === 0
+    ? null
+    : prices.length % 2 === 1
+      ? prices[Math.floor(prices.length / 2)]
+      : Math.round(
+          (
+            prices[prices.length / 2 - 1] +
+            prices[prices.length / 2]
+          ) / 2
+        );
+
+const thirtyDaysAgo =
+  Date.now() - 30 * 24 * 60 * 60 * 1000;
+
+const newListingCount = listings.filter(
+  (listing) => {
+    if (!listing.listed_at) return false;
+
+    const timestamp = new Date(
+      listing.listed_at
+    ).getTime();
+
+    return (
+      Number.isFinite(timestamp) &&
+      timestamp >= thirtyDaysAgo
+    );
+  }
+).length;
+
+const allAreaCounts = Object.values(
+  listings.reduce(
+    (acc: Record<string, any>, listing) => {
+      const area = String(listing.area || "").trim();
+
+      if (!area) return acc;
+
+      const key = area.toLowerCase();
+
+      if (!acc[key]) {
+        acc[key] = {
+          area,
+          count: 0,
+        };
+      }
+
+      acc[key].count += 1;
+      return acc;
+    },
+    {}
+  )
+).sort(
+  (a: any, b: any) =>
+    b.count - a.count
+);
+
+// Only show the eight busiest areas on the homepage.
+const featuredAreaCounts = allAreaCounts.slice(0, 8);
+
+const formatPrice = (value: number | null) =>
+  value
+    ? `$${Math.round(value).toLocaleString()}`
+    : "—";
+
+const listingHref =
+  `/${citySlug}/mobile-homes`;
+
+const areasHref =
+  `/${citySlug}/areas`;
+
+const exploreHref =
+  `/explore?city=${encodeURIComponent(
+    primaryCity
+  )}&type=${encodeURIComponent(primaryType)}`;
+
+const pageTitle = isMobileHomeSite
+  ? `${primaryCityLabel} Mobile Homes for Sale`
+  : "BC Real Estate";
+
+const pageDescription = isMobileHomeSite
+  ? `Browse mobile homes for sale in ${primaryCityLabel}, compare neighbourhoods, and explore local mobile-home listings.`
+  : "Browse British Columbia real estate by city, area, neighbourhood, and property type.";
 ---
 
 <Layout
   title={pageTitle}
   description={pageDescription}
   accentColor={site?.accent_color || "#2f6f73"}
-  city="bc"
+  city={isPropertyTypeSite ? primaryCity : "bc"}
 >
-  <SiteNav site={site} showAreaNav={false} />
+  <SiteNav
+    site={site}
+    showAreaNav={false}
+  />
 
-  <header
-    class="page-hero"
-    style={`--hero-image: url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=75')`}
-  >
-    <div class="page-hero__inner">
-      <p class="page-hero__eyebrow">BC Real Estate</p>
+  {
+    isMobileHomeSite ? (
+      <>
+        <header class="mobile-home-hero">
+          <div class="mobile-home-hero__inner">
+            <div class="mobile-home-hero__content">
+              <p class="mobile-home-hero__eyebrow">
+                {primaryCityLabel} Mobile Home Guide
+              </p>
 
-      <h1>Explore British Columbia<br />real estate.</h1>
+              <h1>
+                Mobile homes
+                <br />
+                in {primaryCityLabel}.
+              </h1>
 
-      <p class="page-hero__copy">
-        Start with a city, then browse neighbourhoods, homes, condos, townhomes,
-        and land across local BC markets.
-      </p>
-    </div>
-  </header>
+              <p class="mobile-home-hero__copy">
+                Browse active mobile homes, compare
+                Nanaimo neighbourhoods, and find a
+                simpler path to local home ownership.
+              </p>
 
-  <main class="shell">
-    <section class="content-card area-picker">
-      <div class="section-heading">
-        <span class="eyebrow">Browse by City</span>
-        <h2>Choose a BC market</h2>
-        <p>
-          Start with a city, then browse neighbourhoods, listings, and local guides.
-        </p>
-      </div>
+              <div class="mobile-home-hero__actions">
+                <a
+                  class="hero-button hero-button--primary"
+                  href={listingHref}
+                >
+                  View mobile homes
+                </a>
 
-      <div class="area-card-grid">
-        {cityCards.map((city, index) => (
-          <a
-            class="area-pick-card"
-            href={city.href}
-            style={`--card-tint: ${3 + (index % 6)}%; --city-accent:${city.accent};`}
-          >
-            <strong>{city.label}</strong>
-
-            <div class="area-pick-count">
-              {city.count === 1
-                ? "1 active listing"
-                : `${city.count.toLocaleString()} active listings`}
+                <a
+                  class="hero-button hero-button--secondary"
+                  href={exploreHref}
+                >
+                  Open Explorer
+                </a>
+              </div>
             </div>
 
-            <span class="area-card-link">Explore {city.label} →</span>
-          </a>
-        ))}
-      </div>
-    </section>
-  </main>
+            <div class="mobile-home-summary">
+              <div class="mobile-home-summary__heading">
+                <span>Current market</span>
+                <strong>
+                  {primaryCityLabel} mobile homes
+                </strong>
+              </div>
+
+              <div class="mobile-home-stat-grid">
+                <div class="mobile-home-stat">
+                  <strong>
+                    {activeListingCount.toLocaleString()}
+                  </strong>
+                  <span>For sale now</span>
+                </div>
+
+                <div class="mobile-home-stat">
+                  <strong>
+                    {formatPrice(medianPrice)}
+                  </strong>
+                  <span>Median asking price</span>
+                </div>
+
+                <div class="mobile-home-stat">
+                  <strong>
+                   {allAreaCounts.length.toLocaleString()}
+                  </strong>
+                  <span>Areas represented</span>
+                </div>
+
+                <div class="mobile-home-stat">
+                  <strong>
+                    {newListingCount.toLocaleString()}
+                  </strong>
+                  <span>New in 30 days</span>
+                </div>
+              </div>
+
+              <a
+                class="mobile-home-summary__link"
+                href={listingHref}
+              >
+                Browse all mobile homes
+                <span>→</span>
+              </a>
+            </div>
+          </div>
+        </header>
+
+        <main class="mobile-home-shell">
+          <section class="mobile-home-intro">
+            <div>
+              <span class="section-eyebrow">
+                Start your search
+              </span>
+
+              <h2>
+                Find the right mobile home
+                in Nanaimo.
+              </h2>
+            </div>
+
+            <p>
+              Compare available homes by area, price,
+              and location. Every result on this site is
+              filtered specifically to Nanaimo mobile
+              homes.
+            </p>
+          </section>
+
+          <section class="mobile-home-links">
+            <a
+              class="mobile-home-link-card"
+              href={listingHref}
+            >
+              <span class="mobile-home-link-card__number">
+                01
+              </span>
+
+              <strong>Homes for sale</strong>
+
+              <p>
+                See every active Nanaimo mobile-home
+                listing in one place.
+              </p>
+
+              <span class="mobile-home-link-card__action">
+                Browse listings →
+              </span>
+            </a>
+
+            <a
+              class="mobile-home-link-card"
+              href={areasHref}
+            >
+              <span class="mobile-home-link-card__number">
+                02
+              </span>
+
+              <strong>Browse by area</strong>
+
+              <p>
+                Compare the Nanaimo neighbourhoods
+                where mobile homes are currently listed.
+              </p>
+
+              <span class="mobile-home-link-card__action">
+                Explore areas →
+              </span>
+            </a>
+
+            <a
+              class="mobile-home-link-card"
+              href={exploreHref}
+            >
+              <span class="mobile-home-link-card__number">
+                03
+              </span>
+
+              <strong>Explore the map</strong>
+
+              <p>
+                View mobile homes alongside parks,
+                shops, services, and local places.
+              </p>
+
+              <span class="mobile-home-link-card__action">
+                Open Explorer →
+              </span>
+            </a>
+          </section>
+
+         {featuredAreaCounts.length > 0 && (
+  <section class="mobile-home-areas">
+    <div class="section-heading">
+      <span class="section-eyebrow">
+        Browse by location
+      </span>
+
+      <h2>
+        Mobile homes across {primaryCityLabel}
+      </h2>
+
+      <p>
+        Start with the areas currently showing
+        the most active mobile-home listings.
+      </p>
+    </div>
+
+    <div class="mobile-area-grid">
+      {featuredAreaCounts.map((item: any) => (
+        <a
+          class="mobile-area-card"
+          href={`${listingHref}?area=${encodeURIComponent(
+            item.area
+          )}`}
+        >
+          <strong>{item.area}</strong>
+
+          <span>
+            {item.count === 1
+              ? "1 active mobile home"
+              : `${item.count} active mobile homes`}
+          </span>
+
+          <small>View listings →</small>
+        </a>
+      ))}
+    </div>
+  </section>
+)}
+        </main>
+      </>
+    ) : (
+      <>
+        <header
+          class="page-hero"
+          style={`--hero-image: url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=75')`}
+        >
+          <div class="page-hero__inner">
+            <p class="page-hero__eyebrow">
+              BC Real Estate
+            </p>
+
+            <h1>
+              Explore British Columbia
+              <br />
+              real estate.
+            </h1>
+
+            <p class="page-hero__copy">
+              Start with a city, then browse
+              neighbourhoods, homes, condos,
+              townhomes, and land across local BC
+              markets.
+            </p>
+          </div>
+        </header>
+
+        <main class="shell">
+          <section class="content-card area-picker">
+            <div class="section-heading">
+              <span class="eyebrow">
+                Browse by City
+              </span>
+
+              <h2>Choose a BC market</h2>
+
+              <p>
+                Start with a city, then browse
+                neighbourhoods, listings, and local
+                guides.
+              </p>
+            </div>
+
+            <div class="area-card-grid">
+              {cityCards.map(
+                (city: any, index: number) => (
+                  <a
+                    class="area-pick-card"
+                    href={city.href}
+                    style={`--card-tint: ${
+                      3 + (index % 6)
+                    }%; --city-accent:${
+                      city.accent
+                    };`}
+                  >
+                    <strong>{city.label}</strong>
+
+                    <div class="area-pick-count">
+                      {city.count === 1
+                        ? "1 active listing"
+                        : `${city.count.toLocaleString()} active listings`}
+                    </div>
+
+                    <span class="area-card-link">
+                      Explore {city.label} →
+                    </span>
+                  </a>
+                )
+              )}
+            </div>
+          </section>
+        </main>
+      </>
+    )
+  }
 </Layout>
 
 <style>
+  .mobile-home-hero {
+    padding: 54px 40px 44px;
+    background:
+      radial-gradient(
+        circle at 85% 20%,
+        color-mix(
+          in srgb,
+          var(--accent) 13%,
+          transparent
+        ),
+        transparent 34%
+      ),
+      linear-gradient(
+        135deg,
+        #f4f0e8 0%,
+        #faf8f4 55%,
+        #eef2ec 100%
+      );
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  }
+
+  .mobile-home-hero__inner {
+    width: min(1400px, 100%);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1.2fr)
+      minmax(360px, 0.8fr);
+    gap: 70px;
+    align-items: center;
+  }
+
+  .mobile-home-hero__content {
+    max-width: 740px;
+  }
+
+  .mobile-home-hero__eyebrow,
+  .section-eyebrow {
+    display: block;
+    margin: 0 0 14px;
+    color: var(--accent);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .mobile-home-hero h1 {
+    margin: 0;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(3.6rem, 7vw, 7.6rem);
+    font-weight: 500;
+    line-height: 0.86;
+    letter-spacing: -0.065em;
+    color: var(--ink);
+  }
+
+  .mobile-home-hero__copy {
+    max-width: 610px;
+    margin: 28px 0 0;
+    color: var(--muted);
+    font-size: clamp(1rem, 1.5vw, 1.18rem);
+    line-height: 1.65;
+  }
+
+  .mobile-home-hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 30px;
+  }
+
+  .hero-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+    padding: 0 22px;
+    border-radius: 999px;
+    font-size: 0.88rem;
+    font-weight: 750;
+    text-decoration: none;
+    transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease;
+  }
+
+  .hero-button:hover {
+    transform: translateY(-2px);
+  }
+
+  .hero-button--primary {
+    background: var(--accent);
+    color: white;
+    box-shadow: 0 9px 24px
+      color-mix(
+        in srgb,
+        var(--accent) 22%,
+        transparent
+      );
+  }
+
+  .hero-button--secondary {
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    background: rgba(255, 255, 255, 0.7);
+    color: var(--ink);
+  }
+
+  .mobile-home-summary {
+    padding: 26px;
+    border-radius: 24px;
+    border: 1px solid rgba(0, 0, 0, 0.09);
+    background: rgba(255, 255, 255, 0.78);
+    box-shadow: 0 24px 70px rgba(33, 31, 27, 0.1);
+    backdrop-filter: blur(18px);
+  }
+
+  .mobile-home-summary__heading {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  }
+
+  .mobile-home-summary__heading span {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 750;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+
+  .mobile-home-summary__heading strong {
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.6rem;
+    font-weight: 500;
+  }
+
+  .mobile-home-stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    margin: 18px 0;
+    overflow: hidden;
+    border-radius: 14px;
+    background: rgba(0, 0, 0, 0.08);
+  }
+
+  .mobile-home-stat {
+    min-height: 112px;
+    padding: 17px;
+    background: white;
+  }
+
+  .mobile-home-stat strong {
+    display: block;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.7rem;
+    font-weight: 500;
+  }
+
+  .mobile-home-stat span {
+    display: block;
+    margin-top: 5px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.3;
+  }
+
+  .mobile-home-summary__link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 48px;
+    padding: 0 4px;
+    color: var(--accent);
+    font-size: 0.87rem;
+    font-weight: 750;
+    text-decoration: none;
+  }
+
+  .mobile-home-shell {
+    width: min(1400px, calc(100% - 80px));
+    margin: 0 auto;
+    padding: 72px 0 110px;
+  }
+
+  .mobile-home-intro {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(280px, 0.65fr);
+    gap: 70px;
+    align-items: end;
+    margin-bottom: 32px;
+  }
+
+  .mobile-home-intro h2,
+  .mobile-home-areas h2 {
+    margin: 0;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(2.4rem, 4vw, 4.5rem);
+    font-weight: 500;
+    line-height: 0.96;
+    letter-spacing: -0.055em;
+  }
+
+  .mobile-home-intro p,
+  .mobile-home-areas .section-heading p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+
+  .mobile-home-links {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .mobile-home-link-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 270px;
+    padding: 24px;
+    border: 1px solid rgba(0, 0, 0, 0.09);
+    border-radius: 18px;
+    background: white;
+    color: inherit;
+    text-decoration: none;
+    transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease,
+      border-color 0.18s ease;
+  }
+
+  .mobile-home-link-card:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(
+      in srgb,
+      var(--accent) 40%,
+      rgba(0, 0, 0, 0.09)
+    );
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.07);
+  }
+
+  .mobile-home-link-card__number {
+    margin-bottom: 34px;
+    color: var(--accent);
+    font-size: 0.72rem;
+    font-weight: 850;
+    letter-spacing: 0.1em;
+  }
+
+  .mobile-home-link-card strong {
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.75rem;
+    font-weight: 500;
+  }
+
+  .mobile-home-link-card p {
+    margin: 10px 0 24px;
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+
+  .mobile-home-link-card__action {
+    margin-top: auto;
+    color: var(--accent);
+    font-size: 0.82rem;
+    font-weight: 750;
+  }
+
+  .mobile-home-areas {
+    padding-top: 90px;
+  }
+
+  .mobile-home-areas .section-heading {
+    max-width: 680px;
+    margin-bottom: 28px;
+  }
+
+  .mobile-home-areas .section-heading p {
+    max-width: 560px;
+    margin-top: 13px;
+  }
+
+  .mobile-area-grid {
+    display: grid;
+    grid-template-columns:
+      repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .mobile-area-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 160px;
+    padding: 20px;
+    border: 1px solid rgba(0, 0, 0, 0.09);
+    border-radius: 15px;
+    background:
+      linear-gradient(
+        145deg,
+        color-mix(
+          in srgb,
+          var(--accent) 7%,
+          white
+        ),
+        white
+      );
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .mobile-area-card strong {
+    font-size: 1rem;
+  }
+
+  .mobile-area-card span {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 0.82rem;
+  }
+
+  .mobile-area-card small {
+    margin-top: auto;
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 750;
+  }
+
   .shell {
     width: min(1400px, calc(100% - 80px));
     margin: 0 auto;
@@ -210,7 +954,8 @@ const pageDescription =
 
   .area-card-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns:
+      repeat(4, minmax(0, 1fr));
     gap: 12px;
   }
 
@@ -221,10 +966,11 @@ const pageDescription =
     min-height: 170px;
     padding: 18px;
     border-radius: 8px;
-    border: 1px solid rgba(0,0,0,0.08);
+    border: 1px solid rgba(0, 0, 0, 0.08);
     background: color-mix(
       in srgb,
-      var(--city-accent, var(--accent)) calc(var(--card-tint, 6%)),
+      var(--city-accent, var(--accent))
+        calc(var(--card-tint, 6%)),
       white
     );
     color: inherit;
@@ -237,8 +983,8 @@ const pageDescription =
 
   .area-pick-card:hover {
     transform: translateY(-2px);
-    border-color: rgba(0,0,0,0.18);
-    box-shadow: 0 6px 18px rgba(0,0,0,0.07);
+    border-color: rgba(0, 0, 0, 0.18);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07);
   }
 
   .area-pick-card strong {
@@ -263,12 +1009,48 @@ const pageDescription =
   }
 
   @media (max-width: 1100px) {
+    .mobile-home-hero__inner {
+      grid-template-columns:
+        minmax(0, 1fr)
+        minmax(320px, 0.75fr);
+      gap: 36px;
+    }
+
+    .mobile-home-links {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .mobile-area-grid,
     .area-card-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
   }
 
-  @media (max-width: 760px) {
+  @media (max-width: 800px) {
+    .mobile-home-hero {
+      padding: 42px 18px 34px;
+    }
+
+    .mobile-home-hero__inner,
+    .mobile-home-intro {
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
+
+    .mobile-home-hero h1 {
+      font-size: clamp(3.25rem, 16vw, 5.5rem);
+    }
+
+    .mobile-home-shell {
+      width: 100%;
+      padding: 52px 18px 80px;
+    }
+
+    .mobile-home-links,
+    .mobile-area-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .shell {
       width: 100%;
       padding: 32px 18px 80px;
@@ -279,9 +1061,20 @@ const pageDescription =
     }
   }
 
-  @media (max-width: 500px) {
+  @media (max-width: 540px) {
+    .mobile-home-stat-grid,
+    .mobile-home-links,
+    .mobile-area-grid,
     .area-card-grid {
       grid-template-columns: 1fr;
+    }
+
+    .mobile-home-link-card {
+      min-height: 220px;
+    }
+
+    .mobile-home-summary {
+      padding: 18px;
     }
   }
 </style>
