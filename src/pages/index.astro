@@ -86,14 +86,15 @@ const { data: sites = [] } = await sitesQuery;
  */
 let listingsQuery = supabase
   .from("listing_rows")
-  .select(`
+.select(`
     normalized_city,
     normalized_type,
     area,
+    normalized_area,
     price,
     listed_at,
     status
-  `)
+`)
   .eq("status", "A");
 
 if (isPropertyTypeSite) {
@@ -226,17 +227,26 @@ const newListingCount = listings.filter(
 const allAreaCounts = Object.values(
   listings.reduce(
     (acc: Record<string, any>, listing) => {
-      const area = String(listing.area || "").trim();
+      const area = String(
+        listing.normalized_area ||
+        listing.area ||
+        ""
+      ).trim();
 
       if (!area) return acc;
 
       const key = area.toLowerCase();
 
       if (!acc[key]) {
-        acc[key] = {
-          area,
-          count: 0,
-        };
+      if (!acc[key]) {
+  acc[key] = {
+    area: area.replace(
+      /\b\w/g,
+      (c: string) => c.toUpperCase()
+    ),
+    count: 0,
+  };
+}
       }
 
       acc[key].count += 1;
@@ -480,9 +490,11 @@ const pageDescription = isMobileHomeSite
       {featuredAreaCounts.map((item: any) => (
         <a
           class="mobile-area-card"
-          href={`${listingHref}?area=${encodeURIComponent(
-            item.area
-          )}`}
+      href={`/${item.area
+  .toLowerCase()
+  .trim()
+  .replace(/[^a-z0-9]+/g, "-")
+  .replace(/^-+|-+$/g, "")}`}
         >
           <strong>{item.area}</strong>
 

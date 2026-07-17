@@ -22,8 +22,17 @@ const supabase = createClient(
 const slug = Astro.params.slug || "";
 const city = Astro.params.city || "nanaimo";
 
-const site = await getSite(Astro.url.hostname, city);
+const requestHostname = Astro.url.hostname
+  .toLowerCase()
+  .replace(/^www\./, "");
 
+const siteHostname =
+  requestHostname === "localhost" ||
+  requestHostname === "127.0.0.1"
+    ? "nanaimomobiles.com"
+    : requestHostname;
+
+const site = await getSite(siteHostname, city);
 const accentColor =
   site?.accent_color ||
   "#2f6f73";
@@ -418,7 +427,7 @@ const propertyTypes = [...new Set(
     .filter((item) => item && item !== "unknown" && item !== "sale")
 )].sort((a, b) => a.localeCompare(b));
 
-const navIntentPages = await getNavIntentPages(supabase, city);
+const navIntentPages = await getNavIntentPages(supabase, site?.id);
 
 const { data: areaIntentPages } = await supabase
   .from("intent_pages")
@@ -472,10 +481,24 @@ const normalizedPropertyType =
   propertyTypeMap[String(page.property_type || "").toLowerCase()] ||
   String(page.property_type || "").toLowerCase();
 
+const sitePrimaryType = String(
+  site?.primaryType || ""
+)
+  .toLowerCase()
+  .trim();
+
+const effectivePropertyType =
+  normalizedPropertyType ||
+  (site?.isPropertyTypeSite ? sitePrimaryType : "");
+
+if (effectivePropertyType) {
+  query = query.eq(
+    "normalized_type",
+    effectivePropertyType
+  );
+}
+
 if (pageKind === "intent") {
-  if (normalizedPropertyType) {
-    query = query.eq("normalized_type", normalizedPropertyType);
-  }
 
   if (page.price_min) {
     query = query.gte("price", page.price_min);
@@ -561,6 +584,16 @@ if (defaultSort === "price-asc") {
 const { data: rawListings, error: listingsError } = await query.limit(listingLimit);
 
 let listings = rawListings || [];
+console.log("AREA LISTING DEBUG BEFORE POLYGON", {
+  city,
+  slug,
+  pageKind,
+  pageArea: page.area,
+  normalizedArea: String(page.area || "").toLowerCase().trim(),
+  rawListingCount: rawListings?.length || 0,
+  listingsError,
+  hasPolygonSearch
+});
 function getPolygonGeometry(geojson: any) {
   if (!geojson) return null;
 
@@ -607,11 +640,16 @@ function pointInPolygon(point: [number, number], geojson: any) {
   });
 }
 
-if (hasPolygonSearch) {  listings = listings.filter((listing) => {
+if (hasPolygonSearch) {
+  const beforePolygon = listings.length;
+
+  listings = listings.filter((listing) => {
     const lat = Number(listing.lat);
     const lng = Number(listing.lng);
 
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return false;
+    }
 
     return pointInPolygon(
       [lng, lat],
@@ -619,24 +657,23 @@ if (hasPolygonSearch) {  listings = listings.filter((listing) => {
     );
   });
 
-  console.log(
-    "POLYGON FILTER",
-    listings.length,
-    "matches"
-  );
-
-  console.log(
-  "POLYGON GEOJSON",
-  JSON.stringify(page.polygon_geojson)
-);
+  console.log("AREA LISTING DEBUG AFTER POLYGON", {
+    city,
+    slug,
+    pageArea: page.area,
+    beforePolygon,
+    afterPolygon: listings.length,
+    polygonType: page.polygon_geojson?.type || null
+  });
 }
 
-
-
 console.log("INTENT LISTINGS DEBUG", {
+  city,
   slug,
+  pageKind,
+  pageArea: page.area,
   count: listings?.length || 0,
-  error: listingsError,
+  error: listingsError
 });
 
 const marketNameMap: Record<string, string> = {
@@ -778,35 +815,35 @@ const typePageNewThisWeek = listings.filter((listing) => {
 }).length;
 
 const typePageLabel =
-  normalizedPropertyType === "house"
+  effectivePropertyType === "house"
     ? "Homes"
-    : normalizedPropertyType === "townhouse"
+    : effectivePropertyType === "townhouse"
       ? "Townhomes"
-      : normalizedPropertyType === "mobile"
+      : effectivePropertyType === "mobile"
         ? "Mobile Homes"
-        : normalizedPropertyType === "land"
+        : effectivePropertyType === "land"
           ? "Land"
-          : normalizedPropertyType === "condo"
+          : effectivePropertyType === "condo"
             ? "Condos"
             : "Homes";
 
 const typePageSingular =
-  normalizedPropertyType === "house"
+  effectivePropertyType === "house"
     ? "home"
-    : normalizedPropertyType === "townhouse"
+    : effectivePropertyType === "townhouse"
       ? "townhome"
-      : normalizedPropertyType === "mobile"
+      : effectivePropertyType === "mobile"
         ? "mobile home"
-        : normalizedPropertyType === "land"
+        : effectivePropertyType === "land"
           ? "property"
-          : normalizedPropertyType === "condo"
+          : effectivePropertyType === "condo"
             ? "condo"
             : "home";
 
 const typePageExploreHref =
   `/explore?city=${encodeURIComponent(city)}${
-    normalizedPropertyType
-      ? `&type=${encodeURIComponent(normalizedPropertyType)}`
+    effectivePropertyType
+      ? `&type=${encodeURIComponent(effectivePropertyType)}`
       : ""
   }`;
 const listingTypeCounts = {
@@ -2766,11 +2803,9 @@ color: var(--accent) !important;
 >
 <SiteNav
   city={city}
+  site={site}
   areas={areas}
-  types={propertyTypes}
   intentPages={navIntentPages}
-  showAreaNav={false}
-  activeSection={pageKind === "area" ? "areas" : ""}
 />
 <main class="page is-type-page">
 
@@ -2803,7 +2838,7 @@ color: var(--accent) !important;
             class="type-button type-button--primary"
             href="#type-listings"
           >
-            Browse {listingCount} Homes
+            Browse {listingCount} {typePageLabel}
           </a>
 
           <a
@@ -2860,7 +2895,7 @@ color: var(--accent) !important;
 
         <div>
           <strong>{listingCount}</strong>
-          <span>Homes for sale</span>
+      <span>{typePageLabel} for sale</span>
           <small>Active MLS® listings</small>
         </div>
       </article>

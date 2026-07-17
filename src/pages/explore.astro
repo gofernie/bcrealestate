@@ -113,20 +113,19 @@ const areaProfileForInsights = (areaInsightRows || []).find((row) => {
 });
 
 
-const { data: allAreaRows = [] } = await supabase
-  .from("listing_rows")
-  .select("normalized_area")
-  .eq("status", "A")
-  .eq("normalized_city", city)
-  .not("normalized_area", "is", null);
-
 const areaOptions = Array.from(
-  new Set(
-    allAreaRows
-      .map((listing) => listing.normalized_area)
-      .filter(Boolean)
-      .map((value) => String(value).trim())
-  )
+  new Map(
+    boundaryRows
+      .filter((row) => row.area_name)
+      .map((row) => {
+        const name = String(row.area_name).trim();
+
+        return [
+          name.toLowerCase(),
+          name,
+        ];
+      })
+  ).values()
 ).sort((a, b) => a.localeCompare(b));
 ---
 
@@ -3136,12 +3135,27 @@ height: auto !important;
     font-size: .7rem !important;
   }
 
-  .explorer-command-row > .top-group:last-child {
-    flex-wrap: nowrap !important;
-    overflow-x: auto !important;
-    scrollbar-width: none !important;
-    max-width: 100% !important;
-  }
+/* Amenity buttons — keep all place types visible */
+.explorer-command-row .top-group:has([data-mobile-layer]) {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 8px !important;
+
+  width: 100% !important;
+  max-width: none !important;
+
+  overflow: visible !important;
+}
+
+.explorer-command-row
+  .top-group:has([data-mobile-layer])
+  .layer-pill {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  padding: 0 12px !important;
+}
 
   .explorer-command-row > .top-group:last-child::-webkit-scrollbar {
     display: none !important;
@@ -3561,6 +3575,541 @@ height: auto !important;
     box-shadow: 0 12px 28px rgba(15, 47, 74, 0.09) !important;
   }
 }
+
+/* =========================================================
+   EXPLORER TWO-PANEL DESKTOP LAYOUT
+   ========================================================= */
+
+@media (min-width: 761px) {
+  .explorer {
+    --explorer-edge: 12px;
+    --explorer-gap: 10px;
+    --explorer-panel-width: 490px;
+
+    padding: var(--explorer-edge);
+    box-sizing: border-box;
+    background: #f1eee8;
+  }
+
+  /* Left map card */
+  .explorer-main {
+    position: absolute !important;
+    top: var(--explorer-edge) !important;
+    left: var(--explorer-edge) !important;
+    right: calc(
+      var(--explorer-edge) +
+      var(--explorer-panel-width) +
+      var(--explorer-gap)
+    ) !important;
+    bottom: var(--explorer-edge) !important;
+
+    width: auto !important;
+    height: auto !important;
+
+    overflow: hidden !important;
+    border: 1px solid rgba(15, 23, 42, 0.07);
+    border-radius: 14px;
+    background: #e8e5df;
+    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08);
+  }
+
+  .explorer-map,
+  #explorer-map {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  .explorer-map {
+    overflow: hidden !important;
+    border-radius: inherit;
+  }
+
+  /* One unified right-side card */
+  .explorer-panel {
+    position: absolute;
+    top: var(--explorer-edge);
+    right: var(--explorer-edge);
+    bottom: var(--explorer-edge);
+
+    display: flex;
+    flex-direction: column;
+
+    width: var(--explorer-panel-width);
+    min-width: 0;
+    overflow: hidden;
+
+    border: 1px solid rgba(15, 23, 42, 0.07);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.09);
+  }
+
+  /* Controls now belong to the panel */
+  .explorer-top {
+    position: relative !important;
+    inset: auto !important;
+
+    flex: 0 0 auto;
+    width: 100% !important;
+    box-sizing: border-box;
+
+    padding: 14px 16px 13px !important;
+    overflow: visible;
+
+    border: 0 !important;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.07) !important;
+    border-radius: 0 !important;
+
+    background: #fff !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  /* Results fill the remaining panel height */
+  .explorer-drawer {
+    position: relative !important;
+    inset: auto !important;
+
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    box-sizing: border-box;
+
+    padding: 10px 16px 14px !important;
+    overflow: hidden !important;
+
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .explorer-drawer.is-expanded,
+  .explorer-drawer.is-homes-mode,
+  .explorer-drawer.is-places-mode,
+  .explorer-drawer.is-insights-mode {
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  .drawer-mode-header {
+    flex: 0 0 auto;
+  }
+
+  .drawer-sections {
+    min-height: 0;
+    max-height: none !important;
+    overflow-y: auto !important;
+  }
+
+  .explorer-drawer.is-homes-mode .drawer-sections,
+  .explorer-drawer.is-places-mode .drawer-sections,
+  .explorer-drawer.is-insights-mode .drawer-sections {
+    height: calc(100% - 68px);
+    max-height: none !important;
+    overflow-y: auto !important;
+  }
+
+  /* Refined component shapes */
+  .explorer-card,
+  .place-card {
+    border-radius: 10px !important;
+    box-shadow: none !important;
+  }
+
+  .return-link,
+  .explorer-chip,
+  .drawer-tab,
+  :global(.layer-pill) {
+    border-radius: 9px !important;
+  }
+
+  .drawer-handle {
+    display: none !important;
+  }
+}
+
+@media (min-width: 761px) {
+  .explorer-drawer {
+    background: #f7f7f5 !important;
+  }
+
+  .drawer-mode-header {
+    margin: -10px -16px 12px !important;
+    padding: 14px 16px !important;
+
+    border-bottom: 1px solid rgba(15, 23, 42, 0.07);
+    background: #ffffff;
+  }
+
+  .drawer-sections {
+    padding: 0 2px 16px !important;
+  }
+
+  .explorer-card {
+    background: #ffffff !important;
+    border-color: rgba(15, 23, 42, 0.08) !important;
+  }
+}
+
+/* Hide place-layer controls unless Places is active */
+.explorer:has(.explorer-drawer.is-insights-mode)
+  .explorer-command-row
+  .top-group:last-child,
+.explorer:has(.explorer-drawer.is-homes-mode)
+  .explorer-command-row
+  .top-group:last-child {
+  display: none !important;
+}
+
+/* Show the amenity controls only in Places mode */
+.explorer:has(.explorer-drawer.is-places-mode)
+  .explorer-command-row
+  .top-group:last-child {
+  display: flex !important;
+}
+/* Selected place/amenity layer */
+.explorer-command-row .layer-pill.is-active,
+.explorer-command-row [data-mobile-layer].is-active {
+  color: #fff !important;
+  border-color: #123a5a !important;
+  background: #123a5a !important;
+  box-shadow: 0 8px 18px rgba(18, 58, 90, 0.18) !important;
+}
+
+.explorer-command-row .layer-pill.is-active:hover,
+.explorer-command-row [data-mobile-layer].is-active:hover {
+  color: #fff !important;
+  background: #123a5a !important;
+  transform: none !important;
+}
+
+/* Compact amenity snapshot cards */
+:global(.places-snapshot-grid) {
+  gap: 8px !important;
+  margin-top: 12px !important;
+}
+
+:global(.places-snapshot-card) {
+  min-height: 58px !important;
+  padding: 9px 11px !important;
+  border-radius: 10px !important;
+}
+
+:global(.places-snapshot-icon) {
+  width: 32px !important;
+  height: 32px !important;
+  font-size: .82rem !important;
+}
+
+:global(.places-snapshot-copy) {
+  gap: 1px !important;
+}
+
+:global(.places-snapshot-copy strong) {
+  font-size: .88rem !important;
+  line-height: 1 !important;
+}
+
+:global(.places-snapshot-copy span) {
+  font-size: .66rem !important;
+  line-height: 1.15 !important;
+}
+
+:global(.places-summary) {
+  margin-top: 12px !important;
+  margin-bottom: 12px !important;
+  padding: 13px 14px !important;
+  border-radius: 11px !important;
+}
+
+:global(.places-summary-icon) {
+  width: 34px !important;
+  height: 34px !important;
+}
+
+:global(.places-summary p) {
+  font-size: .78rem !important;
+  line-height: 1.5 !important;
+}
+
+:global(.places-summary small) {
+  font-size: .62rem !important;
+}
+
+/* Nearby Places map visibility control */
+.drawer-places-header {
+  justify-content: space-between !important;
+}
+
+.homes-visibility-toggle {
+  flex: 0 0 auto;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+
+  min-height: 34px;
+  padding: 0 12px;
+
+  border: 1px solid rgba(18, 58, 90, 0.12);
+  border-radius: 9px;
+
+  background: #f4f7f8;
+  color: #334155;
+
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 850;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.homes-visibility-toggle:hover {
+  background: #e9eef1;
+}
+
+.homes-visibility-toggle.is-active {
+  color: #fff;
+  border-color: #64748b;
+  background: #64748b;
+}
+
+@media (max-width: 520px) {
+  .homes-visibility-toggle {
+    width: 36px;
+    padding: 0;
+  }
+
+  .homes-visibility-label {
+    display: none;
+  }
+}
+
+/* =========================================================
+   EXPLORER — QUIETER PROFESSIONAL UI
+   ========================================================= */
+
+.explorer-panel {
+  border-radius: 11px !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08) !important;
+}
+
+/* Main filters */
+.return-link,
+.explorer-chip {
+  height: 32px !important;
+  padding: 0 12px !important;
+
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
+  border-radius: 8px !important;
+
+  background: #fff !important;
+  color: #1f2937 !important;
+
+  box-shadow: none !important;
+  font-size: 0.75rem !important;
+  font-weight: 750 !important;
+}
+
+.return-link:hover,
+.explorer-chip:hover {
+  transform: none !important;
+  background: #f7f8f9 !important;
+  box-shadow: none !important;
+}
+
+/* Homes / Places / Insights */
+.drawer-tab {
+  position: relative;
+
+  height: 32px !important;
+  padding: 0 12px !important;
+
+  border: 1px solid transparent !important;
+  border-radius: 8px !important;
+
+  background: transparent !important;
+  color: #64748b !important;
+
+  font-size: 0.75rem !important;
+  font-weight: 800 !important;
+}
+
+.drawer-tab:hover {
+  background: #f5f7f8 !important;
+  color: #243447 !important;
+}
+
+.drawer-tab.is-active {
+  border-color: rgba(18, 58, 90, 0.13) !important;
+  background: #eef3f6 !important;
+  color: #123a5a !important;
+  box-shadow: none !important;
+}
+
+.drawer-tab.is-active::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  bottom: -1px;
+  left: 10px;
+
+  height: 2px;
+  border-radius: 2px;
+  background: #123a5a;
+}
+
+/* Amenity buttons */
+:global(.layer-pill) {
+  height: 32px !important;
+  padding: 0 12px !important;
+
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
+  border-radius: 8px !important;
+
+  background: #fff !important;
+  color: #475569 !important;
+
+  box-shadow: none !important;
+  font-size: 0.73rem !important;
+  font-weight: 750 !important;
+}
+
+:global(.layer-pill:hover) {
+  background: #f6f8f9 !important;
+}
+
+:global(.layer-pill.is-active) {
+  border-color: rgba(18, 58, 90, 0.28) !important;
+  background: #eef3f6 !important;
+  color: #123a5a !important;
+  box-shadow: inset 0 0 0 1px rgba(18, 58, 90, 0.04) !important;
+}
+
+/* Remove oversized mode icon treatment */
+.drawer-mode-icon {
+  width: 36px !important;
+  height: 36px !important;
+
+  border-radius: 8px !important;
+  background: #eef3f6 !important;
+  color: #123a5a !important;
+
+  box-shadow: none !important;
+  font-size: 0.9rem !important;
+}
+
+/* Drawer heading */
+.drawer-mode-heading {
+  gap: 11px !important;
+}
+
+.drawer-mode-heading h2 {
+  font-size: 1rem !important;
+  letter-spacing: -0.025em !important;
+}
+
+.drawer-mode-heading p {
+  margin-top: 2px !important;
+  font-size: 0.7rem !important;
+  font-weight: 700 !important;
+}
+
+/* Order control */
+.drawer-order-label {
+  font-size: 0.72rem !important;
+  color: #64748b !important;
+}
+
+#drawer-order {
+  height: 34px !important;
+
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
+  border-radius: 8px !important;
+
+  background: #fff !important;
+  box-shadow: none !important;
+
+  font-size: 0.75rem !important;
+  font-weight: 750 !important;
+}
+
+/* Tighter separators */
+.explorer-top {
+  border-bottom-color: rgba(15, 23, 42, 0.07) !important;
+}
+
+.explorer-command-row {
+  gap: 8px !important;
+  border-top-color: rgba(15, 23, 42, 0.07) !important;
+}
+
+/* Compact amenity count grid */
+:global(.places-snapshot-grid) {
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 7px !important;
+  margin-top: 10px !important;
+}
+
+:global(.places-snapshot-card) {
+  min-height: 48px !important;
+  padding: 7px 8px !important;
+
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+
+:global(.places-snapshot-icon) {
+  flex: 0 0 28px !important;
+  width: 28px !important;
+  height: 28px !important;
+  margin: 0 !important;
+
+  border-radius: 7px !important;
+  font-size: 0.72rem !important;
+}
+
+:global(.places-snapshot-copy) {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 1px !important;
+}
+
+:global(.places-snapshot-copy strong) {
+  font-size: 0.82rem !important;
+  line-height: 1 !important;
+}
+
+:global(.places-snapshot-copy span) {
+  font-size: 0.6rem !important;
+  line-height: 1.1 !important;
+}
+
+@media (max-width: 1180px) {
+  :global(.places-snapshot-grid) {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  :global(.places-snapshot-grid) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
 </style>
 
 <style is:global>
@@ -3652,7 +4201,14 @@ data-boundary={boundaryRow?.polygon_geojson ? JSON.stringify(boundaryRow.polygon
 data-boundaries={JSON.stringify(boundaryRows || [])}
 data-area-insights={JSON.stringify(areaInsightRows ?? [])}
 >
-   <header class="explorer-top">
+     <section class="explorer-main">
+    <div class="explorer-map">
+      <div id="explorer-map"></div>
+    </div>
+  </section>
+
+  <aside class="explorer-panel">
+    <header class="explorer-top">
 
   <div class="explorer-brand">
     <span class="explorer-brand-mark">⌖</span>
@@ -3735,14 +4291,18 @@ data-area-insights={JSON.stringify(areaInsightRows ?? [])}
       <button class="layer-pill" data-mobile-layer="restaurants">☕ Restaurants</button>
       <button class="layer-pill" data-mobile-layer="grocery">🛒 Grocery</button>
 <button class="layer-pill" data-mobile-layer="medical">
-  More
+  🏥 Medical
 </button>
+
+
     </div>
 
   </div>
 
   <div class="explorer-menu" data-menu="location">
-    <button data-filter-location="">All {areaLabel}</button>
+<button data-filter-location="">
+  All {city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+</button>
 
     {areaOptions.map((areaName) => (
       <button data-filter-location={areaName.toLowerCase()}>
@@ -3786,15 +4346,7 @@ data-area-insights={JSON.stringify(areaInsightRows ?? [])}
 
 </header>
 
-    <section class="explorer-main">
-    
-
-      <div class="explorer-map">
-        <div id="explorer-map"></div>
-      </div>
-    </section>
-
-    <section class="explorer-drawer" id="explorer-drawer">
+       <section class="explorer-drawer" id="explorer-drawer">
       <button type="button" class="drawer-handle" id="drawer-toggle" aria-label="Expand drawer"></button>
    <button type="button" class="drawer-head" id="drawer-head-toggle">
 
@@ -3866,7 +4418,7 @@ data-area-insights={JSON.stringify(areaInsightRows ?? [])}
 </div>
 
 <header
-  class="drawer-mode-header"
+  class="drawer-mode-header drawer-places-header"
   id="drawer-places-header"
   hidden
 >
@@ -3875,9 +4427,21 @@ data-area-insights={JSON.stringify(areaInsightRows ?? [])}
 
     <div>
       <h2>Nearby Places</h2>
-      <p id="drawer-places-count">Choose what you want to see nearby</p>
+      <p id="drawer-places-count">
+        Choose what you want to see nearby
+      </p>
     </div>
   </div>
+
+  <button
+    type="button"
+    class="homes-visibility-toggle"
+    id="homes-visibility-toggle"
+    aria-pressed="true"
+  >
+    <span aria-hidden="true">👁</span>
+    <span class="homes-visibility-label">Hide homes</span>
+  </button>
 </header>
 
 <div
@@ -3910,6 +4474,7 @@ data-area-insights={JSON.stringify(areaInsightRows ?? [])}
   <div id="drawer-insights-content"></div>
 </div>
     </section>
+  </aside>
 
     <template id="home-card-template">
     {listings.map((listing) => {
@@ -4613,14 +5178,49 @@ marker.on("click", () => {
       async function loadAmenities() {
         if (Object.keys(amenityCache).length) return;
 
-const visibleHomes = layerItems.homes.filter((home) => passesNavFilters(home));
+const visibleHomes = layerItems.homes
+  .filter((home) => passesNavFilters(home))
+  .filter(
+    (home) =>
+      Number.isFinite(home.lat) &&
+      Number.isFinite(home.lng)
+  );
 
 const centre = visibleHomes.length
-  ? L.latLngBounds(visibleHomes.map((home) => [home.lat, home.lng])).getCenter()
+  ? L.latLngBounds(
+      visibleHomes.map((home) => [home.lat, home.lng])
+    ).getCenter()
   : map.getCenter();
 
+/*
+ * Cover the full selected market rather than always searching
+ * only 5 km around its centre.
+ *
+ * For a selected neighbourhood, the polygon filter below still
+ * limits the results to that neighbourhood.
+ */
+const requiredRadius = visibleHomes.length
+  ? Math.max(
+      ...visibleHomes.map((home) =>
+        distanceKm(
+          { lat: centre.lat, lng: centre.lng },
+          home
+        )
+      )
+    ) + 2
+  : 10;
+
+const amenityRadius = Math.min(
+  25,
+  Math.max(navFilters.location ? 7 : 12, requiredRadius)
+);
+
 const res = await fetch(
-  `/api/osm-amenities?city=${encodeURIComponent(city)}&lat=${centre.lat}&lng=${centre.lng}&radius=5&limit=250`
+  `/api/osm-amenities?city=${encodeURIComponent(city)}` +
+  `&lat=${centre.lat}` +
+  `&lng=${centre.lng}` +
+  `&radius=${amenityRadius.toFixed(1)}` +
+  `&limit=1000`
 );
         const json = await res.json();
         Object.assign(amenityCache, json.categories || {});
@@ -4993,18 +5593,32 @@ drawerLayerCount.textContent =
     ? `${visiblePlacesCount} Places`
     : "No places";
 }
+const visibleHomes = layerItems.homes.filter(isVisible);
+
+const typeLabels = {
+  house: "Houses",
+  condo: "Condos",
+  townhouse: "Townhomes",
+  mobile: "Mobile Homes",
+  land: "Land",
+};
+
+const homesCount = visibleHomes.length;
+
+const selectedType = normalizeExplorerType(navFilters.type);
+const title =
+  selectedType && typeLabels[selectedType]
+    ? typeLabels[selectedType]
+    : "Homes";
+
 if (drawerTitle) {
-  const selectedTypeLabel =
-    document.getElementById("nav-type-label")?.textContent?.trim();
+  drawerTitle.textContent = title;
+}
 
-  const homesCount = layerItems.homes.filter(isVisible).length;
+const homesCountEl = document.getElementById("drawer-homes-count");
 
-  if (navFilters.type && selectedTypeLabel && selectedTypeLabel !== "Type") {
-    drawerTitle.textContent = `${homesCount} ${selectedTypeLabel}${homesCount === 1 ? "" : "s"}`;
-  } else {
-const homesCount = layerItems.homes.filter(isVisible).length;
-drawerTitle.textContent = `${homesCount} Homes`;
-  }
+if (homesCountEl) {
+  homesCountEl.textContent = `${homesCount.toLocaleString()} ${title.toLowerCase()} available`;
 }
 
         drawerSections.querySelectorAll("[data-item-id]").forEach((card) => {
@@ -5158,11 +5772,41 @@ function renderPlacesSnapshot() {
     "This area";
 
   const snapshotRows = [
-    { key: "parks", icon: "🌳", label: "Parks" },
-    { key: "schools", icon: "🎓", label: "Schools" },
-    { key: "restaurants", icon: "☕", label: "Food" },
-    { key: "grocery", icon: "🛒", label: "Grocery" },
-    { key: "medical", icon: "🏥", label: "Medical" },
+    {
+      key: "parks",
+      icon: "🌳",
+      label: "Parks",
+      singular: "park",
+      plural: "parks",
+    },
+    {
+      key: "schools",
+      icon: "🎓",
+      label: "Schools",
+      singular: "school",
+      plural: "schools",
+    },
+    {
+      key: "restaurants",
+      icon: "☕",
+      label: "Restaurants",
+      singular: "place to eat",
+      plural: "places to eat",
+    },
+    {
+      key: "grocery",
+      icon: "🛒",
+      label: "Grocery",
+      singular: "grocery option",
+      plural: "grocery options",
+    },
+    {
+      key: "medical",
+      icon: "🏥",
+      label: "Medical",
+      singular: "medical service",
+      plural: "medical services",
+    },
   ];
 
   const counts = Object.fromEntries(
@@ -5174,127 +5818,135 @@ function renderPlacesSnapshot() {
     ])
   );
 
-  let boundaryRows = [];
+  const selectedKey =
+    snapshotRows.find((row) => activeLayers[row.key])?.key ||
+    "parks";
 
-  try {
-    boundaryRows = JSON.parse(
-      explorer.dataset.boundaries || "[]"
-    );
-  } catch {}
+  const selectedRow =
+    snapshotRows.find((row) => row.key === selectedKey) ||
+    snapshotRows[0];
 
-  const currentSlug = slugify(currentLabel);
+  const selectedCount = counts[selectedKey] || 0;
 
-  const boundaryProfile =
-    boundaryRows.find((row) => {
-      return (
-        slugify(row.area_slug || "") === currentSlug ||
-        slugify(row.area_name || "") === currentSlug
-      );
-    }) || {};
+  const countLabel =
+    selectedCount === 1
+      ? selectedRow.singular
+      : selectedRow.plural;
 
-  const ai = boundaryProfile.ai_insights || {};
+  const summaryByType = {
+    parks: (() => {
+      if (selectedCount === 0) {
+        return `No mapped parks were found inside ${currentLabel}. Nearby green spaces may still be available just outside the selected area.`;
+      }
 
-  const generatedSummary = (() => {
-    const parts = [];
+      if (selectedCount === 1) {
+        return `${currentLabel} has 1 mapped park, providing a local option for outdoor time and recreation.`;
+      }
 
-    if (counts.parks >= 15) {
-      parts.push("strong neighbourhood park access");
-    } else if (counts.parks > 0) {
-      parts.push("several local parks");
-    }
+      if (selectedCount >= 10) {
+        return `${currentLabel} has ${selectedCount} mapped parks, making access to green space one of the neighbourhood's notable strengths.`;
+      }
 
-    if (counts.schools >= 4) {
-      parts.push("a good selection of nearby schools");
-    } else if (counts.schools > 0) {
-      parts.push("local school access");
-    }
+      return `${currentLabel} has ${selectedCount} mapped parks, offering several local options for outdoor time, walking and recreation.`;
+    })(),
 
-    if (counts.restaurants >= 12) {
-      parts.push("a useful collection of cafés and places to eat");
-    } else if (counts.restaurants > 0) {
-      parts.push("some nearby food and dining options");
-    }
+    schools: (() => {
+      if (selectedCount === 0) {
+        return `No mapped schools were found inside ${currentLabel}. Schools serving the area may be located in nearby neighbourhoods.`;
+      }
 
-    if (counts.grocery > 0 || counts.medical > 0) {
-      parts.push("everyday services within the community");
-    }
+      if (selectedCount === 1) {
+        return `${currentLabel} has 1 mapped school, giving residents a local education option within the neighbourhood.`;
+      }
 
-    if (!parts.length) {
-      return `${currentLabel} is primarily residential, with fewer mapped everyday amenities inside the area.`;
-    }
+      return `${currentLabel} has ${selectedCount} mapped schools, providing a selection of education options within the neighbourhood.`;
+    })(),
 
-    if (parts.length === 1) {
-      return `${currentLabel} offers ${parts[0]}.`;
-    }
+    restaurants: (() => {
+      if (selectedCount === 0) {
+        return `No mapped restaurants or cafés were found inside ${currentLabel}. Dining options may be available nearby outside the selected boundary.`;
+      }
 
-    const finalPart = parts.pop();
+      if (selectedCount === 1) {
+        return `${currentLabel} has 1 mapped place to eat, providing a convenient local dining option.`;
+      }
 
-    return `${currentLabel} offers ${parts.join(", ")}, and ${finalPart}.`;
-  })();
+      if (selectedCount >= 10) {
+        return `${currentLabel} has ${selectedCount} mapped places to eat, offering a useful variety of restaurants, cafés and casual dining options.`;
+      }
+
+      return `${currentLabel} has ${selectedCount} mapped places to eat, giving residents several nearby dining options.`;
+    })(),
+
+    grocery: (() => {
+      if (selectedCount === 0) {
+        return `No mapped grocery stores were found inside ${currentLabel}. Everyday shopping may require a short trip outside the neighbourhood.`;
+      }
+
+      if (selectedCount === 1) {
+        return `${currentLabel} has 1 mapped grocery option for everyday shopping and essentials.`;
+      }
+
+      return `${currentLabel} has ${selectedCount} mapped grocery options, providing convenient choices for everyday shopping and essentials.`;
+    })(),
+
+    medical: (() => {
+      if (selectedCount === 0) {
+        return `No mapped medical services were found inside ${currentLabel}. Clinics, pharmacies or other healthcare services may be available nearby.`;
+      }
+
+      if (selectedCount === 1) {
+        return `${currentLabel} has 1 mapped medical service available within the neighbourhood.`;
+      }
+
+      return `${currentLabel} has ${selectedCount} mapped medical services, including nearby options for routine healthcare, prescriptions or treatment.`;
+    })(),
+  };
 
   const summary =
-    ai.lifestyle ||
-    ai.overview ||
-    generatedSummary;
+    summaryByType[selectedKey] ||
+    `${currentLabel} has ${selectedCount} mapped ${countLabel}.`;
 
-  const cards = snapshotRows
-    .map((row) => {
-      return `
-        <button
-          type="button"
-          class="places-snapshot-card ${
-            activeLayers[row.key] ? "is-active" : ""
-          }"
-          data-mobile-layer="${escapeHtml(row.key)}"
-          data-snapshot-layer="${escapeHtml(row.key)}"
-          aria-label="Show ${escapeHtml(row.label)}"
-        >
-          <span
-            class="places-snapshot-icon"
-            aria-hidden="true"
-          >
-            ${row.icon}
-          </span>
-
-          <span class="places-snapshot-copy">
-            <strong>${counts[row.key]}</strong>
-            <span>${escapeHtml(row.label)}</span>
-          </span>
-        </button>
-      `;
-    })
-    .join("");
+  
 
   return `
-    <section class="places-snapshot">
+    <section
+      class="places-snapshot"
+      data-selected-place-type="${escapeHtml(selectedKey)}"
+    >
       <div class="places-snapshot-head">
         <div>
-          <strong>Living in ${escapeHtml(currentLabel)}</strong>
+          <strong>
+            ${selectedRow.icon}
+            ${escapeHtml(selectedRow.label)} in
+            ${escapeHtml(currentLabel)}
+          </strong>
+
           <span class="places-snapshot-kicker">
-            Neighbourhood amenities
+            ${selectedCount.toLocaleString()}
+            ${escapeHtml(countLabel)} mapped
           </span>
         </div>
       </div>
 
-      <div class="places-snapshot-grid">
-        ${cards}
-      </div>
+     <div class="places-summary">
+  <span
+    class="places-summary-icon"
+    aria-hidden="true"
+  >
+    ${selectedRow.icon}
+  </span>
 
-      <div class="places-summary">
-        <span
-          class="places-summary-icon"
-          aria-hidden="true"
-        >
-          ✨
-        </span>
+  <div>
+    <p>${escapeHtml(summary)}</p>
 
-        <div>
-          <p>${escapeHtml(summary)}</p>
-          <small>
-            Based on OpenStreetMap and neighbourhood data
-          </small>
-        </div>
-      </div>
+    <small>
+      Based on OpenStreetMap and neighbourhood data
+    </small>
+  </div>
+</div>
+
+<!-- Category totals moved out of the active Places flow -->
     </section>
   `;
 }
@@ -5355,70 +6007,33 @@ if (placesHeaderCount) {
     })
     .join("");
 
-  const layerSwitcher = `
-<div class="places-explore-label">
-  Explore
-</div>
 
-    <div class="mobile-layer-switcher">
-      <button
-        class="layer-pill ${activeLayers.parks ? "is-active" : ""}"
-        data-mobile-layer="parks"
-      >
-        🌳 Parks
-      </button>
 
-      <button
-        class="layer-pill ${activeLayers.schools ? "is-active" : ""}"
-        data-mobile-layer="schools"
-      >
-        🎓 Schools
-      </button>
+const activeAmenityLayers = Object.keys(activeLayers)
+  .filter((key) => key !== "homes")
+  .filter((key) => activeLayers[key]);
 
-      <button
-        class="layer-pill ${activeLayers.restaurants ? "is-active" : ""}"
-        data-mobile-layer="restaurants"
-      >
-        ☕ Food
-      </button>
+const placesResultsHtml = activeAmenityLayers.length
+  ? sections ||
+    `
+      <div class="drawer-empty">
+        No places in this category are visible in the selected area.
+      </div>
+    `
+  : `
+      <div class="drawer-empty">
+        Choose a place category above.
+      </div>
+    `;
 
-      <button
-        class="layer-pill ${activeLayers.grocery ? "is-active" : ""}"
-        data-mobile-layer="grocery"
-      >
-        🛒 Grocery
-      </button>
+drawerPlaces.innerHTML = `
+  ${snapshotHtml}
+  <div class="places-results-spacer"></div>
+  ${placesResultsHtml}
+`;
 
-      <button
-        class="layer-pill ${activeLayers.medical ? "is-active" : ""}"
-        data-mobile-layer="medical"
-      >
-        🏥 Medical
-      </button>
-    </div>
-  `;
-
-  const activeAmenityLayers = Object.keys(activeLayers)
-    .filter((key) => key !== "homes")
-    .filter((key) => activeLayers[key]);
-
-  drawerPlaces.innerHTML = `
-    ${snapshotHtml}
-
-    ${layerSwitcher}
-
-    ${
-      activeAmenityLayers.length
-        ? `
-          <div class="places-results-spacer"></div>
-          ${sections}
-        `
-        : ""
-    }
-  `;
-
-  drawerPlaces
-    .querySelectorAll(".place-card[data-item-id]")
+drawerPlaces
+  .querySelectorAll(".place-card[data-item-id]")
     .forEach((card) => {
       const layerKey = card.dataset.layer;
       const id = card.dataset.itemId;
@@ -5462,40 +6077,41 @@ if (placesHeaderCount) {
       buildHomeLayer();
       layerGroups.homes.addTo(map);
 
-     const homePoints = layerItems.homes
+    const homePoints = layerItems.homes
   .filter((item) => passesNavFilters(item))
+  .filter(
+    (item) =>
+      Number.isFinite(item.lat) &&
+      Number.isFinite(item.lng)
+  )
   .map((item) => [item.lat, item.lng]);
+
+const isMobile =
+  window.matchMedia("(max-width: 760px)").matches;
+
 if (boundaryLayer) {
-  const isMobile = window.matchMedia("(max-width: 760px)").matches;
-
+  /*
+   * A selected neighbourhood should frame its boundary,
+   * but should not zoom in beyond a useful area view.
+   */
   map.fitBounds(boundaryLayer.getBounds(), {
-    paddingTopLeft: isMobile ? [36, 120] : [330, 95],
-    paddingBottomRight: isMobile ? [36, 120] : [70, 150],
+    padding: isMobile ? [24, 24] : [32, 32],
+    maxZoom: 14,
+    animate: false,
   });
-
-  window.setTimeout(() => {
-    if (!isMobile) {
-      map.setZoom(Math.max(map.getZoom(), 13));
-      map.panBy([-130, 0], { animate: false });
-    }
-  }, 120);
 } else if (homePoints.length) {
-   map.fitBounds(homePoints, {
-  paddingTopLeft: [330, 95],
-  paddingBottomRight: [70, 150]
-});
-
-window.setTimeout(() => {
-  const isMobile = window.matchMedia("(max-width: 760px)").matches;
-
-  if (!isMobile) {
-    map.setZoom(Math.max(map.getZoom(), 13));
-    map.panBy([-130, 0], { animate: false });
-  }
-}, 80);
-      } else {
-        map.setView([49.1659, -123.9401], 11);
-      }
+  /*
+   * "All Nanaimo" should show the complete spread of the
+   * currently filtered listings.
+   */
+  map.fitBounds(homePoints, {
+    padding: isMobile ? [24, 24] : [32, 32],
+    maxZoom: 12,
+    animate: false,
+  });
+} else {
+  map.setView([49.1659, -123.9401], 11);
+}
 
 loadAmenities().then(() => {
   refreshExplorer();
@@ -5761,11 +6377,69 @@ activeHomeItem = null;
       }
     });
 
-   closeMenus();
-    switchToHomesTab();
-    await loadAmenities();
-    refreshExplorer();
-    focusFilteredHomesOnMap();
+closeMenus();
+
+/*
+ * Preserve the user's current Explorer mode.
+ * Example: Restaurants in all Nanaimo becomes
+ * Restaurants in Uplands, rather than returning to Homes.
+ */
+const activePlaceLayer = Object.keys(activeLayers).find(
+  (key) => key !== "homes" && activeLayers[key]
+);
+
+const placesTabIsActive = Boolean(
+  document.querySelector(
+    '.drawer-tab[data-drawer-tab="places"].is-active'
+  )
+);
+
+const insightsTabIsActive = Boolean(
+  document.querySelector(
+    '.drawer-tab[data-drawer-tab="insights"].is-active'
+  )
+);
+
+await loadAmenities();
+refreshExplorer();
+
+if (placesTabIsActive && activePlaceLayer) {
+  document
+    .querySelectorAll("[data-mobile-layer]")
+    .forEach((layerButton) => {
+      const buttonLayer = layerButton.dataset.mobileLayer;
+
+      layerButton.classList.toggle(
+        "is-active",
+        buttonLayer === activePlaceLayer
+      );
+
+      layerButton.setAttribute(
+        "aria-pressed",
+        buttonLayer === activePlaceLayer ? "true" : "false"
+      );
+    });
+
+  syncMapLayers();
+
+  if (boundaryLayer) {
+    map.fitBounds(boundaryLayer.getBounds(), {
+      padding: [32, 32],
+      maxZoom: 14,
+      animate: false,
+    });
+  }
+} else if (insightsTabIsActive) {
+  if (boundaryLayer) {
+    map.fitBounds(boundaryLayer.getBounds(), {
+      padding: [32, 32],
+      maxZoom: 14,
+      animate: false,
+    });
+  }
+} else {
+  focusFilteredHomesOnMap();
+}
   });
 });
 
@@ -5935,11 +6609,35 @@ case "homes":
     drawerHomesHeader.hidden = false;
   }
 
-    if (!shouldCollapse) {
-      drawer?.classList.add("is-homes-mode");
-    }
+  /*
+   * Homes mode is listings-only.
+   * Turn off every OSM amenity layer.
+   */
+  Object.keys(activeLayers).forEach((key) => {
+    activeLayers[key] = key === "homes";
+  });
 
-    break;
+  document
+    .querySelectorAll("[data-mobile-layer]")
+    .forEach((layerButton) => {
+      layerButton.classList.remove("is-active");
+      layerButton.setAttribute("aria-pressed", "false");
+    });
+
+  activeHomeItem?.marker?.closePopup?.();
+  activeHomeItem = null;
+
+  map.closePopup();
+  clearActiveCards();
+
+  syncMapLayers();
+  updateToggleUi();
+
+  if (!shouldCollapse) {
+    drawer?.classList.add("is-homes-mode");
+  }
+
+  break;
 
 case "places":
   drawerPlaces.hidden = false;
@@ -6003,7 +6701,29 @@ case "insights":
 refreshMapSize();
   });
 });
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("#homes-visibility-toggle");
 
+  if (!button) return;
+
+  activeLayers.homes = !activeLayers.homes;
+
+  button.classList.toggle(
+    "is-active",
+    !activeLayers.homes
+  );
+
+  button.setAttribute(
+    "aria-pressed",
+    activeLayers.homes ? "true" : "false"
+  );
+
+  button.innerHTML = activeLayers.homes
+    ? "👁 Hide homes"
+    : "🏠 Show homes";
+
+  syncMapLayers();
+});
 document.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-mobile-layer]");
 
@@ -6018,17 +6738,40 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  await loadAmenities();
+Object.keys(activeLayers).forEach((key) => {
+  if (key !== "homes") {
+    activeLayers[key] = false;
+  }
+});
 
-  Object.keys(activeLayers).forEach((key) => {
-    activeLayers[key] = key === "homes";
+activeLayers[layerKey] = true;
+
+/*
+ * Select the requested category before loading amenities,
+ * so loadAmenities() fetches the correct place type.
+ */
+await loadAmenities();
+
+/* Keep every copy of the selected amenity button in sync */
+document
+  .querySelectorAll("[data-mobile-layer]")
+  .forEach((layerButton) => {
+    const buttonLayer = layerButton.dataset.mobileLayer;
+
+    layerButton.classList.toggle(
+      "is-active",
+      buttonLayer === layerKey
+    );
+
+    layerButton.setAttribute(
+      "aria-pressed",
+      buttonLayer === layerKey ? "true" : "false"
+    );
   });
 
-  activeLayers[layerKey] = true;
-
-  document
-    .querySelectorAll(".drawer-tab")
-    .forEach((tab) => {
+document
+  .querySelectorAll(".drawer-tab")
+  .forEach((tab) => {
       tab.classList.toggle(
         "is-active",
         tab.dataset.drawerTab === "places"
@@ -6061,7 +6804,10 @@ document.addEventListener("click", async (event) => {
     "is-places-mode"
   );
 
-  refreshExplorer();
+refreshExplorer();
+
+/* Ensure the selected category is rendered after loading */
+renderDrawer();
 
  requestAnimationFrame(() => {
   drawerPlaces?.scrollTo({

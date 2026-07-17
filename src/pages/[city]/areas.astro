@@ -62,11 +62,32 @@ console.log("COLOUR SOURCE DEBUG", {
   finalAccent: accentColor,
 });
 
-const { data: allListings = [], error } = await supabase
+let listingsQuery = supabase
   .from("listing_rows")
   .select("*")
   .eq("normalized_city", city)
   .eq("status", "A");
+
+const sitePrimaryType = String(
+  site?.primaryType || ""
+)
+  .toLowerCase()
+  .trim();
+
+if (
+  site?.isPropertyTypeSite &&
+  sitePrimaryType
+) {
+  listingsQuery = listingsQuery.eq(
+    "normalized_type",
+    sitePrimaryType
+  );
+}
+
+const {
+  data: allListings = [],
+  error,
+} = await listingsQuery;
 
 const { data: featuredIntentPages = [], error: featuredIntentError } =
   await supabase
@@ -332,7 +353,7 @@ const chartData = {
   areaCounts: topAreas.map(([, count]) => count),
 };
 
-const navIntentPages = await getNavIntentPages(supabase, city);
+const navIntentPages = await getNavIntentPages(supabase, site?.id);
 
 const areasHeroMapData = areaMetaRows
   .filter((row: any) => row.polygon_geojson)
@@ -368,10 +389,9 @@ const areasHeroMapData = areaMetaRows
 
 <SiteNav
   city={city}
+  site={site}
   areas={navAreas}
-  types={navTypes}
   intentPages={navIntentPages}
-  showAreaNav={false}
 />
 <!-- ── Imageless market hero ── -->
 <main class="page is-type-page">
