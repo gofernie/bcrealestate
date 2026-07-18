@@ -8,7 +8,34 @@ const supabase = createClient(
   import.meta.env.PUBLIC_SUPABASE_URL,
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
-const site = await getSite(Astro.url.hostname);
+const hostname = Astro.url.hostname
+  .replace(/^www\./, "")
+  .toLowerCase();
+
+const requestedCity =
+  Astro.request.method === "POST"
+    ? String((await Astro.request.clone().formData()).get("city") || "")
+        .trim()
+        .toLowerCase()
+    : "";
+
+let site = null;
+
+if (requestedCity) {
+  const { data } = await supabase
+    .from("sites")
+    .select("*")
+    .eq("domain", hostname)
+    .eq("city", requestedCity)
+    .maybeSingle();
+
+  site = data;
+}
+
+if (!site) {
+  site = await getSite(hostname);
+}
+
 let message = "";
 
 const TEMPLATE_FEATURES = {
@@ -249,7 +276,7 @@ waterfront_type:
       );
     }
 
-return Astro.redirect("/admin/intent-pages");
+return Astro.redirect(`/admin/intent-pages?city=${city}`);
   }
 }
 }

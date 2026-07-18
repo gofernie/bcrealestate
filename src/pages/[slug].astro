@@ -1,0 +1,78 @@
+---
+import { createClient } from "@supabase/supabase-js";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const slug = String(Astro.params.slug || "")
+  .toLowerCase()
+  .trim();
+
+const hostname = Astro.url.hostname
+  .toLowerCase()
+  .replace(/^www\./, "");
+
+const isNanaimoMobileSite =
+  hostname === "nanaimomobiles.com" ||
+  hostname === "localhost" ||
+  hostname === "127.0.0.1";
+
+if (!isNanaimoMobileSite) {
+  return Astro.redirect("/404");
+}
+
+/*
+ * First check whether this is an area page.
+ */
+const { data: areaPage } = await supabase
+  .from("area_boundaries")
+  .select("area_slug")
+  .eq("city", "nanaimo")
+  .eq("area_slug", slug)
+  .maybeSingle();
+
+/*
+ * Then check whether it is an intent/type page.
+ */
+const { data: intentPage } = await supabase
+  .from("intent_pages")
+  .select("slug")
+  .eq("city", "nanaimo")
+  .eq("slug", slug)
+  .maybeSingle();
+
+let internalPath = "";
+
+if (
+  slug === "nanaimo-mobile-homes" ||
+  slug === "mobile-homes"
+) {
+  /*
+   * Public URL:
+   * /nanaimo-mobile-homes
+   *
+   * Internal page:
+   * /nanaimo/mobile-homes
+   */
+  internalPath = "/nanaimo/mobile-homes";
+} else if (areaPage || intentPage) {
+  /*
+   * Public URL:
+   * /south-nanaimo
+   *
+   * Internal page:
+   * /nanaimo/south-nanaimo
+   */
+  internalPath = `/nanaimo/${slug}`;
+} else {
+  return Astro.redirect("/404");
+}
+
+return Astro.rewrite(
+  `${internalPath}?root_rewrite=1`
+);
+---

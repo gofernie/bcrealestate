@@ -23,6 +23,34 @@ const { data: leads = [], error } = await supabase
   .select("*")
   .order(column, { ascending });
 
+const leadSessionIds = Array.from(
+  new Set(
+    leads
+      .map((lead) => String(lead.session_id || "").trim())
+      .filter(Boolean)
+  )
+);
+
+let validSessionIds = new Set<string>();
+
+if (leadSessionIds.length) {
+  const { data: matchingSessions = [], error: sessionsError } =
+    await supabase
+      .from("intent_sessions")
+      .select("session_id")
+      .in("session_id", leadSessionIds);
+
+  if (sessionsError) {
+    console.error("Lead session lookup error:", sessionsError);
+  }
+
+  validSessionIds = new Set(
+    matchingSessions
+      .map((session) => String(session.session_id || "").trim())
+      .filter(Boolean)
+  );
+}
+
 function fmtDate(value) {
   if (!value) return "";
   return new Date(value).toLocaleString();
@@ -244,11 +272,14 @@ function fmtDate(value) {
             <div class="actions">
               {lead.email && <a class="btn" href={`mailto:${lead.email}`}>Email</a>}
               {lead.phone && <a class="btn" href={`tel:${lead.phone}`}>Call</a>}
-              {lead.session_id && (
-                <a class="btn" href={`/admin/intent-sessions?session=${encodeURIComponent(lead.session_id)}`}>
-                  View session
-                </a>
-              )}
+              {lead.session_id && validSessionIds.has(String(lead.session_id)) && (
+  <a
+    class="btn"
+    href={`/admin/intent-sessions?session=${encodeURIComponent(lead.session_id)}`}
+  >
+    View session
+  </a>
+)}
             </div>
           </article>
         ))}

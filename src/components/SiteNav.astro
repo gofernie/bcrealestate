@@ -33,10 +33,26 @@ const hostname = Astro.url.hostname
   .toLowerCase()
   .replace(/^www\./, "");
 
-const brandHref =
-  hostname === "nanaimomobiles.com"
-    ? "/"
-    : `/${slugify(city)}/`;
+const usesRootPageUrls =
+  hostname === "nanaimomobiles.com";
+
+const brandHref = usesRootPageUrls
+  ? "/"
+  : `/${slugify(city)}/`;
+
+const buildPageHref = (pageSlug: string) =>
+  usesRootPageUrls
+    ? `/${pageSlug}`
+    : `/${slugify(city)}/${pageSlug}`;
+
+const buildAreaHref = (areaSlug: string) =>
+  usesRootPageUrls
+    ? `/${areaSlug}`
+    : `/${slugify(city)}/${areaSlug}`;
+
+const areasHref = usesRootPageUrls
+  ? "/areas"
+  : `/${slugify(city)}/areas`;
 
 const isActive = (href: string) => {
   const cleanHref = href.replace(/\/$/, "") || "/";
@@ -63,7 +79,7 @@ const cleanAreaLabel = (value: string) =>
 
 const areaLinks: NavItem[] = areas.slice(0, 8).map((area: string) => ({
   label: cleanAreaLabel(area),
-  href: `/${slugify(city)}/${slugify(area)}`,
+  href: buildAreaHref(slugify(area)),
 }));
 
 
@@ -78,25 +94,11 @@ const intentLinks: NavItem[] = intentPages.slice(0, 6).map((page: any) => ({
     page.slug
       .replace(/-/g, " ")
       .replace(/\b\w/g, (char: string) => char.toUpperCase()),
-  href: `/${slugify(city)}/${page.slug}`,
+
+  href: buildPageHref(page.slug),
 }));
 
-const navIntentLinks: NavItem[] = intentPages
-  .filter((p: any) => p.show_in_nav)
-  .slice(0, 6)
-  .map((page: any) => ({
-    label:
-      page.nav_label ||
-      page.card_title ||
-      page.hero_heading ||
-      page.seo_heading ||
-      page.slug
-        .replace(/-/g, " ")
-        .replace(/\b\w/g, (char: string) => char.toUpperCase()),
-    href: `/${slugify(city)}/${page.slug}`,
-  }));
-
-const finalNavLinks: NavItem[] = navIntentLinks;
+const finalNavLinks: NavItem[] = intentLinks;
 ---
 
 <nav class="site-nav">
@@ -120,9 +122,9 @@ const finalNavLinks: NavItem[] = navIntentLinks;
   class:list={{
     active:
       activeSection === "areas" ||
-      currentPath === `/${slugify(city)}/areas`
+      currentPath === areasHref
   }}
-  href={`/${slugify(city)}/areas`}
+  href={areasHref}
 >
   Areas
 </a>

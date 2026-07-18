@@ -3,9 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 import Layout from "../layouts/Layout.astro";
 import SiteNav from "../components/SiteNav.astro";
 import { getSite, getSiteMarkets } from "../lib/getSite";
+import { getNavIntentPages } from "../lib/getNavIntentPages";
 import "../styles/page-hero.css";
 import "../styles/area-page.css";
-
+import MobileHomeHomepage from "../components/sites/MobileHomeHomepage.astro";
 export const prerender = false;
 
 const supabase = createClient(
@@ -87,12 +88,23 @@ const { data: sites = [] } = await sitesQuery;
 let listingsQuery = supabase
   .from("listing_rows")
 .select(`
+    id,
+    mls_number,
     normalized_city,
     normalized_type,
+    property_type,
     area,
     normalized_area,
     price,
+    beds,
+    baths,
+    sqft,
+    address,
+    image_url,
+    images,
     listed_at,
+    created_at,
+    updated_at,
     status
 `)
   .eq("status", "A");
@@ -285,6 +297,10 @@ const pageTitle = isMobileHomeSite
 const pageDescription = isMobileHomeSite
   ? `Browse mobile homes for sale in ${primaryCityLabel}, compare neighbourhoods, and explore local mobile-home listings.`
   : "Browse British Columbia real estate by city, area, neighbourhood, and property type.";
+const navIntentPages = await getNavIntentPages(
+  supabase,
+  site?.id
+);
 ---
 
 <Layout
@@ -293,226 +309,22 @@ const pageDescription = isMobileHomeSite
   accentColor={site?.accent_color || "#2f6f73"}
   city={isPropertyTypeSite ? primaryCity : "bc"}
 >
-  <SiteNav
-    site={site}
-    showAreaNav={false}
-  />
+
+
+<SiteNav
+  city={primaryCity}
+  site={site}
+  showAreaNav={false}
+  intentPages={navIntentPages}
+/>
 
   {
-    isMobileHomeSite ? (
-      <>
-        <header class="mobile-home-hero">
-          <div class="mobile-home-hero__inner">
-            <div class="mobile-home-hero__content">
-              <p class="mobile-home-hero__eyebrow">
-                {primaryCityLabel} Mobile Home Guide
-              </p>
-
-              <h1>
-                Mobile homes
-                <br />
-                in {primaryCityLabel}.
-              </h1>
-
-              <p class="mobile-home-hero__copy">
-                Browse active mobile homes, compare
-                Nanaimo neighbourhoods, and find a
-                simpler path to local home ownership.
-              </p>
-
-              <div class="mobile-home-hero__actions">
-                <a
-                  class="hero-button hero-button--primary"
-                  href={listingHref}
-                >
-                  View mobile homes
-                </a>
-
-                <a
-                  class="hero-button hero-button--secondary"
-                  href={exploreHref}
-                >
-                  Open Explorer
-                </a>
-              </div>
-            </div>
-
-            <div class="mobile-home-summary">
-              <div class="mobile-home-summary__heading">
-                <span>Current market</span>
-                <strong>
-                  {primaryCityLabel} mobile homes
-                </strong>
-              </div>
-
-              <div class="mobile-home-stat-grid">
-                <div class="mobile-home-stat">
-                  <strong>
-                    {activeListingCount.toLocaleString()}
-                  </strong>
-                  <span>For sale now</span>
-                </div>
-
-                <div class="mobile-home-stat">
-                  <strong>
-                    {formatPrice(medianPrice)}
-                  </strong>
-                  <span>Median asking price</span>
-                </div>
-
-                <div class="mobile-home-stat">
-                  <strong>
-                   {allAreaCounts.length.toLocaleString()}
-                  </strong>
-                  <span>Areas represented</span>
-                </div>
-
-                <div class="mobile-home-stat">
-                  <strong>
-                    {newListingCount.toLocaleString()}
-                  </strong>
-                  <span>New in 30 days</span>
-                </div>
-              </div>
-
-              <a
-                class="mobile-home-summary__link"
-                href={listingHref}
-              >
-                Browse all mobile homes
-                <span>→</span>
-              </a>
-            </div>
-          </div>
-        </header>
-
-        <main class="mobile-home-shell">
-          <section class="mobile-home-intro">
-            <div>
-              <span class="section-eyebrow">
-                Start your search
-              </span>
-
-              <h2>
-                Find the right mobile home
-                in Nanaimo.
-              </h2>
-            </div>
-
-            <p>
-              Compare available homes by area, price,
-              and location. Every result on this site is
-              filtered specifically to Nanaimo mobile
-              homes.
-            </p>
-          </section>
-
-          <section class="mobile-home-links">
-            <a
-              class="mobile-home-link-card"
-              href={listingHref}
-            >
-              <span class="mobile-home-link-card__number">
-                01
-              </span>
-
-              <strong>Homes for sale</strong>
-
-              <p>
-                See every active Nanaimo mobile-home
-                listing in one place.
-              </p>
-
-              <span class="mobile-home-link-card__action">
-                Browse listings →
-              </span>
-            </a>
-
-            <a
-              class="mobile-home-link-card"
-              href={areasHref}
-            >
-              <span class="mobile-home-link-card__number">
-                02
-              </span>
-
-              <strong>Browse by area</strong>
-
-              <p>
-                Compare the Nanaimo neighbourhoods
-                where mobile homes are currently listed.
-              </p>
-
-              <span class="mobile-home-link-card__action">
-                Explore areas →
-              </span>
-            </a>
-
-            <a
-              class="mobile-home-link-card"
-              href={exploreHref}
-            >
-              <span class="mobile-home-link-card__number">
-                03
-              </span>
-
-              <strong>Explore the map</strong>
-
-              <p>
-                View mobile homes alongside parks,
-                shops, services, and local places.
-              </p>
-
-              <span class="mobile-home-link-card__action">
-                Open Explorer →
-              </span>
-            </a>
-          </section>
-
-         {featuredAreaCounts.length > 0 && (
-  <section class="mobile-home-areas">
-    <div class="section-heading">
-      <span class="section-eyebrow">
-        Browse by location
-      </span>
-
-      <h2>
-        Mobile homes across {primaryCityLabel}
-      </h2>
-
-      <p>
-        Start with the areas currently showing
-        the most active mobile-home listings.
-      </p>
-    </div>
-
-    <div class="mobile-area-grid">
-      {featuredAreaCounts.map((item: any) => (
-        <a
-          class="mobile-area-card"
-      href={`/${item.area
-  .toLowerCase()
-  .trim()
-  .replace(/[^a-z0-9]+/g, "-")
-  .replace(/^-+|-+$/g, "")}`}
-        >
-          <strong>{item.area}</strong>
-
-          <span>
-            {item.count === 1
-              ? "1 active mobile home"
-              : `${item.count} active mobile homes`}
-          </span>
-
-          <small>View listings →</small>
-        </a>
-      ))}
-    </div>
-  </section>
-)}
-        </main>
-      </>
-    ) : (
+  isMobileHomeSite ? (
+    <MobileHomeHomepage
+      site={site}
+      listings={listings}
+    />
+  ) : (
       <>
         <header
           class="page-hero"

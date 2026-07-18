@@ -8,8 +8,33 @@ const supabase = createClient(
   import.meta.env.PUBLIC_SUPABASE_URL,
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
-const selectedCity = String(Astro.url.searchParams.get("city") || "");
-const site = await getSite(Astro.url.hostname);
+const selectedCity = String(
+  Astro.url.searchParams.get("city") || ""
+).toLowerCase();
+
+const hostname = Astro.url.hostname
+  .replace(/^www\./, "")
+  .toLowerCase();
+
+let site = null;
+
+if (selectedCity) {
+  const { data: selectedSite, error: selectedSiteError } = await supabase
+    .from("sites")
+    .select("*")
+    .eq("domain", hostname)
+    .eq("city", selectedCity)
+    .maybeSingle();
+
+  if (selectedSiteError) {
+    console.error("Selected admin site lookup error:", selectedSiteError);
+  }
+
+  site = selectedSite;
+} else {
+  site = await getSite(hostname);
+}
+
 const formData =
   Astro.request.method === "POST" ? await Astro.request.formData() : null;
 

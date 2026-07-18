@@ -59,7 +59,15 @@ export const GET: APIRoute = async ({ request, url }) => {
     });
   }
 
-  return new Response(JSON.stringify({ ok: true, data }));
+return new Response(
+  JSON.stringify({
+    ok: true,
+    data: {
+      ...data,
+      heroImageUrl: data?.hero_image_url || "",
+    },
+  })
+);
 };
 
 export const POST: APIRoute = async ({ request }) => {
@@ -91,12 +99,13 @@ export const POST: APIRoute = async ({ request }) => {
       primary_type: data.primaryType || null,
       use_root_homepage: Boolean(data.useRootHomepage),
 
-      // Homepage content
-      hero_eyebrow: data.heroEyebrow,
-      hero_heading: data.heroHeading,
-      hero_copy: data.heroIntro,
-      intro_copy: data.cityIntro,
-      bio: data.agentBio,
+// Homepage content
+hero_eyebrow: data.heroEyebrow,
+hero_heading: data.heroHeading,
+hero_copy: data.heroIntro,
+hero_image_url: data.heroImageUrl || null,
+intro_copy: data.cityIntro,
+bio: data.agentBio,
     })
     .eq("id", siteId);
 

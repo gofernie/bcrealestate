@@ -1,0 +1,1834 @@
+---
+type Site = {
+  city?: string;
+  site_name?: string;
+  domain?: string;
+  accent_color?: string;
+  heroImageUrl?: string;
+  hero_image_url?: string;
+};
+
+type Props = {
+  site?: Site;
+  listings?: any[];
+};
+
+const {
+  site,
+  listings = [],
+} = Astro.props;
+
+const city = site?.city || "nanaimo";
+
+const cityLabel = city
+  .replace(/-/g, " ")
+  .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const accent = site?.accent_color || "#176b63";
+
+const heroImage =
+  site?.heroImageUrl ||
+  site?.hero_image_url ||
+  "";
+
+const activeListings = listings.filter((listing) => {
+  const status = String(listing?.status || "").toUpperCase();
+  const type = String(
+    listing?.normalized_type ||
+    listing?.property_type ||
+    ""
+  ).toLowerCase();
+
+  return (
+    (!status || status === "A") &&
+    type.includes("mobile")
+  );
+});
+
+const listingCount = activeListings.length || 41;
+
+const newestListings = [...activeListings]
+  .sort((a, b) => {
+    const dateA = new Date(
+      a?.listed_at ||
+      a?.created_at ||
+      a?.updated_at ||
+      0
+    ).getTime();
+
+    const dateB = new Date(
+      b?.listed_at ||
+      b?.created_at ||
+      b?.updated_at ||
+      0
+    ).getTime();
+
+    return dateB - dateA;
+  })
+  .slice(0, 12);
+
+const getListingImage = (listing: any) => {
+  if (listing?.image_url) {
+    return listing.image_url;
+  }
+
+  if (
+    Array.isArray(listing?.images) &&
+    listing.images.length > 0
+  ) {
+    const firstImage = listing.images[0];
+
+    return typeof firstImage === "string"
+      ? firstImage
+      : firstImage?.url || firstImage?.src || "";
+  }
+
+  return "";
+};
+
+const formatAddress = (listing: any) =>
+  String(
+    listing?.address ||
+    listing?.area ||
+    `${cityLabel} mobile home`
+  ).trim();
+
+const formatListingPrice = (value: unknown) => {
+  const price = Number(value);
+
+  return Number.isFinite(price) && price > 0
+    ? new Intl.NumberFormat("en-CA", {
+        style: "currency",
+        currency: "CAD",
+        maximumFractionDigits: 0,
+      }).format(price)
+    : "Price unavailable";
+};
+
+const prices = activeListings
+  .map((listing) => Number(listing?.price))
+  .filter((price) => Number.isFinite(price) && price > 0)
+  .sort((a, b) => a - b);
+
+const medianPrice = prices.length
+  ? prices[Math.floor(prices.length / 2)]
+  : 349900;
+
+const recentListings = activeListings.filter((listing) => {
+  const rawDate =
+    listing?.listed_at ||
+    listing?.created_at ||
+    listing?.updated_at;
+
+  if (!rawDate) return false;
+
+  const listedAt = new Date(rawDate);
+  const thirtyDaysAgo = new Date();
+
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  return listedAt >= thirtyDaysAgo;
+}).length || 15;
+
+const areaCounts = new Map<string, number>();
+
+for (const listing of activeListings) {
+  const area = String(listing?.area || "").trim();
+
+  if (!area) continue;
+
+  areaCounts.set(area, (areaCounts.get(area) || 0) + 1);
+}
+
+const areaCount = areaCounts.size || 9;
+
+const formatPrice = (value: number) =>
+  new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: "CAD",
+    maximumFractionDigits: 0,
+  }).format(value);
+
+const quickLinks = [
+  {
+    label: "Under $300,000",
+    icon: "home",
+    href: `/${city}/mobile-homes?price_max=300000`,
+  },
+  {
+    label: "55+ Communities",
+    icon: "people",
+    href: "/parks?age=55-plus",
+  },
+  {
+    label: "Family Parks",
+    icon: "family",
+    href: "/parks?type=family",
+  },
+  {
+    label: "Pet Friendly",
+    icon: "paw",
+    href: "/parks?pets=true",
+  },
+  {
+    label: "Lowest Pad Fees",
+    icon: "dollar",
+    href: "/parks?sort=pad-fee",
+  },
+  {
+    label: "Near the Ocean",
+    icon: "water",
+    href: "/parks?feature=ocean",
+  },
+  {
+    label: "Transit Friendly",
+    icon: "bus",
+    href: `/explore?city=${city}&layer=transit`,
+  },
+  {
+    label: "Walkable Parks",
+    icon: "walk",
+    href: "/parks?feature=walkable",
+  },
+];
+
+const parks = [
+  {
+    name: "Seabreeze Mobile Home Park",
+    image: "",
+    tags: ["55+", "Pet friendly"],
+    padFee: "$650",
+    homes: 4,
+  },
+  {
+    name: "Sharman Mobile Home Park",
+    image: "",
+    tags: ["Family friendly"],
+    padFee: "$710",
+    homes: 5,
+  },
+  {
+    name: "Lakeside Estates",
+    image: "",
+    tags: ["55+", "Near the ocean"],
+    padFee: "$680",
+    homes: 2,
+  },
+  {
+    name: "Crestview Park",
+    image: "",
+    tags: ["55+"],
+    padFee: "$595",
+    homes: 2,
+  },
+  {
+    name: "Pinegrove Estates",
+    image: "",
+    tags: ["Family friendly", "Pet friendly"],
+    padFee: "$750",
+    homes: 6,
+  },
+];
+
+const guides = [
+  {
+    title: "Financing Guide",
+    copy: "Can I get a mortgage? How mobile-home financing works.",
+    href: "/guides/mobile-home-financing",
+    icon: "calculator",
+  },
+  {
+    title: "Pad Fees Explained",
+    copy: "What is included, what to expect, and typical costs.",
+    href: "/guides/mobile-home-pad-fees",
+    icon: "receipt",
+  },
+  {
+    title: "Ownership 101",
+    copy: "Understand leased land, strata, and what you actually own.",
+    href: "/guides/mobile-home-ownership",
+    icon: "key",
+  },
+  {
+    title: "Inspection Checklist",
+    copy: "Important things to check before purchasing a mobile home.",
+    href: "/guides/mobile-home-inspections",
+    icon: "checklist",
+  },
+];
+
+const resources = [
+  "Can mobile homes increase in value?",
+  "Manufactured vs. modular homes",
+  "How pad rent works",
+  "Can I rent my mobile home?",
+  "Insurance for mobile homes",
+  "Electrical certification",
+];
+
+const iconPaths: Record<string, string> = {
+  home: "M3 11.5 12 4l9 7.5M5.5 10v10h13V10M9 20v-6h6v6",
+  people:
+    "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
+  family:
+    "M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM2 21v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2m0-6h2a5 5 0 0 1 5 5v1",
+  paw:
+    "M8.5 12.5c-2.5 0-4.5 2-4.5 4.5 0 2 1.5 3 3.2 3 1.2 0 2-.7 2.8-.7s1.6.7 2.8.7c1.7 0 3.2-1 3.2-3 0-2.5-2-4.5-4.5-4.5h-3ZM6 9c1.1 0 2-1.1 2-2.5S7.1 4 6 4 4 5.1 4 6.5 4.9 9 6 9Zm6-2.5C12 5.1 11.1 4 10 4S8 5.1 8 6.5 8.9 9 10 9s2-1.1 2-2.5ZM16 10c1.1 0 2-1.1 2-2.5S17.1 5 16 5s-2 1.1-2 2.5 0.9 2.5 2 2.5Z",
+  dollar:
+    "M12 2v20m5-16.5C15.8 4.5 14.2 4 12.5 4 9.5 4 7 5.6 7 8s2 3.4 5.5 4c3.5.8 5.5 1.6 5.5 4s-2.5 4-5.5 4c-2 0-4-.7-5.5-2",
+  water:
+    "M2 18c2 0 2-1.5 4-1.5S8 18 10 18s2-1.5 4-1.5S16 18 18 18s2-1.5 4-1.5M3 13l4-4 3 3 5-6 6 7",
+  bus:
+    "M6 3h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm-2 9h16M8 21v-3m8 3v-3M8 7h8",
+  walk:
+    "M13 5a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm-3 16 2-6 2 2 2 4m-8-8 3-5 3 2 3 1m-6-3-2 5-4 3",
+  calculator:
+    "M6 2h12v20H6zM8 5h8v4H8zm0 8h2m3 0h2m-7 4h2m3 0h2",
+  receipt:
+    "M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6m-6 4h6",
+  key:
+    "M14 8a5 5 0 1 1-2 4l-7 7H2v-3l7-7a5 5 0 0 1 5-1Z",
+  checklist:
+    "M7 3h10v18H7zM9 7h6m-6 4h6m-6 4h6M4 7h.01M4 11h.01M4 15h.01",
+};
+---
+
+<div
+  class="mobile-home-homepage"
+  style={`--mh-accent:${accent};`}
+>
+<section
+  class:list={[
+    "mh-hero",
+    { "mh-hero--image": !!heroImage }
+  ]}
+  style={
+    heroImage
+      ? `--hero-image:url('${heroImage}')`
+      : undefined
+  }
+>
+    <div class="mh-hero-glow"></div>
+
+    <div class="mh-shell mh-hero-grid">
+      <div class="mh-hero-copy">
+        <div class="mh-eyebrow">Nanaimo Mobile Homes</div>
+
+        <h1>
+          Everything you need to buy a mobile home in Nanaimo.
+        </h1>
+
+        <div class="mh-benefits">
+          <span>Every listing</span>
+          <span>Every park</span>
+          <span>Pad fees</span>
+          <span>Financing</span>
+          <span>55+ communities</span>
+          <span>Family parks</span>
+          <span>Expert guidance</span>
+        </div>
+
+        <div class="mh-actions">
+          <a
+            class="mh-button mh-button-primary"
+            href={`/${city}/mobile-homes`}
+          >
+            Browse homes for sale
+          </a>
+
+          <a class="mh-button mh-button-secondary" href="/parks">
+            Find your park
+          </a>
+        </div>
+      </div>
+
+      <aside class="mh-market-card">
+        <div class="mh-market-label">Current market</div>
+
+        <div class="mh-market-grid">
+          <div class="mh-market-stat">
+            <strong>{listingCount}</strong>
+            <span>Homes for sale</span>
+          </div>
+
+          <div class="mh-market-stat">
+            <strong>{formatPrice(medianPrice)}</strong>
+            <span>Median asking price</span>
+          </div>
+
+          <div class="mh-market-stat">
+            <strong>{recentListings}</strong>
+            <span>New this month</span>
+          </div>
+
+          <div class="mh-market-stat">
+            <strong>{areaCount}</strong>
+            <span>Areas represented</span>
+          </div>
+        </div>
+
+        <a class="mh-card-link" href={`/${city}/mobile-homes`}>
+          View all mobile homes
+          <span aria-hidden="true">→</span>
+        </a>
+      </aside>
+    </div>
+  </section>
+
+  <main>
+    <section class="mh-section mh-quick-section">
+      <div class="mh-shell">
+        <div class="mh-section-label">I’m looking for...</div>
+
+        <div class="mh-quick-grid">
+          {
+            quickLinks.map((item) => (
+              <a class="mh-quick-card" href={item.href}>
+                <span class="mh-icon-wrap">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d={iconPaths[item.icon]} />
+                  </svg>
+                </span>
+
+                <strong>{item.label}</strong>
+              </a>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+
+       <section class="mh-section">
+      <div class="mh-shell">
+        <div class="mh-heading-row">
+          <div>
+            <div class="mh-section-label">
+              Just listed
+            </div>
+
+            <h2>Newest mobile homes for sale.</h2>
+          </div>
+
+          <a
+            class="mh-text-link"
+            href={`/${city}/mobile-homes`}
+          >
+            View all mobile homes →
+          </a>
+        </div>
+
+        {
+          newestListings.length > 0 ? (
+            <div class="mh-listing-grid">
+              {newestListings.map((listing, index) => {
+                const image = getListingImage(listing);
+
+                return (
+                  <a
+                    class="mh-listing-card"
+                    href={`/${city}/mobile-homes`}
+                  >
+                    <div class="mh-listing-image">
+                      {image ? (
+                        <img
+                          src={image}
+                          alt={formatAddress(listing)}
+                          loading={index < 4 ? "eager" : "lazy"}
+                          fetchpriority={index === 0 ? "high" : "auto"}
+                          decoding="async"
+                        />
+                      ) : (
+                        <div class="mh-listing-placeholder">
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.35"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d={iconPaths.home} />
+                          </svg>
+                        </div>
+                      )}
+
+                      <span class="mh-listing-badge">
+                        New
+                      </span>
+                    </div>
+
+                    <div class="mh-listing-body">
+                      <strong class="mh-listing-price">
+                        {formatListingPrice(listing.price)}
+                      </strong>
+
+                      <div class="mh-listing-address">
+                        {formatAddress(listing)}
+                      </div>
+
+                      <div class="mh-listing-area">
+                        {listing.area || cityLabel}
+                      </div>
+
+                      <div class="mh-listing-meta">
+                        {listing.beds ? (
+                          <span>{listing.beds} bd</span>
+                        ) : null}
+
+                        {listing.baths ? (
+                          <span>{listing.baths} ba</span>
+                        ) : null}
+
+                        {listing.sqft ? (
+                          <span>
+                            {Number(listing.sqft).toLocaleString()} sq ft
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <span class="mh-listing-link">
+                        View listing →
+                      </span>
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          ) : (
+            <div class="mh-listing-empty">
+              New mobile-home listings will appear here.
+            </div>
+          )
+        }
+      </div>
+    </section>
+
+    <section class="mh-section">
+      <div class="mh-shell mh-guide-panel">
+        <div class="mh-guide-intro">
+          <div class="mh-section-label">Expert guidance</div>
+          <h2>Everything you need to know.</h2>
+          <p>
+            Clear answers to the most common questions about mobile-home
+            living and ownership.
+          </p>
+
+          <a class="mh-text-link" href="/guides">
+            View all guides →
+          </a>
+        </div>
+
+        <div class="mh-guide-grid">
+          {
+            guides.map((guide) => (
+              <a class="mh-guide-card" href={guide.href}>
+                <span class="mh-guide-icon">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.45"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d={iconPaths[guide.icon]} />
+                  </svg>
+                </span>
+
+                <h3>{guide.title}</h3>
+                <p>{guide.copy}</p>
+                <span class="mh-guide-link">Learn more →</span>
+              </a>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+
+    <section class="mh-section">
+      <div class="mh-shell">
+        <div class="mh-section-label">
+          Nanaimo mobile home market snapshot
+        </div>
+
+        <div class="mh-dashboard">
+          <div class="mh-dashboard-stat">
+            <strong>{listingCount}</strong>
+            <span>Homes available</span>
+          </div>
+
+          <div class="mh-dashboard-stat">
+            <strong>{recentListings}</strong>
+            <span>New this month</span>
+          </div>
+
+          <div class="mh-dashboard-stat">
+            <strong>{formatPrice(medianPrice)}</strong>
+            <span>Median price</span>
+          </div>
+
+          <div class="mh-dashboard-stat">
+            <strong>8</strong>
+            <span>Price reductions</span>
+          </div>
+
+          <div class="mh-dashboard-stat">
+            <strong>7</strong>
+            <span>Parks with listings</span>
+          </div>
+
+          <div class="mh-dashboard-stat">
+            <strong>92%</strong>
+            <span>On leased land</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mh-section">
+      <div class="mh-shell mh-feature-grid">
+        <article class="mh-spotlight">
+          <div class="mh-spotlight-content">
+            <div class="mh-spotlight-label">★ Park spotlight</div>
+
+            <h2>Seabreeze Mobile Home Park</h2>
+
+            <div class="mh-tags mh-tags-light">
+              <span>55+ community</span>
+              <span>Pet friendly</span>
+              <span>Ocean nearby</span>
+            </div>
+
+            <p>
+              A quiet, established community with mature landscaping and
+              convenient access to shopping and services.
+            </p>
+
+            <div class="mh-spotlight-stats">
+              <div>
+                <strong>4</strong>
+                <span>Homes for sale</span>
+              </div>
+
+              <div>
+                <strong>$650</strong>
+                <span>Monthly pad fee</span>
+              </div>
+
+              <div>
+                <strong>2 pets</strong>
+                <span>Allowed</span>
+              </div>
+            </div>
+
+            <a class="mh-button mh-button-light" href="/parks">
+              View park guide
+            </a>
+          </div>
+        </article>
+
+        <article class="mh-comparison-card">
+          <div class="mh-heading-row">
+            <div>
+              <div class="mh-section-label">Compare parks</div>
+              <h2>See the differences.</h2>
+            </div>
+
+            <a class="mh-text-link" href="/parks">
+              Full comparison →
+            </a>
+          </div>
+
+          <div class="mh-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Park</th>
+                  <th>55+</th>
+                  <th>Pets</th>
+                  <th>Pad fee</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {
+                  parks.slice(0, 5).map((park, index) => (
+                    <tr>
+                      <td>{park.name}</td>
+                      <td>{index === 1 || index === 4 ? "—" : "✓"}</td>
+                      <td>{park.tags.some((tag) => tag.includes("Pet")) ? "✓" : "1 pet"}</td>
+                      <td>{park.padFee}</td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <p class="mh-disclaimer">
+            Pad fees and park rules can change. Confirm current information
+            with park management before purchasing.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section class="mh-section">
+      <div class="mh-shell">
+        <div class="mh-heading-row">
+          <div>
+            <div class="mh-section-label">
+              Mobile home living resources
+            </div>
+
+            <h2>Learn before you buy.</h2>
+          </div>
+
+          <a class="mh-text-link" href="/guides">
+            View all resources →
+          </a>
+        </div>
+
+        <div class="mh-resource-grid">
+          {
+            resources.map((resource) => (
+              <a class="mh-resource-card" href="/guides">
+                <span class="mh-resource-mark">?</span>
+                <strong>{resource}</strong>
+                <span>→</span>
+              </a>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+
+    <section class="mh-section mh-alert-section">
+      <div class="mh-shell">
+        <div class="mh-alert-card">
+          <div class="mh-alert-copy">
+            <div class="mh-alert-icon">↗</div>
+
+            <div>
+              <h2>Never miss a new mobile home.</h2>
+              <p>
+                Get an alert when a listing matches your price, park, age,
+                or pet preferences.
+              </p>
+            </div>
+          </div>
+
+          <form class="mh-alert-form">
+            <label>
+              <span>Email address</span>
+              <input
+                type="email"
+                name="email"
+                placeholder="you@example.com"
+              />
+            </label>
+
+            <button type="submit">Create alert</button>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<style>
+  .mobile-home-homepage {
+    --mh-ink: #17201d;
+    --mh-muted: #66706c;
+    --mh-line: rgba(23, 32, 29, 0.12);
+    --mh-soft: #f4f5f2;
+    --mh-warm: #f8f4ed;
+    --mh-radius: 22px;
+    color: var(--mh-ink);
+    background: #fff;
+    font-family:
+      Inter,
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      sans-serif;
+  }
+
+  .mobile-home-homepage * {
+    box-sizing: border-box;
+  }
+
+  .mobile-home-homepage h1,
+  .mobile-home-homepage h2,
+  .mobile-home-homepage h3,
+  .mobile-home-homepage p {
+    margin-top: 0;
+  }
+
+  .mobile-home-homepage h1,
+  .mobile-home-homepage h2 {
+    font-family:
+      Georgia,
+      "Times New Roman",
+      serif;
+    font-weight: 500;
+    letter-spacing: -0.04em;
+  }
+
+  .mh-shell {
+    width: min(1460px, calc(100% - 64px));
+    margin-inline: auto;
+  }
+
+.mh-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 72px 0 64px;
+  background:
+    radial-gradient(
+      circle at 74% 38%,
+      color-mix(in srgb, var(--mh-accent) 18%, transparent),
+      transparent 38%
+    ),
+    linear-gradient(110deg, #faf7f1 0%, #f8f7f2 46%, #eef4f0 100%);
+  border-bottom: 1px solid var(--mh-line);
+}
+
+.mh-hero--image {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(248, 247, 242, 0.96) 0%,
+      rgba(248, 247, 242, 0.86) 42%,
+      rgba(248, 247, 242, 0.42) 72%,
+      rgba(248, 247, 242, 0.15) 100%
+    ),
+    var(--hero-image) center center / cover no-repeat;
+}
+
+  .mh-hero-glow {
+    position: absolute;
+    width: 560px;
+    height: 560px;
+    right: 7%;
+    top: -210px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--mh-accent) 12%, transparent);
+    filter: blur(45px);
+    pointer-events: none;
+  }
+
+  .mh-hero-grid {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(340px, 0.7fr);
+    gap: 72px;
+    align-items: center;
+  }
+
+  .mh-eyebrow,
+  .mh-section-label,
+  .mh-market-label,
+  .mh-spotlight-label {
+    margin-bottom: 16px;
+    color: var(--mh-accent);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+  }
+
+  .mh-hero h1 {
+    max-width: 820px;
+    margin-bottom: 24px;
+    font-size: clamp(3.2rem, 6vw, 6.3rem);
+    line-height: 0.93;
+  }
+
+  .mh-benefits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    max-width: 760px;
+    margin-bottom: 32px;
+    color: #46534e;
+    font-size: 0.92rem;
+  }
+
+  .mh-benefits span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .mh-benefits span::before {
+    content: "✓";
+    display: grid;
+    width: 18px;
+    height: 18px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--mh-accent) 45%, transparent);
+    border-radius: 999px;
+    color: var(--mh-accent);
+    font-size: 0.68rem;
+    font-weight: 800;
+  }
+
+  .mh-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .mh-button {
+    display: inline-flex;
+    min-height: 48px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 22px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    font-size: 0.88rem;
+    font-weight: 750;
+    text-decoration: none;
+    transition:
+      transform 160ms ease,
+      box-shadow 160ms ease,
+      background 160ms ease;
+  }
+
+  .mh-button:hover {
+    transform: translateY(-2px);
+  }
+
+  .mh-button-primary {
+    color: #fff;
+    background: var(--mh-accent);
+    box-shadow: 0 12px 28px
+      color-mix(in srgb, var(--mh-accent) 24%, transparent);
+  }
+
+  .mh-button-secondary {
+    color: var(--mh-accent);
+    background: rgba(255, 255, 255, 0.68);
+    border-color: color-mix(in srgb, var(--mh-accent) 45%, transparent);
+  }
+
+  .mh-market-card {
+    padding: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.88);
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: 0 24px 60px rgba(28, 44, 37, 0.12);
+    backdrop-filter: blur(18px);
+  }
+
+  .mh-market-label {
+    margin-bottom: 18px;
+    color: #68726e;
+  }
+
+  .mh-market-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-top: 1px solid var(--mh-line);
+    border-left: 1px solid var(--mh-line);
+  }
+
+  .mh-market-stat {
+    min-height: 112px;
+    padding: 22px;
+    border-right: 1px solid var(--mh-line);
+    border-bottom: 1px solid var(--mh-line);
+  }
+
+  .mh-market-stat strong {
+    display: block;
+    margin-bottom: 7px;
+    font-family: Georgia, serif;
+    font-size: 1.6rem;
+    font-weight: 500;
+  }
+
+  .mh-market-stat span {
+    color: var(--mh-muted);
+    font-size: 0.75rem;
+  }
+
+  .mh-card-link,
+  .mh-text-link {
+    color: var(--mh-accent);
+    font-size: 0.8rem;
+    font-weight: 750;
+    text-decoration: none;
+  }
+
+  .mh-card-link {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 24px;
+  }
+
+  .mh-section {
+    padding: 40px 0;
+  }
+
+  .mh-quick-section {
+    padding-top: 0;
+  }
+
+  .mh-quick-section .mh-shell {
+    position: relative;
+    margin-top: -18px;
+    padding: 28px;
+    border: 1px solid var(--mh-line);
+    border-radius: 28px;
+    background: #fff;
+    box-shadow: 0 18px 50px rgba(26, 39, 34, 0.08);
+  }
+
+  .mh-quick-grid {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .mh-quick-card {
+    display: flex;
+    min-height: 132px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 18px 12px;
+    border: 1px solid var(--mh-line);
+    border-radius: 14px;
+    color: var(--mh-ink);
+    text-align: center;
+    text-decoration: none;
+    transition:
+      transform 160ms ease,
+      border-color 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .mh-quick-card:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--mh-accent) 42%, transparent);
+    box-shadow: 0 14px 28px rgba(28, 42, 36, 0.09);
+  }
+
+  .mh-icon-wrap {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    color: var(--mh-accent);
+  }
+
+  .mh-icon-wrap svg {
+    width: 34px;
+    height: 34px;
+  }
+
+  .mh-quick-card strong {
+    font-size: 0.83rem;
+    line-height: 1.2;
+  }
+
+  .mh-heading-row {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 22px;
+  }
+
+  .mh-heading-row h2,
+  .mh-guide-intro h2,
+  .mh-comparison-card h2 {
+    margin-bottom: 0;
+    font-size: clamp(2rem, 3vw, 3.2rem);
+    line-height: 1;
+  }
+
+  .mh-parks-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .mh-listing-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .mh-listing-card {
+    overflow: hidden;
+    border: 1px solid var(--mh-line);
+    border-radius: 18px;
+    background: #fff;
+    color: var(--mh-ink);
+    text-decoration: none;
+    transition:
+      transform 160ms ease,
+      border-color 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .mh-listing-card:hover {
+    transform: translateY(-3px);
+    border-color:
+      color-mix(
+        in srgb,
+        var(--mh-accent) 42%,
+        transparent
+      );
+    box-shadow: 0 18px 38px rgba(24, 36, 31, 0.1);
+  }
+
+  .mh-listing-image {
+    position: relative;
+    overflow: hidden;
+    aspect-ratio: 4 / 3;
+    background: var(--mh-soft);
+  }
+
+  .mh-listing-image img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 240ms ease;
+  }
+
+  .mh-listing-card:hover .mh-listing-image img {
+    transform: scale(1.025);
+  }
+
+  .mh-listing-placeholder {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    place-items: center;
+    color:
+      color-mix(
+        in srgb,
+        var(--mh-accent) 45%,
+        transparent
+      );
+    background:
+      radial-gradient(
+        circle at 25% 20%,
+        rgba(255, 255, 255, 0.8),
+        transparent 28%
+      ),
+      linear-gradient(
+        145deg,
+        color-mix(
+          in srgb,
+          var(--mh-accent) 12%,
+          #f1f4f1
+        ),
+        #e8eeea
+      );
+  }
+
+  .mh-listing-placeholder svg {
+    width: 54px;
+    height: 54px;
+  }
+
+  .mh-listing-badge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    padding: 6px 9px;
+    border-radius: 999px;
+    color: #fff;
+    background: var(--mh-accent);
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .mh-listing-body {
+    padding: 18px;
+  }
+
+  .mh-listing-price {
+    display: block;
+    margin-bottom: 8px;
+    font-family: Georgia, serif;
+    font-size: 1.35rem;
+    font-weight: 500;
+  }
+
+  .mh-listing-address {
+    overflow: hidden;
+    color: var(--mh-ink);
+    font-size: 0.86rem;
+    font-weight: 700;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mh-listing-area {
+    margin-top: 4px;
+    color: var(--mh-muted);
+    font-size: 0.73rem;
+  }
+
+  .mh-listing-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    min-height: 20px;
+    margin-top: 16px;
+    color: var(--mh-muted);
+    font-size: 0.72rem;
+  }
+
+  .mh-listing-link {
+    display: block;
+    margin-top: 18px;
+    color: var(--mh-accent);
+    font-size: 0.75rem;
+    font-weight: 750;
+  }
+
+  .mh-listing-empty {
+    padding: 44px 24px;
+    border: 1px dashed var(--mh-line);
+    border-radius: 18px;
+    color: var(--mh-muted);
+    text-align: center;
+  }
+
+  .mh-park-card,
+  .mh-guide-card,
+  .mh-comparison-card {
+    overflow: hidden;
+    border: 1px solid var(--mh-line);
+    border-radius: 16px;
+    background: #fff;
+  }
+
+  .mh-park-image {
+    height: 150px;
+    background:
+      linear-gradient(
+        145deg,
+        color-mix(in srgb, var(--mh-accent) 14%, #eef3ef),
+        #e7ece8
+      );
+  }
+
+  .mh-park-placeholder {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    place-items: center;
+    background:
+      radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 25%),
+      linear-gradient(to top, rgba(23, 107, 99, 0.13), transparent);
+  }
+
+  .mh-park-placeholder svg {
+    width: 58px;
+    color: color-mix(in srgb, var(--mh-accent) 55%, transparent);
+  }
+
+  .mh-park-body {
+    padding: 18px;
+  }
+
+  .mh-park-body h3 {
+    margin-bottom: 12px;
+    font-family: Georgia, serif;
+    font-size: 1.04rem;
+    font-weight: 500;
+  }
+
+  .mh-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .mh-tags span {
+    padding: 5px 8px;
+    border: 1px solid var(--mh-line);
+    border-radius: 999px;
+    color: #53605b;
+    font-size: 0.67rem;
+  }
+
+  .mh-park-fee {
+    margin-top: 15px;
+    font-size: 0.72rem;
+  }
+
+  .mh-park-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 22px;
+    color: var(--mh-muted);
+    font-size: 0.7rem;
+  }
+
+  .mh-park-footer a {
+    color: var(--mh-accent);
+    font-weight: 750;
+    text-decoration: none;
+  }
+
+  .mh-guide-panel {
+    display: grid;
+    grid-template-columns: 0.85fr 3.15fr;
+    gap: 24px;
+    padding: 26px;
+    border: 1px solid var(--mh-line);
+    border-radius: 24px;
+    background: linear-gradient(110deg, var(--mh-warm), #fff);
+  }
+
+  .mh-guide-intro {
+    padding: 14px;
+  }
+
+  .mh-guide-intro p {
+    max-width: 270px;
+    margin: 18px 0;
+    color: var(--mh-muted);
+    font-size: 0.86rem;
+    line-height: 1.65;
+  }
+
+  .mh-guide-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .mh-guide-card {
+    display: flex;
+    min-height: 250px;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 18px;
+    color: var(--mh-ink);
+    text-align: center;
+    text-decoration: none;
+    transition:
+      transform 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .mh-guide-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 15px 32px rgba(24, 36, 31, 0.08);
+  }
+
+  .mh-guide-icon {
+    display: grid;
+    width: 70px;
+    height: 70px;
+    margin-bottom: 17px;
+    place-items: center;
+    border-radius: 18px;
+    color: var(--mh-accent);
+    background: color-mix(in srgb, var(--mh-accent) 8%, #fff);
+  }
+
+  .mh-guide-icon svg {
+    width: 42px;
+    height: 42px;
+  }
+
+  .mh-guide-card h3 {
+    margin-bottom: 10px;
+    font-family: Georgia, serif;
+    font-size: 1.03rem;
+    font-weight: 500;
+  }
+
+  .mh-guide-card p {
+    color: var(--mh-muted);
+    font-size: 0.76rem;
+    line-height: 1.5;
+  }
+
+  .mh-guide-link {
+    margin-top: auto;
+    color: var(--mh-accent);
+    font-size: 0.72rem;
+    font-weight: 750;
+  }
+
+  .mh-dashboard {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    overflow: hidden;
+    border: 1px solid var(--mh-line);
+    border-radius: 18px;
+    background: var(--mh-soft);
+  }
+
+  .mh-dashboard-stat {
+    min-height: 108px;
+    padding: 24px;
+    border-right: 1px solid var(--mh-line);
+  }
+
+  .mh-dashboard-stat:last-child {
+    border-right: 0;
+  }
+
+  .mh-dashboard-stat strong {
+    display: block;
+    margin-bottom: 7px;
+    font-family: Georgia, serif;
+    font-size: 1.55rem;
+    font-weight: 500;
+  }
+
+  .mh-dashboard-stat span {
+    color: var(--mh-muted);
+    font-size: 0.72rem;
+  }
+
+  .mh-feature-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.08fr;
+    gap: 20px;
+  }
+
+  .mh-spotlight {
+    position: relative;
+    overflow: hidden;
+    min-height: 430px;
+    border-radius: 20px;
+    color: #fff;
+    background:
+      linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--mh-accent) 88%, #071b17),
+        color-mix(in srgb, var(--mh-accent) 62%, #183c33)
+      );
+  }
+
+  .mh-spotlight::after {
+    content: "";
+    position: absolute;
+    width: 420px;
+    height: 420px;
+    right: -150px;
+    bottom: -190px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .mh-spotlight-content {
+    position: relative;
+    z-index: 1;
+    max-width: 520px;
+    padding: 38px;
+  }
+
+  .mh-spotlight-label {
+    color: #f4d88c;
+  }
+
+  .mh-spotlight h2 {
+    margin-bottom: 18px;
+    font-size: clamp(2.5rem, 4vw, 4.2rem);
+    line-height: 0.96;
+  }
+
+  .mh-tags-light span {
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .mh-spotlight p {
+    max-width: 500px;
+    margin: 22px 0;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 0.87rem;
+    line-height: 1.65;
+  }
+
+  .mh-spotlight-stats {
+    display: flex;
+    gap: 32px;
+    margin-bottom: 28px;
+  }
+
+  .mh-spotlight-stats strong,
+  .mh-spotlight-stats span {
+    display: block;
+  }
+
+  .mh-spotlight-stats strong {
+    margin-bottom: 4px;
+    font-family: Georgia, serif;
+    font-size: 1.25rem;
+  }
+
+  .mh-spotlight-stats span {
+    color: rgba(255, 255, 255, 0.68);
+    font-size: 0.68rem;
+  }
+
+  .mh-button-light {
+    color: var(--mh-accent);
+    background: #fff;
+  }
+
+  .mh-comparison-card {
+    padding: 30px;
+  }
+
+  .mh-table-wrap {
+    overflow-x: auto;
+  }
+
+  .mh-comparison-card table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.76rem;
+  }
+
+  .mh-comparison-card th,
+  .mh-comparison-card td {
+    padding: 14px 10px;
+    border-bottom: 1px solid var(--mh-line);
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .mh-comparison-card th {
+    color: var(--mh-muted);
+    font-size: 0.68rem;
+  }
+
+  .mh-disclaimer {
+    margin: 18px 0 0;
+    color: var(--mh-muted);
+    font-size: 0.65rem;
+  }
+
+  .mh-resource-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .mh-resource-card {
+    display: grid;
+    min-height: 90px;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid var(--mh-line);
+    border-radius: 14px;
+    color: var(--mh-ink);
+    text-decoration: none;
+  }
+
+  .mh-resource-card strong {
+    font-size: 0.74rem;
+    line-height: 1.35;
+  }
+
+  .mh-resource-mark {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border-radius: 999px;
+    color: var(--mh-accent);
+    background: color-mix(in srgb, var(--mh-accent) 10%, white);
+    font-weight: 800;
+  }
+
+  .mh-alert-section {
+    padding-bottom: 70px;
+  }
+
+  .mh-alert-card {
+    display: grid;
+    grid-template-columns: 1fr minmax(360px, 0.55fr);
+    gap: 44px;
+    align-items: center;
+    padding: 34px;
+    border-radius: 22px;
+    background:
+      radial-gradient(circle at 15% 50%, rgba(255, 255, 255, 0.7), transparent 26%),
+      color-mix(in srgb, var(--mh-accent) 9%, #f2f5f2);
+  }
+
+  .mh-alert-copy {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+  }
+
+  .mh-alert-copy h2 {
+    margin-bottom: 8px;
+    font-size: clamp(2rem, 3vw, 3.2rem);
+  }
+
+  .mh-alert-copy p {
+    margin-bottom: 0;
+    color: var(--mh-muted);
+    font-size: 0.84rem;
+  }
+
+  .mh-alert-icon {
+    display: grid;
+    width: 72px;
+    height: 72px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 999px;
+    color: #fff;
+    background: var(--mh-accent);
+    font-size: 1.5rem;
+  }
+
+  .mh-alert-form {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+  }
+
+  .mh-alert-form label span {
+    position: absolute;
+    overflow: hidden;
+    width: 1px;
+    height: 1px;
+    clip: rect(0 0 0 0);
+  }
+
+  .mh-alert-form input {
+    width: 100%;
+    min-height: 48px;
+    padding: 0 16px;
+    border: 1px solid var(--mh-line);
+    border-radius: 10px;
+    background: #fff;
+    font: inherit;
+  }
+
+  .mh-alert-form button {
+    min-height: 48px;
+    padding: 0 22px;
+    border: 0;
+    border-radius: 10px;
+    color: #fff;
+    background: var(--mh-accent);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 750;
+    cursor: pointer;
+  }
+
+  @media (max-width: 1180px) {
+    .mh-listing-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .mh-quick-grid {
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    .mh-parks-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .mh-guide-panel {
+      grid-template-columns: 1fr;
+    }
+
+    .mh-resource-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  @media (max-width: 900px) {
+    .mh-listing-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .mh-shell {
+      width: min(100% - 32px, 1460px);
+    }
+
+    .mh-hero-grid,
+    .mh-feature-grid,
+    .mh-alert-card {
+      grid-template-columns: 1fr;
+    }
+
+    .mh-hero {
+      padding-top: 52px;
+    }
+
+    .mh-hero h1 {
+      font-size: clamp(3.1rem, 12vw, 5rem);
+    }
+
+    .mh-dashboard {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .mh-dashboard-stat:nth-child(3) {
+      border-right: 0;
+    }
+
+    .mh-dashboard-stat:nth-child(-n + 3) {
+      border-bottom: 1px solid var(--mh-line);
+    }
+
+    .mh-guide-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 640px) {
+    .mh-shell {
+      width: min(100% - 22px, 1460px);
+    }
+
+    .mh-section {
+      padding: 28px 0;
+    }
+
+    .mh-hero {
+      padding: 42px 0 48px;
+    }
+
+    .mh-hero-grid {
+      gap: 36px;
+    }
+
+    .mh-hero h1 {
+      font-size: clamp(2.85rem, 14vw, 4.4rem);
+    }
+
+    .mh-market-card,
+    .mh-quick-section .mh-shell,
+    .mh-guide-panel,
+    .mh-comparison-card {
+      padding: 20px;
+    }
+
+    .mh-market-stat {
+      min-height: 96px;
+      padding: 16px;
+    }
+
+    .mh-market-stat strong {
+      font-size: 1.25rem;
+    }
+
+    .mh-quick-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .mh-quick-card {
+      min-height: 112px;
+    }
+
+     .mh-heading-row {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .mh-listing-grid {
+      display: flex;
+      overflow-x: auto;
+      gap: 12px;
+      padding-bottom: 8px;
+      scroll-snap-type: x mandatory;
+    }
+
+    .mh-listing-card {
+      min-width: min(82vw, 310px);
+      scroll-snap-align: start;
+    }
+
+    .mh-parks-grid {
+      display: flex;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      scroll-snap-type: x mandatory;
+    }
+
+    .mh-park-card {
+      min-width: 280px;
+      scroll-snap-align: start;
+    }
+
+    .mh-guide-grid,
+    .mh-resource-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .mh-guide-card {
+      min-height: 220px;
+    }
+
+    .mh-dashboard {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .mh-dashboard-stat,
+    .mh-dashboard-stat:nth-child(3) {
+      border-right: 1px solid var(--mh-line);
+      border-bottom: 1px solid var(--mh-line);
+    }
+
+    .mh-dashboard-stat:nth-child(even) {
+      border-right: 0;
+    }
+
+    .mh-spotlight-content {
+      padding: 28px;
+    }
+
+    .mh-spotlight-stats {
+      flex-wrap: wrap;
+    }
+
+    .mh-alert-copy {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .mh-alert-form {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

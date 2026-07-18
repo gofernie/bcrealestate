@@ -9,14 +9,160 @@ const supabase = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const { data: reactions, error } = await supabase
+const { data: reactions = [], error } = await supabase
   .from("intent_listing_reactions")
   .select("*")
   .order("created_at", { ascending: false })
   .limit(500);
 
+const { data: intentSessionRows = [], error: sessionsError } = await supabase
+  .from("intent_sessions")
+  .select("*")
+  .order("updated_at", { ascending: false });
+
+if (sessionsError) {
+  console.error("Intent sessions loading error:", sessionsError);
+}
+
+const { data: leads = [], error: leadsError } = await supabase
+  .from("intent_leads")
+  .select("*")
+  .order("created_at", { ascending: false });
+
+if (leadsError) {
+  console.error("Intent leads loading error:", leadsError);
+}
+
+/*
+ * Load buyers connected to intent sessions.
+ */
+const buyerIds = Array.from(
+  new Set(
+    intentSessionRows
+      .map((session) => String(session.buyer_id || "").trim())
+      .filter(Boolean)
+  )
+);
+
+const { data: buyerRows = [], error: buyersError } = buyerIds.length
+  ? await supabase
+      .from("buyers")
+      .select("id, name, email, phone")
+      .in("id", buyerIds)
+  : { data: [], error: null };
+
+if (buyersError) {
+  console.error("Buyer loading error:", buyersError);
+}
+
+const buyerById = new Map(
+  buyerRows.map((buyer) => [String(buyer.id), buyer])
+);
+
+/*
+ * Keep the newest lead for each session.
+ */
+const leadBySessionId = new Map();
+
+leads.forEach((lead) => {
+  const sessionId = String(lead.session_id || "").trim();
+  if (!sessionId) return;
+
+  const existing = leadBySessionId.get(sessionId);
+
+  if (
+    !existing ||
+    new Date(lead.created_at).getTime() >
+      new Date(existing.created_at).getTime()
+  ) {
+    leadBySessionId.set(sessionId, lead);
+  }
+});
+
+/*
+ * Group reactions by session ID.
+ */
+const reactionsBySessionId = new Map();
+
+reactions.forEach((reaction) => {
+  const sessionId = String(reaction.session_id || "").trim();
+  if (!sessionId) return;
+
+  const existing = reactionsBySessionId.get(sessionId) || [];
+  existing.push(reaction);
+  reactionsBySessionId.set(sessionId, existing);
+});
+
+/*
+ * Build the admin list from intent_sessions, not reactions.
+ */
+const sessions = intentSessionRows
+  .map((sessionRow) => {
+    const sessionId = String(sessionRow.session_id || "").trim();
+    const sessionReactions = reactionsBySessionId.get(sessionId) || [];
+    const lead = leadBySessionId.get(sessionId) || null;
+    const buyer = sessionRow.buyer_id
+      ? buyerById.get(String(sessionRow.buyer_id)) || null
+      : null;
+
+    const activityDates = [
+      sessionRow.created_at,
+      sessionRow.updated_at,
+      lead?.created_at,
+      ...sessionReactions.map((reaction) => reaction.created_at),
+    ].filter(Boolean);
+
+    const activityTimes = activityDates
+      .map((value) => new Date(value).getTime())
+      .filter((value) => Number.isFinite(value));
+
+    const firstActivity = activityTimes.length
+      ? new Date(Math.min(...activityTimes)).toISOString()
+      : sessionRow.created_at;
+
+    const lastActivity = activityTimes.length
+      ? new Date(Math.max(...activityTimes)).toISOString()
+      : sessionRow.updated_at || sessionRow.created_at;
+
+    const reactionWithSlug = sessionReactions.find(
+      (reaction) => String(reaction.slug || "").trim()
+    );
+
+    const reactionWithCity = sessionReactions.find(
+      (reaction) => String(reaction.city || "").trim()
+    );
+
+    return {
+      session_id: sessionId,
+      slug:
+        sessionRow.slug ||
+        lead?.slug ||
+        reactionWithSlug?.slug ||
+        "",
+      city:
+        sessionRow.city ||
+        lead?.city ||
+        reactionWithCity?.city ||
+        "nanaimo",
+      first_activity: firstActivity,
+      last_activity: lastActivity,
+      reactions: sessionReactions,
+      lead,
+      buyer,
+      session_row: sessionRow,
+    };
+  })
+  .filter((session) => session.session_id)
+  .sort(
+    (a, b) =>
+      new Date(b.last_activity).getTime() -
+      new Date(a.last_activity).getTime()
+  );
+
 // Pull images for loved listings from listing_rows
-const allAddresses = [...new Set((reactions || []).map(r => r.address).filter(Boolean))];
+const allAddresses = [
+  ...new Set(reactions.map((reaction) => reaction.address).filter(Boolean)),
+];
 
 const { data: listingImageRows } = allAddresses.length
   ? await supabase
@@ -28,13 +174,21 @@ const { data: listingImageRows } = allAddresses.length
 const imageByAddress = new Map(
   (listingImageRows || []).map((row) => {
     let images = row.images;
+
     if (typeof images === "string") {
-      try { images = JSON.parse(images); } catch { images = []; }
+      try {
+        images = JSON.parse(images);
+      } catch {
+        images = [];
+      }
     }
+
     images = Array.isArray(images) ? images : [];
 
     const firstImage = images[0];
-    const raw = row.image_url ||
+
+    const raw =
+      row.image_url ||
       (typeof firstImage === "string" ? firstImage : null) ||
       firstImage?.highRes ||
       firstImage?.mediumRes ||
@@ -42,54 +196,19 @@ const imageByAddress = new Map(
       firstImage?.url ||
       "";
 
-    const normalized = raw.startsWith("/vreb/") || raw.startsWith("/")
-      ? `https://cdn.repliers.io${raw}`
-      : raw.startsWith("vreb/")
-        ? `https://cdn.repliers.io/${raw}`
-        : raw;
+    const normalized =
+      raw.startsWith("/vreb/") || raw.startsWith("/")
+        ? `https://cdn.repliers.io${raw}`
+        : raw.startsWith("vreb/")
+          ? `https://cdn.repliers.io/${raw}`
+          : raw;
 
-    return [String(row.address || "").trim().toLowerCase(), normalized];
+    return [
+      String(row.address || "").trim().toLowerCase(),
+      normalized,
+    ];
   })
 );
-
-const rows = reactions || [];
-
-const { data: leads } = await supabase
-  .from("intent_leads")
-  .select("*")
-  .order("created_at", { ascending: false });
-
-const leadBySessionId = new Map();
-
-(leads || []).forEach((lead) => {
-  if (!lead.session_id) return;
-  const existing = leadBySessionId.get(lead.session_id);
-  if (!existing || new Date(lead.created_at).getTime() > new Date(existing.created_at).getTime()) {
-    leadBySessionId.set(lead.session_id, lead);
-  }
-});
-
-const sessions = Object.values(
-  rows.reduce((acc, row) => {
-    const key = row.session_id;
-    if (!acc[key]) {
-      acc[key] = {
-        session_id: row.session_id,
-        slug: row.slug,
-        city: row.city || "nanaimo",
-        last_activity: row.created_at,
-        first_activity: row.created_at,
-        reactions: [],
-        lead: leadBySessionId.get(row.session_id) || null,
-      };
-    }
-    acc[key].reactions.push(row);
-    if (new Date(row.created_at) > new Date(acc[key].last_activity)) acc[key].last_activity = row.created_at;
-    if (new Date(row.created_at) < new Date(acc[key].first_activity)) acc[key].first_activity = row.created_at;
-    return acc;
-  }, {})
-).sort((a, b) => new Date(b.last_activity).getTime() - new Date(a.last_activity).getTime());
-
 function fmtDate(value) {
   if (!value) return "";
   return new Date(value).toLocaleString("en-CA", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
@@ -1131,8 +1250,15 @@ const assignedAgent = selectedSession
             const { label, color, bg } = getReadinessLabel(readiness);
             const isActive = selectedSession === session.session_id;
             const loves = countDecision(session.reactions, "love");
-            const name = session.lead?.name || null;
-            const displayName = name || (session.slug || "").replace(/-/g, " ");
+const name =
+  session.lead?.name ||
+  session.buyer?.name ||
+  null;
+
+const displayName =
+  name ||
+  (session.slug || "").replace(/-/g, " ") ||
+  "Anonymous Buyer";
 
             return (
               <a
@@ -1159,7 +1285,9 @@ const assignedAgent = selectedSession
         <!-- Detail panel -->
         <div class="detail-panel">
           {(() => {
-            const session = sessions.find(s => s.session_id === selectedSession) || sessions[0];
+const session =
+  sessions.find((session) => session.session_id === selectedSession) ||
+  (!selectedSession ? sessions[0] : null);
 
             if (!session) {
               return (
@@ -1243,7 +1371,9 @@ const pageSlug =
                   <div class="lead-header-row">
                     <div>
                       <div class="lead-name-block">
-                        <div class="lead-name">{session.lead?.name || "Anonymous Buyer"}</div>
+<div class="lead-name">
+  {session.lead?.name || session.buyer?.name || "Anonymous Buyer"}
+</div>
                         <span class="intent-badge" style={`background:${intentBg};color:${intentColor};font-size:0.78rem;padding:4px 12px;`}>{intentLabel}</span>
                         {readiness >= 60 && (
                           <span style="display:inline-flex;align-items:center;gap:3px;font-size:0.84rem;color:#f59e0b;">
@@ -1253,8 +1383,13 @@ const pageSlug =
                         )}
                       </div>
                       <div class="lead-contact">
-                        {session.lead?.email && <span>✉ {session.lead.email}</span>}
-                        {session.lead?.phone && <span>📞 {session.lead.phone}</span>}
+{(session.lead?.email || session.buyer?.email) && (
+  <span>✉ {session.lead?.email || session.buyer?.email}</span>
+)}
+
+{(session.lead?.phone || session.buyer?.phone) && (
+  <span>📞 {session.lead?.phone || session.buyer?.phone}</span>
+)}
                         <span>📍 {city.charAt(0).toUpperCase() + city.slice(1)}, BC</span>
                       </div>
                     </div>
