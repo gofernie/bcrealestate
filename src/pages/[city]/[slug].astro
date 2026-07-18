@@ -19,8 +19,20 @@ const supabase = createClient(
 
 
 
-const slug = Astro.params.slug || "";
-const city = Astro.params.city || "nanaimo";
+const isInternalRootRewrite =
+  Astro.url.searchParams.get("root_rewrite") === "1";
+
+const rootPathSlug = Astro.url.pathname
+  .split("/")
+  .filter(Boolean)[0] || "";
+
+const city = isInternalRootRewrite
+  ? "nanaimo"
+  : Astro.params.city || "nanaimo";
+
+const slug = isInternalRootRewrite
+  ? rootPathSlug
+  : Astro.params.slug || "";
 
 const requestHostname = Astro.url.hostname
   .toLowerCase()
@@ -33,6 +45,28 @@ const siteHostname =
     : requestHostname;
 
 const site = await getSite(siteHostname, city);
+
+const isMobileHomeSite =
+  site?.template === "mobile-homes" ||
+  siteHostname === "nanaimomobiles.com";
+const usesRootPageUrls =
+  siteHostname === "nanaimomobiles.com";
+
+const buildContentHref = (
+  pageSlug: string,
+  pageType: "intent" | "area" = "intent"
+) => {
+  if (usesRootPageUrls) {
+    return `/${pageSlug}`;
+  }
+
+  return pageType === "area"
+    ? `/${city}/areas/${pageSlug}`
+    : `/${city}/${pageSlug}`;
+};
+// Root URL handling is now performed by Netlify rewrites.
+// No browser redirects are needed here.
+
 const accentColor =
   site?.accent_color ||
   "#2f6f73";
@@ -160,59 +194,178 @@ if (!page) {
     };
   } else {
     const { data: areaPage } = await supabase
-      .from("area_boundaries")
-      .select("*")
-      .eq("city", city)
-      .eq("area_slug", slug)
-      .maybeSingle();
+  .from("area_boundaries")
+  .select("*")
+  .eq("city", city)
+  .eq("area_slug", slug)
+  .maybeSingle();
 
-    if (!areaPage) {
-      return Astro.redirect("/404");
-    }
+if (!areaPage) {
+  return Astro.redirect("/404");
+}
 
-    pageKind = "area";
+/*
+ * Look for copy that belongs specifically to the current site.
+ * Shared geography still comes from area_boundaries.
+ */
+let siteAreaPage: any = null;
 
-  page = {
-    id: `area-${areaPage.area_slug}`,
-    slug: areaPage.area_slug,
-    area: areaPage.area_name || String(slug).replace(/-/g, " "),
-    property_type: "",
-    hero_heading:
-      areaPage.hero_heading ||
-      `${areaPage.area_name || String(slug).replace(/-/g, " ")} Real Estate`,
-   intro_copy:
-  areaPage.intro_copy ||
-  areaPage.short_description ||
- 
-  `Browse homes for sale in ${areaPage.area_name || String(slug).replace(/-/g, " ")}.`,
-    hero_image_url: areaPage.hero_image_url,
-    seo_title:
-      areaPage.seo_title ||
-      `${areaPage.area_name || String(slug).replace(/-/g, " ")} Real Estate`,
-    meta_description:
-      areaPage.meta_description ||
-      areaPage.short_description ||
-      "",
-    seo_heading:
-      areaPage.seo_heading ||
-      `${areaPage.area_name || String(slug).replace(/-/g, " ")} Area Guide`,
-    seo_intro: areaPage.short_description || areaPage.intro_copy || "",
-    seo_body: areaPage.intro_copy || "",
-seo_long: areaPage.seo_long || "",
-    neighbourhood_copy: areaPage.neighbourhood_copy || null,
-   market_commentary: areaPage.market_commentary || null,
-market_snapshot_ai: areaPage.market_snapshot_ai || null,
-buyer_insight_ai: areaPage.buyer_insight_ai || null,
-long_term_outlook_ai: areaPage.long_term_outlook_ai || null,
-polygon_geojson: areaPage.polygon_geojson,
-    default_sort: "newest",
-    price_min: null,
-    price_max: null,
-    waterfront_type: null,
-       requires_waterfront: false,
-    requires_ocean_view: false,
-    faq_json: [],
-  };
+if (site?.id && areaPage?.id) {
+  const { data: overrideRow } = await supabase
+    .from("site_area_pages")
+    .select("*")
+    .eq("site_id", site.id)
+    .eq("area_boundary_id", areaPage.id)
+    .eq("is_published", true)
+    .maybeSingle();
+
+  siteAreaPage = overrideRow || null;
+}
+
+const areaContent = {
+  ...areaPage,
+
+  hero_heading:
+    siteAreaPage?.hero_heading ??
+    areaPage.hero_heading,
+
+  eyebrow:
+    siteAreaPage?.eyebrow ??
+    null,
+
+  intro_copy:
+    siteAreaPage?.intro_copy ??
+    areaPage.intro_copy,
+
+  seo_title:
+    siteAreaPage?.seo_title ??
+    areaPage.seo_title,
+
+  meta_description:
+    siteAreaPage?.meta_description ??
+    areaPage.meta_description,
+
+  seo_heading:
+    siteAreaPage?.seo_heading ??
+    areaPage.seo_heading,
+
+  seo_intro:
+    siteAreaPage?.seo_intro ??
+    areaPage.short_description,
+
+  seo_body:
+    siteAreaPage?.seo_body ??
+    areaPage.intro_copy,
+
+  seo_long:
+    siteAreaPage?.seo_long ??
+    areaPage.seo_long,
+
+  neighbourhood_copy:
+    siteAreaPage?.neighbourhood_copy ??
+    areaPage.neighbourhood_copy,
+
+  market_commentary:
+    siteAreaPage?.market_commentary ??
+    null,
+
+  market_snapshot_ai:
+    siteAreaPage?.market_snapshot_ai ??
+    areaPage.market_snapshot_ai,
+
+  buyer_insight_ai:
+    siteAreaPage?.buyer_insight_ai ??
+    areaPage.buyer_insight_ai,
+
+  long_term_outlook_ai:
+    siteAreaPage?.long_term_outlook_ai ??
+    areaPage.long_term_outlook_ai,
+};
+
+pageKind = "area";
+
+page = {
+  id: `area-${areaContent.area_slug}`,
+  slug: areaContent.area_slug,
+
+  area:
+    areaContent.area_name ||
+    String(slug).replace(/-/g, " "),
+
+  property_type: "",
+
+  hero_heading:
+    areaContent.hero_heading ||
+    `${areaContent.area_name || String(slug).replace(/-/g, " ")} Real Estate`,
+
+  eyebrow:
+    areaContent.eyebrow || null,
+
+  intro_copy:
+    areaContent.intro_copy ||
+    areaContent.short_description ||
+    `Browse homes for sale in ${
+      areaContent.area_name ||
+      String(slug).replace(/-/g, " ")
+    }.`,
+
+  hero_image_url:
+    areaContent.hero_image_url,
+
+  seo_title:
+    areaContent.seo_title ||
+    `${areaContent.area_name || String(slug).replace(/-/g, " ")} Real Estate`,
+
+  meta_description:
+    areaContent.meta_description ||
+    areaContent.short_description ||
+    "",
+
+  seo_heading:
+    areaContent.seo_heading ||
+    `${areaContent.area_name || String(slug).replace(/-/g, " ")} Area Guide`,
+
+  seo_intro:
+    areaContent.seo_intro ||
+    areaContent.short_description ||
+    areaContent.intro_copy ||
+    "",
+
+  seo_body:
+    areaContent.seo_body ||
+    areaContent.intro_copy ||
+    "",
+
+  seo_long:
+    areaContent.seo_long || "",
+
+  neighbourhood_copy:
+    areaContent.neighbourhood_copy || null,
+
+  market_commentary:
+    areaContent.market_commentary || null,
+
+  market_snapshot_ai:
+    areaContent.market_snapshot_ai || null,
+
+  buyer_insight_ai:
+    areaContent.buyer_insight_ai || null,
+
+  long_term_outlook_ai:
+    areaContent.long_term_outlook_ai || null,
+
+  polygon_geojson:
+    areaContent.polygon_geojson,
+
+  default_sort: "newest",
+
+  price_min: null,
+  price_max: null,
+  waterfront_type: null,
+  requires_waterfront: false,
+  requires_ocean_view: false,
+  faq_json: [],
+};
   }
 }
 
@@ -410,10 +563,23 @@ const areas = areaBoundaryRows
   .filter(Boolean)
   .sort((a, b) => a.localeCompare(b));
 
-const areaLinks = areaBoundaryRows.map((r) => ({
-  label: String(r.area_name || r.area_slug || "").replace(/^pq\s+/i, "").replace(/\b\w/g, (c: string) => c.toUpperCase()),
-  href: `/${city}/${r.area_slug || String(r.area_name || "").toLowerCase().replace(/\s+/g, "-")}`,
-})).filter((a) => a.label && a.href);
+const areaLinks = areaBoundaryRows
+  .map((r) => {
+    const areaSlug =
+      r.area_slug ||
+      String(r.area_name || "")
+        .toLowerCase()
+        .replace(/\s+/g, "-");
+
+    return {
+      label: String(r.area_name || r.area_slug || "")
+        .replace(/^pq\s+/i, "")
+        .replace(/\b\w/g, (c: string) => c.toUpperCase()),
+
+href: buildContentHref(areaSlug, "area"),
+    };
+  })
+  .filter((a) => a.label && a.href);
 
 const { data: navRows = [] } = await supabase
   .from("listing_rows")
@@ -429,12 +595,18 @@ const propertyTypes = [...new Set(
 
 const navIntentPages = await getNavIntentPages(supabase, site?.id);
 
-const { data: areaIntentPages } = await supabase
+let areaIntentQuery = supabase
   .from("intent_pages")
   .select("area, slug, hero_heading")
- .eq("city", city)
+  .eq("city", city)
   .eq("is_published", true)
-  .not("area", "is", null)
+  .not("area", "is", null);
+
+if (site?.id) {
+  areaIntentQuery = areaIntentQuery.eq("site_id", site.id);
+}
+
+const { data: areaIntentPages = [] } = await areaIntentQuery
   .order("area", { ascending: true });
 const hasPolygonSearch = Boolean(page.polygon_geojson?.coordinates?.[0]?.length);
 
@@ -722,12 +894,18 @@ const generatedCopy = pageKind === "area"
   ? generateAreaCopy(listings, censusData, osmSummary, page.area || "", city)
   : null;
 
-const { data: relatedIntentPagesRaw = [] } = await supabase
+let relatedIntentQuery = supabase
   .from("intent_pages")
   .select("*")
   .eq("city", city)
   .eq("is_published", true)
   .neq("slug", slug);
+
+if (site?.id) {
+  relatedIntentQuery = relatedIntentQuery.eq("site_id", site.id);
+}
+
+const { data: relatedIntentPagesRaw = [] } = await relatedIntentQuery;
 
 function scoreRelatedIntent(intent: any) {
   let score = 0;
@@ -2807,7 +2985,13 @@ color: var(--accent) !important;
   areas={areas}
   intentPages={navIntentPages}
 />
-<main class="page is-type-page">
+<main
+  class:list={[
+    "page",
+    "is-type-page",
+    isMobileHomeSite && "is-mobile-home-inner-page",
+  ]}
+>
 
 
 
@@ -3112,7 +3296,7 @@ color: var(--accent) !important;
 </b>
           </a>
 
-          <a href={`/${city}/${slug}#guide`}>
+       <a href={`${buildContentHref(slug)}#guide`}>
 <span class="type-tool-icon type-tool-icon--green" aria-hidden="true">
   <svg viewBox="0 0 24 24">
     <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v17H6.5A2.5 2.5 0 0 0 4 22V5.5Z" />
@@ -3911,7 +4095,7 @@ style="display:grid;grid-template-columns:1fr 1fr;gap:18px;"
     <h3 style="margin-bottom:12px;">Explore other {titleCase(city)} neighbourhoods</h3>
     <div style="display:flex;flex-wrap:wrap;gap:8px;">
       {areaLinks
-        .filter((a) => a.href !== `/${city}/${slug}`)
+.filter((a) => a.href !== buildContentHref(slug, "area"))
         .slice(0, 6)
         .map((a) => (
           <a href={a.href} style="display:inline-flex;align-items:center;padding:7px 14px;border-radius:6px;border:0.5px solid rgba(0,0,0,0.12);background:#fff;color:var(--ink);font-size:0.84rem;font-weight:650;text-decoration:none;">
@@ -3927,7 +4111,7 @@ style="display:grid;grid-template-columns:1fr 1fr;gap:18px;"
     <h3 style="margin-bottom:12px;">Browse by property type in {titleCase(city)}</h3>
     <div style="display:flex;flex-wrap:wrap;gap:8px;">
       {navIntentPages.slice(0, 6).map((p: any) => (
-        <a href={`/${city}/${p.slug}`} style="display:inline-flex;align-items:center;padding:7px 14px;border-radius:6px;border:0.5px solid rgba(0,0,0,0.12);background:#fff;color:var(--ink);font-size:0.84rem;font-weight:650;text-decoration:none;">
+        <a href={buildContentHref(p.slug)} style="display:inline-flex;align-items:center;padding:7px 14px;border-radius:6px;border:0.5px solid rgba(0,0,0,0.12);background:#fff;color:var(--ink);font-size:0.84rem;font-weight:650;text-decoration:none;">
           {p.nav_label || p.hero_heading || p.slug}
         </a>
       ))}
@@ -5085,6 +5269,316 @@ style="display:grid;grid-template-columns:1fr 1fr;gap:18px;"
 .type-stat-icon svg * {
   vector-effect: non-scaling-stroke;
 }
+
+/* =========================================================
+   NANAIMO MOBILES INNER PAGES
+   Matches the mobile-home homepage visual language
+   ========================================================= */
+
+.is-mobile-home-inner-page {
+  --mh-ink: #17201d;
+  --mh-muted: #66706c;
+  --mh-line: rgba(23, 32, 29, 0.11);
+  --mh-soft: #f5f7f5;
+  --mh-warm: #faf7f1;
+
+  background: #fff;
+  color: var(--mh-ink);
+}
+
+.is-mobile-home-inner-page .intent-content-shell {
+  width: min(1160px, calc(100% - 48px));
+  padding-top: 42px;
+}
+
+/* Hero */
+
+.is-mobile-home-inner-page .type-hero {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.72fr);
+  gap: 54px;
+  align-items: center;
+  margin-bottom: 42px;
+}
+
+.is-mobile-home-inner-page .type-hero__copy {
+  min-height: 0;
+  padding: 22px 0;
+}
+
+.is-mobile-home-inner-page .type-hero__eyebrow {
+  margin-bottom: 13px;
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+
+.is-mobile-home-inner-page .type-hero h1 {
+  max-width: 650px;
+  color: var(--mh-ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(3rem, 5.8vw, 5.4rem);
+  font-weight: 500;
+  line-height: 0.95;
+  letter-spacing: -0.065em;
+}
+
+.is-mobile-home-inner-page .type-hero__copy > p:not(.type-hero__eyebrow) {
+  max-width: 570px;
+  margin-top: 22px;
+  color: var(--mh-muted);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.is-mobile-home-inner-page .type-hero__actions {
+  margin-top: 27px;
+}
+
+.is-mobile-home-inner-page .type-button {
+  min-height: 42px;
+  border-radius: 6px;
+  padding: 0 17px;
+  font-size: 0.78rem;
+}
+
+/* Softer map card */
+
+.is-mobile-home-inner-page .type-map-card {
+  min-height: 345px;
+  border: 1px solid var(--mh-line);
+  border-radius: 18px;
+  background: var(--mh-soft);
+  box-shadow: 0 18px 45px rgba(23, 32, 29, 0.07);
+}
+
+.is-mobile-home-inner-page .type-map-card__panel {
+  top: auto;
+  right: 18px;
+  bottom: 18px;
+  left: 18px;
+  width: auto;
+  padding: 19px 20px;
+  border: 1px solid rgba(23, 32, 29, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.95);
+  transform: none;
+}
+
+.is-mobile-home-inner-page .type-map-card__panel p {
+  margin: 9px 0 14px;
+  font-size: 0.79rem;
+}
+
+/* Compact stats, like homepage market card */
+
+.is-mobile-home-inner-page .type-stats {
+  overflow: hidden;
+  margin-bottom: 36px;
+  border: 1px solid var(--mh-line);
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+.is-mobile-home-inner-page .type-stats article {
+  min-height: 98px;
+  padding: 18px 20px;
+}
+
+.is-mobile-home-inner-page .type-stat-icon {
+  width: 38px !important;
+  height: 38px !important;
+  background: var(--mh-soft) !important;
+}
+
+.is-mobile-home-inner-page .type-stat-icon svg {
+  width: 17px !important;
+  height: 17px !important;
+}
+
+.is-mobile-home-inner-page .type-stats strong {
+  font-size: 1.18rem;
+}
+
+.is-mobile-home-inner-page .type-stats article div > span {
+  font-size: 0.7rem;
+}
+
+.is-mobile-home-inner-page .type-stats small {
+  font-size: 0.62rem;
+}
+
+/* Hide the generic tool row on mobile-home pages */
+
+.is-mobile-home-inner-page .type-tools {
+  display: none;
+}
+
+/* Listing heading and filters */
+
+.is-mobile-home-inner-page .section-head {
+  padding: 0 !important;
+  margin: 54px 0 12px !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.is-mobile-home-inner-page .section-head h2 {
+  font-family: Georgia, "Times New Roman", serif !important;
+  font-size: clamp(2rem, 4vw, 3rem) !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  letter-spacing: -0.05em !important;
+}
+
+.is-mobile-home-inner-page .intent-controls {
+  margin-bottom: 24px !important;
+  padding: 10px 12px !important;
+  border: 1px solid var(--mh-line) !important;
+  border-radius: 10px !important;
+  background: #fff !important;
+}
+
+.is-mobile-home-inner-page .intent-controls select {
+  border-color: var(--mh-line);
+  background: var(--mh-soft);
+}
+
+/* Listing cards */
+
+.is-mobile-home-inner-page .grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.is-mobile-home-inner-page .card {
+  overflow: hidden;
+  border: 1px solid var(--mh-line);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.is-mobile-home-inner-page .card:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: 0 14px 34px rgba(23, 32, 29, 0.08);
+}
+
+.is-mobile-home-inner-page .card-image-wrap {
+  aspect-ratio: 4 / 3;
+  background: var(--mh-soft);
+}
+
+.is-mobile-home-inner-page .card-body {
+  min-height: 118px;
+  padding: 12px 13px 14px;
+}
+
+.is-mobile-home-inner-page .price {
+  margin-bottom: 6px;
+  padding-right: 0;
+  color: var(--mh-ink);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.is-mobile-home-inner-page .address {
+  margin-bottom: 2px;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.is-mobile-home-inner-page .card-city {
+  margin-bottom: 10px;
+  color: var(--mh-muted) !important;
+  font-size: 0.67rem;
+}
+
+.is-mobile-home-inner-page .meta {
+  gap: 7px;
+  color: var(--mh-muted) !important;
+  font-size: 0.65rem !important;
+}
+
+/* Remove the interrupt card from the clean listing grid */
+
+.is-mobile-home-inner-page .interrupt-card {
+  display: none;
+}
+
+/* Lower content */
+
+.is-mobile-home-inner-page .intent-guide {
+  margin-top: 72px;
+  padding: 38px 0;
+  border: 0;
+  border-top: 1px solid var(--mh-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.is-mobile-home-inner-page .intent-guide-label {
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.is-mobile-home-inner-page .intent-guide h2 {
+  max-width: 720px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2.2rem, 4vw, 3.5rem);
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* Responsive */
+
+@media (max-width: 1050px) {
+  .is-mobile-home-inner-page .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .is-mobile-home-inner-page .type-hero {
+    grid-template-columns: 1fr;
+    gap: 26px;
+  }
+
+  .is-mobile-home-inner-page .type-map-card {
+    min-height: 320px;
+  }
+
+  .is-mobile-home-inner-page .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .is-mobile-home-inner-page .intent-content-shell {
+    width: 100%;
+    padding: 25px 14px 0;
+  }
+
+  .is-mobile-home-inner-page .type-hero h1 {
+    font-size: clamp(2.65rem, 13vw, 4rem);
+  }
+
+  .is-mobile-home-inner-page .type-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .is-mobile-home-inner-page .grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .is-mobile-home-inner-page .card-body {
+    min-height: 0;
+  }
+}
     </style>
 
     <script is:inline>
@@ -6039,10 +6533,20 @@ typeSelect?.addEventListener("change", () => {
       land: `${currentCity}-land`,
     };
     const targetSlug = typeSlugMap[selectedType];
-    if (targetSlug) {
-      window.location.href = `/${currentCity}/${targetSlug}`;
-      return;
-    }
+if (targetSlug) {
+  const currentHostname = window.location.hostname
+    .toLowerCase()
+    .replace(/^www\./, "");
+
+  const usesRootPageUrls =
+    currentHostname === "nanaimomobiles.com";
+
+  window.location.href = usesRootPageUrls
+    ? `/${targetSlug}`
+    : `/${currentCity}/${targetSlug}`;
+
+  return;
+}
   }
 
   applyFilters();
