@@ -1,11 +1,10 @@
 ---
 type Props = {
   listing: any;
-  image: string;
   priority?: boolean;
 };
 
-const { listing, image, priority = false } = Astro.props;
+const { listing, priority = false } = Astro.props;
 const normalizeListingImageUrl = (value: any) => {
   if (!value) return "";
 
@@ -29,6 +28,22 @@ const normalizeListingImageUrl = (value: any) => {
 
 return `https://cdn.repliers.io${cleaned}`;
 };
+const listingImages = [
+  normalizeListingImageUrl(listing.image_url),
+
+  ...(Array.isArray(listing.images)
+    ? listing.images.map((item: any) =>
+        normalizeListingImageUrl(item)
+      )
+    : []),
+].filter(Boolean);
+
+const images = [...new Set(listingImages)];
+
+const image =
+  images[0] ||
+  "https://placehold.co/800x600?text=Listing";
+
 const price = `$${Number(listing.price || 0).toLocaleString()}`;
 const formatAddress = (value: any) => {
   if (!value) return "";
@@ -82,27 +97,7 @@ const cityLabel = String(city).replace(/\b\w/g, (char) => char.toUpperCase());
   data-address={address}
   data-meta={`${beds || "-"} bed · ${baths || "-"} bath`}
   data-image={image}
-data-images={JSON.stringify(
-  [
-    ...(Array.isArray(listing.images)
-      ? listing.images.map((img) =>
-          typeof img === "string"
-            ? normalizeListingImageUrl(img)
-            : normalizeListingImageUrl(
-                img?.highRes ||
-                  img?.mediumRes ||
-                  img?.lowRes ||
-                  img?.url ||
-                  img?.src ||
-                  img?.href ||
-                  img?.path ||
-                  ""
-              )
-        )
-      : []),
-    image,
-  ].filter(Boolean)
-)}  data-beds={String(beds || "")}
+data-images={JSON.stringify(images)} data-beds={String(beds || "")}
   data-baths={String(baths || "")}
   data-sqft={String(sqft || "")}
   data-description={listing.description || ""}
@@ -119,7 +114,7 @@ data-images={JSON.stringify(
 >
   <div class="card-image-wrap">
        <img
-  src={image || "https://placehold.co/800x600?text=Listing"}
+src={image}
   alt={address}
   loading={priority ? "eager" : "lazy"}
   fetchpriority={priority ? "high" : "auto"}
