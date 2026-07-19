@@ -51,25 +51,25 @@ const activeListings = listings.filter((listing) => {
 
 const listingCount = activeListings.length || 41;
 
-const newestListings = [...activeListings]
-  .sort((a, b) => {
-    const dateA = new Date(
-      a?.listed_at ||
-      a?.created_at ||
-      a?.updated_at ||
-      0
-    ).getTime();
+const newestListings = [...activeListings].sort((a, b) => {
+  const dateA = new Date(
+    a?.listed_at ||
+    a?.created_at ||
+    a?.updated_at ||
+    0
+  ).getTime();
 
-    const dateB = new Date(
-      b?.listed_at ||
-      b?.created_at ||
-      b?.updated_at ||
-      0
-    ).getTime();
+  const dateB = new Date(
+    b?.listed_at ||
+    b?.created_at ||
+    b?.updated_at ||
+    0
+  ).getTime();
 
-    return dateB - dateA;
-  })
-  .slice(0, 12);
+  return dateB - dateA;
+});
+
+
 
 
 
@@ -117,10 +117,19 @@ const recentListings = activeListings.filter((listing) => {
   return listedAt >= thirtyDaysAgo;
 }).length || 15;
 
+const getListingArea = (listing: any) =>
+  String(
+    listing?.area ||
+    listing?.normalized_area ||
+    listing?.neighbourhood ||
+    listing?.neighborhood ||
+    ""
+  ).trim();
+
 const areaCounts = new Map<string, number>();
 
 for (const listing of activeListings) {
-  const area = String(listing?.area || "").trim();
+  const area = getListingArea(listing);
 
   if (!area) continue;
 
@@ -128,7 +137,9 @@ for (const listing of activeListings) {
 }
 
 const areaCount = areaCounts.size || 9;
-
+const listingAreas = [...areaCounts.keys()].sort((a, b) =>
+  a.localeCompare(b)
+);
 const formatPrice = (value: number) =>
   new Intl.NumberFormat("en-CA", {
     style: "currency",
@@ -394,86 +405,162 @@ const iconPaths: Record<string, string> = {
       </div>
     </section>
 
-       <section class="mh-section">
-      <div class="mh-shell">
-        <div class="mh-heading-row">
-          <div>
-            <div class="mh-section-label">
-              Just listed
-            </div>
+       <section class="mh-section mh-listings-section">
+  <div class="mh-shell">
+    <div class="mh-heading-row">
+      <div>
+        <div class="mh-section-label">
+          Just listed
+        </div>
 
-            <h2>Newest mobile homes for sale.</h2>
+        <h2>Newest mobile homes for sale.</h2>
+      </div>
+
+      <a
+        class="mh-text-link"
+        href={`/${city}/mobile-homes`}
+      >
+        View all mobile homes →
+      </a>
+    </div>
+
+    <div class="mh-listing-toolbar">
+      <div class="mh-filter-group">
+        <label class="mh-filter-field">
+          <span>Area</span>
+
+          <select id="mh-area-filter">
+            <option value="">All areas</option>
+
+            {
+           listingAreas.map((area) => (
+  <option value={area.toLowerCase()}>
+    {area.replace(/\b\w/g, (letter) => letter.toUpperCase())}
+  </option>
+))
+            }
+          </select>
+        </label>
+
+        <label class="mh-filter-field">
+          <span>Price</span>
+
+          <select id="mh-price-filter">
+            <option value="">Any price</option>
+            <option value="200000">Under $200,000</option>
+            <option value="300000">Under $300,000</option>
+            <option value="400000">Under $400,000</option>
+            <option value="500000">Under $500,000</option>
+            <option value="750000">Under $750,000</option>
+          </select>
+        </label>
+
+        <label class="mh-filter-field">
+          <span>Bedrooms</span>
+
+          <select id="mh-bed-filter">
+            <option value="">Any beds</option>
+            <option value="1">1+ beds</option>
+            <option value="2">2+ beds</option>
+            <option value="3">3+ beds</option>
+          </select>
+        </label>
+
+        <label class="mh-filter-field">
+          <span>Sort</span>
+
+          <select id="mh-sort-filter">
+            <option value="newest">Newest</option>
+            <option value="price-low">Price: low to high</option>
+            <option value="price-high">Price: high to low</option>
+          </select>
+        </label>
+      </div>
+
+      <button
+        class="mh-clear-filters"
+        id="mh-clear-filters"
+        type="button"
+        hidden
+      >
+        Clear filters
+      </button>
+    </div>
+
+    <div class="mh-listing-summary">
+      <span id="mh-listing-count">
+        {listingCount} mobile homes
+      </span>
+
+      <span id="mh-filter-description">
+        Showing the newest listings
+      </span>
+    </div>
+
+    {
+      newestListings.length > 0 ? (
+        <>
+          <div
+            class="mh-listing-grid"
+            id="mh-listing-grid"
+          >
+            {
+              newestListings.map((listing, index) => {
+                const listedDate =
+                  listing?.listed_at ||
+                  listing?.created_at ||
+                  listing?.updated_at ||
+                  "";
+
+                return (
+                  <div
+                    class="mh-filterable-listing"
+                    data-area={getListingArea(listing).toLowerCase()}
+                    data-price={Number(listing?.price) || 0}
+                    data-beds={Number(listing?.beds) || 0}
+                    data-listed-at={listedDate}
+                    data-original-index={index}
+                    hidden={index >= 12}
+                  >
+                    <ListingCard
+                      listing={listing}
+                      priority={index < 4}
+                    />
+                  </div>
+                );
+              })
+            }
           </div>
 
-          <a
-            class="mh-text-link"
-            href={`/${city}/mobile-homes`}
+          <div
+            class="mh-no-filter-results"
+            id="mh-no-filter-results"
+            hidden
           >
-            View all mobile homes →
-          </a>
+            <strong>No matching mobile homes</strong>
+            <span>
+              Try changing or clearing one of the filters.
+            </span>
+          </div>
+
+          <div class="mh-listing-actions">
+            <button
+              class="mh-show-more"
+              id="mh-show-more"
+              type="button"
+            >
+              Show more homes
+            </button>
+          </div>
+        </>
+      ) : (
+        <div class="mh-listing-empty">
+          New mobile-home listings will appear here.
         </div>
-
-        {
-  newestListings.length > 0 ? (
-    <div class="mh-listing-grid">
-  {
-    newestListings.map((listing, index) => (
-     <ListingCard
-  listing={listing}
-  priority={index < 4}
-/>
-    ))
-  }
-</div>
-  ) : (
-    <div class="mh-listing-empty">
-      New mobile-home listings will appear here.
-    </div>
-  )
-}
-
-    <section class="mh-section">
-      <div class="mh-shell mh-guide-panel">
-        <div class="mh-guide-intro">
-          <div class="mh-section-label">Expert guidance</div>
-          <h2>Everything you need to know.</h2>
-          <p>
-            Clear answers to the most common questions about mobile-home
-            living and ownership.
-          </p>
-
-          <a class="mh-text-link" href="/guides">
-            View all guides →
-          </a>
-        </div>
-
-        <div class="mh-guide-grid">
-          {
-            guides.map((guide) => (
-              <a class="mh-guide-card" href={guide.href}>
-                <span class="mh-guide-icon">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.45"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d={iconPaths[guide.icon]} />
-                  </svg>
-                </span>
-
-                <h3>{guide.title}</h3>
-                <p>{guide.copy}</p>
-                <span class="mh-guide-link">Learn more →</span>
-              </a>
-            ))
-          }
-        </div>
-      </div>
-    </section>
+      )
+    }
+  </div>
+</section>
 
     <section class="mh-section">
       <div class="mh-shell">
@@ -673,17 +760,340 @@ const iconPaths: Record<string, string> = {
   function openMobileListingCard(card) {
     if (!(card instanceof HTMLElement)) return;
 
-if (typeof window.openSheet !== "function") {
-  console.warn("IntentModalController not loaded.");
-  return;
-}
+    if (typeof window.openSheet !== "function") {
+      console.warn("IntentModalController not loaded.");
+      return;
+    }
 
-window.openSheet(card);
+    window.openSheet(card);
+  }
+
+  function initializeMobileListingFilters() {
+    const grid = document.getElementById("mh-listing-grid");
+    const areaFilter = document.getElementById("mh-area-filter");
+    const priceFilter = document.getElementById("mh-price-filter");
+    const bedFilter = document.getElementById("mh-bed-filter");
+    const sortFilter = document.getElementById("mh-sort-filter");
+    const clearButton = document.getElementById("mh-clear-filters");
+    const showMoreButton = document.getElementById("mh-show-more");
+    const countElement = document.getElementById("mh-listing-count");
+    const descriptionElement = document.getElementById(
+      "mh-filter-description"
+    );
+    const emptyElement = document.getElementById(
+      "mh-no-filter-results"
+    );
+
+    if (
+      !grid ||
+      !areaFilter ||
+      !priceFilter ||
+      !bedFilter ||
+      !sortFilter
+    ) {
+      return;
+    }
+
+    const listingItems = Array.from(
+      grid.querySelectorAll(".mh-filterable-listing")
+    );
+
+    const initialLimit = 12;
+    let visibleLimit = initialLimit;
+
+    const getNumber = (value) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const getDate = (value) => {
+      const timestamp = new Date(value || 0).getTime();
+      return Number.isFinite(timestamp) ? timestamp : 0;
+    };
+
+    const getFilteredListings = () => {
+      const selectedArea = areaFilter.value;
+      const maximumPrice = getNumber(priceFilter.value);
+      const minimumBeds = getNumber(bedFilter.value);
+
+      return listingItems.filter((item) => {
+        const area = item.dataset.area || "";
+        const price = getNumber(item.dataset.price);
+        const beds = getNumber(item.dataset.beds);
+
+        const matchesArea =
+          !selectedArea ||
+          area === selectedArea;
+
+        const matchesPrice =
+          !maximumPrice ||
+          (price > 0 && price <= maximumPrice);
+
+        const matchesBeds =
+          !minimumBeds ||
+          beds >= minimumBeds;
+
+        return (
+          matchesArea &&
+          matchesPrice &&
+          matchesBeds
+        );
+      });
+    };
+
+    const sortListings = (listings) => {
+      const sortValue = sortFilter.value;
+
+      return [...listings].sort((itemA, itemB) => {
+        const priceA = getNumber(itemA.dataset.price);
+        const priceB = getNumber(itemB.dataset.price);
+
+        const dateA = getDate(itemA.dataset.listedAt);
+        const dateB = getDate(itemB.dataset.listedAt);
+
+        const originalA = getNumber(
+          itemA.dataset.originalIndex
+        );
+
+        const originalB = getNumber(
+          itemB.dataset.originalIndex
+        );
+
+        if (sortValue === "price-low") {
+          if (!priceA && priceB) return 1;
+          if (priceA && !priceB) return -1;
+
+          return priceA - priceB;
+        }
+
+        if (sortValue === "price-high") {
+          return priceB - priceA;
+        }
+
+        if (dateA === dateB) {
+          return originalA - originalB;
+        }
+
+        return dateB - dateA;
+      });
+    };
+
+    const updateUrl = () => {
+      const url = new URL(window.location.href);
+
+      const values = {
+        area: areaFilter.value,
+        price_max: priceFilter.value,
+        beds: bedFilter.value,
+        sort: sortFilter.value === "newest"
+          ? ""
+          : sortFilter.value,
+      };
+
+      Object.entries(values).forEach(([key, value]) => {
+        if (value) {
+          url.searchParams.set(key, value);
+        } else {
+          url.searchParams.delete(key);
+        }
+      });
+
+      window.history.replaceState(
+        {},
+        "",
+        `${url.pathname}${url.search}${url.hash}`
+      );
+    };
+
+    const updateDescription = (
+      filteredCount,
+      visibleCount
+    ) => {
+      if (!descriptionElement) return;
+
+      const hasFilters =
+        Boolean(areaFilter.value) ||
+        Boolean(priceFilter.value) ||
+        Boolean(bedFilter.value);
+
+      if (filteredCount === 0) {
+        descriptionElement.textContent =
+          "No listings match these filters";
+
+        return;
+      }
+
+      if (visibleCount < filteredCount) {
+        descriptionElement.textContent =
+          `Showing ${visibleCount} of ${filteredCount}`;
+
+        return;
+      }
+
+      descriptionElement.textContent = hasFilters
+        ? "All matching listings shown"
+        : "Showing the newest listings";
+    };
+
+    const renderListings = ({
+      resetLimit = false,
+      updateHistory = true,
+    } = {}) => {
+      if (resetLimit) {
+        visibleLimit = initialLimit;
+      }
+
+      const filteredListings = getFilteredListings();
+      const sortedListings = sortListings(filteredListings);
+      const visibleListings = sortedListings.slice(
+        0,
+        visibleLimit
+      );
+
+      listingItems.forEach((item) => {
+        item.hidden = true;
+      });
+
+      sortedListings.forEach((item) => {
+        grid.appendChild(item);
+      });
+
+      visibleListings.forEach((item) => {
+        item.hidden = false;
+      });
+
+      const filteredCount = filteredListings.length;
+      const visibleCount = visibleListings.length;
+
+      if (countElement) {
+        countElement.textContent =
+          `${filteredCount} mobile ${
+            filteredCount === 1 ? "home" : "homes"
+          }`;
+      }
+
+      updateDescription(filteredCount, visibleCount);
+
+      if (clearButton) {
+        const hasActiveControls =
+          Boolean(areaFilter.value) ||
+          Boolean(priceFilter.value) ||
+          Boolean(bedFilter.value) ||
+          sortFilter.value !== "newest";
+
+        clearButton.hidden = !hasActiveControls;
+      }
+
+      if (showMoreButton) {
+        showMoreButton.hidden =
+          filteredCount === 0 ||
+          visibleCount >= filteredCount;
+      }
+
+      if (emptyElement) {
+        emptyElement.hidden = filteredCount !== 0;
+      }
+
+      grid.hidden = filteredCount === 0;
+
+      if (updateHistory) {
+        updateUrl();
+      }
+    };
+
+    const loadFiltersFromUrl = () => {
+      const params = new URLSearchParams(
+        window.location.search
+      );
+
+      const area = params.get("area") || "";
+      const price = params.get("price_max") || "";
+      const beds = params.get("beds") || "";
+      const sort = params.get("sort") || "newest";
+
+      if (
+        Array.from(areaFilter.options).some(
+          (option) => option.value === area
+        )
+      ) {
+        areaFilter.value = area;
+      }
+
+      if (
+        Array.from(priceFilter.options).some(
+          (option) => option.value === price
+        )
+      ) {
+        priceFilter.value = price;
+      }
+
+      if (
+        Array.from(bedFilter.options).some(
+          (option) => option.value === beds
+        )
+      ) {
+        bedFilter.value = beds;
+      }
+
+      if (
+        Array.from(sortFilter.options).some(
+          (option) => option.value === sort
+        )
+      ) {
+        sortFilter.value = sort;
+      }
+    };
+
+    [
+      areaFilter,
+      priceFilter,
+      bedFilter,
+      sortFilter,
+    ].forEach((control) => {
+      control.addEventListener("change", () => {
+        renderListings({
+          resetLimit: true,
+          updateHistory: true,
+        });
+      });
+    });
+
+    clearButton?.addEventListener("click", () => {
+      areaFilter.value = "";
+      priceFilter.value = "";
+      bedFilter.value = "";
+      sortFilter.value = "newest";
+
+      renderListings({
+        resetLimit: true,
+        updateHistory: true,
+      });
+    });
+
+    showMoreButton?.addEventListener("click", () => {
+      visibleLimit += initialLimit;
+
+      renderListings({
+        resetLimit: false,
+        updateHistory: false,
+      });
+    });
+
+    loadFiltersFromUrl();
+
+    renderListings({
+      resetLimit: true,
+      updateHistory: false,
+    });
   }
 
   document.addEventListener("click", (event) => {
-    const card = event.target.closest(
-     ".mh-listing-grid [data-listing-id]"
+    const target = event.target;
+
+    if (!(target instanceof Element)) return;
+
+    const card = target.closest(
+      ".mh-listing-grid [data-listing-id]"
     );
 
     if (!card) return;
@@ -700,7 +1110,11 @@ window.openSheet(card);
       return;
     }
 
-    const card = event.target.closest(
+    const target = event.target;
+
+    if (!(target instanceof Element)) return;
+
+    const card = target.closest(
       ".mh-listing-grid [data-listing-id]"
     );
 
@@ -709,6 +1123,21 @@ window.openSheet(card);
     event.preventDefault();
     openMobileListingCard(card);
   });
+
+  if (document.readyState === "loading") {
+    document.addEventListener(
+      "DOMContentLoaded",
+      initializeMobileListingFilters,
+      { once: true }
+    );
+  } else {
+    initializeMobileListingFilters();
+  }
+
+  document.addEventListener(
+    "astro:page-load",
+    initializeMobileListingFilters
+  );
 </script>
 
 <style>
@@ -1035,11 +1464,193 @@ window.openSheet(card);
     gap: 14px;
   }
 
-  .mh-listing-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 16px;
-  }
+.mh-listing-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.mh-listing-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 4px 0 14px;
+  padding: 18px;
+  border: 1px solid var(--mh-line);
+  border-radius: 16px;
+  background: var(--mh-soft);
+}
+
+.mh-filter-group {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.mh-filter-field {
+  display: grid;
+  min-width: 158px;
+  gap: 7px;
+}
+
+.mh-filter-field span {
+  color: var(--mh-muted);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mh-filter-field select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 38px 0 13px;
+  border: 1px solid var(--mh-line);
+  border-radius: 10px;
+  color: var(--mh-ink);
+  background:
+    linear-gradient(45deg, transparent 50%, var(--mh-accent) 50%)
+      calc(100% - 17px) 19px / 5px 5px no-repeat,
+    linear-gradient(135deg, var(--mh-accent) 50%, transparent 50%)
+      calc(100% - 12px) 19px / 5px 5px no-repeat,
+    #fff;
+  appearance: none;
+  font: inherit;
+  font-size: 0.79rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.mh-filter-field select:hover,
+.mh-filter-field select:focus {
+  border-color: color-mix(
+    in srgb,
+    var(--mh-accent) 55%,
+    transparent
+  );
+}
+
+.mh-filter-field select:focus {
+  outline: 3px solid color-mix(
+    in srgb,
+    var(--mh-accent) 12%,
+    transparent
+  );
+}
+
+.mh-clear-filters {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--mh-line);
+  border-radius: 10px;
+  color: var(--mh-accent);
+  background: #fff;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.mh-clear-filters:hover {
+  border-color: var(--mh-accent);
+}
+
+.mh-listing-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 28px;
+  margin-bottom: 16px;
+  color: var(--mh-muted);
+  font-size: 0.73rem;
+}
+
+#mh-listing-count {
+  color: var(--mh-ink);
+  font-weight: 750;
+}
+
+.mh-filterable-listing {
+  min-width: 0;
+}
+
+.mh-filterable-listing[hidden] {
+  display: none !important;
+}
+
+.mh-listing-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 26px;
+}
+
+.mh-show-more {
+  min-height: 48px;
+  padding: 0 24px;
+  border: 1px solid var(--mh-accent);
+  border-radius: 12px;
+  color: var(--mh-accent);
+  background: #fff;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.mh-show-more:hover {
+  transform: translateY(-2px);
+  color: #fff;
+  background: var(--mh-accent);
+}
+
+.mh-no-filter-results {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 28px;
+  border: 1px dashed var(--mh-line);
+  border-radius: 18px;
+  color: var(--mh-muted);
+  text-align: center;
+}
+
+.mh-listing-actions[hidden],
+.mh-show-more[hidden],
+.mh-clear-filters[hidden] {
+  display: none !important;
+}
+
+.mh-no-filter-results[hidden] {
+  display: none !important;
+}
+
+.mh-no-filter-results strong {
+  color: var(--mh-ink);
+  font-family: Georgia, serif;
+  font-size: 1.4rem;
+  font-weight: 500;
+}
+
+.mh-no-filter-results span {
+  font-size: 0.8rem;
+}
+
+.mh-listing-empty {
+  padding: 44px 24px;
+  border: 1px dashed var(--mh-line);
+  border-radius: 18px;
+  color: var(--mh-muted);
+  text-align: center;
+}
 
   
 
@@ -1485,6 +2096,80 @@ window.openSheet(card);
     cursor: pointer;
   }
 
+  .mh-listing-toolbar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:20px;
+    margin:18px 0 26px;
+    flex-wrap:wrap;
+}
+
+.mh-filter-group{
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+}
+
+.mh-filter-group select{
+    appearance:none;
+    background:#fff;
+    border:1px solid var(--mh-line);
+    border-radius:12px;
+    padding:12px 16px;
+    font:inherit;
+    font-size:.9rem;
+    cursor:pointer;
+    min-width:150px;
+}
+
+.mh-filter-group select:hover{
+    border-color:var(--mh-accent);
+}
+
+.mh-filter-count{
+    color:var(--mh-muted);
+    font-size:.9rem;
+    font-weight:600;
+}
+
+.mh-listing-toolbar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:20px;
+    margin:18px 0 26px;
+    flex-wrap:wrap;
+}
+
+.mh-filter-group{
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+}
+
+.mh-filter-group select{
+    appearance:none;
+    background:#fff;
+    border:1px solid var(--mh-line);
+    border-radius:12px;
+    padding:12px 16px;
+    font:inherit;
+    font-size:.9rem;
+    cursor:pointer;
+    min-width:150px;
+}
+
+.mh-filter-group select:hover{
+    border-color:var(--mh-accent);
+}
+
+.mh-filter-count{
+    color:var(--mh-muted);
+    font-size:.9rem;
+    font-weight:600;
+}
+
   @media (max-width: 1180px) {
     .mh-listing-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1545,12 +2230,60 @@ window.openSheet(card);
     .mh-guide-grid {
       grid-template-columns: repeat(2, 1fr);
     }
+    .mh-listing-toolbar {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.mh-filter-field {
+  flex: 1 1 calc(50% - 10px);
+}
+
+.mh-clear-filters {
+  align-self: flex-start;
+}
   }
 
   @media (max-width: 640px) {
     .mh-shell {
       width: min(100% - 22px, 1460px);
     }
+
+    .mh-listing-toolbar {
+  margin-top: 0;
+  padding: 14px;
+}
+
+.mh-filter-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+}
+
+.mh-filter-field {
+  min-width: 0;
+}
+
+.mh-filter-field select {
+  min-height: 46px;
+  padding-left: 11px;
+  font-size: 0.72rem;
+}
+
+.mh-clear-filters {
+  width: 100%;
+}
+
+.mh-listing-summary {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mh-filterable-listing {
+  min-width: min(82vw, 310px);
+  scroll-snap-align: start;
+}
 
     .mh-section {
       padding: 28px 0;
@@ -1597,20 +2330,15 @@ window.openSheet(card);
       flex-direction: column;
     }
 
-    .mh-listing-grid {
-      display: flex;
-      overflow-x: auto;
-      gap: 12px;
-      padding-bottom: 8px;
-      scroll-snap-type: x mandatory;
-    }
+ .mh-listing-grid {
+  display: flex;
+  overflow-x: auto;
+  gap: 12px;
+  padding-bottom: 8px;
+  scroll-snap-type: x mandatory;
+}
 
-    .mh-listing-card {
-      min-width: min(82vw, 310px);
-      scroll-snap-align: start;
-    }
-
-    .mh-parks-grid {
+.mh-parks-grid {
       display: flex;
       overflow-x: auto;
       padding-bottom: 8px;
