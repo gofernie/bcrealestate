@@ -1,0 +1,1157 @@
+---
+import { createClient } from "@supabase/supabase-js";
+import Layout from "../../layouts/Layout.astro";
+import SiteNav from "../../components/SiteNav.astro";
+import ListingCard from "../../components/ListingCard.astro";
+import IntentModalController from "../../components/IntentModalController.astro";
+import { getSite } from "../../lib/getSite";
+import { getNavIntentPages } from "../../lib/getNavIntentPages";
+import "../../styles/area-page.css";
+import "../../styles/intent-modal.css";
+
+import {
+  getMobileHomePark,
+  mobileHomeParks,
+} from "../../data/mobileHomeParks";
+
+export const prerender = false;
+
+const slug = Astro.params.slug || "";
+const park = getMobileHomePark(slug);
+
+if (!park) {
+  return Astro.redirect(
+    "/mobile-home-parks-in-nanaimo",
+    302
+  );
+}
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const city = "nanaimo";
+
+const requestHostname = Astro.url.hostname
+  .toLowerCase()
+  .replace(/^www\./, "");
+
+const siteHostname =
+  requestHostname === "localhost" ||
+  requestHostname === "127.0.0.1"
+    ? "nanaimomobiles.com"
+    : requestHostname;
+
+const site = await getSite(siteHostname, city);
+
+const accentColor =
+  site?.accent_color ||
+  "#58736a";
+
+const navIntentPages =
+  await getNavIntentPages(supabase, city);
+
+const normalizeMatchText = (value: unknown) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/\bstreet\b/g, "st")
+    .replace(/\broad\b/g, "rd")
+    .replace(/\bavenue\b/g, "ave")
+    .replace(/\bdrive\b/g, "dr")
+    .replace(/\blane\b/g, "ln")
+    .replace(/\bplace\b/g, "pl")
+    .replace(/\bcrescent\b/g, "cres")
+    .replace(/\bhighway\b/g, "hwy")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getListingAddressText = (listing: any) =>
+  normalizeMatchText(
+    listing?.address ||
+    listing?.raw?.address?.addressKey ||
+    ""
+  );
+
+const normalizedParkAddress = normalizeMatchText(park.address);
+
+const parkStreetNumber =
+  normalizedParkAddress.match(/^\d+/)?.[0] || "";
+
+const parkStreetWords = normalizedParkAddress
+  .replace(/^\d+\s*/, "")
+  .split(" ")
+  .filter(Boolean);
+
+const hasExactParkCivicAddress = (listing: any) => {
+  const listingAddress = getListingAddressText(listing);
+
+  if (
+    !listingAddress ||
+    !parkStreetNumber ||
+    parkStreetWords.length === 0
+  ) {
+    return false;
+  }
+
+  const addressTokens = listingAddress.split(" ");
+
+  const numberIndex = addressTokens.indexOf(
+    parkStreetNumber
+  );
+
+  if (numberIndex === -1) {
+    return false;
+  }
+
+  const wordsAfterNumber = addressTokens.slice(
+    numberIndex + 1,
+    numberIndex + 1 + parkStreetWords.length
+  );
+
+  return parkStreetWords.every(
+    (word, index) => wordsAfterNumber[index] === word
+  );
+};
+
+const { data: allMobileListings = [], error: listingsError } =
+  await supabase
+    .from("listing_rows")
+    .select("*")
+    .eq("status", "A")
+    .eq("normalized_city", "nanaimo")
+    .eq("normalized_type", "mobile")
+    .order("listed_at", { ascending: false });
+
+if (listingsError) {
+  console.error(
+    `Unable to load listings for ${park.name}:`,
+    listingsError
+  );
+}
+
+const parkListings = allMobileListings.filter(
+  (listing: any) => hasExactParkCivicAddress(listing)
+);
+
+const parkListingCount = parkListings.length;
+
+const relatedParks = mobileHomeParks
+  .filter(
+    (item) =>
+      item.slug !== park.slug &&
+      item.category === park.category
+  )
+  .slice(0, 3);
+
+const categoryLabel =
+  park.category === "55-plus"
+    ? "55+ community"
+    : park.category === "adult"
+      ? "Adult-oriented community"
+      : "Family or all-ages community";
+
+const petLabel =
+  park.petType === "none"
+    ? "Pets not permitted"
+    : park.petType === "approval"
+      ? "Pets subject to approval"
+      : park.petType === "restricted"
+        ? "Pets permitted with restrictions"
+        : "Pets permitted";
+
+
+
+const pageTitle = `${park.name} | Nanaimo Mobile Home Parks`;
+
+const pageDescription =
+  `${park.name} is a ${categoryLabel.toLowerCase()} in Nanaimo. ` +
+  `Review its age restriction, pet policy, location and community information.`;
+---
+
+<Layout
+  title={pageTitle}
+  description={pageDescription}
+  accentColor={accentColor}
+  city={city}
+>
+  <SiteNav
+    city={city}
+    areas={[]}
+    types={["mobile"]}
+    intentPages={navIntentPages}
+    showAreaNav={false}
+  />
+
+  <main class="park-page">
+      <section class="park-hero">
+        <div class="park-shell">
+          <nav
+            class="breadcrumbs"
+            aria-label="Breadcrumb"
+          >
+            <a href="/">Home</a>
+
+            <span>/</span>
+
+            <a href="/mobile-home-parks-in-nanaimo">
+              Mobile home parks
+            </a>
+
+            <span>/</span>
+
+            <span>{park.name}</span>
+          </nav>
+
+          <div class="park-hero-grid">
+            <div class="park-hero-copy">
+              <div class="park-eyebrow">
+                {categoryLabel}
+              </div>
+
+              <h1>{park.name}</h1>
+
+              <p class="park-address">
+                {park.address}, {park.city}, BC
+              </p>
+
+              <p class="park-intro">
+                {park.description}
+              </p>
+
+              <div class="park-badges">
+                <span>{park.age}</span>
+                <span>{petLabel}</span>
+              </div>
+            </div>
+
+            <aside class="park-summary-card">
+              <div class="summary-item">
+                <span>Age policy</span>
+                <strong>{park.age}</strong>
+              </div>
+
+              <div class="summary-item">
+                <span>Pet policy</span>
+                <strong>{park.pets}</strong>
+              </div>
+
+              <div class="summary-item">
+                <span>Location</span>
+                <strong>{park.city}, BC</strong>
+              </div>
+
+              <div class="summary-item">
+                <span>Park type</span>
+                <strong>{categoryLabel}</strong>
+              </div>
+
+              <a
+                class="summary-item summary-item--link"
+                href="#homes-for-sale"
+              >
+                <span>Homes for sale</span>
+                <strong>
+                  {parkListingCount}
+                  {parkListingCount === 1 ? " home" : " homes"}
+                </strong>
+              </a>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="park-content-section">
+        <div class="park-shell park-content-grid">
+          <div class="park-main-column">
+            <section class="content-card">
+              <div class="park-eyebrow">
+                Community overview
+              </div>
+
+              <h2>About {park.name}</h2>
+
+              <p>{park.description}</p>
+
+              <p>
+                Buyers considering a home in this
+                community should confirm current park
+                rules, monthly pad fees, approval
+                requirements and restrictions directly
+                with park management.
+              </p>
+            </section>
+
+            <section class="content-card">
+              <div class="park-eyebrow">
+                Park details
+              </div>
+
+              <h2>
+                Rules and community information
+              </h2>
+
+              <div class="detail-list">
+                <div class="detail-row">
+                  <span>Age restriction</span>
+                  <strong>{park.age}</strong>
+                </div>
+
+                <div class="detail-row">
+                  <span>Pet policy</span>
+                  <strong>{park.pets}</strong>
+                </div>
+
+                <div class="detail-row">
+                  <span>Community type</span>
+                  <strong>{categoryLabel}</strong>
+                </div>
+
+                <div class="detail-row">
+                  <span>Address</span>
+
+                  <strong>
+                    {park.address}, {park.city}, BC
+                  </strong>
+                </div>
+
+                <div class="detail-row">
+                  <span>Monthly pad fee</span>
+
+                  <strong>
+                    Confirm with park management
+                  </strong>
+                </div>
+
+                <div class="detail-row">
+                  <span>Park approval</span>
+
+                  <strong>
+                    May be required before purchase
+                  </strong>
+                </div>
+              </div>
+            </section>
+
+            <section class="content-card">
+              <div class="park-eyebrow">
+                Community highlights
+              </div>
+
+              <h2>What stands out</h2>
+
+              <div class="feature-grid">
+                {
+                  park.features.map((feature) => (
+                    <div class="feature-card">
+                      <div
+                        class="feature-icon"
+                        aria-hidden="true"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.7"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <path d="m5 12 4 4L19 6" />
+                        </svg>
+                      </div>
+
+                      <span>{feature}</span>
+                    </div>
+                  ))
+                }
+              </div>
+            </section>
+
+            <section
+              class="content-card park-listings-card"
+              id="homes-for-sale"
+            >
+              <div class="park-listings-heading">
+                <div>
+                  <div class="park-eyebrow">
+                    Homes for sale
+                  </div>
+
+                  <h2>
+                    Mobile homes currently available in
+                    {park.name}
+                  </h2>
+                </div>
+
+                {
+                  parkListingCount > 0 && (
+                    <span class="listing-count-badge">
+                      {parkListingCount}
+                      {parkListingCount === 1
+                        ? " listing"
+                        : " listings"}
+                    </span>
+                  )
+                }
+              </div>
+
+              {
+                parkListingCount > 0 ? (
+                  <>
+                    <p>
+                      Showing active mobile-home listings
+                      matched to this park using its exact civic
+                      address.
+                    </p>
+
+                    <div class="listing-grid">
+                      {parkListings.map((listing, index) => (
+                        <div class="listing-card-wrap">
+                          <ListingCard
+                            listing={listing}
+                            priority={index < 2}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div class="park-listings-empty">
+                    <strong>
+                      No homes are currently listed in this
+                      park.
+                    </strong>
+
+                    <p>
+                      New listings will appear here when
+                      they become available.
+                    </p>
+
+                    <div class="empty-actions">
+                      <a
+                        class="primary-button"
+                        href="/#mobile-home-alerts"
+                      >
+                        Create a park alert
+                      </a>
+
+                      <a
+                        class="secondary-button"
+                        href="/nanaimo/mobile-homes"
+                      >
+                        Browse all Nanaimo mobile homes
+                      </a>
+                    </div>
+                  </div>
+                )
+              }
+            </section>
+
+            <section class="content-card">
+              <div class="park-eyebrow">
+                Buyer checklist
+              </div>
+
+              <h2>What to confirm before buying</h2>
+
+              <ul class="checklist">
+                <li>Current monthly pad fee</li>
+
+                <li>
+                  What is included in the pad fee
+                </li>
+
+                <li>Current age restrictions</li>
+
+                <li>
+                  Pet size, breed and approval
+                  requirements
+                </li>
+
+                <li>
+                  Park approval and application process
+                </li>
+
+                <li>
+                  Rental and occupancy restrictions
+                </li>
+
+                <li>
+                  Parking and visitor parking rules
+                </li>
+
+                <li>
+                  Maintenance responsibilities
+                </li>
+              </ul>
+            </section>
+          </div>
+
+          <aside class="park-sidebar">
+            <div class="sidebar-card">
+              <div class="park-eyebrow">
+                Location
+              </div>
+
+              <h2>Find the park</h2>
+
+              <p>
+                {park.address}, {park.city}, British
+                Columbia
+              </p>
+
+             <a
+  class="secondary-button"
+  href={`/explore?city=nanaimo&search=${encodeURIComponent(
+    `${park.address}, ${park.city}, BC`
+  )}`}
+>
+  Open in Explore
+</a>
+            </div>
+
+            <div
+              class="sidebar-card sidebar-card--accent"
+            >
+              <div class="park-eyebrow">
+                Need help?
+              </div>
+
+              <h2>Compare this community</h2>
+
+              <p>
+                Get help comparing park rules,
+                available homes, pad fees and
+                locations across Nanaimo.
+              </p>
+
+              <a
+                class="primary-button"
+                href="/contact"
+              >
+                Ask about this park
+              </a>
+            </div>
+
+            <div class="sidebar-card">
+              <div class="park-eyebrow">
+                Important note
+              </div>
+
+              <p class="small-copy">
+                Park rules, pet policies, age
+                restrictions and fees may change.
+                Information should be confirmed with
+                park management and reviewed as part
+                of the buyer’s due diligence.
+              </p>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      {
+        relatedParks.length > 0 && (
+          <section class="related-section">
+            <div class="park-shell">
+              <div class="related-heading">
+                <div>
+                  <div class="park-eyebrow">
+                    Similar communities
+                  </div>
+
+                  <h2>
+                    Explore other Nanaimo parks
+                  </h2>
+                </div>
+
+                <a href="/mobile-home-parks-in-nanaimo">
+                  View all parks →
+                </a>
+              </div>
+
+              <div class="related-grid">
+                {relatedParks.map(
+                  (relatedPark) => (
+                    <a
+                      class="related-card"
+                      href={`/parks/${relatedPark.slug}`}
+                    >
+                      <span class="related-age">
+                        {relatedPark.age}
+                      </span>
+
+                      <h3>
+                        {relatedPark.name}
+                      </h3>
+
+                      <p>
+                        {relatedPark.address},{" "}
+                        {relatedPark.city}
+                      </p>
+
+                      <strong>
+                        View park →
+                      </strong>
+                    </a>
+                  )
+                )}
+              </div>
+            </div>
+          </section>
+        )
+      }
+  </main>
+
+  <IntentModalController listings={parkListings} />
+
+  <script is:inline>
+      document.addEventListener("click", (event) => {
+        const target = event.target;
+
+        if (!(target instanceof Element)) return;
+
+        const card = target.closest(
+          ".listing-grid [data-listing-id]"
+        );
+
+        if (!card) return;
+
+        if (typeof window.openSheet !== "function") {
+          return;
+        }
+
+        event.preventDefault();
+        window.openSheet(card);
+      });
+  </script>
+</Layout>
+
+<style>
+  .park-page {
+    --park-accent: var(--accent, #58736a);
+    --park-ink: var(--ink, #17201d);
+    --park-muted: var(--muted, #68736f);
+    --park-line: rgba(23, 32, 29, 0.12);
+    --park-soft: #f3f6f3;
+    --park-warm: #faf7f1;
+    color: var(--park-ink);
+  }
+
+.park-shell {
+    width: min(1260px, calc(100% - 64px));
+    margin-inline: auto;
+  }
+
+  .park-hero {
+    padding: 32px 0 78px;
+    border-bottom: 1px solid var(--park-line);
+    background:
+      radial-gradient(
+        circle at 86% 30%,
+        rgba(88, 115, 106, 0.2),
+        transparent 32%
+      ),
+      linear-gradient(
+        120deg,
+        var(--park-warm),
+        #eef4f0
+      );
+  }
+
+  .breadcrumbs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 64px;
+    color: var(--park-muted);
+    font-size: 0.7rem;
+  }
+
+  .breadcrumbs a {
+    color: var(--park-accent);
+    text-decoration: none;
+  }
+
+  .park-hero-grid {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1.35fr)
+      minmax(340px, 0.65fr);
+    gap: 72px;
+    align-items: end;
+  }
+
+  .park-eyebrow {
+    margin-bottom: 14px;
+    color: var(--park-accent);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+  }
+
+  .park-hero h1 {
+    max-width: 900px;
+    margin-bottom: 18px;
+    font-size: clamp(3.2rem, 7vw, 6.5rem);
+    line-height: 0.92;
+  }
+
+  .park-address {
+    margin-bottom: 20px;
+    color: var(--park-accent);
+    font-size: 0.86rem;
+    font-weight: 750;
+  }
+
+  .park-intro {
+    max-width: 720px;
+    margin-bottom: 24px;
+    color: #52605b;
+    font-size: 1.06rem;
+    line-height: 1.75;
+  }
+
+  .park-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .park-badges span {
+    padding: 8px 12px;
+    border: 1px solid
+      rgba(88, 115, 106, 0.22);
+    border-radius: 999px;
+    color: var(--park-accent);
+    background: rgba(255, 255, 255, 0.74);
+    font-size: 0.7rem;
+    font-weight: 750;
+  }
+
+  .park-summary-card {
+    overflow: hidden;
+    border: 1px solid
+      rgba(255, 255, 255, 0.85);
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 24px 60px
+      rgba(31, 49, 42, 0.1);
+    backdrop-filter: blur(16px);
+  }
+
+  .summary-item {
+    padding: 22px 24px;
+    border-bottom: 1px solid var(--park-line);
+  }
+
+  .summary-item:last-child {
+    border-bottom: 0;
+  }
+
+  .summary-item span,
+  .summary-item strong {
+    display: block;
+  }
+
+  .summary-item span {
+    margin-bottom: 6px;
+    color: var(--park-muted);
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .summary-item strong {
+    font-size: 0.82rem;
+    line-height: 1.5;
+  }
+
+  .park-content-section {
+    padding: 70px 0;
+  }
+
+  .park-content-grid {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(280px, 340px);
+    gap: 24px;
+    align-items: start;
+  }
+
+  .park-main-column {
+    display: grid;
+    gap: 18px;
+  }
+
+  .content-card,
+  .sidebar-card {
+    padding: 30px;
+    border: 1px solid var(--park-line);
+    border-radius: 20px;
+    background: #fff;
+  }
+
+  .content-card h2,
+  .sidebar-card h2 {
+    margin-bottom: 16px;
+    font-size: clamp(1.8rem, 3vw, 2.8rem);
+  }
+
+  .content-card p,
+  .sidebar-card p {
+    color: var(--park-muted);
+    line-height: 1.75;
+  }
+
+  .detail-list {
+    overflow: hidden;
+    border: 1px solid var(--park-line);
+    border-radius: 14px;
+  }
+
+  .detail-row {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 24px;
+    padding: 16px;
+    border-bottom: 1px solid var(--park-line);
+  }
+
+  .detail-row:last-child {
+    border-bottom: 0;
+  }
+
+  .detail-row span {
+    color: var(--park-muted);
+    font-size: 0.72rem;
+  }
+
+  .detail-row strong {
+    font-size: 0.75rem;
+    line-height: 1.55;
+  }
+
+  .feature-grid {
+    display: grid;
+    grid-template-columns:
+      repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .feature-card {
+    display: flex;
+    min-height: 104px;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 16px;
+    border-radius: 14px;
+    background: var(--park-soft);
+  }
+
+  .feature-icon {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border-radius: 9px;
+    color: var(--park-accent);
+    background: #fff;
+  }
+
+  .feature-icon svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .feature-card span {
+    font-size: 0.72rem;
+    font-weight: 750;
+  }
+
+  .checklist {
+    display: grid;
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .checklist li {
+    position: relative;
+    padding: 13px 14px 13px 38px;
+    border-radius: 11px;
+    background: var(--park-soft);
+    color: #4e5955;
+    font-size: 0.75rem;
+  }
+
+  .checklist li::before {
+    position: absolute;
+    top: 12px;
+    left: 14px;
+    color: var(--park-accent);
+    font-weight: 900;
+    content: "✓";
+  }
+
+  .park-sidebar {
+    position: sticky;
+    top: 24px;
+    display: grid;
+    gap: 16px;
+  }
+
+  .sidebar-card--accent {
+    background: rgba(88, 115, 106, 0.09);
+  }
+
+  .small-copy {
+    margin-bottom: 0;
+    font-size: 0.72rem;
+  }
+
+  .primary-button,
+  .secondary-button {
+    display: inline-flex;
+    min-height: 48px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 19px;
+    border: 1px solid var(--park-accent);
+    border-radius: 10px;
+    font-size: 0.74rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .primary-button {
+    color: #fff;
+    background: var(--park-accent);
+  }
+
+  .secondary-button {
+    color: var(--park-accent);
+    background: #fff;
+  }
+
+  .related-section {
+    padding: 64px 0 82px;
+    border-top: 1px solid var(--park-line);
+    background: var(--park-soft);
+  }
+
+  .related-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+
+  .related-heading h2 {
+    margin-bottom: 0;
+    font-size: clamp(2.2rem, 4vw, 3.8rem);
+  }
+
+  .related-heading > a {
+    color: var(--park-accent);
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .related-grid {
+    display: grid;
+    grid-template-columns:
+      repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .related-card {
+    padding: 22px;
+    border: 1px solid var(--park-line);
+    border-radius: 16px;
+    background: #fff;
+    text-decoration: none;
+  }
+
+  .related-age {
+    display: inline-flex;
+    margin-bottom: 28px;
+    padding: 6px 9px;
+    border-radius: 999px;
+    color: var(--park-accent);
+    background: rgba(88, 115, 106, 0.1);
+    font-size: 0.64rem;
+    font-weight: 800;
+  }
+
+  .related-card h3 {
+    margin-bottom: 8px;
+    font-size: 1.35rem;
+  }
+
+  .related-card p {
+    margin-bottom: 24px;
+    color: var(--park-muted);
+    font-size: 0.72rem;
+  }
+
+  .related-card strong {
+    color: var(--park-accent);
+    font-size: 0.7rem;
+  }
+
+  .summary-item--link {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+    transition: background 160ms ease;
+  }
+
+  .summary-item--link:hover {
+    background: rgba(88, 115, 106, 0.07);
+  }
+
+  .park-listings-card {
+    scroll-margin-top: 24px;
+  }
+
+  .park-listings-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 16px;
+  }
+
+  .park-listings-heading h2 {
+    margin-bottom: 0;
+  }
+
+  .listing-count-badge {
+    flex: 0 0 auto;
+    padding: 8px 11px;
+    border-radius: 999px;
+    color: var(--park-accent);
+    background: rgba(88, 115, 106, 0.1);
+    font-size: 0.68rem;
+    font-weight: 800;
+  }
+
+  .listing-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 22px;
+  }
+
+  .listing-card-wrap {
+    min-width: 0;
+  }
+
+  .park-listings-empty {
+    padding: 28px;
+    border: 1px dashed var(--park-line);
+    border-radius: 15px;
+    background: var(--park-soft);
+  }
+
+  .park-listings-empty strong {
+    display: block;
+    margin-bottom: 8px;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 1.35rem;
+    font-weight: 500;
+  }
+
+  .park-listings-empty p {
+    margin-bottom: 18px;
+  }
+
+  .empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+
+  @media (max-width: 960px) {
+    .park-hero-grid,
+    .park-content-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .listing-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .park-sidebar {
+      position: static;
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+    }
+
+    .related-grid {
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 700px) {
+    .park-shell {
+      width: min(100% - 24px, 1260px);
+    }
+
+    .park-hero {
+      padding: 24px 0 52px;
+    }
+
+    .breadcrumbs {
+      margin-bottom: 40px;
+    }
+
+    .park-hero h1 {
+      font-size: clamp(3rem, 15vw, 4.7rem);
+    }
+
+    .park-content-section {
+      padding: 42px 0;
+    }
+
+    .content-card,
+    .sidebar-card {
+      padding: 22px;
+    }
+
+    .detail-row {
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+
+    .feature-grid,
+    .checklist,
+    .park-sidebar,
+    .related-grid,
+    .listing-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .park-listings-heading {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .related-heading {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  }
+</style>

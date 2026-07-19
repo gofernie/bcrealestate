@@ -1,0 +1,468 @@
+export type MobileHomePark = {
+  name: string;
+  slug: string;
+  address: string;
+  city: string;
+  lat: number | null;
+  lng: number | null;
+  age: string;
+  category: "55-plus" | "adult" | "family";
+  pets: string;
+  petType: "allowed" | "approval" | "restricted" | "none";
+  description: string;
+  features: string[];
+};
+
+export const mobileHomeParks: MobileHomePark[] = [
+  {
+    name: "Cedar Ridge Manufactured Home Park",
+    slug: "cedar-ridge",
+    address: "2161 Walsh Rd",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "55+",
+    category: "55-plus",
+    pets: "Cats permitted; no dogs",
+    petType: "restricted",
+    description:
+      "Conveniently located near bus routes, Duke Point ferries, Nanaimo Airport and shopping.",
+    features: [
+      "Transit nearby",
+      "Shopping nearby",
+      "Airport access",
+    ],
+  },
+  {
+    name: "Sunnyslope Manufactured Home Park",
+    slug: "sunnyslope",
+    address: "1359 Cranberry Ave",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "55+",
+    category: "55-plus",
+    pets: "Small pets allowed",
+    petType: "allowed",
+    description:
+      "An established adult-oriented manufactured home community in south Nanaimo.",
+    features: ["55+ community", "Small pets", "South Nanaimo"],
+  },
+  {
+    name: "Brookdale Manufactured Home Park",
+    slug: "brookdale",
+    address: "61 Twelfth St",
+    city: "Nanaimo",
+    lat: 49.12869441,
+    lng: -123.92254977,
+    age: "55+",
+    category: "55-plus",
+    pets: "Small pets allowed",
+    petType: "allowed",
+    description:
+      "A 55+ community conveniently located close to shopping and everyday services.",
+    features: [
+      "55+ community",
+      "Small pets",
+      "Central location",
+    ],
+  },
+  {
+    name: "Sea Breeze Manufactured Home Park",
+    slug: "sea-breeze",
+    address: "25 Maki Rd",
+    city: "Nanaimo",
+    lat: 49.1293846,
+    lng: -123.9165432,
+    age: "55+",
+    category: "55-plus",
+    pets:
+      'One pet per site under 20" in height. No banned breeds or exotic pets.',
+    petType: "allowed",
+    description:
+      "An established adult-oriented community in south Nanaimo with access to nearby shopping and services.",
+    features: ["55+ community", "One small pet", "South Nanaimo"],
+  },
+  {
+    name: "Chase River Manufactured Home Park",
+    slug: "chase-river",
+    address: "1074 Old Victoria Rd",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "55+",
+    category: "55-plus",
+    pets: "Pets allowed with park approval",
+    petType: "approval",
+    description:
+      "A south Nanaimo adult community close to Chase River amenities and transportation routes.",
+    features: [
+      "55+ community",
+      "Pets by approval",
+      "Shopping nearby",
+    ],
+  },
+  {
+    name: "Ed’s Manufactured Home Park",
+    slug: "eds",
+    address: "Honey Dr",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "55+",
+    category: "55-plus",
+    pets:
+      "Cats permitted. Small to medium-sized dogs may be allowed with park approval.",
+    petType: "approval",
+    description:
+      "A smaller 55+ manufactured home community with a flexible pet policy subject to approval.",
+    features: [
+      "55+ community",
+      "Cats allowed",
+      "Dogs by approval",
+    ],
+  },
+  {
+    name: "Mountain View Manufactured Home Park",
+    slug: "mountain-view",
+    address: "80 Fifth St",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "55+",
+    category: "55-plus",
+    pets: "Small and medium-sized pets allowed",
+    petType: "allowed",
+    description:
+      "A centrally located adult-oriented community with convenient access to Nanaimo services.",
+    features: [
+      "55+ community",
+      "Pets allowed",
+      "Central Nanaimo",
+    ],
+  },
+  {
+    name: "Willow Manufactured Home Park",
+    slug: "willow",
+    address: "1177 Morrell Circle",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "55+",
+    category: "55-plus",
+    pets: "One small pet up to 22 lbs",
+    petType: "allowed",
+    description:
+      "Moments from hiking trails, parks, shopping and a wide range of everyday amenities.",
+    features: [
+      "Trails nearby",
+      "Parks nearby",
+      "One small pet",
+    ],
+  },
+  {
+    name: "Wish-Sha Manufactured Home Park",
+    slug: "wish-sha",
+    address: "2301 Arbot Rd",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "55+",
+    category: "55-plus",
+    pets: "No pets allowed",
+    petType: "none",
+    description:
+      "An adult-oriented community within walking distance of Westwood Lake Park.",
+    features: [
+      "Westwood Lake nearby",
+      "55+ community",
+      "No pets",
+    ],
+  },
+  {
+    name: "Dogwood Manufactured Home Park",
+    slug: "dogwood",
+    address: "2501 Labieux Rd",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "55+",
+    category: "55-plus",
+    pets: "One small pet allowed",
+    petType: "allowed",
+    description:
+      "An established 55+ community located near shopping and services in central Nanaimo.",
+    features: [
+      "55+ community",
+      "One small pet",
+      "Shopping nearby",
+    ],
+  },
+  {
+    name: "Deerwood Place Estates",
+    slug: "deerwood-place-estates",
+    address: "Deerwood Blvd",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "55+",
+    category: "55-plus",
+    pets: "Pets allowed with park approval",
+    petType: "approval",
+    description:
+      "A large, well-established adult-oriented manufactured home community in north Nanaimo.",
+    features: [
+      "55+ community",
+      "Pets by approval",
+      "North Nanaimo",
+    ],
+  },
+  {
+    name: "Woodgrove Estates Manufactured Home Park",
+    slug: "woodgrove-estates",
+    address: "5854 Turner Rd",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "55+",
+    category: "55-plus",
+    pets: "Two small pets allowed",
+    petType: "allowed",
+    description:
+      "A north Nanaimo adult community close to Woodgrove Centre, services and transportation.",
+    features: [
+      "Two small pets",
+      "Shopping nearby",
+      "North Nanaimo",
+    ],
+  },
+  {
+    name: "Pleasant Valley Manufactured Home Park",
+    slug: "pleasant-valley",
+    address: "5931 Island Hwy N",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "55+",
+    category: "55-plus",
+    pets: "Pets allowed with restrictions",
+    petType: "restricted",
+    description:
+      "A conveniently located adult-oriented community in north Nanaimo.",
+    features: [
+      "55+ community",
+      "Pets restricted",
+      "Shopping nearby",
+    ],
+  },
+  {
+    name: "Crest I Manufactured Home Park",
+    slug: "crest-one",
+    address: "6245 Metral Dr",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "55+",
+    category: "55-plus",
+    pets: "One small pet allowed with approval",
+    petType: "approval",
+    description:
+      "A popular north Nanaimo adult community close to shopping, transit and services.",
+    features: [
+      "55+ community",
+      "Pet by approval",
+      "Transit nearby",
+    ],
+  },
+  {
+    name: "Crest II Manufactured Home Park",
+    slug: "crest-two",
+    address: "Metral Dr",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "55+",
+    category: "55-plus",
+    pets:
+      "Two pets permitted, including no more than one small dog",
+    petType: "allowed",
+    description:
+      "An adult-oriented community located immediately south of Crest I in north Nanaimo.",
+    features: [
+      "55+ community",
+      "Up to two pets",
+      "North Nanaimo",
+    ],
+  },
+  {
+    name: "Sharman Manufactured Home Park",
+    slug: "sharman",
+    address: "6325 Metral Dr",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "55+",
+    category: "55-plus",
+    pets: "No pets allowed",
+    petType: "none",
+    description:
+      "A well-located adult-oriented community near north Nanaimo shopping and transit.",
+    features: [
+      "55+ community",
+      "No pets",
+      "Shopping nearby",
+    ],
+  },
+  {
+    name: "Valley Oak Estates",
+    slug: "valley-oak-estates",
+    address: "Valley Oak Dr",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "45+",
+    category: "adult",
+    pets:
+      'One cat or dog up to 14" or 22 lbs, whichever measurement is smaller.',
+    petType: "allowed",
+    description:
+      "An adult-oriented manufactured home community with a limited small-pet policy.",
+    features: [
+      "45+ community",
+      "One small pet",
+      "Adult oriented",
+    ],
+  },
+  {
+    name: "Petroglyph Manufactured Home Park",
+    slug: "petroglyph",
+    address: "1000 Chase River Rd",
+    city: "Nanaimo",
+    lat: 49.1390317,
+    lng: -123.9237641,
+    age: "19+",
+    category: "adult",
+    pets: "Pet approval is uncommon",
+    petType: "restricted",
+    description:
+      "An adult-oriented community in south Nanaimo near Chase River services.",
+    features: [
+      "19+ community",
+      "South Nanaimo",
+      "Limited pet approval",
+    ],
+  },
+  {
+    name: "Forest Glade Manufactured Home Park",
+    slug: "forest-glade",
+    address: "1310 Spruston Rd",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "All ages",
+    category: "family",
+    pets: "Pets allowed with some restrictions",
+    petType: "restricted",
+    description:
+      "An all-ages manufactured home community in a more rural Nanaimo setting.",
+    features: ["All ages", "Pets allowed", "Rural setting"],
+  },
+  {
+    name: "Meadow Ridge Estates",
+    slug: "meadow-ridge-estates",
+    address: "328 Myrtle Cres",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "Family oriented",
+    category: "family",
+    pets:
+      "Two small pets allowed. Restrictions apply to certain dog breeds.",
+    petType: "allowed",
+    description:
+      "A family-oriented community with a park-owned playground and greenspace close to schools.",
+    features: ["Playground", "Greenspace", "Schools nearby"],
+  },
+  {
+    name: "Park Lane Manufactured Home Park",
+    slug: "park-lane",
+    address: "971 Douglas Ave",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "Family friendly",
+    category: "family",
+    pets: 'One dog up to 35 lbs or 25", or one cat',
+    petType: "allowed",
+    description:
+      "A family-friendly manufactured home community with a clear one-pet policy.",
+    features: ["Family friendly", "One pet", "Central location"],
+  },
+  {
+    name: "Seabird Manufactured Home Park",
+    slug: "seabird",
+    address: "3449 Hallberg Rd",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "No age restrictions",
+    category: "family",
+    pets: "One dog up to 35 lbs",
+    petType: "allowed",
+    description:
+      "An all-ages community in the south Nanaimo and Cassidy area.",
+    features: ["All ages", "One dog", "South Nanaimo"],
+  },
+  {
+    name: "Southgate Manufactured Home Park",
+    slug: "southgate",
+    address: "1226 Lawlor Rd",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "No age restrictions",
+    category: "family",
+    pets: "Pets allowed",
+    petType: "allowed",
+    description:
+      "An all-ages manufactured home community in south Nanaimo.",
+    features: ["All ages", "Pets allowed", "South Nanaimo"],
+  },
+  {
+    name: "Cedar Meadow Manufactured Home Park",
+    slug: "cedar-meadow",
+    address: "1385 MacMillan Rd",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "Age restriction not confirmed",
+    category: "family",
+    pets: "Small pets allowed",
+    petType: "allowed",
+    description:
+      "Also known as Brown’s Mobile Home Park, located in the Cedar area.",
+    features: [
+      "Small pets",
+      "Cedar area",
+      "Also called Brown’s MHP",
+    ],
+  },
+  {
+    name: "Zuiderzee Manufactured Home Park",
+    slug: "zuiderzee",
+    address: "2575 Enefer Rd",
+    city: "Nanaimo",
+    lat: null,
+    lng: null,
+    age: "Age restriction not confirmed",
+    category: "family",
+    pets: "No pets allowed",
+    petType: "none",
+    description:
+      "An established Nanaimo manufactured home community with a no-pet policy.",
+    features: ["No pets", "Nanaimo"],
+  },
+];
+
+export const getMobileHomePark = (slug: string) =>
+  mobileHomeParks.find((park) => park.slug === slug);
