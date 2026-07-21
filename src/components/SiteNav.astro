@@ -5,15 +5,27 @@ type NavItem = {
 };
 
 const {
-  city = "nanaimo",
+  city: incomingCity = "nanaimo",
   site = null,
   areas = [],
+  types: suppliedTypes = [],
   intentPages = [],
   showAreaNav = false,
   activeSection = "",
 } = Astro.props;
 
-const currentPath = Astro.url.pathname.replace(/\/$/, "") || "/";
+const types =
+  suppliedTypes.length > 0
+    ? suppliedTypes
+    : ["house", "condo", "townhouse", "land"];
+
+const city =
+  String(incomingCity).toLowerCase() === "404"
+    ? String(site?.city || "nanaimo")
+    : incomingCity;
+
+const currentPath =
+  Astro.url.pathname.replace(/\/$/, "") || "/";
 
 const cityLabel = String(city)
   .replace(/-/g, " ")
@@ -55,12 +67,12 @@ const buildAreaHref = (areaSlug: string) =>
     ? `/${areaSlug}`
     : `/${slugify(city)}/${areaSlug}`;
 
-const areasHref = usesRootPageUrls
-  ? "/areas"
-  : `/${slugify(city)}/areas`;
+const areasHref = `/${slugify(city)}/areas`;
 
 const isActive = (href: string) => {
-  const cleanHref = href.replace(/\/$/, "") || "/";
+  const cleanHref =
+    href.replace(/\/$/, "") || "/";
+
   return currentPath === cleanHref;
 };
 
@@ -73,8 +85,6 @@ const TYPE_PAGE_MAP: Record<string, string> = {
   land: "land",
 };
 
-
-
 const cleanAreaLabel = (value: string) =>
   String(value || "")
     .replace(/^pq\s+/i, "")
@@ -82,37 +92,103 @@ const cleanAreaLabel = (value: string) =>
     .trim()
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
-const areaLinks: NavItem[] = areas.slice(0, 8).map((area: string) => ({
-  label: cleanAreaLabel(area),
-  href: buildAreaHref(slugify(area)),
-}));
+const areaLinks: NavItem[] = areas
+  .slice(0, 8)
+  .map((area: string) => ({
+    label: cleanAreaLabel(area),
+    href: buildAreaHref(slugify(area)),
+  }));
+const typeLinks: NavItem[] = types
+  .map((type: string) => {
+    const normalizedType = String(type || "")
+      .toLowerCase()
+      .trim();
 
+    const pageSlug =
+      TYPE_PAGE_MAP[normalizedType];
 
+    if (!pageSlug) return null;
 
-const intentLinks: NavItem[] = intentPages.slice(0, 6).map((page: any) => ({
-  label:
-    page.nav_label ||
-    page.card_title ||
-    page.hero_heading ||
-    page.seo_heading ||
-    page.lifestyle_angle ||
-    page.slug
-      .replace(/-/g, " ")
-      .replace(/\b\w/g, (char: string) => char.toUpperCase()),
+    const labels: Record<string, string> = {
+      homes: "Homes",
+      condos: "Condos",
+      townhomes: "Townhomes",
+      land: "Land",
+    };
 
-  href: buildPageHref(page.slug),
-}));
+    return {
+      label: labels[pageSlug] || pageSlug,
+      href: buildPageHref(pageSlug),
+    };
+  })
+  .filter(Boolean) as NavItem[];
+const intentLinks: NavItem[] = intentPages
+  .slice(0, 6)
+  .map((page: any) => {
+    const label =
+      page.nav_label ||
+      page.card_title ||
+      page.hero_heading ||
+      page.seo_heading ||
+      page.lifestyle_angle ||
+      page.slug
+        .replace(/-/g, " ")
+        .replace(
+          /\b\w/g,
+          (char: string) => char.toUpperCase()
+        );
 
+    const normalizedLabel = String(label)
+      .toLowerCase()
+      .trim();
 
+    let href = buildPageHref(page.slug);
 
-const finalNavLinks: NavItem[] = intentLinks;
+    /*
+     * On nanaimomobiles.com, these polished intent pages
+     * live under /nanaimo/ rather than at the root.
+     */
+    if (
+      usesRootPageUrls &&
+      (
+        normalizedLabel === "mobile homes" ||
+        normalizedLabel === "mobile homes for sale" ||
+        normalizedLabel === "55+" ||
+        page.slug === "nanaimo-mobile-homes" ||
+        page.slug === "nanaimo-mobile-55-mobile-homes"
+      )
+    ) {
+      href = `/${slugify(city)}/${page.slug}`;
+    }
+
+    return {
+      label,
+      href,
+    };
+  });
+
+const finalNavLinks: NavItem[] = [
+  ...typeLinks,
+  ...intentLinks.filter(
+    (intentItem) =>
+      !typeLinks.some(
+        (typeItem) =>
+          typeItem.href === intentItem.href ||
+          typeItem.label.toLowerCase() ===
+            intentItem.label.toLowerCase()
+      )
+  ),
+];
 ---
 
 <nav class="site-nav">
   <div class="shell site-nav__inner">
-  <a class="site-nav__brand" href={brandHref}>
-  {brandName}
-</a>
+    <a
+      class="site-nav__brand"
+      href={brandHref}
+    >
+      {brandName}
+    </a>
 
     <button
       class="site-nav__toggle"
@@ -124,70 +200,97 @@ const finalNavLinks: NavItem[] = intentLinks;
       <span aria-hidden="true">&equiv;</span>
     </button>
 
-    <div class="site-nav__links" id="site-nav-links">
-<a
-  class:list={{
-    active:
-      activeSection === "areas" ||
-      currentPath === areasHref
-  }}
-  href={areasHref}
->
-  Areas
-</a>
-
-{finalNavLinks.map((item) => (
-  <>
-    <a
-      class:list={{ active: isActive(item.href) }}
-      href={item.href}
+    <div
+      class="site-nav__links"
+      id="site-nav-links"
     >
-      {item.label}
-    </a>
+      <a
+        class:list={{
+          active:
+            activeSection === "areas" ||
+            currentPath === areasHref,
+        }}
+        href={areasHref}
+      >
+        Areas
+      </a>
 
-    {
-      usesRootPageUrls &&
-      (
-        item.label.toLowerCase() === "mobile homes" ||
-        item.label.toLowerCase() === "mobile homes for sale"
-      ) && (
-        <a
-          class:list={{
-            active: isActive(
-              "/mobile-home-parks-in-nanaimo"
-            ),
-          }}
-          href="/mobile-home-parks-in-nanaimo"
-        >
-          Park Directory
-        </a>
-      )
-    }
-  </>
-))}
+      {
+        finalNavLinks.map((item) => (
+          <>
+            <a
+              class:list={{
+                active: isActive(item.href),
+              }}
+              href={item.href}
+            >
+              {item.label}
+            </a>
+
+            {
+              usesRootPageUrls &&
+              (
+                item.label.toLowerCase() ===
+                  "mobile homes" ||
+                item.label.toLowerCase() ===
+                  "mobile homes for sale"
+              ) && (
+                <a
+                  class:list={{
+                    active: isActive(
+                      "/park-directory"
+                    ),
+                  }}
+                  href="/park-directory"
+                >
+                  Park Directory
+                </a>
+              )
+            }
+          </>
+        ))
+      }
     </div>
   </div>
 </nav>
 
-{showAreaNav && areaLinks.length > 0 && (
-  <div class="site-subnav">
-    <div class="shell site-subnav__inner">
-      {areaLinks.map((item) => (
-        <a class:list={{ active: isActive(item.href) }} href={item.href}>
-          {item.label}
-        </a>
-      ))}
+{
+  showAreaNav &&
+  areaLinks.length > 0 && (
+    <div class="site-subnav">
+      <div class="shell site-subnav__inner">
+        {areaLinks.map((item) => (
+          <a
+            class:list={{
+              active: isActive(item.href),
+            }}
+            href={item.href}
+          >
+            {item.label}
+          </a>
+        ))}
+      </div>
     </div>
-  </div>
-)}
+  )
+}
 
 <script is:inline>
-  const navToggle = document.querySelector(".site-nav__toggle");
-  const navLinks = document.querySelector(".site-nav__links");
+  const navToggle = document.querySelector(
+    ".site-nav__toggle"
+  );
+
+  const navLinks = document.querySelector(
+    ".site-nav__links"
+  );
 
   navToggle?.addEventListener("click", () => {
-    const isOpen = navLinks?.classList.toggle("open");
-    navToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    const isOpen =
+      navLinks?.classList.toggle("open");
+
+    navToggle.setAttribute(
+      "aria-expanded",
+      isOpen ? "true" : "false"
+    );
   });
 </script>
 
@@ -210,7 +313,8 @@ const finalNavLinks: NavItem[] = intentLinks;
   }
 
   .site-nav__brand {
-    font-family: var(--f-display, Georgia, serif);
+    font-family:
+      var(--f-display, Georgia, serif);
     font-size: 1.35rem;
     font-weight: 600;
     letter-spacing: -0.04em;
@@ -227,34 +331,34 @@ const finalNavLinks: NavItem[] = intentLinks;
     transform: translateY(-1px);
   }
 
-.site-nav__links,
-.site-subnav__inner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+  .site-nav__links,
+  .site-subnav__inner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
 
-.site-nav__links {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
+  .site-nav__links {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
 
-.site-nav__links::-webkit-scrollbar {
-  display: none;
-}
+  .site-nav__links::-webkit-scrollbar {
+    display: none;
+  }
 
-.site-subnav__inner {
-  flex-wrap: wrap;
-}
+  .site-subnav__inner {
+    flex-wrap: wrap;
+  }
 
-.site-nav__links a {
-  white-space: nowrap;
-}
+  .site-nav__links a {
+    white-space: nowrap;
+  }
 
   .site-nav__links a,
   .site-subnav__inner a {
- padding: 9px 14px;
+    padding: 9px 14px;
     border-radius: 6px;
     color: var(--muted);
     font-family: system-ui, sans-serif;
@@ -278,7 +382,13 @@ const finalNavLinks: NavItem[] = intentLinks;
     background: var(--accent) !important;
     color: #fff !important;
     border-color: var(--accent) !important;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 32%, transparent) !important;
+    box-shadow:
+      inset 0 0 0 1px
+      color-mix(
+        in srgb,
+        var(--accent) 32%,
+        transparent
+      ) !important;
   }
 
   .site-subnav {
@@ -291,8 +401,11 @@ const finalNavLinks: NavItem[] = intentLinks;
     padding: 6px 0;
   }
 
-.site-nav .shell {
-  width: min(1220px, calc(100% - 80px)) !important;
+  .site-nav .shell {
+    width: min(
+      1220px,
+      calc(100% - 80px)
+    ) !important;
     margin: 0 auto !important;
     padding-top: 0 !important;
     padding-bottom: 0 !important;
@@ -300,7 +413,8 @@ const finalNavLinks: NavItem[] = intentLinks;
 
   @media (max-width: 760px) {
     .site-nav .shell {
-      width: calc(100% - 28px) !important;
+      width:
+        calc(100% - 28px) !important;
     }
 
     .site-nav__inner {
@@ -318,8 +432,10 @@ const finalNavLinks: NavItem[] = intentLinks;
       margin-left: auto;
       width: 42px;
       height: 38px;
- border-radius: 6px;
-      border: 1px solid var(--line-warm);
+      border-radius: 6px;
+      border:
+        1px solid
+        var(--line-warm);
       background: var(--surface);
       color: var(--ink);
       font-size: 1.2rem;
@@ -339,16 +455,22 @@ const finalNavLinks: NavItem[] = intentLinks;
       display: grid;
       gap: 8px;
       padding: 12px;
-      border: 1px solid var(--line-warm);
+      border:
+        1px solid
+        var(--line-warm);
       border-radius: 18px;
       background: var(--surface);
-      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.12);
+      box-shadow:
+        0 18px 50px
+        rgba(0, 0, 0, 0.12);
     }
 
-.site-nav__links.open a {
+    .site-nav__links.open a {
       padding: 12px 14px;
       background: var(--surface);
-      border: 1px solid var(--line-warm);
+      border:
+        1px solid
+        var(--line-warm);
       border-radius: 6px;
       white-space: nowrap;
     }
@@ -363,7 +485,9 @@ const finalNavLinks: NavItem[] = intentLinks;
     .site-subnav__inner a {
       white-space: nowrap;
       background: var(--surface);
-      border: 1px solid var(--line-warm);
+      border:
+        1px solid
+        var(--line-warm);
     }
   }
 </style>

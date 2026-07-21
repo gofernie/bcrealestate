@@ -1,9 +1,9 @@
 ---
 import { createClient } from "@supabase/supabase-js";
-import Layout from "../layouts/Layout.astro";
-import SiteNav from "../components/SiteNav.astro";
-import { getSite } from "../lib/getSite";
-import { getNavIntentPages } from "../lib/getNavIntentPages";
+import Layout from "../../layouts/Layout.astro";
+import SiteNav from "../../components/SiteNav.astro";
+import { getSite } from "../../lib/getSite";
+import { getNavIntentPages } from "../../lib/getNavIntentPages";
 
 export const prerender = false;
 
@@ -28,6 +28,8 @@ const parks = [
     name: "Cedar Ridge Manufactured Home Park",
     slug: "cedar-ridge",
     address: "2161 Walsh Rd, Nanaimo",
+      lat: 49.500,
+  lng: -115.070,
     age: "55+",
     category: "55-plus",
     pets: "Cats permitted; no dogs",
@@ -356,6 +358,15 @@ const petFriendlyCount = parks.filter(
   accentColor={site?.accent_color || "#58736a"}
   city="nanaimo"
 >
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+
+  <script
+    is:inline
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  ></script>
   <SiteNav
     city="nanaimo"
     site={site}
@@ -482,42 +493,49 @@ const petFriendlyCount = parks.filter(
                     data-category={park.category}
                     data-pet-type={park.petType}
                   >
-                    <div class="park-card-top">
-                      <span class="park-age-badge">
-                        {park.age}
-                      </span>
+                  
 
-                      <span
-                        class:list={[
-                          "park-pet-badge",
-                          {
-                            "park-pet-badge--none":
-                              park.petType === "none",
-                          },
-                        ]}
-                      >
-                        {
-                          park.petType === "none"
-                            ? "No pets"
-                            : "Pets considered"
-                        }
-                      </span>
-                    </div>
+                 <div
+  class="park-map"
+  data-lat={park.lat}
+  data-lng={park.lng}
+  data-name={park.name}
+  aria-label={`Map showing ${park.name}`}
+>
+  <span class="park-map-placeholder">
+    Map location coming soon
+  </span>
+</div>
 
-                    <div class="park-icon" aria-hidden="true">
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.5"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      >
-                        <path d="M3 11.5 12 4l9 7.5" />
-                        <path d="M5.5 10v10h13V10" />
-                        <path d="M9 20v-6h6v6" />
-                      </svg>
-                    </div>
+<div class="park-card-top">
+  <span class="park-age-badge">
+    {park.age}
+  </span>
+
+  <span
+    class:list={[
+      "park-pet-badge",
+      {
+        "park-pet-badge--none":
+          park.petType === "none",
+      },
+    ]}
+  >
+  {
+  park.petType === "none"
+    ? "No pets"
+    : park.petType === "approval"
+      ? "Approval required"
+      : park.pets.toLowerCase().includes("cats") &&
+          park.pets.toLowerCase().includes("no dogs")
+        ? "Cats only"
+        : park.pets.toLowerCase().includes("dog") &&
+            !park.pets.toLowerCase().includes("cat")
+          ? "Dogs allowed"
+          : "Pets allowed"
+}
+  </span>
+</div>
 
                     <h3>{park.name}</h3>
 
@@ -531,8 +549,8 @@ const petFriendlyCount = parks.filter(
 
                     <div class="park-details">
                       <div>
-                        <span>Community</span>
-                        <strong>{park.age}</strong>
+                     <span>Age</span>
+<strong>{park.age}</strong>
                       </div>
 
                       <div>
@@ -620,9 +638,82 @@ const petFriendlyCount = parks.filter(
         </section>
       </main>
     </div>
+<script is:inline>
+  function initializeParkMaps() {
+    if (!window.L) return;
 
-    <script is:inline>
-      function initializeParkFilters() {
+    const mapElements = Array.from(
+      document.querySelectorAll(".park-map")
+    );
+
+    mapElements.forEach((element) => {
+      if (element.dataset.mapInitialized === "true") {
+        return;
+      }
+
+      const lat = Number(element.dataset.lat);
+      const lng = Number(element.dataset.lng);
+      const name =
+        element.dataset.name || "Mobile home park";
+
+      if (
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng) ||
+        lat === 0 ||
+        lng === 0
+      ) {
+        element.classList.add("park-map--missing");
+        return;
+      }
+
+      const placeholder = element.querySelector(
+        ".park-map-placeholder"
+      );
+
+      if (placeholder) {
+        placeholder.remove();
+      }
+
+      const map = window.L.map(element, {
+        zoomControl: false,
+        attributionControl: false,
+        dragging: false,
+        scrollWheelZoom: false,
+        doubleClickZoom: false,
+        boxZoom: false,
+        keyboard: false,
+        touchZoom: false,
+      }).setView([lat, lng], 16);
+
+      window.L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+          maxZoom: 19,
+        }
+      ).addTo(map);
+
+      window.L.circleMarker([lat, lng], {
+    radius: 9,
+weight: 3,
+color: "#ffffff",
+fillColor: "#58736a",
+fillOpacity: 1,
+      })
+        .addTo(map)
+        .bindTooltip(name, {
+          direction: "top",
+          offset: [0, -7],
+        });
+
+      element.dataset.mapInitialized = "true";
+
+      window.setTimeout(() => {
+        map.invalidateSize();
+      }, 50);
+    });
+  }
+
+  function initializeParkFilters() {
         const buttons = Array.from(
           document.querySelectorAll(
             ".parks-filter-button"
@@ -753,20 +844,25 @@ const petFriendlyCount = parks.filter(
         applyFilter(validFilter);
       }
 
-      if (document.readyState === "loading") {
-        document.addEventListener(
-          "DOMContentLoaded",
-          initializeParkFilters,
-          { once: true }
-        );
-      } else {
-        initializeParkFilters();
-      }
+    function initializeParksPage() {
+  initializeParkFilters();
+  initializeParkMaps();
+}
 
-      document.addEventListener(
-        "astro:page-load",
-        initializeParkFilters
-      );
+if (document.readyState === "loading") {
+  document.addEventListener(
+    "DOMContentLoaded",
+    initializeParksPage,
+    { once: true }
+  );
+} else {
+  initializeParksPage();
+}
+
+document.addEventListener(
+  "astro:page-load",
+  initializeParksPage
+);
     </script>
 </Layout>
 
@@ -1036,7 +1132,9 @@ const petFriendlyCount = parks.filter(
     border: 1px solid var(--parks-line);
     border-radius: 19px;
     background: #fff;
-    box-shadow: 0 8px 26px rgba(27, 41, 35, 0.04);
+    box-shadow:
+0 12px 30px rgba(0,0,0,.06),
+0 2px 6px rgba(0,0,0,.04);
     transition:
       transform 160ms ease,
       border-color 160ms ease,
@@ -1044,7 +1142,7 @@ const petFriendlyCount = parks.filter(
   }
 
   .park-card:hover {
-    transform: translateY(-4px);
+   transform:translateY(-8px);
     border-color: rgba(88, 115, 106, 0.42);
     box-shadow: 0 18px 38px rgba(27, 41, 35, 0.09);
   }
@@ -1053,13 +1151,12 @@ const petFriendlyCount = parks.filter(
     display: none !important;
   }
 
-  .park-card-top {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 20px;
-  }
+ .park-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 16px 0 14px;
+}
 
   .park-age-badge,
   .park-pet-badge {
@@ -1159,26 +1256,42 @@ const petFriendlyCount = parks.filter(
     margin-bottom: 22px;
   }
 
-  .park-features span {
-    padding: 6px 9px;
-    border: 1px solid var(--parks-line);
-    border-radius: 999px;
-    color: #59635f;
-    font-size: 0.63rem;
-  }
+.park-features span {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 999px;
+  color: #4f625b;
+  background: rgba(88, 115, 106, 0.09);
+  font-size: 0.65rem;
+  font-weight: 650;
+}
 
-  .park-link {
-    display: flex;
-    justify-content: space-between;
-    gap: 14px;
-    margin-top: auto;
-    padding-top: 17px;
-    border-top: 1px solid var(--parks-line);
-    color: var(--parks-accent);
-    font-size: 0.73rem;
-    font-weight: 800;
-    text-decoration: none;
-  }
+.park-link {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: auto;
+  padding: 0 15px;
+  border: 1px solid rgba(88, 115, 106, 0.2);
+  border-radius: 11px;
+  color: var(--parks-accent);
+  background: rgba(88, 115, 106, 0.07);
+  font-size: 0.73rem;
+  font-weight: 800;
+  text-decoration: none;
+  transition:
+    color 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.park-link:hover {
+  color: #fff;
+  border-color: var(--parks-accent);
+  background: var(--parks-accent);
+}
 
   .parks-empty {
     padding: 54px 24px;
@@ -1266,6 +1379,74 @@ const petFriendlyCount = parks.filter(
     line-height: 1.7;
   }
 
+.park-map {
+  position: relative;
+  z-index: 0;
+  height: 170px;
+  margin: -24px -24px 20px;
+  overflow: hidden;
+  border-radius: 19px 19px 0 0;
+  background:
+    linear-gradient(
+      135deg,
+      #edf2ef,
+      #d9e5df
+    );
+}
+
+.park-map .leaflet-pane,
+.park-map .leaflet-control {
+  z-index: auto;
+}
+
+.park-map .leaflet-tile-pane {
+  filter:
+    saturate(0.78)
+    contrast(0.94)
+    brightness(1.04);
+}
+
+.park-map .leaflet-control-container {
+  display: none;
+}
+
+.park-map-placeholder {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  color: #62716b;
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-align: center;
+}
+
+.park-map--missing::before {
+  position: absolute;
+  inset: 18px;
+  content: "";
+  border: 1px dashed rgba(88, 115, 106, 0.25);
+  border-radius: 13px;
+}
+
+.park-map .leaflet-tooltip {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--parks-ink);
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(23, 32, 29, 0.16);
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    sans-serif;
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
   @media (max-width: 1040px) {
     .parks-hero-grid {
       grid-template-columns: 1fr;
@@ -1329,9 +1510,16 @@ const petFriendlyCount = parks.filter(
       grid-template-columns: 1fr;
     }
 
-    .park-card {
-      padding: 21px;
-    }
+ .park-card {
+  padding: 21px;
+}
+
+.park-map {
+  margin:
+    -21px
+    -21px
+    18px;
+}
 
     .parks-help-card {
       padding: 28px;

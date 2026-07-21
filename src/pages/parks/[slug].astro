@@ -74,46 +74,44 @@ const getListingAddressText = (listing: any) =>
     ""
   );
 
-const normalizedParkAddress = normalizeMatchText(park.address);
-
-const parkStreetNumber =
-  normalizedParkAddress.match(/^\d+/)?.[0] || "";
-
-const parkStreetWords = normalizedParkAddress
-  .replace(/^\d+\s*/, "")
-  .split(" ")
-  .filter(Boolean);
-
-const hasExactParkCivicAddress = (listing: any) => {
+const hasExactCivicAddress = (
+  listing: any,
+  address: string
+) => {
   const listingAddress = getListingAddressText(listing);
+  const normalizedAddress = normalizeMatchText(address);
+  const streetNumber =
+    normalizedAddress.match(/^\d+/)?.[0] || "";
+  const streetWords = normalizedAddress
+    .replace(/^\d+\s*/, "")
+    .split(" ")
+    .filter(Boolean);
 
   if (
     !listingAddress ||
-    !parkStreetNumber ||
-    parkStreetWords.length === 0
+    !streetNumber ||
+    streetWords.length === 0
   ) {
     return false;
   }
 
   const addressTokens = listingAddress.split(" ");
+  const numberIndex = addressTokens.indexOf(streetNumber);
 
-  const numberIndex = addressTokens.indexOf(
-    parkStreetNumber
-  );
-
-  if (numberIndex === -1) {
-    return false;
-  }
+  if (numberIndex === -1) return false;
 
   const wordsAfterNumber = addressTokens.slice(
     numberIndex + 1,
-    numberIndex + 1 + parkStreetWords.length
+    numberIndex + 1 + streetWords.length
   );
 
-  return parkStreetWords.every(
+  return streetWords.every(
     (word, index) => wordsAfterNumber[index] === word
   );
 };
+
+const hasExactParkCivicAddress = (listing: any) =>
+  hasExactCivicAddress(listing, park.address);
 
 const { data: allMobileListings = [], error: listingsError } =
   await supabase
@@ -137,6 +135,108 @@ const parkListings = allMobileListings.filter(
 
 const parkListingCount = parkListings.length;
 
+const normalizeImageUrl = (value: unknown) => {
+  const url = String(value || "").trim();
+
+  if (!url) return "";
+
+  if (
+    url.startsWith("http://") ||
+    url.startsWith("https://")
+  ) {
+    return url;
+  }
+
+  if (url.startsWith("/")) {
+    return `https://cdn.repliers.io${url}`;
+  }
+
+  if (url.startsWith("vreb/")) {
+    return `https://cdn.repliers.io/${url}`;
+  }
+
+  return url;
+};
+
+const getFirstListingImage = (listing: any) => {
+  const images = Array.isArray(listing?.images)
+    ? listing.images
+    : [];
+
+  const firstImage = images[0];
+
+  return normalizeImageUrl(
+    listing?.image_url ||
+      firstImage?.highRes ||
+      firstImage?.mediumRes ||
+      firstImage?.lowRes ||
+      firstImage?.url ||
+      firstImage ||
+      ""
+  );
+};
+
+const heroListing = parkListings[0] || null;
+const heroImage = getFirstListingImage(heroListing);
+
+const heroPrice = heroListing?.price
+  ? `$${Number(heroListing.price).toLocaleString()}`
+  : "";
+
+const hasParkCoordinates =
+  typeof park.lat === "number" &&
+  Number.isFinite(park.lat) &&
+  typeof park.lng === "number" &&
+  Number.isFinite(park.lng);
+
+const parkListingIds = parkListings
+  .map(
+    (listing: any) =>
+      listing.id ||
+      listing.mls_number ||
+      listing.mlsNumber
+  )
+  .filter(Boolean)
+  .map(String)
+  .join(",");
+
+const parkExploreParams = new URLSearchParams({
+  city: "nanaimo",
+  focus: "park",
+  park: park.slug,
+  name: park.name,
+  address: `${park.address}, ${park.city}, BC`,
+});
+
+if (hasParkCoordinates) {
+  parkExploreParams.set(
+    "lat",
+    String(park.lat)
+  );
+
+  parkExploreParams.set(
+    "lng",
+    String(park.lng)
+  );
+}
+
+if (parkListingIds) {
+  parkExploreParams.set(
+    "listings",
+    parkListingIds
+  );
+}
+
+const parkExploreHref =
+  `/explore?${parkExploreParams.toString()}`;
+
+const availabilityLabel =
+  parkListingCount === 0
+    ? "No homes currently listed"
+    : parkListingCount === 1
+      ? "1 home currently available"
+      : `${parkListingCount} homes currently available`;
+
 const relatedParks = mobileHomeParks
   .filter(
     (item) =>
@@ -144,6 +244,32 @@ const relatedParks = mobileHomeParks
       item.category === park.category
   )
   .slice(0, 3);
+
+const comparisonParks = [park, ...relatedParks].map(
+  (item) => ({
+    ...item,
+    listingCount: allMobileListings.filter(
+      (listing: any) =>
+        hasExactCivicAddress(listing, item.address)
+    ).length,
+  })
+);
+
+const buyerSummary =
+  park.category === "55-plus"
+    ? `${park.name} may appeal to buyers looking for a 55+ community with ${park.features
+        .slice(0, 2)
+        .join(" and ")
+        .toLowerCase()}.`
+    : park.category === "adult"
+      ? `${park.name} may suit buyers looking for an adult-oriented community with ${park.features
+          .slice(0, 2)
+          .join(" and ")
+          .toLowerCase()}.`
+      : `${park.name} may suit buyers looking for an all-ages or family-oriented community with ${park.features
+          .slice(0, 2)
+          .join(" and ")
+          .toLowerCase()}.`;
 
 const categoryLabel =
   park.category === "55-plus"
@@ -176,6 +302,16 @@ const pageDescription =
   accentColor={accentColor}
   city={city}
 >
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+
+  <script
+    is:inline
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  ></script>
+
   <SiteNav
     city={city}
     areas={[]}
@@ -224,40 +360,147 @@ const pageDescription =
                 <span>{park.age}</span>
                 <span>{petLabel}</span>
               </div>
+
+              <div class="park-hero-actions">
+                <a
+                  class="primary-button"
+                  href={
+                    parkListingCount > 0
+                      ? "#homes-for-sale"
+                      : "/#mobile-home-alerts"
+                  }
+                >
+                  {
+                    parkListingCount > 0
+                      ? `View ${parkListingCount} ${
+                          parkListingCount === 1
+                            ? "home"
+                            : "homes"
+                        }`
+                      : "Create a park alert"
+                  }
+                </a>
+
+                <a
+                  class="secondary-button"
+                  href={parkExploreHref}
+                >
+                  View park in Explore
+                </a>
+              </div>
             </div>
 
-            <aside class="park-summary-card">
-              <div class="summary-item">
-                <span>Age policy</span>
-                <strong>{park.age}</strong>
-              </div>
+            <aside class="park-hero-feature">
+              {
+                heroImage ? (
+                  <a
+                    class="park-hero-image"
+                    href="#homes-for-sale"
+                    aria-label={`View homes available in ${park.name}`}
+                  >
+                    <img
+                      src={heroImage}
+                      alt={`Mobile home currently listed in ${park.name}`}
+                      width="900"
+                      height="700"
+                      loading="eager"
+                      fetchpriority="high"
+                    />
 
-              <div class="summary-item">
-                <span>Pet policy</span>
-                <strong>{park.pets}</strong>
-              </div>
+                    <div class="park-hero-image-overlay">
+                      <span>Currently available</span>
 
-              <div class="summary-item">
-                <span>Location</span>
-                <strong>{park.city}, BC</strong>
-              </div>
+                      <strong>
+                        {heroPrice || availabilityLabel}
+                      </strong>
 
-              <div class="summary-item">
-                <span>Park type</span>
-                <strong>{categoryLabel}</strong>
-              </div>
+                      <small>
+                        {availabilityLabel}
+                      </small>
+                    </div>
+                  </a>
+                ) : (
+                  <div class="park-hero-placeholder">
+                    <div class="park-hero-placeholder-icon">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.6"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M3 11.5 12 4l9 7.5" />
+                        <path d="M5.5 10v10h13V10" />
+                        <path d="M9 20v-6h6v6" />
+                      </svg>
+                    </div>
 
-              <a
-                class="summary-item summary-item--link"
-                href="#homes-for-sale"
-              >
-                <span>Homes for sale</span>
-                <strong>
-                  {parkListingCount}
-                  {parkListingCount === 1 ? " home" : " homes"}
-                </strong>
-              </a>
+                    <span>Current availability</span>
+                    <strong>{availabilityLabel}</strong>
+                    <small>
+                      New listings will appear here automatically.
+                    </small>
+                  </div>
+                )
+              }
+
+              <div class="park-hero-facts">
+                <div>
+                  <span>Community</span>
+                  <strong>{park.age}</strong>
+                </div>
+
+                <div>
+                  <span>Pets</span>
+                  <strong>{petLabel}</strong>
+                </div>
+
+                <div>
+                  <span>Location</span>
+                  <strong>{park.city}, BC</strong>
+                </div>
+              </div>
             </aside>
+          </div>
+        </div>
+      </section>
+
+      <section
+        class="park-snapshot-section"
+        aria-label={`${park.name} at a glance`}
+      >
+        <div class="park-shell">
+          <div class="park-snapshot-grid">
+            <a
+              class="park-snapshot-item park-snapshot-item--accent"
+              href="#homes-for-sale"
+            >
+              <span>Current inventory</span>
+              <strong>{availabilityLabel}</strong>
+              <small>
+                Updated from active Nanaimo mobile-home listings
+              </small>
+            </a>
+
+            <div class="park-snapshot-item">
+              <span>Age policy</span>
+              <strong>{park.age}</strong>
+              <small>{categoryLabel}</small>
+            </div>
+
+            <div class="park-snapshot-item">
+              <span>Pet policy</span>
+              <strong>{petLabel}</strong>
+              <small>{park.pets}</small>
+            </div>
+
+            <div class="park-snapshot-item">
+              <span>Monthly pad fee</span>
+              <strong>Confirm with management</strong>
+              <small>Fees and inclusions can change</small>
+            </div>
           </div>
         </div>
       </section>
@@ -267,20 +510,112 @@ const pageDescription =
           <div class="park-main-column">
             <section class="content-card">
               <div class="park-eyebrow">
-                Community overview
+                Why buyers like it
               </div>
 
-              <h2>About {park.name}</h2>
+              <h2>Why buyers consider {park.name}</h2>
+
+              <p class="park-lead-copy">{buyerSummary}</p>
 
               <p>{park.description}</p>
 
               <p>
-                Buyers considering a home in this
-                community should confirm current park
-                rules, monthly pad fees, approval
-                requirements and restrictions directly
-                with park management.
+                Buyers should confirm current park rules,
+                monthly pad fees, approval requirements and
+                restrictions directly with park management.
               </p>
+            </section>
+
+            {
+              hasParkCoordinates && (
+                <section
+                  class="content-card nearby-card"
+                  id="nearby-places"
+                  data-lat={park.lat}
+                  data-lng={park.lng}
+                >
+                  <div class="park-eyebrow">
+                    Around the park
+                  </div>
+
+                  <h2>Useful places nearby</h2>
+
+                  <p>
+                    Nearby parks, shops, medical services and
+                    everyday amenities.
+                  </p>
+
+                  <div
+                    class="nearby-grid"
+                    id="nearby-grid"
+                    aria-live="polite"
+                  >
+                    <div class="nearby-loading">
+                      Loading nearby places…
+                    </div>
+                  </div>
+                </section>
+              )
+            }
+
+            <section class="content-card park-fit-card">
+              <div class="park-fit-column">
+                <div class="park-eyebrow">
+                  Why buyers consider it
+                </div>
+
+                <h2>Could this park suit you?</h2>
+
+                <div class="park-fit-list">
+                  {
+                    park.features.map((feature) => (
+                      <div>
+                        <span aria-hidden="true">✓</span>
+                        <strong>{feature}</strong>
+                      </div>
+                    ))
+                  }
+
+                  <div>
+                    <span aria-hidden="true">✓</span>
+                    <strong>{categoryLabel}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div class="park-fit-column park-fit-column--warm">
+                <div class="park-eyebrow">
+                  Before you decide
+                </div>
+
+                <h2>Confirm the details that matter.</h2>
+
+                <div class="park-consideration-list">
+                  <div>
+                    <span>01</span>
+                    <p>
+                      Ask for the current monthly pad fee
+                      and what it includes.
+                    </p>
+                  </div>
+
+                  <div>
+                    <span>02</span>
+                    <p>
+                      Confirm the current age, pet and
+                      occupancy rules directly with management.
+                    </p>
+                  </div>
+
+                  <div>
+                    <span>03</span>
+                    <p>
+                      Review the park approval process before
+                      removing purchase conditions.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </section>
 
             <section class="content-card">
@@ -365,6 +700,66 @@ const pageDescription =
                     </div>
                   ))
                 }
+              </div>
+            </section>
+
+            <section class="content-card compare-card">
+              <div class="park-eyebrow">
+                Compare communities
+              </div>
+
+              <div class="compare-heading">
+                <div>
+                  <h2>How this park compares</h2>
+                  <p>
+                    A quick comparison with similar Nanaimo
+                    communities.
+                  </p>
+                </div>
+
+                <a href="/mobile-home-parks-in-nanaimo">
+                  Compare all parks →
+                </a>
+              </div>
+
+              <div class="compare-table-wrap">
+                <table class="compare-table">
+                  <thead>
+                    <tr>
+                      <th>Park</th>
+                      <th>Age</th>
+                      <th>Pets</th>
+                      <th>Homes</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {
+                      comparisonParks.map((item) => (
+                        <tr class:list={{
+                          "is-current": item.slug === park.slug,
+                        }}>
+                          <td>
+                            <a href={`/parks/${item.slug}`}>
+                              {item.name}
+                            </a>
+                          </td>
+                          <td>{item.age}</td>
+                          <td>
+                            {item.petType === "none"
+                              ? "No pets"
+                              : item.petType === "approval"
+                                ? "Approval"
+                                : item.petType === "restricted"
+                                  ? "Restrictions"
+                                  : "Permitted"}
+                          </td>
+                          <td>{item.listingCount}</td>
+                        </tr>
+                      ))
+                    }
+                  </tbody>
+                </table>
               </div>
             </section>
 
@@ -489,26 +884,41 @@ const pageDescription =
           </div>
 
           <aside class="park-sidebar">
-            <div class="sidebar-card">
+            <div class="sidebar-card sidebar-location-card">
               <div class="park-eyebrow">
                 Location
               </div>
 
               <h2>Find the park</h2>
 
-              <p>
-                {park.address}, {park.city}, British
-                Columbia
+              {
+                hasParkCoordinates ? (
+                  <div
+                    id="park-location-map"
+                    class="park-location-map"
+                    data-lat={park.lat}
+                    data-lng={park.lng}
+                    data-name={park.name}
+                    data-href={parkExploreHref}
+                    data-listing-count={parkListingCount}
+                    aria-label={`Map showing ${park.name}`}
+                  >
+                    <span>Loading map…</span>
+                  </div>
+                ) : null
+              }
+
+              <p class="sidebar-address">
+                {park.address}, {park.city}, British Columbia
               </p>
 
-             <a
-  class="secondary-button"
-  href={`/explore?city=nanaimo&search=${encodeURIComponent(
-    `${park.address}, ${park.city}, BC`
-  )}`}
->
-  Open in Explore
-</a>
+              <a
+                class="secondary-button sidebar-map-button"
+                href={parkExploreHref}
+              >
+                Open interactive map
+                <span aria-hidden="true">→</span>
+              </a>
             </div>
 
             <div
@@ -578,9 +988,19 @@ const pageDescription =
                       class="related-card"
                       href={`/parks/${relatedPark.slug}`}
                     >
-                      <span class="related-age">
-                        {relatedPark.age}
-                      </span>
+                      <div class="related-badges">
+                        <span class="related-age">
+                          {relatedPark.age}
+                        </span>
+
+                        <span class="related-pet">
+                          {
+                            relatedPark.petType === "none"
+                              ? "No pets"
+                              : "Pets considered"
+                          }
+                        </span>
+                      </div>
 
                       <h3>
                         {relatedPark.name}
@@ -607,6 +1027,252 @@ const pageDescription =
   <IntentModalController listings={parkListings} />
 
   <script is:inline>
+    function initializeParkLocationMap() {
+      if (!window.L) return;
+
+      const element = document.getElementById(
+        "park-location-map"
+      );
+
+      if (
+        !element ||
+        element.dataset.mapInitialized === "true"
+      ) {
+        return;
+      }
+
+      const lat = Number(element.dataset.lat);
+      const lng = Number(element.dataset.lng);
+      const name =
+        element.dataset.name || "Mobile home park";
+
+      if (
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng)
+      ) {
+        return;
+      }
+
+      element.replaceChildren();
+
+      const map = window.L.map(element, {
+        zoomControl: false,
+        attributionControl: false,
+        dragging: false,
+        scrollWheelZoom: false,
+        doubleClickZoom: false,
+        boxZoom: false,
+        keyboard: false,
+        touchZoom: false,
+      }).setView([lat, lng], 15);
+
+      window.L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        { maxZoom: 19 }
+      ).addTo(map);
+
+      const href = element.dataset.href || "#";
+      const listingCount = Number(
+        element.dataset.listingCount || "0"
+      );
+
+      const marker = window.L.circleMarker([lat, lng], {
+        radius: 9,
+        weight: 3,
+        color: "#ffffff",
+        fillColor: "#58736a",
+        fillOpacity: 1,
+      }).addTo(map);
+
+      marker.bindPopup(`
+        <div class="park-map-popup">
+          <strong>${name}</strong>
+          <span>${
+            listingCount === 1
+              ? "1 home currently available"
+              : `${listingCount} homes currently available`
+          }</span>
+          <a href="${href}">Open in Explore →</a>
+        </div>
+      `);
+
+      marker.openPopup();
+
+      element.addEventListener("click", () => {
+        window.location.href = href;
+      });
+
+      element.dataset.mapInitialized = "true";
+
+      window.setTimeout(() => {
+        map.invalidateSize();
+      }, 50);
+    }
+
+    async function initializeNearbyPlaces() {
+      const section = document.getElementById(
+        "nearby-places"
+      );
+      const grid = document.getElementById(
+        "nearby-grid"
+      );
+
+      if (
+        !section ||
+        !grid ||
+        section.dataset.loaded === "true"
+      ) {
+        return;
+      }
+
+      const lat = Number(section.dataset.lat);
+      const lng = Number(section.dataset.lng);
+
+      if (
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng)
+      ) {
+        return;
+      }
+
+      section.dataset.loaded = "true";
+
+      try {
+        const params = new URLSearchParams({
+          city: "nanaimo",
+          lat: String(lat),
+          lng: String(lng),
+          radius: "3500",
+          limit: "40",
+        });
+
+        const response = await fetch(
+          `/api/osm-amenities?${params.toString()}`
+        );
+
+        if (!response.ok) {
+          throw new Error("Nearby places request failed");
+        }
+
+        const payload = await response.json();
+        const places = Array.isArray(payload)
+          ? payload
+          : payload.amenities ||
+            payload.places ||
+            payload.data ||
+            [];
+
+        const preferred = [
+          "grocery",
+          "medical",
+          "parks",
+          "schools",
+          "restaurants",
+          "transit",
+        ];
+
+        const selected = [];
+        const usedCategories = new Set();
+
+        for (const category of preferred) {
+          const match = places.find((place) => {
+            const value = String(
+              place.category || place.type || ""
+            ).toLowerCase();
+
+            return (
+              !usedCategories.has(category) &&
+              value.includes(category.slice(0, 5))
+            );
+          });
+
+          if (match) {
+            selected.push(match);
+            usedCategories.add(category);
+          }
+        }
+
+        for (const place of places) {
+          if (selected.length >= 6) break;
+          if (!selected.includes(place)) {
+            selected.push(place);
+          }
+        }
+
+        if (!selected.length) {
+          grid.innerHTML = `
+            <p class="nearby-empty">
+              Nearby-place details are being prepared.
+            </p>
+          `;
+          return;
+        }
+
+        grid.innerHTML = selected
+          .slice(0, 6)
+          .map((place) => {
+            const name =
+              place.name || "Nearby amenity";
+            const category =
+              place.category ||
+              place.type ||
+              "Nearby";
+            const distance = Number(
+              place.distance_m ||
+              place.distance ||
+              0
+            );
+
+            const distanceLabel =
+              distance > 0
+                ? distance < 1000
+                  ? `${Math.round(distance)} m`
+                  : `${(distance / 1000).toFixed(1)} km`
+                : "";
+
+            return `
+              <div class="nearby-item">
+                <span>${category}</span>
+                <strong>${name}</strong>
+                ${
+                  distanceLabel
+                    ? `<small>${distanceLabel} away</small>`
+                    : ""
+                }
+              </div>
+            `;
+          })
+          .join("");
+      } catch (error) {
+        console.error(error);
+        grid.innerHTML = `
+          <p class="nearby-empty">
+            Nearby-place details are temporarily unavailable.
+          </p>
+        `;
+      }
+    }
+
+    function initializeParkPage() {
+      initializeParkLocationMap();
+      initializeNearbyPlaces();
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener(
+        "DOMContentLoaded",
+        initializeParkPage,
+        { once: true }
+      );
+    } else {
+      initializeParkPage();
+    }
+
+    document.addEventListener(
+      "astro:page-load",
+      initializeParkPage
+    );
+
       document.addEventListener("click", (event) => {
         const target = event.target;
 
@@ -640,12 +1306,12 @@ const pageDescription =
   }
 
 .park-shell {
-    width: min(1260px, calc(100% - 64px));
-    margin-inline: auto;
-  }
+  width: min(1380px, calc(100% - 64px));
+  margin-inline: auto;
+}
 
   .park-hero {
-    padding: 32px 0 78px;
+    padding: 28px 0 64px;
     border-bottom: 1px solid var(--park-line);
     background:
       radial-gradient(
@@ -664,7 +1330,7 @@ const pageDescription =
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-bottom: 64px;
+    margin-bottom: 44px;
     color: var(--park-muted);
     font-size: 0.7rem;
   }
@@ -677,9 +1343,9 @@ const pageDescription =
   .park-hero-grid {
     display: grid;
     grid-template-columns:
-      minmax(0, 1.35fr)
-      minmax(340px, 0.65fr);
-    gap: 72px;
+      minmax(0, 1.2fr)
+      minmax(340px, 0.8fr);
+    gap: 52px;
     align-items: end;
   }
 
@@ -693,10 +1359,21 @@ const pageDescription =
   }
 
   .park-hero h1 {
-    max-width: 900px;
+    max-width: 760px;
     margin-bottom: 18px;
-    font-size: clamp(3.2rem, 7vw, 6.5rem);
-    line-height: 0.92;
+    font-family:
+      Inter,
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      sans-serif;
+    font-size: clamp(2.45rem, 4.6vw, 4.65rem);
+    font-weight: 760;
+    letter-spacing: -0.045em;
+    line-height: 0.98;
+    text-wrap: balance;
   }
 
   .park-address {
@@ -790,16 +1467,28 @@ const pageDescription =
 
   .content-card,
   .sidebar-card {
-    padding: 30px;
+    padding: 28px;
     border: 1px solid var(--park-line);
-    border-radius: 20px;
+    border-radius: 18px;
     background: #fff;
   }
 
   .content-card h2,
   .sidebar-card h2 {
-    margin-bottom: 16px;
-    font-size: clamp(1.8rem, 3vw, 2.8rem);
+    margin-bottom: 14px;
+    font-family:
+      Inter,
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      sans-serif;
+    font-size: clamp(1.45rem, 2.2vw, 2.05rem);
+    font-weight: 760;
+    letter-spacing: -0.032em;
+    line-height: 1.14;
+    text-wrap: balance;
   }
 
   .content-card p,
@@ -908,6 +1597,66 @@ const pageDescription =
     gap: 16px;
   }
 
+  .sidebar-location-card {
+    overflow: hidden;
+  }
+
+  .park-location-map {
+    position: relative;
+    z-index: 0;
+    height: 220px;
+    margin: 4px -28px 18px;
+    overflow: hidden;
+    border-top: 1px solid var(--park-line);
+    border-bottom: 1px solid var(--park-line);
+    background: var(--park-soft);
+  }
+
+  .park-location-map > span {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--park-muted);
+    font-size: 0.72rem;
+    font-weight: 750;
+  }
+
+  .park-location-map .leaflet-control-container {
+    display: none;
+  }
+
+  .park-location-map .leaflet-tile-pane {
+    filter:
+      saturate(0.82)
+      contrast(0.95)
+      brightness(1.03);
+  }
+
+  .park-location-map .leaflet-tooltip {
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 8px;
+    box-shadow: 0 8px 22px rgba(23, 32, 29, 0.16);
+    font-family:
+      Inter,
+      ui-sans-serif,
+      system-ui,
+      sans-serif;
+    font-size: 0.68rem;
+    font-weight: 750;
+  }
+
+  .sidebar-address {
+    margin-bottom: 16px;
+    font-size: 0.78rem;
+  }
+
+  .sidebar-map-button {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .sidebar-card--accent {
     background: rgba(88, 115, 106, 0.09);
   }
@@ -957,7 +1706,18 @@ const pageDescription =
 
   .related-heading h2 {
     margin-bottom: 0;
-    font-size: clamp(2.2rem, 4vw, 3.8rem);
+    font-family:
+      Inter,
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      sans-serif;
+    font-size: clamp(1.55rem, 2.5vw, 2.35rem);
+    font-weight: 760;
+    letter-spacing: -0.032em;
+    line-height: 1.14;
   }
 
   .related-heading > a {
@@ -1083,10 +1843,641 @@ const pageDescription =
   }
 
 
+
+  .park-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 28px;
+  }
+
+  .park-hero-feature {
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.88);
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 28px 70px rgba(31, 49, 42, 0.14);
+  }
+
+  .park-hero-image {
+    position: relative;
+    display: block;
+    min-height: 360px;
+    overflow: hidden;
+    color: #fff;
+    text-decoration: none;
+  }
+
+  .park-hero-image::after {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(
+        to top,
+        rgba(12, 22, 18, 0.82),
+        rgba(12, 22, 18, 0.04) 62%
+      );
+    content: "";
+  }
+
+  .park-hero-image img {
+    width: 100%;
+    height: 100%;
+    min-height: 360px;
+    display: block;
+    object-fit: cover;
+    transition: transform 260ms ease;
+  }
+
+  .park-hero-image:hover img {
+    transform: scale(1.025);
+  }
+
+  .park-hero-image-overlay {
+    position: absolute;
+    z-index: 1;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    padding: 26px;
+  }
+
+  .park-hero-image-overlay span,
+  .park-hero-image-overlay strong,
+  .park-hero-image-overlay small {
+    display: block;
+  }
+
+  .park-hero-image-overlay span {
+    margin-bottom: 7px;
+    font-size: 0.65rem;
+    font-weight: 850;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .park-hero-image-overlay strong {
+    margin-bottom: 4px;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 2rem;
+    font-weight: 500;
+  }
+
+  .park-hero-image-overlay small {
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 0.72rem;
+  }
+
+  .park-hero-placeholder {
+    min-height: 360px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    flex-direction: column;
+    padding: 30px;
+    background:
+      radial-gradient(
+        circle at 75% 20%,
+        rgba(255, 255, 255, 0.9),
+        transparent 30%
+      ),
+      linear-gradient(
+        145deg,
+        rgba(88, 115, 106, 0.2),
+        rgba(88, 115, 106, 0.06)
+      );
+  }
+
+  .park-hero-placeholder-icon {
+    width: 64px;
+    height: 64px;
+    display: grid;
+    margin-bottom: auto;
+    place-items: center;
+    border-radius: 18px;
+    color: var(--park-accent);
+    background: rgba(255, 255, 255, 0.88);
+  }
+
+  .park-hero-placeholder-icon svg {
+    width: 31px;
+    height: 31px;
+  }
+
+  .park-hero-placeholder > span {
+    margin-bottom: 8px;
+    color: var(--park-accent);
+    font-size: 0.65rem;
+    font-weight: 850;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .park-hero-placeholder > strong {
+    margin-bottom: 8px;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 2rem;
+    font-weight: 500;
+    line-height: 1.05;
+  }
+
+  .park-hero-placeholder > small {
+    color: var(--park-muted);
+    line-height: 1.5;
+  }
+
+  .park-hero-facts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--park-line);
+  }
+
+  .park-hero-facts > div {
+    min-width: 0;
+    padding: 18px;
+  }
+
+  .park-hero-facts > div + div {
+    border-left: 1px solid var(--park-line);
+  }
+
+  .park-hero-facts span,
+  .park-hero-facts strong {
+    display: block;
+  }
+
+  .park-hero-facts span {
+    margin-bottom: 6px;
+    color: var(--park-muted);
+    font-size: 0.58rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .park-hero-facts strong {
+    overflow: hidden;
+    font-size: 0.7rem;
+    line-height: 1.45;
+    text-overflow: ellipsis;
+  }
+
+  .park-snapshot-section {
+    position: relative;
+    z-index: 2;
+    margin-top: -24px;
+  }
+
+  .park-snapshot-grid {
+    display: grid;
+    grid-template-columns: 1.15fr repeat(3, minmax(0, 1fr));
+    overflow: hidden;
+    border: 1px solid var(--park-line);
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 18px 48px rgba(27, 41, 35, 0.08);
+  }
+
+  .park-snapshot-item {
+    min-width: 0;
+    min-height: 134px;
+    display: flex;
+    justify-content: center;
+    flex-direction: column;
+    padding: 22px;
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .park-snapshot-item + .park-snapshot-item {
+    border-left: 1px solid var(--park-line);
+  }
+
+  .park-snapshot-item--accent {
+    color: #fff;
+    background: var(--park-accent);
+  }
+
+  .park-snapshot-item span,
+  .park-snapshot-item strong,
+  .park-snapshot-item small {
+    display: block;
+  }
+
+  .park-snapshot-item span {
+    margin-bottom: 8px;
+    color: var(--park-muted);
+    font-size: 0.59rem;
+    font-weight: 850;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+
+  .park-snapshot-item--accent span,
+  .park-snapshot-item--accent small {
+    color: rgba(255, 255, 255, 0.76);
+  }
+
+  .park-snapshot-item strong {
+    font-size: 0.83rem;
+    line-height: 1.45;
+  }
+
+  .park-snapshot-item small {
+    margin-top: 7px;
+    color: var(--park-muted);
+    font-size: 0.64rem;
+    line-height: 1.45;
+  }
+
+  .park-fit-card {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .park-fit-column {
+    padding: 30px;
+  }
+
+  .park-fit-column--warm {
+    border-left: 1px solid var(--park-line);
+    background: var(--park-warm);
+  }
+
+  .park-fit-list {
+    display: grid;
+    gap: 9px;
+  }
+
+  .park-fit-list > div {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    padding: 12px;
+    border-radius: 11px;
+    background: var(--park-soft);
+  }
+
+  .park-fit-list span {
+    display: grid;
+    width: 26px;
+    height: 26px;
+    place-items: center;
+    border-radius: 50%;
+    color: var(--park-accent);
+    background: #fff;
+    font-size: 0.72rem;
+    font-weight: 900;
+  }
+
+  .park-fit-list strong {
+    font-size: 0.76rem;
+  }
+
+  .park-consideration-list {
+    display: grid;
+    gap: 14px;
+  }
+
+  .park-consideration-list > div {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+
+  .park-consideration-list span {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border: 1px solid var(--park-line);
+    border-radius: 10px;
+    color: var(--park-accent);
+    background: #fff;
+    font-size: 0.65rem;
+    font-weight: 850;
+  }
+
+  .park-consideration-list p {
+    margin: 4px 0 0;
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+
+  .related-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-bottom: 28px;
+  }
+
+  .related-badges .related-age {
+    margin-bottom: 0;
+  }
+
+  .related-pet {
+    display: inline-flex;
+    padding: 6px 9px;
+    border-radius: 999px;
+    color: #58645f;
+    background: var(--park-soft);
+    font-size: 0.64rem;
+    font-weight: 800;
+  }
+
+  .park-lead-copy {
+    color: var(--park-ink) !important;
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  .nearby-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  .nearby-item,
+  .nearby-loading,
+  .nearby-empty {
+    min-height: 104px;
+    padding: 16px;
+    border-radius: 14px;
+    background: var(--park-soft);
+  }
+
+  .nearby-item span,
+  .nearby-item strong,
+  .nearby-item small {
+    display: block;
+  }
+
+  .nearby-item span {
+    margin-bottom: 10px;
+    color: var(--park-accent);
+    font-size: 0.6rem;
+    font-weight: 850;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .nearby-item strong {
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+
+  .nearby-item small {
+    margin-top: 8px;
+    color: var(--park-muted);
+    font-size: 0.66rem;
+  }
+
+  .nearby-loading,
+  .nearby-empty {
+    grid-column: 1 / -1;
+    min-height: auto;
+    color: var(--park-muted);
+    font-size: 0.75rem;
+  }
+
+  .compare-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 18px;
+  }
+
+  .compare-heading h2,
+  .compare-heading p {
+    margin-bottom: 0;
+  }
+
+  .compare-heading p {
+    margin-top: 8px;
+  }
+
+  .compare-heading > a {
+    flex: 0 0 auto;
+    color: var(--park-accent);
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .compare-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--park-line);
+    border-radius: 14px;
+  }
+
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.73rem;
+  }
+
+  .compare-table th,
+  .compare-table td {
+    padding: 14px;
+    border-bottom: 1px solid var(--park-line);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .compare-table th {
+    color: var(--park-muted);
+    background: var(--park-soft);
+    font-size: 0.59rem;
+    font-weight: 850;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .compare-table tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .compare-table tr.is-current td {
+    background: rgba(88, 115, 106, 0.07);
+    font-weight: 750;
+  }
+
+  .compare-table a {
+    color: var(--park-ink);
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .park-location-map {
+    cursor: pointer;
+  }
+
+  .park-map-popup strong,
+  .park-map-popup span,
+  .park-map-popup a {
+    display: block;
+  }
+
+  .park-map-popup strong {
+    margin-bottom: 5px;
+    color: var(--park-ink);
+    font-size: 0.75rem;
+  }
+
+  .park-map-popup span {
+    margin-bottom: 7px;
+    color: var(--park-muted);
+    font-size: 0.66rem;
+  }
+
+  .park-map-popup a {
+    color: var(--park-accent);
+    font-size: 0.66rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .park-compare-card {
+  overflow: hidden;
+}
+
+.park-compare-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.park-compare-heading h2 {
+  margin-bottom: 0;
+}
+
+.park-compare-heading p {
+  margin: 6px 0 0;
+}
+
+.park-compare-link {
+  flex: 0 0 auto;
+  color: var(--park-accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.park-compare-link:hover {
+  text-decoration: underline;
+}
+
+.park-compare-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--park-line);
+  border-radius: 14px;
+}
+
+.park-compare-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  background: #fff;
+}
+
+.park-compare-table th,
+.park-compare-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--park-line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.park-compare-table th {
+  color: var(--park-muted);
+  background: var(--park-soft);
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.park-compare-table td {
+  color: var(--park-ink);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.park-compare-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.park-compare-table tbody tr:hover {
+  background: rgba(88, 115, 106, 0.045);
+}
+
+.park-compare-table a {
+  color: var(--park-accent);
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.park-compare-table a:hover {
+  text-decoration: underline;
+}
+
+.park-compare-table .is-current {
+  background: rgba(88, 115, 106, 0.08);
+}
+
+.park-compare-table .is-current td:first-child {
+  position: relative;
+  padding-left: 34px;
+  font-weight: 800;
+}
+
+.park-compare-table .is-current td:first-child::before {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--park-accent);
+  content: "";
+  transform: translateY(-50%);
+}
+
   @media (max-width: 960px) {
     .park-hero-grid,
     .park-content-grid {
       grid-template-columns: 1fr;
+    }
+
+    .park-snapshot-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .park-snapshot-item:nth-child(3) {
+      border-left: 0;
+      border-top: 1px solid var(--park-line);
+    }
+
+    .park-snapshot-item:nth-child(4) {
+      border-top: 1px solid var(--park-line);
+    }
+
+    .park-fit-card {
+      grid-template-columns: 1fr;
+    }
+
+    .park-fit-column--warm {
+      border-top: 1px solid var(--park-line);
+      border-left: 0;
     }
 
     .listing-grid {
@@ -1119,7 +2510,8 @@ const pageDescription =
     }
 
     .park-hero h1 {
-      font-size: clamp(3rem, 15vw, 4.7rem);
+      font-size: clamp(2.25rem, 10vw, 3.25rem);
+      line-height: 1.02;
     }
 
     .park-content-section {
@@ -1137,11 +2529,51 @@ const pageDescription =
     }
 
     .feature-grid,
+    .nearby-grid,
     .checklist,
     .park-sidebar,
     .related-grid,
-    .listing-grid {
+    .listing-grid,
+    .park-snapshot-grid {
       grid-template-columns: 1fr;
+    }
+
+    .compare-heading {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .park-snapshot-section {
+      margin-top: -16px;
+    }
+
+    .park-snapshot-item + .park-snapshot-item {
+      border-top: 1px solid var(--park-line);
+      border-left: 0;
+    }
+
+    .park-hero-image,
+    .park-hero-image img,
+    .park-hero-placeholder {
+      min-height: 310px;
+    }
+
+    .park-hero-facts {
+      grid-template-columns: 1fr;
+    }
+
+    .park-hero-facts > div + div {
+      border-top: 1px solid var(--park-line);
+      border-left: 0;
+    }
+
+    .park-hero-actions {
+      flex-direction: column;
+    }
+
+    .park-hero-actions .primary-button,
+    .park-hero-actions .secondary-button {
+      width: 100%;
     }
 
     .park-listings-heading {
@@ -1152,6 +2584,12 @@ const pageDescription =
     .related-heading {
       align-items: flex-start;
       flex-direction: column;
+    }
+
+    .park-location-map {
+      height: 240px;
+      margin-right: -22px;
+      margin-left: -22px;
     }
   }
 </style>

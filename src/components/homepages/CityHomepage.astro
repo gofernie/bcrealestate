@@ -1,0 +1,1990 @@
+---
+import { createClient } from "@supabase/supabase-js";
+import Layout from "../../layouts/Layout.astro";
+import ListingCard from "../ListingCard.astro";
+import ShortlistReviewModal from "../ShortlistReviewModal.astro";
+import IntentModalController from "../IntentModalController.astro";
+import SiteNav from "../SiteNav.astro";
+import { getSite } from "../../lib/getSite";
+import "../../styles/area-page.css";
+import "../../styles/page-hero.css";
+import "../../styles/intent-modal.css";
+import { getNavIntentPages } from "../../lib/getNavIntentPages";
+
+export const prerender = false;
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const {
+  city: cityProp = "nanaimo",
+  site: suppliedSite = null,
+} = Astro.props;
+
+const city = String(cityProp)
+  .toLowerCase()
+  .trim();
+
+const site =
+  suppliedSite ||
+  await getSite(Astro.url.hostname, city);
+
+    console.log({
+  hostname: Astro.url.hostname,
+  paramCity: Astro.params.city,
+  siteCity: site?.city,
+  finalCity: city,
+});
+
+
+
+const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+const agentPageSlug =
+  site?.city?.toLowerCase() === "parksville"
+    ? "parksville"
+    : "chris-crump";
+
+const { data: agentPage } = await supabase
+  .from("agent_pages")
+  .select("data")
+  .eq("slug", agentPageSlug)
+  .maybeSingle();
+
+const accentColor =
+  site?.accent_color ||
+  "#2f6f73";
+
+console.log("COLOUR SOURCE DEBUG", {
+  city,
+  agentPageSlug,
+  agentPageAccent: agentPage?.data?.accentColor,
+  siteAccent: site?.accent_color,
+  finalAccent: accentColor,
+});
+
+const { data: allListings = [], error } = await supabase
+  .from("listing_rows")
+  .select("*")
+  .eq("normalized_city", city)
+  .eq("status", "A");
+
+const { data: featuredIntentPages = [], error: featuredIntentError } =
+  await supabase
+    .from("intent_pages")
+    .select("slug, hero_heading, intro_copy")
+    .eq("site_id", site?.id || "00000000-0000-0000-0000-000000000000")
+    .limit(6);
+
+console.log("FEATURED INTENT PAGES", {
+  count: featuredIntentPages.length,
+  rows: featuredIntentPages,
+  error: featuredIntentError,
+});
+
+if (error) {
+  console.error(`${cityLabel} market page error:`, error);
+}
+
+const normalizeListingImageUrl = (value: any) => {
+  if (!value) return "";
+  const raw =
+    typeof value === "string"
+      ? value
+      : value.highRes ||
+        value.mediumRes ||
+        value.lowRes ||
+        value.url ||
+        value.src ||
+        value.href ||
+        value.path ||
+        "";
+  if (!raw) return "";
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  const cleaned = raw.startsWith("/") ? raw : `/${raw}`;
+ return `https://cdn.repliers.io${cleaned}`;
+};
+
+const getListingImage = (listing: any) =>
+  normalizeListingImageUrl(
+    listing.image_url ||
+      listing.image ||
+      listing.photo ||
+      listing.images?.[0] ||
+      listing.images?.[1] ||
+      listing.raw?.images?.[0] ||
+      listing.raw?.images?.[1] ||
+      listing.raw?.images?.[0]?.url ||
+      listing.raw?.images?.[1]?.url ||
+      listing.raw?.images?.[0]?.mediumRes ||
+      listing.raw?.images?.[1]?.mediumRes ||
+      listing.raw?.images?.[0]?.highRes ||
+      listing.raw?.images?.[1]?.highRes
+  );
+
+const listings = [...allListings]
+  .sort((a, b) => {
+    const da = new Date(a.listed_at || a.updated_at || 0).getTime();
+    const db = new Date(b.listed_at || b.updated_at || 0).getTime();
+    return db - da;
+  })
+  .slice(0, 12);
+
+const activeListings = allListings.length;
+
+const prices = allListings
+  .map((l) => Number(l.price || 0))
+  .filter((p) => p > 0)
+  .sort((a, b) => a - b);
+
+const avgPrice =
+  prices.length > 0
+    ? Math.round(prices.reduce((sum, p) => sum + p, 0) / prices.length)
+    : 0;
+
+const medianPrice = prices.length > 0 ? prices[Math.floor(prices.length / 2)] : 0;
+
+const condoCount    = allListings.filter((l) => l.normalized_type === "condo").length;
+const houseCount    = allListings.filter((l) => l.normalized_type === "house").length;
+const townhomeCount = allListings.filter((l) => l.normalized_type === "townhouse").length;
+
+let areaCounts = allListings.reduce((acc, listing) => {
+  const area = listing.normalized_area || "other";
+  acc[area] = (acc[area] || 0) + 1;
+  return acc;
+}, {});
+
+let topAreas = Object.entries(areaCounts)
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 10);
+
+const areaToSlug = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/\//g, "-")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const { data: areaMetaRows = [] } = await supabase
+  .from("area_boundaries")
+  .select("area_slug, area_name, short_description, polygon_geojson")
+  .ilike("city", city);
+
+const navAreaCountMap = Object.fromEntries(
+  Object.entries(areaCounts).map(([label, count]) => [label.toLowerCase(), count])
+);
+
+const navAreas = areaMetaRows
+  .map((r) => r.area_name || String(r.area_slug || "").replace(/-/g, " "))
+  .filter(Boolean)
+  .sort((a, b) => (navAreaCountMap[b.toLowerCase()] || 0) - (navAreaCountMap[a.toLowerCase()] || 0));
+
+const navTypes = ["house", "condo", "townhouse", "land"];
+
+const cleanAreaName = (value) =>
+  String(value || "")
+    .replace(/^pq[\s-]+/i, "")
+    .split("-")
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const labelize = (value) =>
+  cleanAreaName(value)
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
+function areaHue(areaName, index) {
+  let hash = 0;
+
+  for (const char of String(areaName || "")) {
+    hash = char.charCodeAt(0) + ((hash << 5) - hash);
+  }
+
+  const hues = [355, 18, 34, 48, 205, 178, 155, 285, 315, 12, 92, 230];
+  return hues[Math.abs(hash + index * 7) % hues.length];
+}
+
+const priceBuckets = [
+  { label: "Under $500k", min: 0, max: 500000 },
+  { label: "$500k–$750k", min: 500000, max: 750000 },
+  { label: "$750k–$1M", min: 750000, max: 1000000 },
+  { label: "$1M–$1.5M", min: 1000000, max: 1500000 },
+  { label: "$1.5M+", min: 1500000, max: Infinity },
+];
+
+const priceBucketCounts = priceBuckets.map((bucket) =>
+  allListings.filter((listing) => {
+    const price = Number(listing.price || 0);
+    return price >= bucket.min && price < bucket.max;
+  }).length
+);
+
+
+
+
+
+  const areaBoundariesBySlug = Object.fromEntries(
+  areaMetaRows
+    .filter((row) => row.polygon_geojson?.coordinates?.[0]?.length)
+    .map((row) => [row.area_slug, row.polygon_geojson])
+);
+
+function pointInPolygon(point, polygon) {
+  const [lng, lat] = point;
+  let inside = false;
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+
+    const intersect =
+      yi > lat !== yj > lat &&
+      lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+
+    if (intersect) inside = !inside;
+  }
+
+  return inside;
+}
+
+areaCounts = Object.fromEntries(
+  (areaMetaRows || []).map((row: any) => {
+    const slug = areaToSlug(row.area_slug || row.area_name);
+    const label = row.area_name || String(row.area_slug || "").replace(/-/g, " ");
+    const polygon = row.polygon_geojson?.coordinates?.[0];
+
+   const count = polygon?.length
+  ? allListings.filter((listing) => {
+      const lat = Number(listing.lat || 0);
+      const lng = Number(listing.lng || 0);
+
+      if (!lat || !lng) return false;
+
+      return pointInPolygon([lng, lat], polygon);
+    }).length
+  : 0;
+
+    return [label, count];
+  })
+);
+
+topAreas = Object.entries(areaCounts)
+  .sort((a, b) => Number(b[1]) - Number(a[1]));
+
+function getAreaCardCount(area, fallbackCount) {
+  const boundary = areaBoundariesBySlug[areaToSlug(area)];
+  const polygon = boundary?.coordinates?.[0];
+
+  if (!polygon?.length) {
+    return fallbackCount;
+  }
+
+const normalizedAreaListings = allListings.filter(
+  (listing) => areaToSlug(listing.normalized_area) === areaToSlug(area)
+);
+
+return normalizedAreaListings.length;
+}
+
+const areaDescriptions = Object.fromEntries(
+  areaMetaRows.map((row) => [
+    row.area_slug,
+    row.short_description,
+  ])
+);
+
+
+
+function areaTagIcon(tag: string) {
+  const clean = String(tag || "").toLowerCase();
+
+  if (clean.includes("ocean") || clean.includes("waterfront") || clean.includes("beach") || clean.includes("harbour")) return "🏖";
+  if (clean.includes("shopping") || clean.includes("services") || clean.includes("convenience")) return "🛍";
+  if (clean.includes("park") || clean.includes("trail") || clean.includes("recreation")) return "🌳";
+  if (clean.includes("walk")) return "🚶";
+  if (clean.includes("viu") || clean.includes("school")) return "🎓";
+  if (clean.includes("investment") || clean.includes("value")) return "💰";
+  if (clean.includes("family")) return "🏡";
+  if (clean.includes("character")) return "🏛";
+  if (clean.includes("rural") || clean.includes("space") || clean.includes("lots")) return "🌲";
+  if (clean.includes("quiet")) return "🌿";
+  if (clean.includes("condos")) return "🏢";
+  if (clean.includes("ferry")) return "⛴️";
+
+  return "📍";
+}
+
+const chartData = {
+  priceLabels: priceBuckets.map((b) => b.label),
+  priceCounts: priceBucketCounts,
+
+  areaLabels: topAreas.map(([area]) =>
+    labelize(area)
+      .replace("North Nanaimo", "North")
+      .replace("South Nanaimo", "South")
+      .replace("Central Nanaimo", "Central")
+      .replace("University District", "University")
+      .replace("Departure Bay", "Departure")
+      .replace("Pleasant Valley", "Pleasant")
+  ),
+
+  areaCounts: topAreas.map(([, count]) => count),
+};
+
+const navIntentPages = await getNavIntentPages(supabase, site?.id);
+
+---
+{console.log("LAYOUT ACCENT", {
+  city,
+  agentPageSlug,
+  agentPage,
+  accentColor
+})}
+<Layout title={`${cityLabel} Real Estate Market Report`} accentColor={accentColor} city={city}>
+ 
+  
+
+
+<SiteNav
+  city={city}
+  site={site}
+  areas={navAreas}
+  types={navTypes}
+  intentPages={navIntentPages}
+  showAreaNav={false}
+/>
+<!-- ── Imageless market hero ── -->
+<main class="page is-type-page">
+  <div class="intent-content-shell">
+
+<section class="market-hero market-hero--split">
+
+  <div class="market-hero__visual">
+    <img
+      class="market-hero-image"
+      src={`https://images.unsplash.com/photo-1650747826627-8b0f01b9721a?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D`}
+      alt={`${cityLabel} real estate`}
+    />
+
+    <div class="market-hero-overlay"></div>
+
+    <div class="market-hero-content">
+      <p class="type-hero__eyebrow">
+        {cityLabel} Market Report
+      </p>
+
+      <h1>
+        {cityLabel}<br />
+        Real Estate<span>.</span>
+      </h1>
+
+      <p class="market-hero-description">
+        Search active listings, browse neighbourhoods and explore the
+        {cityLabel} real estate market.
+      </p>
+
+      <div class="type-hero__actions">
+        <a
+          class="type-button type-button--primary"
+          href="#browse-by-area"
+        >
+          Browse Areas
+        </a>
+
+        <a
+          class="type-button type-button--secondary"
+          href={`/explore?city=${encodeURIComponent(city)}`}
+        >
+          Open Explorer
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="market-summary-card">
+    <div class="market-summary-card__inner">
+
+      <div class="market-dashboard__head">
+        <div>
+          <span>Current Market</span>
+          <strong>{cityLabel} at a glance</strong>
+        </div>
+
+        <span class="market-dashboard__live">Live data</span>
+      </div>
+
+      <div class="market-dashboard__primary">
+       <span>Typical asking price</span>
+
+        <strong>
+          {medianPrice ? `$${medianPrice.toLocaleString()}` : "—"}
+        </strong>
+
+<small>Median price across all active {cityLabel} listings</small>
+      </div>
+
+      <div class="market-dashboard__grid">
+        <article>
+          <span class="market-dashboard__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M3 11.5 12 4l9 7.5" />
+              <path d="M5.5 10.5V20h13v-9.5" />
+              <path d="M9.5 20v-6h5v6" />
+            </svg>
+          </span>
+
+          <div>
+            <strong>{activeListings}</strong>
+            <small>Homes currently for sale</small>
+          </div>
+        </article>
+
+        <article>
+          <span class="market-dashboard__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M20 13 13 20l-9-9V4h7l9 9Z" />
+              <circle cx="8.5" cy="8.5" r="1.25" />
+            </svg>
+          </span>
+
+          <div>
+            <strong>
+              {avgPrice ? `$${avgPrice.toLocaleString()}` : "—"}
+            </strong>
+            <small>Average asking price</small>
+          </div>
+        </article>
+
+        <article>
+          <span class="market-dashboard__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <rect x="4" y="4" width="16" height="16" rx="2" />
+              <path d="M8 8v8M12 8v8M16 8v8" />
+            </svg>
+          </span>
+
+          <div>
+            <strong>{condoCount}</strong>
+            <small>Condo listings available</small>
+          </div>
+        </article>
+
+        <article>
+          <span class="market-dashboard__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M4 20V9.5L12 4l8 5.5V20" />
+              <path d="M8 20v-6h8v6" />
+            </svg>
+          </span>
+
+          <div>
+            <strong>{houseCount}</strong>
+           <small>House listings available</small>
+          </div>
+        </article>
+      </div>
+
+      <a
+        class="market-dashboard__explore"
+        href={`/explore?city=${encodeURIComponent(city)}`}
+      >
+        <span>
+          <strong>Explore the full market</strong>
+          <small>Listings, areas, schools, parks and amenities.</small>
+        </span>
+
+        <b>→</b>
+      </a>
+
+    </div>
+  </div>
+
+</section>
+
+    <!-- ── Area browse nav ── -->
+    <nav class="area-browse-nav">
+      <div class="area-browse-nav__inner">
+    <span>Explore more {cityLabel} areas</span>
+
+   {navAreas.slice(0, 4).map((item) => (
+<a href={`/${city}/${areaToSlug(item)}`}>
+  {labelize(item)}
+</a>
+))}
+
+    {navAreas.length > 4 && (
+   <select id="area-nav-select">
+  <option value="">+{navAreas.length - 4} more areas</option>
+  {navAreas.slice(4).map((item) => (
+    <option value={`/${city}/${areaToSlug(item)}`}>
+      {labelize(item)}
+    </option>
+  ))}
+</select>
+    )}
+      </div>
+    </nav>
+
+    <div class="market-index-content">
+
+      <section class="content-card area-picker">
+  <div class="section-heading">
+   <span class="eyebrow">Browse by Area</span>
+    <h2 id="browse-by-area">Choose a {cityLabel} neighbourhood</h2>
+    <p>Start with an area, then filter by property type, price, beds, and more.</p>
+  </div>
+
+ <div class="area-card-grid">
+  {topAreas.map(([area, count], index) => (
+    <a
+      class="area-pick-card"
+      href={`/${city}/${areaToSlug(area)}`}
+      style={`--card-tint: ${3 + (index % 6)}%`}
+    >
+    <strong>{labelize(area)}</strong>
+      <div class="area-pick-count">
+        {getAreaCardCount(area, count) === 1 ? "1 listing" : `${getAreaCardCount(area, count)} listings`}
+      </div>
+     <span class="area-card-link">View area →</span>
+    </a>
+  ))}
+</div>
+</section>
+
+   <!-- ── Latest listings ── -->
+<section class="listings-section">
+  <div class="section-heading" style="margin-bottom: 24px;">
+    <span class="eyebrow">Latest Listings</span>
+    <h2>Newest {cityLabel} Listings</h2>
+    <p>
+      A quick look at some of the newest active listings currently available
+      across {cityLabel}.
+    </p>
+  </div>
+
+  <div class="listing-grid">
+    {listings.map((listing, index) => (
+      <div
+        class="listing-card-wrap"
+        data-type={listing.normalized_type || ""}
+        data-price={listing.price || 0}
+        data-beds={listing.beds || 0}
+        data-listed={listing.listed_at || ""}
+      >
+        <ListingCard
+  listing={listing}
+  image={getListingImage(listing)}
+  priority={index < 3}
+/>
+      </div>
+    ))}
+  </div>
+</section>
+
+<!-- ── Stats ── -->
+<section class="area-stats">
+  <div class="stat-card">
+    <strong>{activeListings}</strong>
+    <span>Active Listings</span>
+  </div>
+  <div class="stat-card">
+    <strong>${avgPrice.toLocaleString()}</strong>
+    <span>Average Price</span>
+  </div>
+  <div class="stat-card">
+    <strong>${medianPrice.toLocaleString()}</strong>
+    <span>Median Price</span>
+  </div>
+  <div class="stat-card">
+    <strong>{houseCount}</strong>
+    <span>Houses</span>
+  </div>
+  <div class="stat-card">
+    <strong>{condoCount}</strong>
+    <span>Condos</span>
+  </div>
+  <div class="stat-card">
+    <strong>{townhomeCount}</strong>
+    <span>Townhomes</span>
+  </div>
+</section>
+
+<!-- ── Charts ── -->
+<section class="market-row">
+  <section class="chart-card">
+    <div>
+      <span class="eyebrow">Price Distribution</span>
+      <h2>Where {cityLabel} Inventory Sits by Price</h2>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="priceChart"></canvas>
+    </div>
+  </section>
+
+  <section class="chart-card">
+    <div>
+      <span class="eyebrow">Area Activity</span>
+      <h2>Top Areas by Listing Count</h2>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="areaChart"></canvas>
+    </div>
+  </section>
+</section>
+
+    <!-- ── Intent interrupter ── -->
+    <section class="intent-interrupter">
+      <div class="intent-interrupter__inner">
+        <span class="eyebrow" style="color: rgba(255,255,255,0.6);">Explore {cityLabel} Homes</span>
+        <h2>Browse Curated Collections</h2>
+        <p>
+          Looking for something specific? Explore some of {cityLabel}'s most popular
+home searches.
+        </p>
+        <div class="intent-grid">
+          {featuredIntentPages.map((intentPage) => (
+            <a href={`/${city}/${intentPage.slug}`} class="intent-tile">
+              <strong>{intentPage.hero_heading}</strong>
+              <span>
+                {intentPage.intro_copy ||
+                  `Explore this curated ${cityLabel} real estate search.`}
+              </span>
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    
+
+    <!-- ── Popular searches ── -->
+    <section class="content-card">
+    <h2>Popular {cityLabel} Searches</h2>
+     <ul>
+  {featuredIntentPages.map((intentPage) => (
+    <li>
+      <a href={`/${city}/${intentPage.slug}`}>
+        {intentPage.hero_heading}
+      </a>
+    </li>
+  ))}
+</ul>
+    </section>
+
+    </div>
+  </div>
+</main>
+
+  <ShortlistReviewModal />
+  <IntentModalController />
+
+ <script is:inline define:vars={{ chartData }}>
+  window.addEventListener("DOMContentLoaded", () => {
+      if (!window.Chart) {
+        console.error("Chart.js did not load");
+        return;
+      }
+
+      const priceCanvas = document.getElementById("priceChart");
+      const areaCanvas  = document.getElementById("areaChart");
+      if (!priceCanvas || !areaCanvas) return;
+
+      const sharedOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { displayColors: false },
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { maxRotation: 0, minRotation: 0, font: { size: 10 } },
+          },
+          y: {
+            beginAtZero: true,
+            border: { display: false },
+            grid: { color: "rgba(28,25,23,0.08)" },
+            ticks: { precision: 0, font: { size: 10 } },
+          },
+        },
+      };
+
+      new Chart(priceCanvas, {
+        type: "bar",
+        data: {
+          labels: chartData.priceLabels,
+          datasets: [{ label: "Listings", data: chartData.priceCounts }],
+        },
+        options: sharedOptions,
+      });
+
+      new Chart(areaCanvas, {
+        type: "bar",
+        data: {
+          labels: chartData.areaLabels,
+          datasets: [{ label: "Listings", data: chartData.areaCounts }],
+        },
+        options: sharedOptions,
+      });
+    });
+  </script>
+  <script is:inline>
+  document.addEventListener("DOMContentLoaded", () => {
+    const select = document.getElementById("area-nav-select");
+
+    select?.addEventListener("change", (e) => {
+      const value = e.target.value;
+      if (value) {
+        window.location.href = value;
+      }
+    });
+  });
+</script>
+</Layout>
+
+<style>
+  /* ── Shell / layout ── */
+.shell {
+  width: min(1220px, calc(100% - 64px));
+  margin: 0 auto;
+  padding: 0;
+}
+
+@media (max-width: 640px) {
+  .shell {
+    width: 100%;
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+}
+
+  /* ── Area browse nav ── */
+  .area-browse-nav {
+    background: #fff;
+    border-bottom: 1px solid rgba(28,25,23,0.1);
+    position: sticky;
+    top: 0;
+    z-index: 40;
+  }
+
+.area-browse-nav__inner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 18px 0 20px;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
+  }
+
+  .area-browse-nav__inner::-webkit-scrollbar { display: none; }
+
+.area-browse-nav__inner > span {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    flex-shrink: 0;
+    margin-right: 8px;
+  }
+
+.area-browse-nav a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 0 15px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--accent) 7%, white);
+    border: 0.5px solid rgba(0,0,0,0.12);
+    font-size: 0.84rem;
+    font-weight: 750;
+    color: var(--muted);
+    text-decoration: none;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .area-browse-nav a:hover,
+  .area-browse-nav a.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+
+  .area-browse-nav select {
+    appearance: none;
+    border: 1px solid rgba(28,25,23,0.22);
+    border-radius: 6px;
+    background: #fff;
+    color: #332f2b;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 7px 34px 7px 14px;
+    cursor: pointer;
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
+
+  /* ── Main shell spacing ── */
+  main.shell { padding-top: 40px; padding-bottom: 100px; }
+
+  /* ── Section heading ── */
+  .section-heading { margin-bottom: 28px; }
+  .section-heading .eyebrow {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.7rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .section-heading h2 {
+    margin: 0 0 8px;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+    line-height: 1.0;
+    letter-spacing: -0.045em;
+    font-weight: 500;
+  }
+  .section-heading p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.6;
+    max-width: 560px;
+  }
+
+  /* ── Stats row ── */
+  .area-stats {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    margin-bottom: 40px;
+  }
+
+  .stat-card {
+    background: #fff;
+    border: 0.5px solid rgba(0,0,0,0.1);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+
+  .stat-card strong {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 4px;
+    letter-spacing: -0.03em;
+  }
+
+  .stat-card span {
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Listings section ── */
+  .listings-section { margin-bottom: 54px; }
+
+  .listing-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+   
+  }
+
+  /* ── Market insights (mi-*) — matches area slug ── */
+  .market-row { display: flex; flex-direction: column; gap: 12px; margin-bottom: 54px; }
+
+  .mi-stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .mi-stat { background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 8px; padding: 12px 16px; }
+  .mi-stat-label { font-size: 11px; color: #888; margin: 0 0 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .mi-stat-val { font-size: 24px; font-weight: 700; color: #1a1a1a; margin: 0 0 2px; }
+  .mi-stat-sub { font-size: 11px; color: #aaa; margin: 0; }
+
+  .mi-top { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .mi-bottom-row { display: flex; flex-direction: column; gap: 12px; }
+
+  .mi-card {
+    background: #fff;
+    border: 0.5px solid rgba(0,0,0,0.1);
+    border-radius: 12px;
+    padding: 1.25rem;
+  }
+
+  .mi-card .eyebrow {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+
+  .mi-card h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 1rem;
+    color: #1a1a1a;
+  }
+
+  /* ── Area card grid (Browse by Area) ── */
+  .content-card { padding: 0 0 54px; }
+
+  .area-picker { padding-top: 0; }
+  .area-picker .section-heading { max-width: 720px; margin-bottom: 22px; }
+
+  .area-card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+.area-pick-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 18px;
+    border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: color-mix(in srgb, var(--accent) calc(var(--card-tint, 6%)), white);
+    color: inherit;
+    text-decoration: none;
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  }
+
+  .area-pick-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(0,0,0,0.18);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.07);
+  }
+
+  .area-pick-card strong {
+    display: block;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.2;
+    font-family: inherit;
+    letter-spacing: normal;
+    padding: 0;
+    background: none;
+    border: none;
+  }
+
+.area-pick-count {
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--muted);
+  }
+
+  .area-card-link {
+    margin-top: 4px;
+    color: var(--accent);
+    font-size: 0.84rem;
+    font-weight: 700;
+  }
+
+  /* ── Charts ── */
+  .chart-card {
+    background: #fff;
+    border: 0.5px solid rgba(0,0,0,0.1);
+    border-radius: 12px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .chart-card .eyebrow {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+
+  .chart-card h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    color: #1a1a1a;
+  }
+
+  .chart-wrap {
+    position: relative;
+    height: 220px;
+    min-height: 220px;
+  }
+
+  .chart-wrap canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* ── Intent interrupter ── */
+  .intent-interrupter { margin: 0 0 54px; }
+
+ .intent-interrupter__inner {
+    padding: 48px;
+    border-radius: 10px;
+    background: #181614;
+    color: #fff;
+  }
+
+  .intent-interrupter h2 {
+    margin: 0 0 12px;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(2.4rem, 4vw, 4rem);
+    line-height: 0.95;
+    letter-spacing: -0.06em;
+    font-weight: 500;
+    color: #fff;
+  }
+
+  .intent-interrupter p {
+    max-width: 620px;
+    margin-bottom: 30px;
+    color: rgba(255,255,255,0.72);
+  }
+
+  .intent-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+.intent-tile {
+    display: block;
+    padding: 22px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    text-decoration: none;
+    transition: all 0.2s ease;
+  }
+
+  .intent-tile:hover {
+    transform: translateY(-3px);
+    background: rgba(255,255,255,0.1);
+  }
+
+  .intent-tile strong { display: block; margin-bottom: 8px; font-size: 1rem; color: #fff; }
+  .intent-tile span { display: block; color: rgba(255,255,255,0.68); font-size: 0.9rem; line-height: 1.5; }
+
+  /* ── Popular searches ── */
+  .content-card h2 {
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(1.8rem, 3vw, 2.4rem);
+    line-height: 0.98;
+    letter-spacing: -0.05em;
+    font-weight: 500;
+    margin-bottom: 20px;
+  }
+
+  .content-card ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    list-style: none;
+    margin-top: 18px;
+    padding: 0;
+  }
+
+.content-card li a {
+    display: block;
+    padding: 18px;
+    border-radius: 6px;
+    background: #fff;
+    border: 1px solid rgba(28,25,23,0.1);
+    font-weight: 700;
+    color: var(--ink);
+    text-decoration: none;
+    transition: all 0.2s ease;
+  }
+
+  .content-card li a:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-light);
+    box-shadow: 0 12px 28px rgba(28,25,23,0.08);
+  }
+.listing-grid {
+  margin-bottom: 32px;
+}
+  /* ── Responsive ── */
+  @media (max-width: 1100px) {
+    .area-stats { grid-template-columns: repeat(3, 1fr); }
+    .listing-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .area-card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+
+  @media (max-width: 760px) {
+    .area-stats { grid-template-columns: repeat(2, 1fr); }
+    .listing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .area-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .mi-top { grid-template-columns: 1fr; }
+    .intent-grid { grid-template-columns: 1fr; }
+    .intent-interrupter__inner { padding: 28px; }
+    .mi-stats-row { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 500px) {
+    .area-stats { grid-template-columns: 1fr; }
+    .listing-grid { grid-template-columns: 1fr; }
+    .area-card-grid { grid-template-columns: 1fr; }
+  }
+
+  @media (min-width: 760px) {
+    .area-card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+
+  @media (min-width: 1100px) {
+    .area-card-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+/* =========================================================
+   SAME GEOMETRY AS SLUG PAGES
+   ========================================================= */
+
+.page {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 0 80px;
+}
+
+.is-type-page {
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(18, 58, 90, 0.025),
+      transparent 36%
+    ),
+    #fbfcfd;
+}
+
+.is-type-page .intent-content-shell {
+  width: min(1220px, calc(100% - 80px));
+  margin: 0 auto;
+  padding: 24px 20px 0;
+}
+
+
+
+.type-hero {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 0.88fr)
+    minmax(460px, 1.12fr);
+  gap: 44px;
+  align-items: stretch;
+  margin-bottom: 26px;
+}
+
+.type-hero__copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  min-height: 390px;
+  padding: 28px 0;
+}
+
+.type-hero__eyebrow {
+  margin: 0 0 16px;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.type-hero h1 {
+  max-width: 630px;
+  margin: 0;
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2.9rem, 5vw, 5rem);
+  font-weight: 500;
+  letter-spacing: -0.058em;
+  line-height: 0.98;
+}
+
+.type-hero h1 > span {
+  color: var(--accent);
+}
+
+.type-hero__copy > p:not(.type-hero__eyebrow) {
+  max-width: 590px;
+  margin: 22px 0 0;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.type-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.type-button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 18px;
+  border-radius: 7px;
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.type-button--primary {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff !important;
+}
+
+.type-button--secondary {
+  border: 1px solid rgba(18, 58, 90, 0.16);
+  background: #fff;
+  color: var(--accent);
+}
+
+.market-page-hero__dashboard {
+  min-width: 0;
+  min-height: 390px;
+}
+
+@media (max-width: 980px) {
+  .type-hero {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+
+  .type-hero__copy {
+    min-height: 0;
+    padding: 16px 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .is-type-page .intent-content-shell {
+    width: 100%;
+    padding: 16px 14px 0;
+  }
+
+
+
+  .type-hero {
+    gap: 18px;
+  }
+
+  .type-hero__copy {
+    padding: 5px 2px 0;
+  }
+
+  .type-hero h1 {
+    max-width: 340px;
+    font-size: clamp(2.45rem, 12vw, 3.4rem);
+  }
+
+  .type-hero__copy > p:not(.type-hero__eyebrow) {
+    margin-top: 17px;
+    font-size: 0.92rem;
+    line-height: 1.6;
+  }
+
+  .type-hero__actions {
+    margin-top: 22px;
+  }
+
+  .type-button {
+    min-height: 42px;
+    padding: 0 15px;
+    font-size: 0.79rem;
+  }
+}
+/* =========================================================
+   AREAS PAGE DASHBOARD — REFINED
+   ========================================================= */
+
+.market-summary-card {
+  min-height: 390px;
+  overflow: hidden;
+  border: 1px solid rgba(18, 58, 90, 0.08);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 14px 40px rgba(24, 45, 68, 0.055);
+}
+
+.market-summary-card__inner {
+  min-height: 390px;
+  display: flex;
+  flex-direction: column;
+  padding: 26px;
+}
+
+.market-dashboard__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(18, 58, 90, 0.07);
+}
+
+.market-dashboard__head div > span,
+.market-dashboard__head div > strong {
+  display: block;
+}
+
+.market-dashboard__head div > span {
+  margin-bottom: 5px;
+  color: var(--accent);
+  font-size: 0.66rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.market-dashboard__head div > strong {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 850;
+  letter-spacing: -0.015em;
+}
+
+.market-dashboard__live {
+  flex: none;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 7%, white);
+  color: var(--accent);
+  font-size: 0.63rem;
+  font-weight: 800;
+}
+
+.market-dashboard__primary {
+  padding: 24px 4px 20px;
+}
+
+.market-dashboard__primary span,
+.market-dashboard__primary strong,
+.market-dashboard__primary small {
+  display: block;
+}
+
+.market-dashboard__primary span {
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.market-dashboard__primary strong {
+  color: var(--ink);
+  font-size: clamp(2.15rem, 3vw, 3rem);
+  font-weight: 900;
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+.market-dashboard__primary small {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.market-dashboard__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.market-dashboard__grid article {
+  min-width: 0;
+  min-height: 84px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 15px 16px;
+  border: 1px solid rgba(18, 58, 90, 0.075);
+  border-radius: 11px;
+  background: #fbfcfd;
+}
+
+.market-dashboard__icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 7%, white);
+  color: color-mix(in srgb, var(--accent) 72%, #7f8a96);
+  line-height: 0;
+}
+
+.market-dashboard__icon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.45;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.market-dashboard__grid strong,
+.market-dashboard__grid small {
+  display: block;
+}
+
+.market-dashboard__grid strong {
+  overflow: hidden;
+  margin-bottom: 3px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 850;
+  letter-spacing: -0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-dashboard__grid small {
+  color: var(--muted);
+  font-size: 0.67rem;
+  line-height: 1.35;
+}
+
+.market-dashboard__explore {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 12px;
+  padding: 15px 17px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff !important;
+  text-decoration: none;
+}
+
+.market-dashboard__explore strong,
+.market-dashboard__explore small {
+  display: block;
+}
+
+.market-dashboard__explore strong {
+  margin-bottom: 4px;
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.market-dashboard__explore small {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.64rem;
+}
+
+.market-dashboard__explore b {
+  flex: none;
+  font-size: 0.95rem;
+  transition: transform 160ms ease;
+}
+
+.market-dashboard__explore:hover b {
+  transform: translateX(3px);
+}
+
+/* Calm the lower area nav */
+
+.area-browse-nav {
+  position: static;
+  z-index: auto;
+  width: 100%;
+  margin: 0 0 34px;
+  overflow: hidden;
+  border: 1px solid rgba(18, 58, 90, 0.075);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 6px 20px rgba(24, 45, 68, 0.025);
+}
+
+.area-browse-nav__inner {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.area-browse-nav__inner > span {
+  margin-right: 8px;
+  color: var(--accent);
+  font-size: 0.66rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.area-browse-nav a,
+.area-browse-nav select {
+  min-height: 36px;
+}
+
+.area-browse-nav a {
+  padding: 0 14px;
+  border: 1px solid rgba(18, 58, 90, 0.09);
+  border-radius: 8px;
+  background: #fbfcfd;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.area-browse-nav a:hover {
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, white);
+  color: var(--accent);
+}
+
+.area-browse-nav select {
+  min-width: 150px;
+  border: 1px solid rgba(18, 58, 90, 0.09);
+  border-radius: 8px;
+  background-color: #fbfcfd;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.market-index-content {
+  padding-top: 2px;
+}
+
+.area-picker .section-heading {
+  max-width: 720px;
+  margin-bottom: 26px;
+}
+
+@media (max-width: 980px) {
+  .market-summary-card,
+  .market-summary-card__inner {
+    min-height: 340px;
+  }
+}
+
+@media (max-width: 640px) {
+  .market-summary-card,
+  .market-summary-card__inner {
+    min-height: 315px;
+  }
+
+  .market-summary-card__inner {
+    padding: 18px;
+  }
+
+  .market-dashboard__grid {
+    gap: 8px;
+  }
+
+  .market-dashboard__grid article {
+    min-height: 74px;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .market-dashboard__icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .area-browse-nav {
+    margin-bottom: 24px;
+  }
+
+  .area-browse-nav__inner {
+    min-height: 54px;
+    padding: 9px 11px;
+  }
+}
+/* =========================================================
+   MARKET HOMEPAGE HERO
+   ========================================================= */
+
+.market-hero {
+  margin-bottom: 34px;
+}
+
+.market-hero__visual {
+  position: relative;
+  min-height: 510px;
+  overflow: hidden;
+  border-radius: 20px 20px 0 0;
+  background:
+    linear-gradient(135deg, #53605d, #bac1c0);
+}
+
+.market-hero-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.market-hero-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(10, 19, 18, 0.82) 0%,
+      rgba(10, 19, 18, 0.58) 38%,
+      rgba(10, 19, 18, 0.16) 74%,
+      rgba(10, 19, 18, 0.08) 100%
+    );
+}
+
+.market-hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 650px;
+  padding: 76px 64px 90px;
+}
+
+.market-hero-content .type-hero__eyebrow {
+  margin-bottom: 18px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.market-hero-content h1 {
+  max-width: 620px;
+  margin: 0;
+  color: #fff;
+  font-family: Georgia, "Times New Roman", serif;
+ font-size: clamp(3.4rem, 5.4vw, 5.2rem);
+  font-weight: 500;
+  line-height: 0.91;
+  letter-spacing: -0.065em;
+}
+
+.market-hero-content h1 span {
+  color: color-mix(in srgb, var(--accent) 78%, white);
+}
+
+.market-hero-description {
+  max-width: 510px;
+  margin: 26px 0 0;
+  color: rgba(255, 255, 255, 0.87);
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+.market-hero-content .type-hero__actions {
+  margin-top: 30px;
+}
+
+.market-hero-content .type-button--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff !important;
+}
+
+.market-hero-content .type-button--secondary {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--accent);
+}
+
+.market-hero > .market-summary-card {
+  min-height: 0;
+  margin: 0;
+  border: 1px solid rgba(18, 58, 90, 0.08);
+  border-top: 0;
+  border-radius: 0 0 20px 20px;
+  box-shadow: 0 18px 48px rgba(24, 45, 68, 0.09);
+}
+
+.market-hero > .market-summary-card .market-summary-card__inner {
+  min-height: 0;
+  padding: 26px;
+}
+
+.market-dashboard__body {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.7fr) minmax(0, 2fr);
+  gap: 26px;
+  align-items: stretch;
+  padding: 22px 0 0;
+}
+
+.market-dashboard__body .market-dashboard__primary {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 18px 22px;
+  border: 1px solid rgba(18, 58, 90, 0.075);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 4%, white);
+}
+
+.market-dashboard__body .market-dashboard__grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.market-dashboard__body .market-dashboard__grid article {
+  min-height: 110px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.market-dashboard__body + .market-dashboard__explore {
+  margin-top: 14px;
+}
+
+@media (max-width: 980px) {
+  .market-hero__visual {
+    min-height: 480px;
+  }
+
+  .market-hero-content {
+    padding: 62px 48px 74px;
+  }
+
+  .market-dashboard__body {
+    grid-template-columns: 1fr;
+  }
+
+  .market-dashboard__body .market-dashboard__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .market-dashboard__body .market-dashboard__grid article {
+    min-height: 84px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .market-hero {
+    margin-bottom: 24px;
+  }
+
+  .market-hero__visual {
+    min-height: 470px;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .market-hero-overlay {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(10, 19, 18, 0.32) 0%,
+        rgba(10, 19, 18, 0.72) 58%,
+        rgba(10, 19, 18, 0.9) 100%
+      );
+  }
+
+  .market-hero-content {
+    min-height: 470px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 36px 24px;
+  }
+
+  .market-hero-content h1 {
+    max-width: 340px;
+    font-size: clamp(2.9rem, 14vw, 4rem);
+  }
+
+  .market-hero-description {
+    margin-top: 18px;
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+
+  .market-hero-content .type-hero__actions {
+    margin-top: 22px;
+  }
+
+  .market-hero > .market-summary-card {
+    border-radius: 0 0 16px 16px;
+  }
+
+  .market-hero > .market-summary-card .market-summary-card__inner {
+    padding: 18px;
+  }
+
+  .market-dashboard__body {
+    gap: 10px;
+    padding-top: 16px;
+  }
+
+  .market-dashboard__body .market-dashboard__primary {
+    padding: 18px;
+  }
+
+  .market-dashboard__body .market-dashboard__grid {
+    gap: 8px;
+  }
+
+  .market-dashboard__body .market-dashboard__grid article {
+    min-height: 76px;
+    padding: 12px;
+  }
+}
+
+/* Split hero: image left, dashboard right */
+
+.market-hero--split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(390px, 0.65fr);
+  align-items: stretch;
+  margin-bottom: 34px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(24, 45, 68, 0.09);
+}
+
+.market-hero--split .market-hero__visual {
+  min-height: 610px;
+  border-radius: 20px 0 0 20px;
+}
+
+.market-hero--split > .market-summary-card {
+  min-height: 610px;
+  margin: 0;
+  border: 0;
+  border-left: 1px solid rgba(18, 58, 90, 0.08);
+  border-radius: 0 20px 20px 0;
+  box-shadow: none;
+}
+
+.market-hero--split > .market-summary-card .market-summary-card__inner {
+  min-height: 610px;
+  padding: 28px;
+}
+
+.market-hero--split .market-dashboard__primary {
+  padding: 26px 4px 22px;
+}
+
+.market-hero--split .market-dashboard__grid {
+  grid-template-columns: 1fr;
+}
+
+.market-hero--split .market-dashboard__grid article {
+  min-height: 78px;
+}
+
+.market-hero--split .market-dashboard__explore {
+  margin-top: auto;
+}
+
+@media (max-width: 980px) {
+  .market-hero--split {
+    grid-template-columns: 1fr;
+  }
+
+  .market-hero--split .market-hero__visual {
+    min-height: 500px;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .market-hero--split > .market-summary-card {
+    min-height: 0;
+    border-left: 0;
+    border-top: 1px solid rgba(18, 58, 90, 0.08);
+    border-radius: 0 0 20px 20px;
+  }
+
+  .market-hero--split > .market-summary-card .market-summary-card__inner {
+    min-height: 0;
+  }
+
+  .market-hero--split .market-dashboard__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .market-hero--split {
+    border-radius: 16px;
+  }
+
+  .market-hero--split .market-hero__visual {
+    min-height: 470px;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .market-hero--split > .market-summary-card {
+    border-radius: 0 0 16px 16px;
+  }
+
+  .market-hero--split .market-dashboard__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.market-hero--split .market-dashboard__grid strong {
+  margin-bottom: 5px;
+  font-size: 1.18rem;
+  font-weight: 900;
+}
+
+.market-hero--split .market-dashboard__grid small {
+  max-width: 160px;
+  color: var(--muted);
+  font-size: 0.73rem;
+  line-height: 1.4;
+}
+
+.market-hero--split .market-dashboard__primary > span {
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.market-hero--split .market-dashboard__primary > strong {
+  font-size: clamp(2.3rem, 3vw, 3.1rem);
+}
+
+.market-hero--split .market-dashboard__primary > small {
+  max-width: 240px;
+  margin-top: 10px;
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+</style>
