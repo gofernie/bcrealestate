@@ -113,6 +113,36 @@ export async function getSite(
     host === "127.0.0.1";
 
   /*
+   * Local development behaves like bc.realestate.
+   *
+   * This prevents localhost/Nanaimo from selecting
+   * another Nanaimo site such as nanaimomobiles.com.
+   */
+  if (isLocal) {
+    const {
+      data: localSite,
+      error: localError,
+    } = await supabase
+      .from("sites")
+      .select("*")
+      .eq("domain", "bc.realestate")
+      .eq("city", cleanCity || "nanaimo")
+      .limit(1)
+      .maybeSingle();
+
+    if (localError) {
+      console.error(
+        "Local BC site lookup failed:",
+        localError
+      );
+    }
+
+    if (localSite) {
+      return enrichSite(localSite);
+    }
+  }
+
+  /*
    * 1. Exact custom-domain and city match.
    */
   if (cleanCity && !isLocal) {

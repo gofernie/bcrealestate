@@ -1,0 +1,1155 @@
+---
+interface CityCard {
+  city: string;
+  label: string;
+  siteName?: string;
+  href: string;
+  areasHref?: string;
+  count: number;
+  accent?: string;
+}
+
+interface Props {
+  site?: any;
+  cityCards?: CityCard[];
+  listings?: any[];
+}
+
+const {
+  site,
+  cityCards = [],
+  listings = [],
+} = Astro.props;
+
+const accent = site?.accent_color || "#1f5a49";
+
+const featuredCities = cityCards.slice(0, 6);
+
+const totalListings =
+  listings.length ||
+  cityCards.reduce(
+    (total, city) => total + Number(city.count || 0),
+    0
+  );
+
+const cityImages: Record<string, string> = {
+  nanaimo:
+    "https://images.unsplash.com/photo-1559511260-66a654ae982a?auto=format&fit=crop&w=1200&q=78",
+
+  parksville:
+    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=78",
+
+  whistler:
+    "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=78",
+
+  tofino:
+    "https://images.unsplash.com/photo-1500534314209-a25ddb2bd4297?auto=format&fit=crop&w=1200&q=78",
+
+  fernie:
+    "https://images.unsplash.com/photo-1486911278844-a81c5267e227?auto=format&fit=crop&w=1200&q=78",
+
+  sparwood:
+    "https://images.unsplash.com/photo-1464278533981-50106e6176b1?auto=format&fit=crop&w=1200&q=78",
+};
+
+const fallbackCityImages = [
+  "https://images.unsplash.com/photo-1559511260-66a654ae982a?auto=format&fit=crop&w=1200&q=78",
+  "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=78",
+  "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=78",
+  "https://images.unsplash.com/photo-1500534314209-a25ddb2bd4297?auto=format&fit=crop&w=1200&q=78",
+  "https://images.unsplash.com/photo-1486911278844-a81c5267e227?auto=format&fit=crop&w=1200&q=78",
+  "https://images.unsplash.com/photo-1464278533981-50106e6176b1?auto=format&fit=crop&w=1200&q=78",
+];
+
+const formatCount = (value: number) =>
+  Number(value || 0).toLocaleString();
+---
+
+<div
+  class="bc-homepage"
+  style={`--bc-home-accent: ${accent};`}
+>
+  <section class="bc-hero">
+    <div class="bc-hero__overlay"></div>
+
+    <div class="bc-hero__inner">
+      <div class="bc-hero__content">
+        <p class="bc-eyebrow">
+          Real estate across British Columbia
+        </p>
+
+        <h1>
+          Find your place
+          <br />
+          in British Columbia.
+        </h1>
+
+        <p class="bc-hero__copy">
+          Explore homes, condos, townhomes, and land
+          across British Columbia’s most desirable
+          communities.
+        </p>
+
+        <div class="bc-hero__actions">
+          <a
+            class="bc-button bc-button--primary"
+            href="/explore"
+          >
+            View homes for sale
+            <span aria-hidden="true">→</span>
+          </a>
+
+          <a
+            class="bc-button bc-button--secondary"
+            href="#bc-markets"
+          >
+            Explore markets
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="bc-search-wrap">
+    <form
+      class="bc-search"
+      action="/explore"
+      method="get"
+    >
+      <label class="bc-search__field">
+        <span class="bc-search__icon">
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 21s7-6.2 7-12A7 7 0 0 0 5 9c0 5.8 7 12 7 12Z"
+            ></path>
+            <circle cx="12" cy="9" r="2.4"></circle>
+          </svg>
+        </span>
+
+        <span class="bc-search__content">
+          <strong>Market</strong>
+
+          <select name="city">
+            <option value="">All markets</option>
+
+            {
+              cityCards.map((city) => (
+                <option value={city.city}>
+                  {city.label}
+                </option>
+              ))
+            }
+          </select>
+        </span>
+      </label>
+
+      <label class="bc-search__field">
+        <span class="bc-search__icon">
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path d="M3 11.5 12 4l9 7.5"></path>
+            <path d="M5.5 10.5V21h13V10.5"></path>
+            <path d="M9.5 21v-6h5v6"></path>
+          </svg>
+        </span>
+
+        <span class="bc-search__content">
+          <strong>Property type</strong>
+
+          <select name="type">
+            <option value="">Any type</option>
+            <option value="house">Homes</option>
+            <option value="condo">Condos</option>
+            <option value="townhouse">
+              Townhomes
+            </option>
+            <option value="mobile">
+              Mobile homes
+            </option>
+            <option value="land">Land</option>
+          </select>
+        </span>
+      </label>
+
+      <label class="bc-search__field">
+        <span class="bc-search__icon">
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path d="M3 18v-7h18v7"></path>
+            <path d="M5 11V7h6v4"></path>
+            <path d="M13 11V7h6v4"></path>
+            <path d="M3 18v3"></path>
+            <path d="M21 18v3"></path>
+          </svg>
+        </span>
+
+        <span class="bc-search__content">
+          <strong>Beds</strong>
+
+          <select name="beds">
+            <option value="">Any</option>
+            <option value="1">1+</option>
+            <option value="2">2+</option>
+            <option value="3">3+</option>
+            <option value="4">4+</option>
+            <option value="5">5+</option>
+          </select>
+        </span>
+      </label>
+
+      <label class="bc-search__field">
+        <span class="bc-search__icon">
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9"></circle>
+            <path d="M15 8.5c-.7-.7-1.7-1-3-1-1.7 0-3 .9-3 2.2 0 1.4 1.2 2 3.2 2.5 1.8.5 2.8 1.1 2.8 2.3 0 1.3-1.2 2.2-3 2.2-1.3 0-2.5-.4-3.3-1.2"></path>
+            <path d="M12 5.5v13"></path>
+          </svg>
+        </span>
+
+        <span class="bc-search__content">
+          <strong>Price</strong>
+
+          <select name="maxPrice">
+            <option value="">Any price</option>
+            <option value="500000">
+              Under $500,000
+            </option>
+            <option value="700000">
+              Under $700,000
+            </option>
+            <option value="900000">
+              Under $900,000
+            </option>
+            <option value="1200000">
+              Under $1.2M
+            </option>
+            <option value="1600000">
+              Under $1.6M
+            </option>
+            <option value="2000000">
+              Under $2M
+            </option>
+          </select>
+        </span>
+      </label>
+
+      <button class="bc-search__button" type="submit">
+        Search listings
+      </button>
+    </form>
+  </div>
+
+  <main class="bc-main">
+    <section
+      id="bc-markets"
+      class="bc-markets"
+    >
+      <div class="bc-section-heading">
+        <div>
+          <p class="bc-eyebrow">Browse by city</p>
+          <h2>Explore BC markets</h2>
+        </div>
+
+        <p>
+          Start with a city, then explore
+          neighbourhoods, listings, and local guides.
+        </p>
+
+        <a href="/explore">
+          View all markets
+          <span aria-hidden="true">→</span>
+        </a>
+      </div>
+
+      <div class="bc-market-grid">
+        {
+          featuredCities.map((city, index) => {
+            const key = city.city
+              .toLowerCase()
+              .replace(/\s+/g, "-");
+
+            const image =
+              cityImages[key] ||
+              fallbackCityImages[
+                index % fallbackCityImages.length
+              ];
+
+            return (
+              <a
+                class="bc-market-card"
+                href={city.href}
+                style={`--market-image: url('${image}')`}
+              >
+                <div class="bc-market-card__shade"></div>
+
+                <div class="bc-market-card__content">
+                  <strong>{city.label}</strong>
+
+                  <span>
+                    {formatCount(city.count)} active{" "}
+                    {city.count === 1
+                      ? "listing"
+                      : "listings"}
+                  </span>
+                </div>
+
+                <span
+                  class="bc-market-card__arrow"
+                  aria-hidden="true"
+                >
+                  →
+                </span>
+              </a>
+            );
+          })
+        }
+      </div>
+    </section>
+
+    <section class="bc-benefits">
+      <article class="bc-benefit">
+        <span class="bc-benefit__icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M3 11.5 12 4l9 7.5"></path>
+            <path d="M5.5 10.5V21h13V10.5"></path>
+            <path d="M9.5 21v-6h5v6"></path>
+          </svg>
+        </span>
+
+        <div>
+          <h3>Local knowledge</h3>
+          <p>
+            Detailed insights into communities across
+            British Columbia.
+          </p>
+        </div>
+      </article>
+
+      <article class="bc-benefit">
+        <span class="bc-benefit__icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M4 20V10"></path>
+            <path d="M10 20V4"></path>
+            <path d="M16 20v-7"></path>
+            <path d="M22 20V7"></path>
+            <path d="m3 8 6-5 6 7 7-6"></path>
+          </svg>
+        </span>
+
+        <div>
+          <h3>Real-time listings</h3>
+          <p>
+            Fresh listings updated throughout the day,
+            every day.
+          </p>
+        </div>
+      </article>
+
+      <article class="bc-benefit">
+        <span class="bc-benefit__icon">
+          <svg viewBox="0 0 24 24">
+            <path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2Z"></path>
+            <path d="M9 3v16"></path>
+            <path d="M15 5v16"></path>
+          </svg>
+        </span>
+
+        <div>
+          <h3>Neighbourhood guides</h3>
+          <p>
+            Explore areas, amenities, schools, and
+            lifestyle.
+          </p>
+        </div>
+      </article>
+
+      <article class="bc-benefit">
+        <span class="bc-benefit__icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M20.8 5.8a5.5 5.5 0 0 0-7.8 0L12 6.9l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 22l8.8-8.4a5.5 5.5 0 0 0 0-7.8Z"></path>
+          </svg>
+        </span>
+
+        <div>
+          <h3>BC lifestyle</h3>
+          <p>
+            From mountains to ocean, find the lifestyle
+            that fits you.
+          </p>
+        </div>
+      </article>
+    </section>
+
+    <section class="bc-cta">
+      <div class="bc-cta__copy">
+        <p class="bc-eyebrow bc-eyebrow--light">
+          Start exploring
+        </p>
+
+        <h2>
+          Let’s find the right
+          <br />
+          property for you.
+        </h2>
+
+        <p>
+          Whether you’re buying your first home,
+          upgrading, relocating, or investing, begin
+          with the market that interests you.
+        </p>
+
+        <a href="/explore">
+          View homes for sale
+          <span aria-hidden="true">→</span>
+        </a>
+      </div>
+
+      <div class="bc-cta__stats">
+        <div class="bc-stat">
+          <strong>
+            {formatCount(totalListings)}+
+          </strong>
+          <span>Active listings across BC</span>
+        </div>
+
+        <div class="bc-stat">
+          <strong>{cityCards.length}+</strong>
+          <span>Communities to explore</span>
+        </div>
+
+        <div class="bc-stat">
+          <strong>Local</strong>
+          <span>
+            Market information and area expertise
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <section class="bc-resource-strip">
+      <a href="/buying-guide">
+        <span>01</span>
+        <div>
+          <strong>Buying guide</strong>
+          <small>Tips for buyers</small>
+        </div>
+      </a>
+
+      <a href="/market-insights">
+        <span>02</span>
+        <div>
+          <strong>Market insights</strong>
+          <small>Local trends and data</small>
+        </div>
+      </a>
+
+      <a href="/explore">
+        <span>03</span>
+        <div>
+          <strong>Explore BC</strong>
+          <small>Browse homes on the map</small>
+        </div>
+      </a>
+
+      <a href="/contact">
+        <span>04</span>
+        <div>
+          <strong>Contact</strong>
+          <small>Get local help</small>
+        </div>
+      </a>
+    </section>
+  </main>
+</div>
+
+<style>
+  .bc-homepage {
+    --bc-ink: #14201c;
+    --bc-muted: #65716c;
+    --bc-line: rgba(20, 32, 28, 0.11);
+    --bc-cream: #f8f7f3;
+    overflow: hidden;
+    background: #fff;
+    color: var(--bc-ink);
+  }
+
+  .bc-hero {
+  position: relative;
+  min-height: 590px;
+  background-image:
+linear-gradient(
+  90deg,
+  rgba(247, 244, 236, 0.34) 0%,
+  rgba(247, 244, 236, 0.16) 24%,
+  rgba(247, 244, 236, 0.04) 42%,
+  rgba(247, 244, 236, 0) 56%
+),
+    url("https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=2200&q=90");
+
+  background-position: center;
+  background-size: cover;
+}
+
+  .bc-hero__overlay {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.08),
+        rgba(255, 255, 255, 0)
+      );
+    pointer-events: none;
+  }
+
+  .bc-hero__inner {
+    position: relative;
+    z-index: 1;
+    width: min(1240px, calc(100% - 48px));
+    margin: 0 auto;
+    padding: 72px 0 118px;
+  }
+
+  .bc-hero__content {
+    max-width: 680px;
+  }
+
+  .bc-eyebrow {
+    margin: 0 0 15px;
+    color: var(--bc-home-accent);
+    font-size: 0.72rem;
+    font-weight: 850;
+    letter-spacing: 0.17em;
+    text-transform: uppercase;
+  }
+
+  .bc-eyebrow--light {
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  .bc-hero h1 {
+    max-width: 760px;
+    margin: 0;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(4rem, 7.2vw, 7.2rem);
+    font-weight: 500;
+    line-height: 0.87;
+    letter-spacing: -0.068em;
+  }
+
+  .bc-hero__copy {
+    max-width: 560px;
+    margin: 27px 0 0;
+    font-size: clamp(1rem, 1.3vw, 1.13rem);
+    line-height: 1.6;
+      color: #fff;
+  }
+
+  .bc-hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 28px;
+  }
+
+  .bc-button {
+    display: inline-flex;
+    min-height: 50px;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 0 24px;
+    border-radius: 10px;
+    font-size: 0.87rem;
+    font-weight: 750;
+    text-decoration: none;
+    transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease;
+  }
+
+  .bc-button:hover {
+    transform: translateY(-2px);
+  }
+
+  .bc-button--primary {
+    background: var(--bc-home-accent);
+    color: #fff;
+    box-shadow: 0 12px 28px
+      color-mix(
+        in srgb,
+        var(--bc-home-accent) 24%,
+        transparent
+      );
+  }
+
+  .bc-button--secondary {
+    border: 1px solid rgba(20, 32, 28, 0.4);
+    background: rgba(255, 255, 255, 0.38);
+    color: var(--bc-ink);
+    backdrop-filter: blur(12px);
+  }
+
+  .bc-search-wrap {
+    position: relative;
+    z-index: 3;
+    width: min(1240px, calc(100% - 48px));
+    margin: -42px auto 0;
+  }
+
+  .bc-search {
+    display: grid;
+    grid-template-columns:
+      1.1fr 1.1fr 0.8fr 1fr auto;
+    min-height: 88px;
+    overflow: hidden;
+    border: 1px solid var(--bc-line);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 20px 60px rgba(22, 36, 31, 0.14);
+    backdrop-filter: blur(18px);
+  }
+
+  .bc-search__field {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 13px;
+    padding: 18px 22px;
+    border-right: 1px solid var(--bc-line);
+  }
+
+  .bc-search__icon {
+    flex: 0 0 31px;
+    width: 31px;
+    height: 31px;
+  }
+
+  .bc-search__icon svg,
+  .bc-benefit__icon svg {
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.65;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .bc-search__content {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .bc-search__content strong {
+    font-size: 0.77rem;
+  }
+
+  .bc-search select {
+    width: 100%;
+    padding: 0 18px 0 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--bc-muted);
+    font: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+
+  .bc-search__button {
+    align-self: center;
+    min-height: 48px;
+    margin: 16px;
+    padding: 0 23px;
+    border: 0;
+    border-radius: 9px;
+    background: var(--bc-home-accent);
+    color: #fff;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .bc-main {
+    width: min(1240px, calc(100% - 48px));
+    margin: 0 auto;
+    padding: 73px 0 90px;
+  }
+
+  .bc-section-heading {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 30px;
+    align-items: end;
+    margin-bottom: 27px;
+  }
+
+  .bc-section-heading h2 {
+    margin: 0;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(2.4rem, 4vw, 4rem);
+    font-weight: 500;
+    line-height: 0.95;
+    letter-spacing: -0.052em;
+  }
+
+  .bc-section-heading > p {
+    max-width: 480px;
+    margin: 0;
+    color: var(--bc-muted);
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+
+  .bc-section-heading > a {
+    display: inline-flex;
+    gap: 10px;
+    color: var(--bc-home-accent);
+    font-size: 0.82rem;
+    font-weight: 750;
+    text-decoration: none;
+  }
+
+  .bc-market-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 13px;
+  }
+
+  .bc-market-card {
+    position: relative;
+    display: flex;
+    min-height: 210px;
+    overflow: hidden;
+    align-items: flex-end;
+    padding: 17px;
+    border-radius: 12px;
+    background-image: var(--market-image);
+    background-position: center;
+    background-size: cover;
+    color: #fff;
+    text-decoration: none;
+    isolation: isolate;
+  }
+
+  .bc-market-card::before {
+    position: absolute;
+    z-index: -2;
+    inset: 0;
+    background-image: var(--market-image);
+    background-position: center;
+    background-size: cover;
+    content: "";
+    transition: transform 0.35s ease;
+  }
+
+  .bc-market-card:hover::before {
+    transform: scale(1.045);
+  }
+
+  .bc-market-card__shade {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(0, 0, 0, 0.03) 30%,
+        rgba(0, 0, 0, 0.76) 100%
+      );
+  }
+
+  .bc-market-card__content {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding-bottom: 42px;
+  }
+
+  .bc-market-card__content strong {
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.45rem;
+    font-weight: 500;
+  }
+
+  .bc-market-card__content span {
+    color: rgba(255, 255, 255, 0.84);
+    font-size: 0.74rem;
+  }
+
+  .bc-market-card__arrow {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border-radius: 50%;
+    background: #fff;
+    color: var(--bc-ink);
+    transition: transform 0.18s ease;
+  }
+
+  .bc-market-card:hover .bc-market-card__arrow {
+    transform: translateX(3px);
+  }
+
+  .bc-benefits {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    margin-top: 19px;
+    overflow: hidden;
+    border: 1px solid var(--bc-line);
+    border-radius: 13px;
+    background: #fff;
+  }
+
+  .bc-benefit {
+    display: grid;
+    grid-template-columns: 52px 1fr;
+    gap: 15px;
+    min-height: 130px;
+    align-items: center;
+    padding: 22px;
+    border-right: 1px solid var(--bc-line);
+  }
+
+  .bc-benefit:last-child {
+    border-right: 0;
+  }
+
+  .bc-benefit__icon {
+    display: grid;
+    width: 52px;
+    height: 52px;
+    padding: 13px;
+    place-items: center;
+    border-radius: 50%;
+    background: color-mix(
+      in srgb,
+      var(--bc-home-accent) 10%,
+      white
+    );
+    color: var(--bc-home-accent);
+  }
+
+  .bc-benefit h3 {
+    margin: 0 0 5px;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1rem;
+    font-weight: 500;
+  }
+
+  .bc-benefit p {
+    margin: 0;
+    color: var(--bc-muted);
+    font-size: 0.74rem;
+    line-height: 1.45;
+  }
+
+  .bc-cta {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 70px;
+    margin-top: 18px;
+    padding: 48px 58px;
+    border-radius: 15px;
+    background:
+      radial-gradient(
+        circle at 85% 20%,
+        rgba(255, 255, 255, 0.1),
+        transparent 28%
+      ),
+      linear-gradient(
+        130deg,
+        color-mix(
+          in srgb,
+          var(--bc-home-accent) 92%,
+          #132a22
+        ),
+        #123a2e
+      );
+    color: #fff;
+  }
+
+  .bc-cta__copy h2 {
+    margin: 0;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(2.5rem, 4vw, 4.2rem);
+    font-weight: 500;
+    line-height: 0.92;
+    letter-spacing: -0.052em;
+  }
+
+  .bc-cta__copy > p:not(.bc-eyebrow) {
+    max-width: 500px;
+    margin: 19px 0 0;
+    color: rgba(255, 255, 255, 0.73);
+    font-size: 0.83rem;
+    line-height: 1.6;
+  }
+
+  .bc-cta__copy > a {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 15px;
+    margin-top: 24px;
+    padding: 0 19px;
+    border-radius: 7px;
+    background: #fff;
+    color: var(--bc-home-accent);
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .bc-cta__stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    align-items: center;
+  }
+
+  .bc-stat {
+    padding: 12px 28px;
+    border-left: 1px solid rgba(255, 255, 255, 0.16);
+  }
+
+  .bc-stat strong {
+    display: block;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(1.7rem, 3vw, 2.7rem);
+    font-weight: 500;
+  }
+
+  .bc-stat span {
+    display: block;
+    max-width: 150px;
+    margin-top: 5px;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.72rem;
+    line-height: 1.45;
+  }
+
+  .bc-resource-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    margin-top: 17px;
+    overflow: hidden;
+    border: 1px solid var(--bc-line);
+    border-radius: 12px;
+  }
+
+  .bc-resource-strip > a {
+    display: flex;
+    min-height: 90px;
+    align-items: center;
+    gap: 15px;
+    padding: 18px 24px;
+    border-right: 1px solid var(--bc-line);
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .bc-resource-strip > a:last-child {
+    border-right: 0;
+  }
+
+  .bc-resource-strip > a > span {
+    color: var(--bc-home-accent);
+    font-size: 0.7rem;
+    font-weight: 850;
+  }
+
+  .bc-resource-strip strong,
+  .bc-resource-strip small {
+    display: block;
+  }
+
+  .bc-resource-strip strong {
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1rem;
+    font-weight: 500;
+  }
+
+  .bc-resource-strip small {
+    margin-top: 4px;
+    color: var(--bc-muted);
+    font-size: 0.7rem;
+  }
+
+  @media (max-width: 1100px) {
+    .bc-search {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .bc-search__field:nth-of-type(2) {
+      border-right: 0;
+    }
+
+    .bc-search__button {
+      grid-column: 1 / -1;
+      margin-top: 0;
+    }
+
+    .bc-market-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .bc-benefits {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .bc-benefit:nth-child(2) {
+      border-right: 0;
+    }
+
+    .bc-benefit:nth-child(-n + 2) {
+      border-bottom: 1px solid var(--bc-line);
+    }
+
+    .bc-cta {
+      grid-template-columns: 1fr;
+      gap: 40px;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .bc-hero {
+      min-height: 620px;
+      background-image:
+        linear-gradient(
+          180deg,
+          rgba(247, 244, 236, 0.94) 0%,
+          rgba(247, 244, 236, 0.8) 45%,
+          rgba(247, 244, 236, 0.18) 100%
+        ),
+        url("https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=80");
+      background-position: 62% center;
+    }
+
+    .bc-hero__inner,
+    .bc-search-wrap,
+    .bc-main {
+      width: calc(100% - 32px);
+    }
+
+    .bc-hero__inner {
+      padding-top: 52px;
+    }
+
+    .bc-hero h1 {
+      font-size: clamp(3.4rem, 16vw, 5.5rem);
+    }
+
+    .bc-search-wrap {
+      margin-top: -65px;
+    }
+
+    .bc-search {
+      grid-template-columns: 1fr;
+    }
+
+    .bc-search__field {
+      border-right: 0;
+      border-bottom: 1px solid var(--bc-line);
+    }
+
+    .bc-search__field:nth-of-type(2) {
+      border-right: 0;
+    }
+
+    .bc-section-heading {
+      grid-template-columns: 1fr;
+      gap: 13px;
+      align-items: start;
+    }
+
+    .bc-market-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .bc-market-card {
+      min-height: 190px;
+    }
+
+    .bc-benefits {
+      grid-template-columns: 1fr;
+    }
+
+    .bc-benefit,
+    .bc-benefit:nth-child(2) {
+      border-right: 0;
+      border-bottom: 1px solid var(--bc-line);
+    }
+
+    .bc-benefit:last-child {
+      border-bottom: 0;
+    }
+
+    .bc-cta {
+      padding: 38px 25px;
+    }
+
+    .bc-cta__stats {
+      grid-template-columns: 1fr;
+    }
+
+    .bc-stat {
+      padding: 20px 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.16);
+      border-left: 0;
+    }
+
+    .bc-resource-strip {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .bc-resource-strip > a:nth-child(2) {
+      border-right: 0;
+    }
+
+    .bc-resource-strip > a:nth-child(-n + 2) {
+      border-bottom: 1px solid var(--bc-line);
+    }
+  }
+
+  @media (max-width: 500px) {
+    .bc-market-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .bc-market-card {
+      min-height: 210px;
+    }
+
+    .bc-resource-strip {
+      grid-template-columns: 1fr;
+    }
+
+    .bc-resource-strip > a {
+      border-right: 0;
+      border-bottom: 1px solid var(--bc-line);
+    }
+
+    .bc-resource-strip > a:last-child {
+      border-bottom: 0;
+    }
+  }
+</style>
