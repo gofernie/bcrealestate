@@ -1,10 +1,27 @@
 ---
-import { createClient } from "@supabase/supabase-js";
+import {
+  createClient,
+} from "@supabase/supabase-js";
+
 import Layout from "../../layouts/Layout.astro";
 import SiteNav from "../SiteNav.astro";
 import RealEstateHomepage from "./RealEstateHomepage.astro";
-import { getSite } from "../../lib/getSite";
-import { getNavIntentPages } from "../../lib/getNavIntentPages";
+
+import {
+  getSite,
+} from "../../lib/getSite";
+
+import {
+  getNavIntentPages,
+} from "../../lib/getNavIntentPages";
+
+import {
+  getListings,
+} from "../../lib/listings/getListings";
+
+import {
+  getListingFiltersFromUrl,
+} from "../../lib/listings/getListingFiltersFromUrl";
 
 export const prerender = false;
 
@@ -19,40 +36,53 @@ const {
 } = Astro.props;
 
 const requestedCity =
-  Astro.url.searchParams.get("city") ||
   cityProp ||
+  Astro.url.searchParams.get("city") ||
   "nanaimo";
 
-const city = String(requestedCity)
-  .toLowerCase()
-  .trim()
-  .replace(/\s+/g, "-");
+const city =
+  String(requestedCity)
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-");
 
-const databaseCity = city.replace(/-/g, " ");
+const databaseCity =
+  city.replace(/-/g, " ");
 
-const cityLabel = databaseCity.replace(
-  /\b\w/g,
-  (letter) => letter.toUpperCase()
-);
+const cityLabel =
+  databaseCity.replace(
+    /\b\w/g,
+    (letter) =>
+      letter.toUpperCase()
+  );
 
-const supabase = createClient(
-  import.meta.env.PUBLIC_SUPABASE_URL,
-  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabase =
+  createClient(
+    import.meta.env
+      .PUBLIC_SUPABASE_URL,
+    import.meta.env
+      .SUPABASE_SERVICE_ROLE_KEY
+  );
 
-const hostname = Astro.url.hostname
-  .toLowerCase()
-  .replace(/^www\./, "");
+const hostname =
+  Astro.url.hostname
+    .toLowerCase()
+    .replace(/^www\./, "");
 
 const site =
   suppliedSite ||
-  (await getSite(hostname, city));
+  (await getSite(
+    hostname,
+    city
+  ));
 
 const accentColor =
   site?.accent_color ||
   "#2f6f73";
 
-const areaToSlug = (value: unknown) =>
+const areaToSlug = (
+  value: unknown
+) =>
   String(value || "")
     .toLowerCase()
     .replace(/^pq[\s-]+/i, "")
@@ -61,116 +91,128 @@ const areaToSlug = (value: unknown) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-const titleCase = (value: unknown) =>
+const titleCase = (
+  value: unknown
+) =>
   String(value || "")
     .replace(/^pq[\s-]+/i, "")
     .replace(/[-_]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    .replace(
+      /\b\w/g,
+      (letter) =>
+        letter.toUpperCase()
+    );
 
-const normalizeListingImageUrl = (value: any) => {
-  if (!value) return "";
-
-  const raw =
-    typeof value === "string"
-      ? value
-      : value.highRes ||
-        value.mediumRes ||
-        value.lowRes ||
-        value.url ||
-        value.src ||
-        value.href ||
-        value.path ||
-        "";
-
-  if (!raw) return "";
-
-  if (
-    raw.startsWith("http://") ||
-    raw.startsWith("https://")
-  ) {
-    return raw;
-  }
-
-  const cleaned = raw.startsWith("/")
-    ? raw
-    : `/${raw}`;
-
-  return `https://cdn.repliers.io${cleaned}`;
-};
-
-const getListingImage = (listing: any) =>
-  normalizeListingImageUrl(
-    listing?.image_url ||
-      listing?.image ||
-      listing?.photo ||
-      listing?.images?.[0] ||
-      listing?.images?.[1] ||
-      listing?.raw?.images?.[0] ||
-      listing?.raw?.images?.[1] ||
-      listing?.raw?.images?.[0]?.url ||
-      listing?.raw?.images?.[1]?.url ||
-      listing?.raw?.images?.[0]?.mediumRes ||
-      listing?.raw?.images?.[1]?.mediumRes ||
-      listing?.raw?.images?.[0]?.highRes ||
-      listing?.raw?.images?.[1]?.highRes
+const urlFilters =
+  getListingFiltersFromUrl(
+    Astro.url
   );
 
-const {
-  data: listingRows = [],
-  error: listingsError,
-} = await supabase
-  .from("listing_rows")
-  .select("*")
-.eq("normalized_city", databaseCity)
-  .eq("status", "A")
-  .order("listed_at", { ascending: false });
+const requestedType =
+  urlFilters.type || "";
 
-if (listingsError) {
+const requestedAreas =
+  urlFilters.areas || [];
+
+const requestedBeds =
+  urlFilters.beds ?? null;
+
+const requestedBaths =
+  urlFilters.baths ?? null;
+
+const requestedMinPrice =
+  urlFilters.minPrice ?? null;
+
+const requestedMaxPrice =
+  urlFilters.maxPrice ?? null;
+
+const requestedMinSqft =
+  urlFilters.minSqft ?? null;
+
+const requestedMaxSqft =
+  urlFilters.maxSqft ?? null;
+
+const requestedSort =
+  urlFilters.sort ||
+  "newest";
+
+const PAGE_SIZE =
+  urlFilters.pageSize || 24;
+
+/*
+ * Server-side listing query.
+ */
+const listingResult =
+  await getListings(
+    supabase,
+    {
+      ...urlFilters,
+      city: databaseCity,
+      pageSize: PAGE_SIZE,
+      paginate: true,
+    }
+  );
+
+if (listingResult.error) {
   console.error(
     `Unable to load ${cityLabel} listings:`,
-    listingsError
+    listingResult.error
   );
 }
 
-const listings = (listingRows || [])
-  .map((listing: any) => ({
-    ...listing,
-    image_url:
-      getListingImage(listing) ||
-      listing.image_url ||
-      "",
-  }))
-  .sort((a: any, b: any) => {
-    const aDate = new Date(
-      a.listed_at ||
-        a.updated_at ||
-        a.created_at ||
-        0
-    ).getTime();
+const listings =
+  listingResult.listings;
 
-    const bDate = new Date(
-      b.listed_at ||
-        b.updated_at ||
-        b.created_at ||
-        0
-    ).getTime();
+const activeSort =
+  listingResult.sort;
 
-    return bDate - aDate;
-  });
+/*
+ * Complete city inventory is used only for
+ * neighbourhood totals. It is not sent to the
+ * listing grid.
+ */
+const {
+  data: cityAreaRows = [],
+  error: cityAreaRowsError,
+} = await supabase
+  .from("listing_rows")
+  .select(
+    `
+      normalized_area,
+      area
+    `
+  )
+  .eq(
+    "normalized_city",
+    databaseCity
+  )
+  .eq("status", "A");
+
+if (cityAreaRowsError) {
+  console.error(
+    `Unable to load ${cityLabel} area counts:`,
+    cityAreaRowsError
+  );
+}
 
 const {
   data: areaMetaRows = [],
   error: areasError,
 } = await supabase
   .from("area_boundaries")
-  .select(`
-    area_slug,
-    area_name,
-    short_description
-  `)
-.ilike("city", databaseCity);
+  .select(
+    `
+      area_slug,
+      area_name,
+      short_description
+    `
+  )
+  .ilike(
+    "city",
+    databaseCity
+  );
 
 if (areasError) {
   console.error(
@@ -179,86 +221,129 @@ if (areasError) {
   );
 }
 
-const listingCountByArea = listings.reduce(
-  (counts: Record<string, number>, listing: any) => {
-    const areaSlug = areaToSlug(
-      listing.normalized_area ||
-        listing.area
-    );
+const listingCountByArea =
+  (cityAreaRows || []).reduce(
+    (
+      counts: Record<
+        string,
+        number
+      >,
+      listing: any
+    ) => {
+      const areaSlug =
+        areaToSlug(
+          listing.normalized_area ||
+          listing.area
+        );
 
-    if (!areaSlug) return counts;
+      if (!areaSlug) {
+        return counts;
+      }
 
-    counts[areaSlug] =
-      (counts[areaSlug] || 0) + 1;
+      counts[areaSlug] =
+        (counts[areaSlug] || 0) +
+        1;
 
-    return counts;
-  },
-  {}
-);
+      return counts;
+    },
+    {}
+  );
 
-const knownAreaSlugs = new Set(
-  (areaMetaRows || [])
-    .map((row: any) =>
-      areaToSlug(
-        row.area_slug ||
+const knownAreaSlugs =
+  new Set(
+    (areaMetaRows || [])
+      .map((row: any) =>
+        areaToSlug(
+          row.area_slug ||
           row.area_name
+        )
       )
-    )
-    .filter(Boolean)
-);
+      .filter(Boolean)
+  );
 
-const locationCards = (areaMetaRows || [])
-  .map((row: any) => {
-    const areaSlug = areaToSlug(
-      row.area_slug ||
-        row.area_name
+const locationCards =
+  (areaMetaRows || [])
+    .map((row: any) => {
+      const areaSlug =
+        areaToSlug(
+          row.area_slug ||
+          row.area_name
+        );
+
+      return {
+        area: areaSlug,
+        label:
+          row.area_name ||
+          titleCase(areaSlug),
+        href:
+          `/${city}/${areaSlug}`,
+        count:
+          listingCountByArea[
+            areaSlug
+          ] || 0,
+      };
+    })
+    .filter(
+      (location: any) =>
+        location.area &&
+        location.count > 0
+    )
+    .sort(
+      (
+        first: any,
+        second: any
+      ) =>
+        second.count -
+          first.count ||
+        first.label.localeCompare(
+          second.label
+        )
     );
 
-    return {
-      area: areaSlug,
-      label:
-        row.area_name ||
-        titleCase(areaSlug),
-      href: `/${city}/${areaSlug}`,
-      count:
-        listingCountByArea[areaSlug] ||
-        0,
-    };
-  })
-  .filter((location: any) => location.area)
-  .sort(
-    (a: any, b: any) =>
-      b.count - a.count ||
-      a.label.localeCompare(b.label)
-  );
-
-const missingAreaCards = Object.entries(
-  listingCountByArea
-)
-  .filter(
-    ([areaSlug]) =>
-      !knownAreaSlugs.has(areaSlug)
+const missingAreaCards =
+  Object.entries(
+    listingCountByArea
   )
-  .map(([areaSlug, count]) => ({
-    area: areaSlug,
-    label: titleCase(areaSlug),
-    href: `/${city}/${areaSlug}`,
-    count: Number(count || 0),
-  }))
-  .sort(
-    (a, b) =>
-      b.count - a.count ||
-      a.label.localeCompare(b.label)
-  );
+    .filter(
+      ([areaSlug]) =>
+        !knownAreaSlugs.has(
+          areaSlug
+        )
+    )
+    .map(
+      ([areaSlug, count]) => ({
+        area: areaSlug,
+        label:
+          titleCase(areaSlug),
+        href:
+          `/${city}/${areaSlug}`,
+        count:
+          Number(count || 0),
+      })
+    )
+    .filter(
+      (location) =>
+        location.count > 0
+    )
+    .sort(
+      (first, second) =>
+        second.count -
+          first.count ||
+        first.label.localeCompare(
+          second.label
+        )
+    );
 
 const allLocationCards = [
   ...locationCards,
   ...missingAreaCards,
 ];
 
-const navAreas = allLocationCards.map(
-  (location) => location.label
-);
+const navAreas =
+  allLocationCards.map(
+    (location) =>
+      location.label
+  );
 
 const navTypes = [
   "house",
@@ -267,6 +352,154 @@ const navTypes = [
   "mobile",
   "land",
 ];
+
+const buildPageHref = (
+  page: number
+) => {
+  const params =
+    new URLSearchParams();
+
+  if (requestedType) {
+    params.set(
+      "type",
+      requestedType
+    );
+  }
+
+  for (
+    const area of requestedAreas
+  ) {
+    params.append(
+      "area",
+      area
+    );
+  }
+
+  if (
+    requestedBeds !== null
+  ) {
+    params.set(
+      "beds",
+      String(requestedBeds)
+    );
+  }
+
+  if (
+    requestedBaths !== null
+  ) {
+    params.set(
+      "baths",
+      String(requestedBaths)
+    );
+  }
+
+  if (
+    requestedMinPrice !== null
+  ) {
+    params.set(
+      "minPrice",
+      String(
+        requestedMinPrice
+      )
+    );
+  }
+
+  if (
+    requestedMaxPrice !== null
+  ) {
+    params.set(
+      "maxPrice",
+      String(
+        requestedMaxPrice
+      )
+    );
+  }
+
+  if (
+    requestedMinSqft !== null
+  ) {
+    params.set(
+      "minSqft",
+      String(
+        requestedMinSqft
+      )
+    );
+  }
+
+  if (
+    requestedMaxSqft !== null
+  ) {
+    params.set(
+      "maxSqft",
+      String(
+        requestedMaxSqft
+      )
+    );
+  }
+
+  if (
+    activeSort !== "newest"
+  ) {
+    params.set(
+      "sort",
+      activeSort
+    );
+  }
+
+  if (page > 1) {
+    params.set(
+      "page",
+      String(page)
+    );
+  }
+
+  const queryString =
+    params.toString();
+
+  return queryString
+    ? `/${city}?${queryString}`
+    : `/${city}`;
+};
+
+const previousPageHref =
+  listingResult
+    .hasPreviousPage
+    ? buildPageHref(
+        listingResult
+          .currentPage - 1
+      )
+    : null;
+
+const nextPageHref =
+  listingResult.hasNextPage
+    ? buildPageHref(
+        listingResult
+          .currentPage + 1
+      )
+    : null;
+
+const filters = {
+  type: requestedType,
+  areas: requestedAreas,
+
+  beds: requestedBeds,
+  baths: requestedBaths,
+
+  minPrice:
+    requestedMinPrice,
+  maxPrice:
+    requestedMaxPrice,
+
+  minSqft:
+    requestedMinSqft,
+  maxSqft:
+    requestedMaxSqft,
+
+  sort: activeSort,
+
+  page:
+    listingResult.currentPage,
+};
 
 const navIntentPages =
   await getNavIntentPages(
@@ -292,7 +525,9 @@ const pageDescription =
     site={site}
     areas={navAreas}
     types={navTypes}
-    intentPages={navIntentPages}
+    intentPages={
+      navIntentPages
+    }
     showAreaNav={false}
   />
 
@@ -301,6 +536,43 @@ const pageDescription =
     site={site}
     city={city}
     listings={listings}
-    locationCards={allLocationCards}
+    locationCards={
+      allLocationCards
+    }
+    filters={filters}
+    totalMatchingCount={
+      listingResult.totalCount
+    }
+    currentPage={
+      listingResult.currentPage
+    }
+    totalPages={
+      listingResult.totalPages
+    }
+    pageSize={
+      listingResult.pageSize
+    }
+    paginationStart={
+      listingResult
+        .paginationStart
+    }
+    paginationEnd={
+      listingResult
+        .paginationEnd
+    }
+    hasPreviousPage={
+      listingResult
+        .hasPreviousPage
+    }
+    hasNextPage={
+      listingResult
+        .hasNextPage
+    }
+    previousPageHref={
+      previousPageHref
+    }
+    nextPageHref={
+      nextPageHref
+    }
   />
 </Layout>

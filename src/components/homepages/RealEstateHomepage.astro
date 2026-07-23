@@ -1,9 +1,7 @@
 ---
 import ListingCard from "../ListingCard.astro";
 import IntentModalController from "../IntentModalController.astro";
-import ListingFilterController from "../listings/ListingFilterController.astro";
-import AreaMultiSelect from "../listings/AreaMultiSelect.astro";
-import SingleSelectDropdown from "../listings/SingleSelectDropdown.astro";
+
 interface LocationCard {
   city?: string;
   area?: string;
@@ -13,12 +11,42 @@ interface LocationCard {
   image?: string;
 }
 
+interface Filters {
+  city?: string;
+  type?: string;
+  areas?: string[];
+
+  beds?: number | null;
+  baths?: number | null;
+
+  minPrice?: number | null;
+  maxPrice?: number | null;
+
+  minSqft?: number | null;
+  maxSqft?: number | null;
+
+  sort?: string;
+  page?: number;
+}
+
 interface Props {
   site?: any;
   listings?: any[];
   locationCards?: LocationCard[];
   mode?: "province" | "city";
   city?: string;
+
+  filters?: Filters;
+  totalMatchingCount?: number;
+  currentPage?: number;
+  totalPages?: number;
+  pageSize?: number;
+  paginationStart?: number;
+  paginationEnd?: number;
+  hasPreviousPage?: boolean;
+  hasNextPage?: boolean;
+  previousPageHref?: string | null;
+  nextPageHref?: string | null;
 }
 
 const {
@@ -27,35 +55,57 @@ const {
   locationCards = [],
   mode = "province",
   city = "",
+
+  filters = {},
+  totalMatchingCount = listings.length,
+  currentPage = 1,
+  totalPages = 1,
+  paginationStart = listings.length > 0 ? 1 : 0,
+  paginationEnd = listings.length,
+  hasPreviousPage = false,
+  hasNextPage = false,
+  previousPageHref = null,
+  nextPageHref = null,
 } = Astro.props;
 
-const isCityMode = mode === "city";
+const isCityMode =
+  mode === "city";
 
-const locationName = isCityMode
-  ? city
-      .replace(/-/g, " ")
-      .replace(/\b\w/g, (letter) => letter.toUpperCase())
-  : "British Columbia";
+const locationName =
+  isCityMode
+    ? city
+        .replace(/-/g, " ")
+        .replace(
+          /\b\w/g,
+          (letter) =>
+            letter.toUpperCase()
+        )
+    : "British Columbia";
 
-const heroEyebrow = isCityMode
-  ? `Real estate in ${locationName}, British Columbia`
-  : "Real estate across British Columbia";
+const heroEyebrow =
+  isCityMode
+    ? `Real estate in ${locationName}, British Columbia`
+    : "Real estate across British Columbia";
 
-const heroTitle = isCityMode
-  ? `Find your place in ${locationName}.`
-  : "Find your place in British Columbia.";
+const heroTitle =
+  isCityMode
+    ? `Find your place in ${locationName}.`
+    : "Find your place in British Columbia.";
 
-const heroCopy = isCityMode
-  ? `Explore homes, condos, townhomes, and land across ${locationName}’s neighbourhoods.`
-  : "Explore homes, condos, townhomes, and land across British Columbia’s most desirable communities.";
+const heroCopy =
+  isCityMode
+    ? `Explore homes, condos, townhomes, and land across ${locationName}’s neighbourhoods.`
+    : "Explore homes, condos, townhomes, and land across British Columbia’s most desirable communities.";
 
-const browseEyebrow = isCityMode
-  ? "Browse by neighbourhood"
-  : "Browse by city";
+const browseEyebrow =
+  isCityMode
+    ? "Browse by neighbourhood"
+    : "Browse by city";
 
-const browseHeading = isCityMode
-  ? `Explore ${locationName} neighbourhoods`
-  : "Explore BC markets";
+const browseHeading =
+  isCityMode
+    ? `Explore ${locationName} neighbourhoods`
+    : "Explore BC markets";
 
 const accent =
   site?.accent_color ||
@@ -65,12 +115,105 @@ const featuredLocations =
   locationCards.slice(0, 6);
 
 const totalListings =
-  listings.length ||
   locationCards.reduce(
     (total, location) =>
-      total + Number(location.count || 0),
+      total +
+      Number(
+        location.count || 0
+      ),
     0
+  ) ||
+  totalMatchingCount;
+
+const selectedAreas =
+  Array.isArray(
+    filters.areas
+  )
+    ? filters.areas
+    : [];
+
+const hasActiveFilters =
+  Boolean(
+    filters.city ||
+    filters.type ||
+    selectedAreas.length ||
+    filters.beds !== null &&
+      filters.beds !== undefined ||
+    filters.baths !== null &&
+      filters.baths !== undefined ||
+    filters.minPrice !== null &&
+      filters.minPrice !== undefined ||
+    filters.maxPrice !== null &&
+      filters.maxPrice !== undefined ||
+    filters.minSqft !== null &&
+      filters.minSqft !== undefined ||
+    filters.maxSqft !== null &&
+      filters.maxSqft !== undefined ||
+    filters.sort &&
+      filters.sort !== "newest"
   );
+  const formatPrice = (
+  value: number
+) => {
+  if (value >= 1000000) {
+    return `$${Number(
+      (value / 1000000).toFixed(1)
+    )}M`;
+  }
+
+  return `$${Math.round(
+    value / 1000
+  )}k`;
+};
+
+const priceFilterLabel = (() => {
+  const min =
+    filters.minPrice;
+
+  const max =
+    filters.maxPrice;
+
+  if (
+    min !== null &&
+    min !== undefined &&
+    max !== null &&
+    max !== undefined
+  ) {
+    return `${formatPrice(
+      min
+    )}–${formatPrice(max)}`;
+  }
+
+  if (
+    min !== null &&
+    min !== undefined
+  ) {
+    return `${formatPrice(
+      min
+    )}+`;
+  }
+
+  if (
+    max !== null &&
+    max !== undefined
+  ) {
+    return `Under ${formatPrice(
+      max
+    )}`;
+  }
+
+  return "";
+})();
+
+const clearHref =
+  isCityMode
+    ? `/${city}`
+    : "/";
+
+const formAction =
+  isCityMode
+    ? `/${city}`
+    : "/";
 
 const fallbackLocationImages = [
   "https://images.unsplash.com/photo-1559511260-66a654ae982a?auto=format&fit=crop&w=1200&q=78",
@@ -81,51 +224,248 @@ const fallbackLocationImages = [
   "https://images.unsplash.com/photo-1464278533981-50106e6176b1?auto=format&fit=crop&w=1200&q=78",
 ];
 
-const formatCount = (value: number) =>
-  Number(value || 0).toLocaleString();
+const formatCount = (
+  value: number
+) =>
+  Number(value || 0)
+    .toLocaleString();
+
+const visiblePages = (() => {
+  const pages: number[] = [];
+  const start = Math.max(
+    1,
+    currentPage - 2
+  );
+  const end = Math.min(
+    totalPages,
+    currentPage + 2
+  );
+
+  for (
+    let page = start;
+    page <= end;
+    page += 1
+  ) {
+    pages.push(page);
+  }
+
+  return pages;
+})();
+
+const buildPageHref = (
+  page: number
+) => {
+  const params =
+    new URLSearchParams();
+
+  if (filters.city) {
+    params.set(
+      "city",
+      filters.city
+    );
+  }
+
+  if (filters.type) {
+    params.set(
+      "type",
+      filters.type
+    );
+  }
+
+  for (
+    const area of selectedAreas
+  ) {
+    params.append(
+      "area",
+      area
+    );
+  }
+
+  if (
+  filters.beds !== null &&
+  filters.beds !== undefined
+) {
+  params.set(
+    "beds",
+    String(filters.beds)
+  );
+}
+
+if (
+  filters.baths !== null &&
+  filters.baths !== undefined
+) {
+  params.set(
+    "baths",
+    String(filters.baths)
+  );
+}
+
+if (
+  filters.minPrice !== null &&
+  filters.minPrice !== undefined
+) {
+  params.set(
+    "minPrice",
+    String(
+      filters.minPrice
+    )
+  );
+}
+
+if (
+  filters.maxPrice !== null &&
+  filters.maxPrice !== undefined
+) {
+  params.set(
+    "maxPrice",
+    String(
+      filters.maxPrice
+    )
+  );
+}
+
+if (
+  filters.minSqft !== null &&
+  filters.minSqft !== undefined
+) {
+  params.set(
+    "minSqft",
+    String(
+      filters.minSqft
+    )
+  );
+}
+
+if (
+  filters.maxSqft !== null &&
+  filters.maxSqft !== undefined
+) {
+  params.set(
+    "maxSqft",
+    String(
+      filters.maxSqft
+    )
+  );
+}
+
+  if (
+    filters.sort &&
+    filters.sort !== "newest"
+  ) {
+    params.set(
+      "sort",
+      filters.sort
+    );
+  }
+
+  if (page > 1) {
+    params.set(
+      "page",
+      String(page)
+    );
+  }
+
+  const queryString =
+    params.toString();
+
+  return queryString
+    ? `${formAction}?${queryString}`
+    : formAction;
+};
 ---
-
-
 
 <div
   class:list={[
     "bc-homepage",
-    { "bc-homepage--city": isCityMode },
+    {
+      "bc-homepage--city":
+        isCityMode,
+    },
   ]}
-  data-listing-filter-root
-  data-initial-limit="12"
-  data-singular-label="property"
-  data-plural-label="properties"
   style={`--bc-home-accent: ${accent};`}
 >
   <section class="bc-hero">
-    <div class="bc-hero__overlay"></div>
+    <div
+      class="bc-hero__overlay"
+    ></div>
 
-    <div class="bc-hero__inner">
-      <div class="bc-hero__content">
-    <p class="bc-eyebrow">
-  {heroEyebrow}
-</p>
+    <div
+      class="bc-hero__inner"
+    >
+      <div
+        class="bc-hero__content"
+      >
+        <p class="bc-eyebrow">
+          {heroEyebrow}
+        </p>
 
-<h1>{heroTitle}</h1>
+        <h1>{heroTitle}</h1>
 
-<p class="bc-hero__copy">
-  {heroCopy}
-</p>
-
-       
+        <p
+          class="bc-hero__copy"
+        >
+          {heroCopy}
+        </p>
       </div>
     </div>
   </section>
 
   <div class="bc-search-wrap">
-<form
-  class:list={[
-    "bc-search",
-    { "bc-search--city": isCityMode },
-  ]}
-  data-listing-filter-form
->
+    <form
+      class:list={[
+        "bc-search",
+        {
+          "bc-search--city":
+            isCityMode,
+        },
+      ]}
+      method="GET"
+      action={formAction}
+    >
+    {
+  filters.baths !== null &&
+  filters.baths !== undefined && (
+    <input
+      type="hidden"
+      name="baths"
+      value={filters.baths}
+    />
+  )
+}
+
+{
+  filters.minPrice !== null &&
+  filters.minPrice !== undefined && (
+    <input
+      type="hidden"
+      name="minPrice"
+      value={filters.minPrice}
+    />
+  )
+}
+
+{
+  filters.minSqft !== null &&
+  filters.minSqft !== undefined && (
+    <input
+      type="hidden"
+      name="minSqft"
+      value={filters.minSqft}
+    />
+  )
+}
+
+{
+  filters.maxSqft !== null &&
+  filters.maxSqft !== undefined && (
+    <input
+      type="hidden"
+      name="maxSqft"
+      value={filters.maxSqft}
+    />
+  )
+}
       {
         !isCityMode && (
           <label class="bc-search__field">
@@ -135,29 +475,51 @@ const formatCount = (value: number) =>
                 aria-hidden="true"
               >
                 <path d="M12 21s7-6.2 7-12A7 7 0 0 0 5 9c0 5.8 7 12 7 12Z"></path>
-                <circle cx="12" cy="9" r="2.4"></circle>
+                <circle
+                  cx="12"
+                  cy="9"
+                  r="2.4"
+                ></circle>
               </svg>
             </span>
 
             <span class="bc-search__content">
-              <strong>Market</strong>
+              <strong>
+                Market
+              </strong>
 
               <select
                 name="city"
-                data-listing-filter
-                data-filter-key="city"
-                data-url-parameter="city"
               >
-                <option value="">All markets</option>
+                <option value="">
+                  All markets
+                </option>
 
                 {
                   locationCards
-                    .filter((location) => location.city)
-                    .map((location) => (
-                      <option value={String(location.city).toLowerCase()}>
-                        {location.label}
-                      </option>
-                    ))
+                    .filter(
+                      (location) =>
+                        location.city
+                    )
+                    .map(
+                      (location) => (
+                        <option
+                          value={String(
+                            location.city
+                          ).toLowerCase()}
+                          selected={
+                            filters.city ===
+                            String(
+                              location.city
+                            ).toLowerCase()
+                          }
+                        >
+                          {
+                            location.label
+                          }
+                        </option>
+                      )
+                    )
                 }
               </select>
             </span>
@@ -165,24 +527,149 @@ const formatCount = (value: number) =>
         )
       }
 
-      <SingleSelectDropdown
-  label="Property type"
-  name="type"
-  filterKey="type"
-  urlParameter="type"
-  defaultLabel="Any type"
-  icon="home"
-  options={[
-    { value: "house", label: "Homes" },
-    { value: "condo", label: "Condos" },
-    { value: "townhouse", label: "Townhomes" },
-    { value: "mobile", label: "Mobile homes" },
-    { value: "land", label: "Land" },
-  ]}
-/>
-<AreaMultiSelect locationCards={locationCards} />
-      <label class="bc-search__field">
-        <span class="bc-search__icon">
+      <label
+        class="bc-search__field"
+      >
+        <span
+          class="bc-search__icon"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path d="M3 11.5 12 4l9 7.5"></path>
+            <path d="M5.5 10.5V21h13V10.5"></path>
+            <path d="M9.5 21v-6h5v6"></path>
+          </svg>
+        </span>
+
+        <span
+          class="bc-search__content"
+        >
+          <strong>
+            Property type
+          </strong>
+
+          <select name="type">
+            <option value="">
+              Any type
+            </option>
+            <option
+              value="house"
+              selected={
+                filters.type ===
+                "house"
+              }
+            >
+              Homes
+            </option>
+            <option
+              value="condo"
+              selected={
+                filters.type ===
+                "condo"
+              }
+            >
+              Condos
+            </option>
+            <option
+              value="townhouse"
+              selected={
+                filters.type ===
+                "townhouse"
+              }
+            >
+              Townhomes
+            </option>
+            <option
+              value="mobile"
+              selected={
+                filters.type ===
+                "mobile"
+              }
+            >
+              Mobile homes
+            </option>
+            <option
+              value="land"
+              selected={
+                filters.type ===
+                "land"
+              }
+            >
+              Land
+            </option>
+          </select>
+        </span>
+      </label>
+
+      <label
+        class="bc-search__field"
+      >
+        <span
+          class="bc-search__icon"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path d="M12 21s7-6.2 7-12A7 7 0 0 0 5 9c0 5.8 7 12 7 12Z"></path>
+            <circle
+              cx="12"
+              cy="9"
+              r="2.4"
+            ></circle>
+          </svg>
+        </span>
+
+        <span
+          class="bc-search__content"
+        >
+          <strong>
+            Area
+          </strong>
+
+          <select
+            name="area"
+            multiple
+            size="1"
+            aria-label="Neighbourhoods"
+          >
+            {
+              locationCards
+                .filter(
+                  (location) =>
+                    location.area
+                )
+                .map(
+                  (location) => (
+                    <option
+                      value={
+                        location.area
+                      }
+                      selected={selectedAreas.includes(
+                        String(
+                          location.area
+                        )
+                      )}
+                    >
+                      {
+                        location.label
+                      }
+                    </option>
+                  )
+                )
+            }
+          </select>
+        </span>
+      </label>
+
+      <label
+        class="bc-search__field"
+      >
+        <span
+          class="bc-search__icon"
+        >
           <svg
             viewBox="0 0 24 24"
             aria-hidden="true"
@@ -195,254 +682,516 @@ const formatCount = (value: number) =>
           </svg>
         </span>
 
-        <span class="bc-search__content">
-          <strong>Beds</strong>
+        <span
+          class="bc-search__content"
+        >
+          <strong>
+            Beds
+          </strong>
 
-         <select
-  name="beds"
-  data-listing-filter
-  data-filter-key="beds"
-  data-filter-mode="minimum"
-  data-url-parameter="beds"
->
-            <option value="">Any</option>
-            <option value="1">1+</option>
-            <option value="2">2+</option>
-            <option value="3">3+</option>
-            <option value="4">4+</option>
-            <option value="5">5+</option>
+          <select name="beds">
+            <option value="">
+              Any
+            </option>
+            {
+              [1, 2, 3, 4, 5].map(
+                (beds) => (
+                  <option
+                    value={beds}
+                    selected={
+                      filters.beds ===
+                      beds
+                    }
+                  >
+                    {beds}+
+                  </option>
+                )
+              )
+            }
           </select>
         </span>
       </label>
 
-      <label class="bc-search__field">
-        <span class="bc-search__icon">
+      <label
+        class="bc-search__field"
+      >
+        <span
+          class="bc-search__icon"
+        >
           <svg
             viewBox="0 0 24 24"
             aria-hidden="true"
           >
-            <circle cx="12" cy="12" r="9"></circle>
+            <circle
+              cx="12"
+              cy="12"
+              r="9"
+            ></circle>
             <path d="M15 8.5c-.7-.7-1.7-1-3-1-1.7 0-3 .9-3 2.2 0 1.4 1.2 2 3.2 2.5 1.8.5 2.8 1.1 2.8 2.3 0 1.3-1.2 2.2-3 2.2-1.3 0-2.5-.4-3.3-1.2"></path>
             <path d="M12 5.5v13"></path>
           </svg>
         </span>
 
-        <span class="bc-search__content">
-          <strong>Price</strong>
+        <span
+          class="bc-search__content"
+        >
+          <strong>
+            Price
+          </strong>
 
-          <select
+         <select
   name="maxPrice"
-  data-listing-filter
-  data-filter-key="price"
-  data-filter-mode="maximum"
-  data-url-parameter="maxPrice"
 >
-            <option value="">Any price</option>
-            <option value="500000">
-              Under $500,000
+  {
+    priceFilterLabel && (
+      <option
+        value={
+          filters.maxPrice ??
+          ""
+        }
+        selected
+      >
+        {priceFilterLabel}
+      </option>
+    )
+  }
+
+  <option
+    value=""
+    selected={
+      !priceFilterLabel
+    }
+  >
+    Any price
+  </option>
+
+  {
+    [
+      [
+        500000,
+        "Under $500,000",
+      ],
+      [
+        700000,
+        "Under $700,000",
+      ],
+      [
+        900000,
+        "Under $900,000",
+      ],
+      [
+        1200000,
+        "Under $1.2M",
+      ],
+      [
+        1600000,
+        "Under $1.6M",
+      ],
+      [
+        2000000,
+        "Under $2M",
+      ],
+    ].map(
+      ([
+        value,
+        label,
+      ]) => (
+        <option
+          value={value}
+          selected={
+            !filters.minPrice &&
+            filters.maxPrice ===
+              value
+          }
+        >
+          {label}
+        </option>
+      )
+    )
+  }
+</select>
+        </span>
+      </label>
+
+      <label
+        class="bc-search__field"
+      >
+        <span
+          class="bc-search__icon"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path d="M7 6h10"></path>
+            <path d="M9 12h6"></path>
+            <path d="M11 18h2"></path>
+          </svg>
+        </span>
+
+        <span
+          class="bc-search__content"
+        >
+          <strong>
+            Sort
+          </strong>
+
+          <select name="sort">
+            <option
+              value="newest"
+              selected={
+                !filters.sort ||
+                filters.sort ===
+                  "newest"
+              }
+            >
+              Newest
             </option>
-            <option value="700000">
-              Under $700,000
+
+            <option
+              value="price-low"
+              selected={
+                filters.sort ===
+                "price-low"
+              }
+            >
+              Price: low to high
             </option>
-            <option value="900000">
-              Under $900,000
-            </option>
-            <option value="1200000">
-              Under $1.2M
-            </option>
-            <option value="1600000">
-              Under $1.6M
-            </option>
-            <option value="2000000">
-              Under $2M
+
+            <option
+              value="price-high"
+              selected={
+                filters.sort ===
+                "price-high"
+              }
+            >
+              Price: high to low
             </option>
           </select>
         </span>
       </label>
 
-    <label class="bc-search__field">
-  <span class="bc-search__icon">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M7 6h10"></path>
-      <path d="M9 12h6"></path>
-      <path d="M11 18h2"></path>
-    </svg>
-  </span>
+      <div
+        class="bc-search__submit"
+      >
+        <button type="submit">
+          Search
+        </button>
+      </div>
+      </form>
 
-  <span class="bc-search__content">
-    <strong>Sort</strong>
+    {
+  hasActiveFilters && (
+    <div class="bc-active-filters">
+      {
+        filters.baths !== null &&
+        filters.baths !== undefined && (
+          <span>
+            {filters.baths}+ baths
+          </span>
+        )
+      }
 
-    <select
-      name="sort"
-      data-listing-sort
-      data-url-parameter="sort"
-    >
-      <option value="newest">Newest</option>
-      <option value="price-low">Price: low to high</option>
-      <option value="price-high">Price: high to low</option>
-    </select>
-  </span>
-</label>
-    </form>
-  </div>
+      {
+        filters.minSqft !== null &&
+        filters.minSqft !== undefined && (
+          <span>
+            {Number(
+              filters.minSqft
+            ).toLocaleString()}+ sq. ft.
+          </span>
+        )
+      }
 
-  <section class="bc-search-results">
-  <div class="bc-search-results__heading">
-    <div>
-      <p class="bc-eyebrow">
-        {isCityMode
-          ? `Homes for sale in ${locationName}`
-          : "Homes across BC"}
-      </p>
+      {
+        filters.maxSqft !== null &&
+        filters.maxSqft !== undefined && (
+          <span>
+            Up to{" "}
+            {Number(
+              filters.maxSqft
+            ).toLocaleString()}{" "}
+            sq. ft.
+          </span>
+        )
+      }
 
-   <h2 data-listing-count>
-  {listings.length} properties
-</h2>
-
-<p
-  class="bc-listing-description"
-  data-listing-description
->
-  Showing the newest {Math.min(12, listings.length)} of{" "}
-  {listings.length} properties
-</p>
+      <a href={clearHref}>
+        Clear filters
+      </a>
     </div>
-
-    <button
-      class="bc-clear-search"
-      type="button"
-      data-listing-clear
-      hidden
+  )
+}
+    <div
+      class="bc-search-results__heading"
     >
-      Clear filters
-    </button>
-  </div>
+      <div>
+        <p class="bc-eyebrow">
+          {
+            isCityMode
+              ? `Homes for sale in ${locationName}`
+              : "Homes across BC"
+          }
+        </p>
 
-  {
-    listings.length > 0 ? (
-      <>
-        <div
-          class="bc-listing-grid"
-          data-listing-grid
+        <h2>
+          {formatCount(
+            totalMatchingCount
+          )}{" "}
+          {
+            totalMatchingCount ===
+            1
+              ? "property"
+              : "properties"
+          }
+        </h2>
+
+        <p
+          class="bc-listing-description"
         >
           {
-           listings.map((listing, index) => (
-  <div
-    class="bc-filterable-listing"
-    data-listing-item
-    hidden={index >= 12}
-  >
-    <ListingCard
-      listing={listing}
-      priority={index < 4}
-    />
-  </div>
-))
+            totalMatchingCount >
+            0
+              ? `Showing ${formatCount(
+                  paginationStart
+                )}–${formatCount(
+                  paginationEnd
+                )} of ${formatCount(
+                  totalMatchingCount
+                )} properties`
+              : "No matching properties"
           }
-        </div>
-
-        <div
-          class="bc-search-results__empty"
-          data-listing-empty
-          hidden
-        >
-          <h3>No matching listings</h3>
-
-          <p>
-            {isCityMode
-              ? "Try changing the property type, bedroom count, or maximum price."
-              : "Try changing the market, property type, bedroom count, or maximum price."}
-          </p>
-
-          <button
-            type="button"
-            data-listing-clear
-          >
-            Clear filters
-          </button>
-        </div>
-
-        <div class="bc-listing-actions">
-          <button
-            class="bc-show-more"
-            type="button"
-            data-listing-show-more
-          >
-            Show more properties
-          </button>
-        </div>
-      </>
-    ) : (
-      <div class="bc-search-results__empty">
-        <h3>No active listings</h3>
-
-        <p>
-          New listings will appear here when available.
         </p>
       </div>
-    )
-  }
-</section>
+
+      {
+        hasActiveFilters && (
+          <a
+            class="bc-clear-search"
+            href={clearHref}
+          >
+            Clear filters
+          </a>
+        )
+      }
+    </div>
+
+    {
+      listings.length > 0 ? (
+        <>
+          <div
+            class="bc-listing-grid"
+          >
+            {
+              listings.map(
+                (
+                  listing,
+                  index
+                ) => (
+                  <div class="bc-filterable-listing">
+                    <ListingCard
+                      listing={
+                        listing
+                      }
+                      priority={
+                        index < 4
+                      }
+                    />
+                  </div>
+                )
+              )
+            }
+          </div>
+
+          {
+            totalPages > 1 && (
+              <nav
+                class="bc-pagination"
+                aria-label="Listing pages"
+              >
+                {hasPreviousPage &&
+                  previousPageHref && (
+                    <a
+                      class="bc-pagination__direction"
+                      href={
+                        previousPageHref
+                      }
+                    >
+                      ← Previous
+                    </a>
+                  )}
+
+                <div
+                  class="bc-pagination__pages"
+                >
+                  {
+                    visiblePages.map(
+                      (page) => (
+                        <a
+                          class:list={[
+                            "bc-pagination__page",
+                            {
+                              "is-active":
+                                page ===
+                                currentPage,
+                            },
+                          ]}
+                          href={buildPageHref(
+                            page
+                          )}
+                          aria-current={
+                            page ===
+                            currentPage
+                              ? "page"
+                              : undefined
+                          }
+                        >
+                          {page}
+                        </a>
+                      )
+                    )
+                  }
+                </div>
+
+                {hasNextPage &&
+                  nextPageHref && (
+                    <a
+                      class="bc-pagination__direction"
+                      href={
+                        nextPageHref
+                      }
+                    >
+                      Next →
+                    </a>
+                  )}
+              </nav>
+            )
+          }
+        </>
+      ) : (
+        <div
+          class="bc-search-results__empty"
+        >
+          <h3>
+            No matching listings
+          </h3>
+
+          <p>
+            {
+              isCityMode
+                ? "Try changing the neighbourhood, property type, bedroom count, or maximum price."
+                : "Try changing the market, property type, bedroom count, or maximum price."
+            }
+          </p>
+
+          <a href={clearHref}>
+            Clear filters
+          </a>
+        </div>
+      )
+    }
+  </section>
+
   <main class="bc-main">
     <section
       id="bc-markets"
       class="bc-markets"
     >
-      <div class="bc-section-heading">
+      <div
+        class="bc-section-heading"
+      >
         <div>
-          <p class="bc-eyebrow">{browseEyebrow}</p>
-          <h2>{browseHeading}</h2>
+          <p class="bc-eyebrow">
+            {browseEyebrow}
+          </p>
+          <h2>
+            {browseHeading}
+          </h2>
         </div>
 
         <p>
-          {isCityMode
-            ? `Explore ${locationName} neighbourhoods, listings, and local area guides.`
-            : "Start with a city, then explore neighbourhoods, listings, and local guides."}
+          {
+            isCityMode
+              ? `Explore ${locationName} neighbourhoods, listings, and local area guides.`
+              : "Start with a city, then explore neighbourhoods, listings, and local guides."
+          }
         </p>
 
-        <a href={isCityMode ? `/${city}/areas` : "/explore"}>
-          {isCityMode ? "View all neighbourhoods" : "View all markets"}
-          <span aria-hidden="true">→</span>
+        <a
+          href={
+            isCityMode
+              ? `/${city}/areas`
+              : "/explore"
+          }
+        >
+          {
+            isCityMode
+              ? "View all neighbourhoods"
+              : "View all markets"
+          }
+          <span aria-hidden="true">
+            →
+          </span>
         </a>
       </div>
 
-      <div class="bc-market-grid">
+      <div
+        class="bc-market-grid"
+      >
         {
-          featuredLocations.map((location, index) => {
-            const image =
-              location.image ||
-              fallbackLocationImages[
-                index % fallbackLocationImages.length
-              ];
+          featuredLocations.map(
+            (
+              location,
+              index
+            ) => {
+              const image =
+                location.image ||
+                fallbackLocationImages[
+                  index %
+                    fallbackLocationImages.length
+                ];
 
-            return (
-              <a
-                class="bc-market-card"
-                href={location.href}
-                style={`--market-image: url('${image}')`}
-              >
-                <div class="bc-market-card__shade"></div>
-
-                <div class="bc-market-card__content">
-                  <strong>{location.label}</strong>
-
-                  <span>
-                    {formatCount(location.count)} active{" "}
-                    {location.count === 1
-                      ? "listing"
-                      : "listings"}
-                  </span>
-                </div>
-
-                <span
-                  class="bc-market-card__arrow"
-                  aria-hidden="true"
+              return (
+                <a
+                  class="bc-market-card"
+                  href={
+                    location.href
+                  }
+                  style={`--market-image: url('${image}')`}
                 >
-                  →
-                </span>
-              </a>
-            );
-          })
+                  <div class="bc-market-card__shade"></div>
+
+                  <div class="bc-market-card__content">
+                    <strong>
+                      {
+                        location.label
+                      }
+                    </strong>
+
+                    <span>
+                      {formatCount(
+                        location.count
+                      )}{" "}
+                      active{" "}
+                      {
+                        location.count ===
+                        1
+                          ? "listing"
+                          : "listings"
+                      }
+                    </span>
+                  </div>
+
+                  <span
+                    class="bc-market-card__arrow"
+                    aria-hidden="true"
+                  >
+                    →
+                  </span>
+                </a>
+              );
+            }
+          )
         }
       </div>
     </section>
@@ -460,9 +1209,11 @@ const formatCount = (value: number) =>
         <div>
           <h3>Local knowledge</h3>
           <p>
-            {isCityMode
-              ? `Detailed insights into neighbourhoods across ${locationName}.`
-              : "Detailed insights into communities across British Columbia."}
+            {
+              isCityMode
+                ? `Detailed insights into neighbourhoods across ${locationName}.`
+                : "Detailed insights into communities across British Columbia."
+            }
           </p>
         </div>
       </article>
@@ -479,10 +1230,11 @@ const formatCount = (value: number) =>
         </span>
 
         <div>
-          <h3>Real-time listings</h3>
+          <h3>
+            Real-time listings
+          </h3>
           <p>
-            Fresh listings updated throughout the day,
-            every day.
+            Fresh listings updated throughout the day, every day.
           </p>
         </div>
       </article>
@@ -497,10 +1249,11 @@ const formatCount = (value: number) =>
         </span>
 
         <div>
-          <h3>Neighbourhood guides</h3>
+          <h3>
+            Neighbourhood guides
+          </h3>
           <p>
-            Explore areas, amenities, schools, and
-            lifestyle.
+            Explore areas, amenities, schools, and lifestyle.
           </p>
         </div>
       </article>
@@ -513,11 +1266,19 @@ const formatCount = (value: number) =>
         </span>
 
         <div>
-          <h3>{isCityMode ? `${locationName} lifestyle` : "BC lifestyle"}</h3>
+          <h3>
+            {
+              isCityMode
+                ? `${locationName} lifestyle`
+                : "BC lifestyle"
+            }
+          </h3>
           <p>
-            {isCityMode
-              ? `Explore the communities and lifestyle that make ${locationName} distinctive.`
-              : "From mountains to ocean, find the lifestyle that fits you."}
+            {
+              isCityMode
+                ? `Explore the communities and lifestyle that make ${locationName} distinctive.`
+                : "From mountains to ocean, find the lifestyle that fits you."
+            }
           </p>
         </div>
       </article>
@@ -536,35 +1297,59 @@ const formatCount = (value: number) =>
         </h2>
 
         <p>
-          {isCityMode
-            ? `Whether you’re buying your first home, upgrading, relocating, or investing, begin with the ${locationName} neighbourhood that interests you.`
-            : "Whether you’re buying your first home, upgrading, relocating, or investing, begin with the market that interests you."}
+          {
+            isCityMode
+              ? `Whether you’re buying your first home, upgrading, relocating, or investing, begin with the ${locationName} neighbourhood that interests you.`
+              : "Whether you’re buying your first home, upgrading, relocating, or investing, begin with the market that interests you."
+          }
         </p>
 
-        <a href={isCityMode ? `/explore?city=${encodeURIComponent(city)}` : "/explore"}>
+        <a
+          href={
+            isCityMode
+              ? `/explore?city=${encodeURIComponent(
+                  city
+                )}`
+              : "/explore"
+          }
+        >
           View homes for sale
-          <span aria-hidden="true">→</span>
+          <span aria-hidden="true">
+            →
+          </span>
         </a>
       </div>
 
       <div class="bc-cta__stats">
         <div class="bc-stat">
           <strong>
-            {formatCount(totalListings)}+
+            {formatCount(
+              totalListings
+            )}
+            +
           </strong>
           <span>
-            {isCityMode
-              ? `Active listings in ${locationName}`
-              : "Active listings across BC"}
+            {
+              isCityMode
+                ? `Active listings in ${locationName}`
+                : "Active listings across BC"
+            }
           </span>
         </div>
 
         <div class="bc-stat">
-          <strong>{locationCards.length}+</strong>
+          <strong>
+            {
+              locationCards.length
+            }
+            +
+          </strong>
           <span>
-            {isCityMode
-              ? "Neighbourhoods to explore"
-              : "Communities to explore"}
+            {
+              isCityMode
+                ? "Neighbourhoods to explore"
+                : "Communities to explore"
+            }
           </span>
         </div>
 
@@ -581,42 +1366,69 @@ const formatCount = (value: number) =>
       <a href="/buying-guide">
         <span>01</span>
         <div>
-          <strong>Buying guide</strong>
-          <small>Tips for buyers</small>
+          <strong>
+            Buying guide
+          </strong>
+          <small>
+            Tips for buyers
+          </small>
         </div>
       </a>
 
       <a href="/market-insights">
         <span>02</span>
         <div>
-          <strong>Market insights</strong>
-          <small>Local trends and data</small>
+          <strong>
+            Market insights
+          </strong>
+          <small>
+            Local trends and data
+          </small>
         </div>
       </a>
 
-      <a href={isCityMode ? `/explore?city=${encodeURIComponent(city)}` : "/explore"}>
+      <a
+        href={
+          isCityMode
+            ? `/explore?city=${encodeURIComponent(
+                city
+              )}`
+            : "/explore"
+        }
+      >
         <span>03</span>
         <div>
           <strong>
-            {isCityMode ? `Explore ${locationName}` : "Explore BC"}
+            {
+              isCityMode
+                ? `Explore ${locationName}`
+                : "Explore BC"
+            }
           </strong>
-          <small>Browse homes on the map</small>
+          <small>
+            Browse homes on the map
+          </small>
         </div>
       </a>
 
       <a href="/contact">
         <span>04</span>
         <div>
-          <strong>Contact</strong>
-          <small>Get local help</small>
+          <strong>
+            Contact
+          </strong>
+          <small>
+            Get local help
+          </small>
         </div>
       </a>
     </section>
   </main>
 </div>
 
-<IntentModalController listings={listings} />
-<ListingFilterController />
+<IntentModalController
+  listings={listings}
+/>
 
 <style>
   .bc-homepage {
@@ -629,23 +1441,22 @@ const formatCount = (value: number) =>
     color: var(--bc-ink);
   }
 
-.bc-hero {
-  position: relative;
-  min-height: 590px;
-  background-image: url("https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2200&q=90");
-  background-position: center;
-  background-size: cover;
-}
+  .bc-hero {
+    position: relative;
+    min-height: 590px;
+    background-image: url("https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2200&q=90");
+    background-position: center;
+    background-size: cover;
+  }
 
   .bc-hero__overlay {
     position: absolute;
     inset: 0;
-    background:
-      linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.08),
-        rgba(255, 255, 255, 0)
-      );
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.08),
+      rgba(255, 255, 255, 0)
+    );
     pointer-events: none;
   }
 
@@ -677,28 +1488,24 @@ const formatCount = (value: number) =>
   .bc-hero h1 {
     max-width: 760px;
     margin: 0;
+    color: #fff;
     font-family: var(--f-display, Georgia, serif);
     font-size: clamp(4rem, 7.2vw, 7.2rem);
     font-weight: 500;
     line-height: 0.87;
     letter-spacing: -0.068em;
-      color: #fff;
-  text-shadow:
-    0 2px 10px rgba(0, 0, 0, 0.35),
-    0 8px 30px rgba(0, 0, 0, 0.22);
+    text-shadow:
+      0 2px 10px rgba(0, 0, 0, 0.35),
+      0 8px 30px rgba(0, 0, 0, 0.22);
   }
 
   .bc-hero__copy {
     max-width: 560px;
     margin: 27px 0 0;
+    color: #fff;
     font-size: clamp(1rem, 1.3vw, 1.13rem);
     line-height: 1.6;
-      color: #fff;
   }
-
- 
-
-  
 
   .bc-search-wrap {
     position: relative;
@@ -709,10 +1516,11 @@ const formatCount = (value: number) =>
 
   .bc-search {
     display: grid;
-      grid-template-columns:
-    1.1fr 1.1fr 0.75fr 0.75fr 1fr 0.9fr;
-  min-height: 98px;
-   overflow: visible;
+    grid-template-columns:
+      1.1fr 1.1fr 0.9fr 0.75fr
+      1fr 0.9fr auto;
+    min-height: 98px;
+    overflow: visible;
     border: 1px solid var(--bc-line);
     border-radius: 14px;
     background: rgba(255, 255, 255, 0.96);
@@ -722,7 +1530,8 @@ const formatCount = (value: number) =>
 
   .bc-search--city {
     grid-template-columns:
-      1.2fr 0.8fr 0.8fr 1fr 0.9fr;
+      1.1fr 1.1fr 0.75fr 1fr
+      0.9fr auto;
   }
 
   .bc-search__field {
@@ -730,7 +1539,7 @@ const formatCount = (value: number) =>
     min-width: 0;
     align-items: center;
     gap: 13px;
-    padding: 22px 22px;
+    padding: 22px;
     border-right: 1px solid var(--bc-line);
   }
 
@@ -775,122 +1584,149 @@ const formatCount = (value: number) =>
     cursor: pointer;
   }
 
+  .bc-search__submit {
+    display: flex;
+    align-items: stretch;
+    padding: 12px;
+  }
 
+  .bc-search__submit button {
+    min-width: 92px;
+    border: 0;
+    border-radius: 9px;
+    background: var(--bc-home-accent);
+    color: #fff;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 850;
+    cursor: pointer;
+  }
 
- .bc-search-results {
-  width: min(1240px, calc(100% - 48px));
-  margin: 42px auto 0;
-}
+  .bc-search-results {
+    width: min(1240px, calc(100% - 48px));
+    margin: 42px auto 0;
+  }
 
-.bc-search-results__heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 24px;
-}
+  .bc-search-results__heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
 
-.bc-search-results__heading h2 {
-  margin: 0;
-  font-family: var(--f-display, Georgia, serif);
-  font-size: clamp(2rem, 4vw, 3.4rem);
-  font-weight: 500;
-  line-height: 1;
-  letter-spacing: -0.045em;
-}
+  .bc-search-results__heading h2 {
+    margin: 0;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(2rem, 4vw, 3.4rem);
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: -0.045em;
+  }
 
-.bc-search-results__heading > a {
-  color: var(--bc-home-accent);
-  font-size: 0.82rem;
-  font-weight: 800;
-  text-decoration: none;
-}
+  .bc-listing-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 24px;
+  }
 
-.bc-listing-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 24px;
-}
+  .bc-filterable-listing {
+    min-width: 0;
+  }
 
-.bc-filterable-listing {
-  min-width: 0;
-}
+  .bc-listing-description {
+    margin: 10px 0 0;
+    color: var(--bc-muted);
+    font-size: 0.84rem;
+  }
 
-.bc-listing-description {
-  margin: 10px 0 0;
-  color: var(--bc-muted);
-  font-size: 0.84rem;
-}
+  .bc-clear-search {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    padding: 0 19px;
+    border-radius: 8px;
+    background: var(--bc-home-accent);
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
 
-.bc-clear-search,
-.bc-show-more,
-.bc-search-results__empty button {
-  min-height: 44px;
-  padding: 0 19px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--bc-home-accent);
-  color: #fff;
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 800;
-  cursor: pointer;
-}
+  .bc-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    margin-top: 34px;
+  }
 
-.bc-clear-search[hidden],
-.bc-show-more[hidden] {
-  display: none;
-}
+  .bc-pagination__pages {
+    display: flex;
+    gap: 8px;
+  }
 
-.bc-listing-actions {
-  display: flex;
-  justify-content: center;
-  margin-top: 28px;
-}
+  .bc-pagination a {
+    text-decoration: none;
+  }
 
-.bc-show-more {
-  min-width: 190px;
-}
+  .bc-pagination__page {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    border: 1px solid var(--bc-line);
+    border-radius: 8px;
+    color: var(--bc-ink);
+    font-size: 0.8rem;
+    font-weight: 800;
+  }
 
-.bc-search-results__empty button {
-  margin-top: 8px;
-}
+  .bc-pagination__page.is-active {
+    border-color: var(--bc-home-accent);
+    background: var(--bc-home-accent);
+    color: #fff;
+  }
 
+  .bc-pagination__direction {
+    color: var(--bc-home-accent);
+    font-size: 0.8rem;
+    font-weight: 850;
+  }
 
+  .bc-search-results__empty {
+    padding: 50px 24px;
+    border: 1px solid var(--bc-line);
+    border-radius: 13px;
+    background: var(--bc-cream);
+    text-align: center;
+  }
 
-.bc-search-results__empty {
-  padding: 50px 24px;
-  border: 1px solid var(--bc-line);
-  border-radius: 13px;
-  background: var(--bc-cream);
-  text-align: center;
-}
+  .bc-search-results__empty h3 {
+    margin: 0;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.8rem;
+    font-weight: 500;
+  }
 
-.bc-search-results__empty h3 {
-  margin: 0;
-  font-family: var(--f-display, Georgia, serif);
-  font-size: 1.8rem;
-  font-weight: 500;
-}
+  .bc-search-results__empty p {
+    max-width: 520px;
+    margin: 12px auto 20px;
+    color: var(--bc-muted);
+    line-height: 1.6;
+  }
 
-.bc-search-results__empty p {
-  max-width: 520px;
-  margin: 12px auto 20px;
-  color: var(--bc-muted);
-  line-height: 1.6;
-}
+  .bc-search-results__empty a {
+    color: var(--bc-home-accent);
+    font-weight: 800;
+    text-decoration: none;
+  }
 
-.bc-search-results__empty a {
-  color: var(--bc-home-accent);
-  font-weight: 800;
-  text-decoration: none;
-}
-
-.bc-main {
-  width: min(1240px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 73px 0 90px;
-}
+  .bc-main {
+    width: min(1240px, calc(100% - 48px));
+    margin: 0 auto;
+    padding: 73px 0 90px;
+  }
 
   .bc-section-heading {
     display: grid;
@@ -967,12 +1803,11 @@ const formatCount = (value: number) =>
     position: absolute;
     z-index: -1;
     inset: 0;
-    background:
-      linear-gradient(
-        180deg,
-        rgba(0, 0, 0, 0.03) 30%,
-        rgba(0, 0, 0, 0.76) 100%
-      );
+    background: linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0.03) 30%,
+      rgba(0, 0, 0, 0.76) 100%
+    );
   }
 
   .bc-market-card__content {
@@ -1200,15 +2035,18 @@ const formatCount = (value: number) =>
       grid-template-columns: repeat(2, 1fr);
     }
 
-    .bc-listing-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-    .bc-search__field:nth-of-type(2) {
-      border-right: 0;
+    .bc-search__submit {
+      grid-column: 1 / -1;
     }
 
-  
+    .bc-search__submit button {
+      min-height: 52px;
+      width: 100%;
+    }
+
+    .bc-listing-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
 
     .bc-market-grid {
       grid-template-columns: repeat(3, 1fr);
@@ -1247,17 +2085,17 @@ const formatCount = (value: number) =>
     }
 
     .bc-search-results {
-  width: calc(100% - 32px);
-}
+      width: calc(100% - 32px);
+    }
 
-.bc-search-results__heading {
-  align-items: start;
-  flex-direction: column;
-}
+    .bc-search-results__heading {
+      align-items: start;
+      flex-direction: column;
+    }
 
-.bc-listing-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
+    .bc-listing-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 
     .bc-hero__inner,
     .bc-search-wrap,
@@ -1286,8 +2124,12 @@ const formatCount = (value: number) =>
       border-bottom: 1px solid var(--bc-line);
     }
 
-    .bc-search__field:nth-of-type(2) {
-      border-right: 0;
+    .bc-search__submit {
+      grid-column: auto;
+    }
+
+    .bc-pagination {
+      flex-wrap: wrap;
     }
 
     .bc-section-heading {
@@ -1351,8 +2193,8 @@ const formatCount = (value: number) =>
     }
 
     .bc-listing-grid {
-  grid-template-columns: 1fr;
-}
+      grid-template-columns: 1fr;
+    }
 
     .bc-market-card {
       min-height: 210px;
@@ -1371,4 +2213,31 @@ const formatCount = (value: number) =>
       border-bottom: 0;
     }
   }
+
+  .bc-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.bc-active-filters span,
+.bc-active-filters a {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  padding: 0 13px;
+  border: 1px solid var(--bc-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--bc-ink);
+  font-size: 0.75rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.bc-active-filters a {
+  border-color: var(--bc-home-accent);
+  color: var(--bc-home-accent);
+}
 </style>

@@ -1,7 +1,6 @@
 ---
 import ListingCard from "../ListingCard.astro";
 import IntentModalController from "../IntentModalController.astro";
-import ListingFilterController from "../listings/ListingFilterController.astro";
 
 interface CityCard {
   city: string;
@@ -13,32 +12,80 @@ interface CityCard {
   accent?: string;
 }
 
+interface HomepageFilters {
+  city?: string;
+  type?: string;
+  beds?: number | null;
+  maxPrice?: number | null;
+  sort?: string;
+  page?: number;
+}
+
 interface Props {
   site?: any;
   cityCards?: CityCard[];
   listings?: any[];
+  filters?: HomepageFilters;
+  totalMatchingCount?: number;
+  currentPage?: number;
+  totalPages?: number;
+  pageSize?: number;
+  paginationStart?: number;
+  paginationEnd?: number;
+  hasPreviousPage?: boolean;
+  hasNextPage?: boolean;
+  previousPageHref?: string | null;
+  nextPageHref?: string | null;
 }
 
 const {
   site,
   cityCards = [],
   listings = [],
+  filters = {},
+  totalMatchingCount = listings.length,
+  currentPage = 1,
+  totalPages = 1,
+  pageSize = 24,
+  paginationStart = listings.length > 0 ? 1 : 0,
+  paginationEnd = listings.length,
+  hasPreviousPage = false,
+  hasNextPage = false,
+  previousPageHref = null,
+  nextPageHref = null,
 } = Astro.props;
 
+const accent =
+  site?.accent_color || "#1f5a49";
 
+const featuredCities =
+  cityCards.slice(0, 6);
 
-const accent = site?.accent_color || "#1f5a49";
-
-const featuredCities = cityCards.slice(0, 6);
-
-const totalListings =
-  listings.length ||
+const listingCount =
   cityCards.reduce(
-    (total, city) => total + Number(city.count || 0),
+    (total, city) =>
+      total + Number(city.count || 0),
     0
   );
 
-const cityImages: Record<string, string> = {
+const activeFilterCount = [
+  filters.city,
+  filters.type,
+  filters.beds,
+  filters.maxPrice,
+  filters.sort &&
+  filters.sort !== "newest"
+    ? filters.sort
+    : null,
+].filter(Boolean).length;
+
+const hasActiveFilters =
+  activeFilterCount > 0;
+
+const cityImages: Record<
+  string,
+  string
+> = {
   nanaimo:
     "https://images.unsplash.com/photo-1559511260-66a654ae982a?auto=format&fit=crop&w=1200&q=78",
 
@@ -67,16 +114,124 @@ const fallbackCityImages = [
   "https://images.unsplash.com/photo-1464278533981-50106e6176b1?auto=format&fit=crop&w=1200&q=78",
 ];
 
-const formatCount = (value: number) =>
+const formatCount = (
+  value: number
+) =>
   Number(value || 0).toLocaleString();
+
+const resultLabel =
+  totalMatchingCount === 1
+    ? "property"
+    : "properties";
+
+const resultSummary =
+  totalMatchingCount > 0
+    ? `Showing ${formatCount(
+        paginationStart
+      )}–${formatCount(
+        paginationEnd
+      )} of ${formatCount(
+        totalMatchingCount
+      )} ${resultLabel}`
+    : hasActiveFilters
+      ? "No properties match these filters"
+      : "No active properties";
+
+const pageNumbers: number[] = [];
+
+if (totalPages > 1) {
+  const firstVisiblePage =
+    Math.max(
+      1,
+      Math.min(
+        currentPage - 2,
+        totalPages - 4
+      )
+    );
+
+  const lastVisiblePage =
+    Math.min(
+      totalPages,
+      firstVisiblePage + 4
+    );
+
+  for (
+    let page = firstVisiblePage;
+    page <= lastVisiblePage;
+    page += 1
+  ) {
+    pageNumbers.push(page);
+  }
+}
+
+const buildPaginationHref = (
+  page: number
+) => {
+  const params =
+    new URLSearchParams();
+
+  if (filters.city) {
+    params.set(
+      "city",
+      filters.city
+    );
+  }
+
+  if (filters.type) {
+    params.set(
+      "type",
+      filters.type
+    );
+  }
+
+  if (
+    filters.beds !== null &&
+    filters.beds !== undefined
+  ) {
+    params.set(
+      "beds",
+      String(filters.beds)
+    );
+  }
+
+  if (
+    filters.maxPrice !== null &&
+    filters.maxPrice !== undefined
+  ) {
+    params.set(
+      "maxPrice",
+      String(filters.maxPrice)
+    );
+  }
+
+  if (
+    filters.sort &&
+    filters.sort !== "newest"
+  ) {
+    params.set(
+      "sort",
+      filters.sort
+    );
+  }
+
+  if (page > 1) {
+    params.set(
+      "page",
+      String(page)
+    );
+  }
+
+  const queryString =
+    params.toString();
+
+  return queryString
+    ? `/?${queryString}`
+    : "/";
+};
 ---
 
 <div
   class="bc-homepage"
-  data-listing-filter-root
-  data-initial-limit="12"
-  data-singular-label="property"
-  data-plural-label="properties"
   style={`--bc-home-accent: ${accent};`}
 >
   <section class="bc-hero">
@@ -99,17 +254,16 @@ const formatCount = (value: number) =>
           across British Columbia’s most desirable
           communities.
         </p>
-
-       
       </div>
     </div>
   </section>
 
   <div class="bc-search-wrap">
- <form
-  class="bc-search"
-  data-listing-filter-form
->
+    <form
+      class="bc-search"
+      method="GET"
+      action="/"
+    >
       <label class="bc-search__field">
         <span class="bc-search__icon">
           <svg
@@ -119,28 +273,46 @@ const formatCount = (value: number) =>
             <path
               d="M12 21s7-6.2 7-12A7 7 0 0 0 5 9c0 5.8 7 12 7 12Z"
             ></path>
-            <circle cx="12" cy="9" r="2.4"></circle>
+
+            <circle
+              cx="12"
+              cy="9"
+              r="2.4"
+            ></circle>
           </svg>
         </span>
 
         <span class="bc-search__content">
           <strong>Market</strong>
 
-     <select
-  name="city"
-  data-listing-filter
-  data-filter-key="city"
-  data-url-parameter="city"
->
-       <option value="">All markets</option>
+          <select name="city">
+            <option
+              value=""
+              selected={!filters.city}
+            >
+              All markets
+            </option>
 
-{
-  cityCards.map((city) => (
-   <option value={city.city.toLowerCase()}>
-  {city.label}
-</option>
-  ))
-}
+            {
+              cityCards.map((city) => {
+                const cityValue =
+                  city.city
+                    .toLowerCase()
+                    .trim();
+
+                return (
+                  <option
+                    value={cityValue}
+                    selected={
+                      filters.city ===
+                      cityValue
+                    }
+                  >
+                    {city.label}
+                  </option>
+                );
+              })
+            }
           </select>
         </span>
       </label>
@@ -157,39 +329,65 @@ const formatCount = (value: number) =>
           </svg>
         </span>
 
-     <span class="bc-search__content">
-  <strong>Property type</strong>
+        <span class="bc-search__content">
+          <strong>Property type</strong>
 
-<select
-  name="type"
-  data-listing-filter
-  data-filter-key="type"
-  data-url-parameter="type"
->
-    <option value="">Any type</option>
+          <select name="type">
+            <option
+              value=""
+              selected={!filters.type}
+            >
+              Any type
+            </option>
 
-   <option value="house">
-  Homes
-</option>
+            <option
+              value="house"
+              selected={
+                filters.type === "house"
+              }
+            >
+              Homes
+            </option>
 
-   <option value="condo">
-  Condos
-</option>
+            <option
+              value="condo"
+              selected={
+                filters.type === "condo"
+              }
+            >
+              Condos
+            </option>
 
- <option value="townhouse">
-  Townhomes
-</option>
+            <option
+              value="townhouse"
+              selected={
+                filters.type ===
+                "townhouse"
+              }
+            >
+              Townhomes
+            </option>
 
-  <option value="mobile">
-  Mobile homes
-</option>
+            <option
+              value="mobile"
+              selected={
+                filters.type === "mobile"
+              }
+            >
+              Mobile homes
+            </option>
 
- <option value="land">
-  Land
-</option>
-  </select>
-</span>
-</label>
+            <option
+              value="land"
+              selected={
+                filters.type === "land"
+              }
+            >
+              Land
+            </option>
+          </select>
+        </span>
+      </label>
 
       <label class="bc-search__field">
         <span class="bc-search__icon">
@@ -208,19 +406,51 @@ const formatCount = (value: number) =>
         <span class="bc-search__content">
           <strong>Beds</strong>
 
-         <select
-  name="beds"
-  data-listing-filter
-  data-filter-key="beds"
-  data-filter-mode="minimum"
-  data-url-parameter="beds"
->
-            <option value="">Any</option>
-            <option value="1">1+</option>
-            <option value="2">2+</option>
-            <option value="3">3+</option>
-            <option value="4">4+</option>
-            <option value="5">5+</option>
+          <select name="beds">
+            <option
+              value=""
+              selected={
+                filters.beds === null ||
+                filters.beds === undefined
+              }
+            >
+              Any
+            </option>
+
+            <option
+              value="1"
+              selected={filters.beds === 1}
+            >
+              1+
+            </option>
+
+            <option
+              value="2"
+              selected={filters.beds === 2}
+            >
+              2+
+            </option>
+
+            <option
+              value="3"
+              selected={filters.beds === 3}
+            >
+              3+
+            </option>
+
+            <option
+              value="4"
+              selected={filters.beds === 4}
+            >
+              4+
+            </option>
+
+            <option
+              value="5"
+              selected={filters.beds === 5}
+            >
+              5+
+            </option>
           </select>
         </span>
       </label>
@@ -231,7 +461,12 @@ const formatCount = (value: number) =>
             viewBox="0 0 24 24"
             aria-hidden="true"
           >
-            <circle cx="12" cy="12" r="9"></circle>
+            <circle
+              cx="12"
+              cy="12"
+              r="9"
+            ></circle>
+
             <path d="M15 8.5c-.7-.7-1.7-1-3-1-1.7 0-3 .9-3 2.2 0 1.4 1.2 2 3.2 2.5 1.8.5 2.8 1.1 2.8 2.3 0 1.3-1.2 2.2-3 2.2-1.3 0-2.5-.4-3.3-1.2"></path>
             <path d="M12 5.5v13"></path>
           </svg>
@@ -240,154 +475,339 @@ const formatCount = (value: number) =>
         <span class="bc-search__content">
           <strong>Price</strong>
 
-          <select
-  name="maxPrice"
-  data-listing-filter
-  data-filter-key="price"
-  data-filter-mode="maximum"
-  data-url-parameter="maxPrice"
->
-            <option value="">Any price</option>
-            <option value="500000">
+          <select name="maxPrice">
+            <option
+              value=""
+              selected={
+                filters.maxPrice === null ||
+                filters.maxPrice ===
+                  undefined
+              }
+            >
+              Any price
+            </option>
+
+            <option
+              value="500000"
+              selected={
+                filters.maxPrice ===
+                500000
+              }
+            >
               Under $500,000
             </option>
-            <option value="700000">
+
+            <option
+              value="700000"
+              selected={
+                filters.maxPrice ===
+                700000
+              }
+            >
               Under $700,000
             </option>
-            <option value="900000">
+
+            <option
+              value="900000"
+              selected={
+                filters.maxPrice ===
+                900000
+              }
+            >
               Under $900,000
             </option>
-            <option value="1200000">
+
+            <option
+              value="1200000"
+              selected={
+                filters.maxPrice ===
+                1200000
+              }
+            >
               Under $1.2M
             </option>
-            <option value="1600000">
+
+            <option
+              value="1600000"
+              selected={
+                filters.maxPrice ===
+                1600000
+              }
+            >
               Under $1.6M
             </option>
-            <option value="2000000">
+
+            <option
+              value="2000000"
+              selected={
+                filters.maxPrice ===
+                2000000
+              }
+            >
               Under $2M
             </option>
           </select>
         </span>
       </label>
 
-    <label class="bc-search__field">
-  <span class="bc-search__icon">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M7 6h10"></path>
-      <path d="M9 12h6"></path>
-      <path d="M11 18h2"></path>
-    </svg>
-  </span>
+      <label class="bc-search__field">
+        <span class="bc-search__icon">
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path d="M7 6h10"></path>
+            <path d="M9 12h6"></path>
+            <path d="M11 18h2"></path>
+          </svg>
+        </span>
 
-  <span class="bc-search__content">
-    <strong>Sort</strong>
+        <span class="bc-search__content">
+          <strong>Sort</strong>
 
-    <select
-      name="sort"
-      data-listing-sort
-      data-url-parameter="sort"
-    >
-      <option value="newest">Newest</option>
-      <option value="price-low">Price: low to high</option>
-      <option value="price-high">Price: high to low</option>
-    </select>
-  </span>
-</label>
+          <select name="sort">
+            <option
+              value="newest"
+              selected={
+                !filters.sort ||
+                filters.sort === "newest"
+              }
+            >
+              Newest
+            </option>
+
+            <option
+              value="price-low"
+              selected={
+                filters.sort ===
+                "price-low"
+              }
+            >
+              Price: low to high
+            </option>
+
+            <option
+              value="price-high"
+              selected={
+                filters.sort ===
+                "price-high"
+              }
+            >
+              Price: high to low
+            </option>
+          </select>
+        </span>
+      </label>
+
+      <button
+        class="bc-search__submit"
+        type="submit"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <circle
+            cx="11"
+            cy="11"
+            r="7"
+          ></circle>
+
+          <path d="m20 20-4-4"></path>
+        </svg>
+
+        <span>Search</span>
+      </button>
     </form>
   </div>
 
   <section class="bc-search-results">
-  <div class="bc-search-results__heading">
-    <div>
-      <p class="bc-eyebrow">Homes across BC</p>
+    <div class="bc-search-results__heading">
+      <div>
+        <p class="bc-eyebrow">
+          Homes across BC
+        </p>
 
-   <h2 data-listing-count>
-  {listings.length} properties
-</h2>
+        <h2>
+          {formatCount(totalMatchingCount)}{" "}
+          {resultLabel}
+        </h2>
 
-<p
-  class="bc-listing-description"
-  data-listing-description
->
-  Showing the newest {Math.min(12, listings.length)} of{" "}
-  {listings.length} properties
-</p>
-    </div>
-
-    <button
-      class="bc-clear-search"
-      type="button"
-      data-listing-clear
-      hidden
-    >
-      Clear filters
-    </button>
-  </div>
-
-  {
-    listings.length > 0 ? (
-      <>
-        <div
-          class="bc-listing-grid"
-          data-listing-grid
-        >
-          {
-           listings.map((listing, index) => (
-  <div
-    class="bc-filterable-listing"
-    data-listing-item
-    hidden={index >= 12}
-  >
-    <ListingCard
-      listing={listing}
-      priority={index < 4}
-    />
-  </div>
-))
-          }
-        </div>
-
-        <div
-          class="bc-search-results__empty"
-          data-listing-empty
-          hidden
-        >
-          <h3>No matching listings</h3>
-
-          <p>
-            Try changing the market, property type,
-            bedroom count, or maximum price.
-          </p>
-
-          <button
-            type="button"
-            data-listing-clear
-          >
-            Clear filters
-          </button>
-        </div>
-
-        <div class="bc-listing-actions">
-          <button
-            class="bc-show-more"
-            type="button"
-            data-listing-show-more
-          >
-            Show more properties
-          </button>
-        </div>
-      </>
-    ) : (
-      <div class="bc-search-results__empty">
-        <h3>No active listings</h3>
-
-        <p>
-          New listings will appear here when available.
+        <p class="bc-listing-description">
+          {resultSummary}
         </p>
       </div>
-    )
-  }
-</section>
+
+      {
+        hasActiveFilters && (
+          <a
+            class="bc-clear-search"
+            href="/"
+          >
+            Clear filters
+          </a>
+        )
+      }
+    </div>
+
+    {
+      listings.length > 0 ? (
+        <>
+          <div class="bc-listing-grid">
+            {
+              listings.map(
+                (listing, index) => (
+                  <div class="bc-listing-item">
+                    <ListingCard
+                      listing={listing}
+                      priority={index < 4}
+                    />
+                  </div>
+                )
+              )
+            }
+          </div>
+
+          {
+            totalPages > 1 && (
+              <nav
+                class="bc-pagination"
+                aria-label="Listing pages"
+              >
+                <div class="bc-pagination__summary">
+                  Page{" "}
+                  <strong>
+                    {currentPage}
+                  </strong>{" "}
+                  of{" "}
+                  <strong>
+                    {totalPages}
+                  </strong>
+                </div>
+
+                <div class="bc-pagination__links">
+                  {
+                    hasPreviousPage &&
+                    previousPageHref ? (
+                      <a
+                        class="bc-pagination__direction"
+                        href={
+                          previousPageHref
+                        }
+                        rel="prev"
+                      >
+                        <span
+                          aria-hidden="true"
+                        >
+                          ←
+                        </span>
+
+                        Previous
+                      </a>
+                    ) : (
+                      <span
+                        class="bc-pagination__direction bc-pagination__direction--disabled"
+                        aria-disabled="true"
+                      >
+                        <span
+                          aria-hidden="true"
+                        >
+                          ←
+                        </span>
+
+                        Previous
+                      </span>
+                    )
+                  }
+
+                  <div class="bc-pagination__numbers">
+                    {
+                      pageNumbers.map(
+                        (page) =>
+                          page ===
+                          currentPage ? (
+                            <span
+                              class="bc-pagination__page bc-pagination__page--current"
+                              aria-current="page"
+                            >
+                              {page}
+                            </span>
+                          ) : (
+                            <a
+                              class="bc-pagination__page"
+                              href={buildPaginationHref(
+                                page
+                              )}
+                            >
+                              {page}
+                            </a>
+                          )
+                      )
+                    }
+                  </div>
+
+                  {
+                    hasNextPage &&
+                    nextPageHref ? (
+                      <a
+                        class="bc-pagination__direction"
+                        href={nextPageHref}
+                        rel="next"
+                      >
+                        Next
+
+                        <span
+                          aria-hidden="true"
+                        >
+                          →
+                        </span>
+                      </a>
+                    ) : (
+                      <span
+                        class="bc-pagination__direction bc-pagination__direction--disabled"
+                        aria-disabled="true"
+                      >
+                        Next
+
+                        <span
+                          aria-hidden="true"
+                        >
+                          →
+                        </span>
+                      </span>
+                    )
+                  }
+                </div>
+              </nav>
+            )
+          }
+        </>
+      ) : (
+        <div class="bc-search-results__empty">
+          <h3>
+            {hasActiveFilters
+              ? "No matching listings"
+              : "No active listings"}
+          </h3>
+
+          <p>
+            {hasActiveFilters
+              ? "Try changing the market, property type, bedroom count, or maximum price."
+              : "New listings will appear here when available."}
+          </p>
+
+          {
+            hasActiveFilters && (
+              <a href="/">
+                Clear filters
+              </a>
+            )
+          }
+        </div>
+      )
+    }
+  </section>
+
   <main class="bc-main">
     <section
       id="bc-markets"
@@ -395,7 +815,10 @@ const formatCount = (value: number) =>
     >
       <div class="bc-section-heading">
         <div>
-          <p class="bc-eyebrow">Browse by city</p>
+          <p class="bc-eyebrow">
+            Browse by city
+          </p>
+
           <h2>Explore BC markets</h2>
         </div>
 
@@ -406,51 +829,62 @@ const formatCount = (value: number) =>
 
         <a href="/explore">
           View all markets
-          <span aria-hidden="true">→</span>
+          <span aria-hidden="true">
+            →
+          </span>
         </a>
       </div>
 
       <div class="bc-market-grid">
         {
-          featuredCities.map((city, index) => {
-            const key = city.city
-              .toLowerCase()
-              .replace(/\s+/g, "-");
+          featuredCities.map(
+            (city, index) => {
+              const key =
+                city.city
+                  .toLowerCase()
+                  .replace(/\s+/g, "-");
 
-            const image =
-              cityImages[key] ||
-              fallbackCityImages[
-                index % fallbackCityImages.length
-              ];
+              const image =
+                cityImages[key] ||
+                fallbackCityImages[
+                  index %
+                    fallbackCityImages.length
+                ];
 
-            return (
-              <a
-                class="bc-market-card"
-                href={city.href}
-                style={`--market-image: url('${image}')`}
-              >
-                <div class="bc-market-card__shade"></div>
-
-                <div class="bc-market-card__content">
-                  <strong>{city.label}</strong>
-
-                  <span>
-                    {formatCount(city.count)} active{" "}
-                    {city.count === 1
-                      ? "listing"
-                      : "listings"}
-                  </span>
-                </div>
-
-                <span
-                  class="bc-market-card__arrow"
-                  aria-hidden="true"
+              return (
+                <a
+                  class="bc-market-card"
+                  href={city.href}
+                  style={`--market-image: url('${image}')`}
                 >
-                  →
-                </span>
-              </a>
-            );
-          })
+                  <div class="bc-market-card__shade"></div>
+
+                  <div class="bc-market-card__content">
+                    <strong>
+                      {city.label}
+                    </strong>
+
+                    <span>
+                      {formatCount(
+                        city.count
+                      )}{" "}
+                      active{" "}
+                      {city.count === 1
+                        ? "listing"
+                        : "listings"}
+                    </span>
+                  </div>
+
+                  <span
+                    class="bc-market-card__arrow"
+                    aria-hidden="true"
+                  >
+                    →
+                  </span>
+                </a>
+              );
+            }
+          )
         }
       </div>
     </section>
@@ -467,6 +901,7 @@ const formatCount = (value: number) =>
 
         <div>
           <h3>Local knowledge</h3>
+
           <p>
             Detailed insights into communities across
             British Columbia.
@@ -487,6 +922,7 @@ const formatCount = (value: number) =>
 
         <div>
           <h3>Real-time listings</h3>
+
           <p>
             Fresh listings updated throughout the day,
             every day.
@@ -505,6 +941,7 @@ const formatCount = (value: number) =>
 
         <div>
           <h3>Neighbourhood guides</h3>
+
           <p>
             Explore areas, amenities, schools, and
             lifestyle.
@@ -521,6 +958,7 @@ const formatCount = (value: number) =>
 
         <div>
           <h3>BC lifestyle</h3>
+
           <p>
             From mountains to ocean, find the lifestyle
             that fits you.
@@ -549,25 +987,37 @@ const formatCount = (value: number) =>
 
         <a href="/explore">
           View homes for sale
-          <span aria-hidden="true">→</span>
+
+          <span aria-hidden="true">
+            →
+          </span>
         </a>
       </div>
 
       <div class="bc-cta__stats">
         <div class="bc-stat">
           <strong>
-            {formatCount(totalListings)}+
+            {formatCount(listingCount)}+
           </strong>
-          <span>Active listings across BC</span>
+
+          <span>
+            Active listings across BC
+          </span>
         </div>
 
         <div class="bc-stat">
-          <strong>{cityCards.length}+</strong>
-          <span>Communities to explore</span>
+          <strong>
+            {cityCards.length}+
+          </strong>
+
+          <span>
+            Communities to explore
+          </span>
         </div>
 
         <div class="bc-stat">
           <strong>Local</strong>
+
           <span>
             Market information and area expertise
           </span>
@@ -578,6 +1028,7 @@ const formatCount = (value: number) =>
     <section class="bc-resource-strip">
       <a href="/buying-guide">
         <span>01</span>
+
         <div>
           <strong>Buying guide</strong>
           <small>Tips for buyers</small>
@@ -586,6 +1037,7 @@ const formatCount = (value: number) =>
 
       <a href="/market-insights">
         <span>02</span>
+
         <div>
           <strong>Market insights</strong>
           <small>Local trends and data</small>
@@ -594,6 +1046,7 @@ const formatCount = (value: number) =>
 
       <a href="/explore">
         <span>03</span>
+
         <div>
           <strong>Explore BC</strong>
           <small>Browse homes on the map</small>
@@ -602,6 +1055,7 @@ const formatCount = (value: number) =>
 
       <a href="/contact">
         <span>04</span>
+
         <div>
           <strong>Contact</strong>
           <small>Get local help</small>
@@ -612,7 +1066,6 @@ const formatCount = (value: number) =>
 </div>
 
 <IntentModalController listings={listings} />
-<ListingFilterController />
 
 <style>
   .bc-homepage {
@@ -625,13 +1078,13 @@ const formatCount = (value: number) =>
     color: var(--bc-ink);
   }
 
-.bc-hero {
-  position: relative;
-  min-height: 590px;
-  background-image: url("https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2200&q=90");
-  background-position: center;
-  background-size: cover;
-}
+  .bc-hero {
+    position: relative;
+    min-height: 590px;
+    background-image: url("https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2200&q=90");
+    background-position: center;
+    background-size: cover;
+  }
 
   .bc-hero__overlay {
     position: absolute;
@@ -673,28 +1126,24 @@ const formatCount = (value: number) =>
   .bc-hero h1 {
     max-width: 760px;
     margin: 0;
+    color: #fff;
     font-family: var(--f-display, Georgia, serif);
     font-size: clamp(4rem, 7.2vw, 7.2rem);
     font-weight: 500;
     line-height: 0.87;
     letter-spacing: -0.068em;
-      color: #fff;
-  text-shadow:
-    0 2px 10px rgba(0, 0, 0, 0.35),
-    0 8px 30px rgba(0, 0, 0, 0.22);
+    text-shadow:
+      0 2px 10px rgba(0, 0, 0, 0.35),
+      0 8px 30px rgba(0, 0, 0, 0.22);
   }
 
   .bc-hero__copy {
     max-width: 560px;
     margin: 27px 0 0;
+    color: #fff;
     font-size: clamp(1rem, 1.3vw, 1.13rem);
     line-height: 1.6;
-      color: #fff;
   }
-
- 
-
-  
 
   .bc-search-wrap {
     position: relative;
@@ -705,14 +1154,17 @@ const formatCount = (value: number) =>
 
   .bc-search {
     display: grid;
-      grid-template-columns:
-    1.1fr 1.1fr 0.75fr 0.75fr 1fr 0.9fr;
-  min-height: 98px;
+    grid-template-columns:
+      1.1fr 1.1fr 0.75fr
+      0.75fr 1fr 0.9fr;
+    min-height: 98px;
     overflow: hidden;
     border: 1px solid var(--bc-line);
     border-radius: 14px;
     background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 20px 60px rgba(22, 36, 31, 0.14);
+    box-shadow:
+      0 20px 60px
+      rgba(22, 36, 31, 0.14);
     backdrop-filter: blur(18px);
   }
 
@@ -721,8 +1173,9 @@ const formatCount = (value: number) =>
     min-width: 0;
     align-items: center;
     gap: 13px;
-    padding: 22px 22px;
-    border-right: 1px solid var(--bc-line);
+    padding: 22px;
+    border-right:
+      1px solid var(--bc-line);
   }
 
   .bc-search__icon {
@@ -732,7 +1185,8 @@ const formatCount = (value: number) =>
   }
 
   .bc-search__icon svg,
-  .bc-benefit__icon svg {
+  .bc-benefit__icon svg,
+  .bc-search__submit svg {
     width: 100%;
     height: 100%;
     fill: none;
@@ -766,126 +1220,201 @@ const formatCount = (value: number) =>
     cursor: pointer;
   }
 
+  .bc-search__submit {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    border: 0;
+    background: var(--bc-home-accent);
+    color: #fff;
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 850;
+    cursor: pointer;
+    transition:
+      filter 0.18s ease,
+      transform 0.18s ease;
+  }
 
+  .bc-search__submit:hover {
+    filter: brightness(0.94);
+  }
 
- .bc-search-results {
-  width: min(1240px, calc(100% - 48px));
-  margin: 42px auto 0;
-}
+  .bc-search__submit:active {
+    transform: translateY(1px);
+  }
 
-.bc-search-results__heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 24px;
-}
+  .bc-search__submit svg {
+    width: 20px;
+    height: 20px;
+  }
 
-.bc-search-results__heading h2 {
-  margin: 0;
-  font-family: var(--f-display, Georgia, serif);
-  font-size: clamp(2rem, 4vw, 3.4rem);
-  font-weight: 500;
-  line-height: 1;
-  letter-spacing: -0.045em;
-}
+  .bc-search-results {
+    width: min(1240px, calc(100% - 48px));
+    margin: 42px auto 0;
+  }
 
-.bc-search-results__heading > a {
-  color: var(--bc-home-accent);
-  font-size: 0.82rem;
-  font-weight: 800;
-  text-decoration: none;
-}
+  .bc-search-results__heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
 
-.bc-listing-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 24px;
-}
+  .bc-search-results__heading h2 {
+    margin: 0;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(2rem, 4vw, 3.4rem);
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: -0.045em;
+  }
 
-.bc-filterable-listing {
-  min-width: 0;
-}
+  .bc-listing-grid {
+    display: grid;
+    grid-template-columns:
+      repeat(4, minmax(0, 1fr));
+    gap: 24px;
+  }
 
-.bc-listing-description {
-  margin: 10px 0 0;
-  color: var(--bc-muted);
-  font-size: 0.84rem;
-}
+  .bc-listing-item {
+    min-width: 0;
+  }
 
-.bc-clear-search,
-.bc-show-more,
-.bc-search-results__empty button {
-  min-height: 44px;
-  padding: 0 19px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--bc-home-accent);
-  color: #fff;
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 800;
-  cursor: pointer;
-}
+  .bc-listing-description {
+    margin: 10px 0 0;
+    color: var(--bc-muted);
+    font-size: 0.84rem;
+  }
 
-.bc-clear-search[hidden],
-.bc-show-more[hidden] {
-  display: none;
-}
+  .bc-clear-search {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 19px;
+    border-radius: 8px;
+    background: var(--bc-home-accent);
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
 
-.bc-listing-actions {
-  display: flex;
-  justify-content: center;
-  margin-top: 28px;
-}
+  .bc-search-results__empty {
+    padding: 50px 24px;
+    border: 1px solid var(--bc-line);
+    border-radius: 13px;
+    background: var(--bc-cream);
+    text-align: center;
+  }
 
-.bc-show-more {
-  min-width: 190px;
-}
+  .bc-search-results__empty h3 {
+    margin: 0;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.8rem;
+    font-weight: 500;
+  }
 
-.bc-search-results__empty button {
-  margin-top: 8px;
-}
+  .bc-search-results__empty p {
+    max-width: 520px;
+    margin: 12px auto 20px;
+    color: var(--bc-muted);
+    line-height: 1.6;
+  }
 
+  .bc-search-results__empty a {
+    color: var(--bc-home-accent);
+    font-weight: 800;
+    text-decoration: none;
+  }
 
+  .bc-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    margin-top: 34px;
+    padding-top: 25px;
+    border-top: 1px solid var(--bc-line);
+  }
 
-.bc-search-results__empty {
-  padding: 50px 24px;
-  border: 1px solid var(--bc-line);
-  border-radius: 13px;
-  background: var(--bc-cream);
-  text-align: center;
-}
+  .bc-pagination__summary {
+    color: var(--bc-muted);
+    font-size: 0.8rem;
+  }
 
-.bc-search-results__empty h3 {
-  margin: 0;
-  font-family: var(--f-display, Georgia, serif);
-  font-size: 1.8rem;
-  font-weight: 500;
-}
+  .bc-pagination__summary strong {
+    color: var(--bc-ink);
+  }
 
-.bc-search-results__empty p {
-  max-width: 520px;
-  margin: 12px auto 20px;
-  color: var(--bc-muted);
-  line-height: 1.6;
-}
+  .bc-pagination__links {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
 
-.bc-search-results__empty a {
-  color: var(--bc-home-accent);
-  font-weight: 800;
-  text-decoration: none;
-}
+  .bc-pagination__numbers {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
 
-.bc-main {
-  width: min(1240px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 73px 0 90px;
-}
+  .bc-pagination__direction,
+  .bc-pagination__page {
+    display: inline-flex;
+    min-height: 42px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--bc-line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--bc-ink);
+    font-size: 0.77rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .bc-pagination__direction {
+    gap: 8px;
+    padding: 0 15px;
+  }
+
+  .bc-pagination__page {
+    min-width: 42px;
+    padding: 0 10px;
+  }
+
+  .bc-pagination__direction:hover,
+  .bc-pagination__page:hover {
+    border-color: var(--bc-home-accent);
+    color: var(--bc-home-accent);
+  }
+
+  .bc-pagination__page--current {
+    border-color: var(--bc-home-accent);
+    background: var(--bc-home-accent);
+    color: #fff;
+  }
+
+  .bc-pagination__direction--disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .bc-main {
+    width: min(1240px, calc(100% - 48px));
+    margin: 0 auto;
+    padding: 73px 0 90px;
+  }
 
   .bc-section-heading {
     display: grid;
-    grid-template-columns: 1fr 1fr auto;
+    grid-template-columns:
+      1fr 1fr auto;
     gap: 30px;
     align-items: end;
     margin-bottom: 27px;
@@ -919,7 +1448,8 @@ const formatCount = (value: number) =>
 
   .bc-market-grid {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns:
+      repeat(6, minmax(0, 1fr));
     gap: 13px;
   }
 
@@ -998,7 +1528,8 @@ const formatCount = (value: number) =>
     transition: transform 0.18s ease;
   }
 
-  .bc-market-card:hover .bc-market-card__arrow {
+  .bc-market-card:hover
+  .bc-market-card__arrow {
     transform: translateX(3px);
   }
 
@@ -1033,11 +1564,12 @@ const formatCount = (value: number) =>
     padding: 13px;
     place-items: center;
     border-radius: 50%;
-    background: color-mix(
-      in srgb,
-      var(--bc-home-accent) 10%,
-      white
-    );
+    background:
+      color-mix(
+        in srgb,
+        var(--bc-home-accent) 10%,
+        white
+      );
     color: var(--bc-home-accent);
   }
 
@@ -1120,7 +1652,9 @@ const formatCount = (value: number) =>
 
   .bc-stat {
     padding: 12px 28px;
-    border-left: 1px solid rgba(255, 255, 255, 0.16);
+    border-left:
+      1px solid
+      rgba(255, 255, 255, 0.16);
   }
 
   .bc-stat strong {
@@ -1188,25 +1722,32 @@ const formatCount = (value: number) =>
 
   @media (max-width: 1100px) {
     .bc-search {
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns:
+        repeat(2, 1fr);
     }
 
-    .bc-listing-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-    .bc-search__field:nth-of-type(2) {
+    .bc-search__field:nth-of-type(2),
+    .bc-search__field:nth-of-type(4) {
       border-right: 0;
     }
 
-  
+    .bc-search__submit {
+      min-height: 74px;
+    }
+
+    .bc-listing-grid {
+      grid-template-columns:
+        repeat(3, minmax(0, 1fr));
+    }
 
     .bc-market-grid {
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns:
+        repeat(3, 1fr);
     }
 
     .bc-benefits {
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns:
+        repeat(2, 1fr);
     }
 
     .bc-benefit:nth-child(2) {
@@ -1214,7 +1755,8 @@ const formatCount = (value: number) =>
     }
 
     .bc-benefit:nth-child(-n + 2) {
-      border-bottom: 1px solid var(--bc-line);
+      border-bottom:
+        1px solid var(--bc-line);
     }
 
     .bc-cta {
@@ -1238,17 +1780,18 @@ const formatCount = (value: number) =>
     }
 
     .bc-search-results {
-  width: calc(100% - 32px);
-}
+      width: calc(100% - 32px);
+    }
 
-.bc-search-results__heading {
-  align-items: start;
-  flex-direction: column;
-}
+    .bc-search-results__heading {
+      align-items: start;
+      flex-direction: column;
+    }
 
-.bc-listing-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
+    .bc-listing-grid {
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+    }
 
     .bc-hero__inner,
     .bc-search-wrap,
@@ -1261,7 +1804,8 @@ const formatCount = (value: number) =>
     }
 
     .bc-hero h1 {
-      font-size: clamp(3.4rem, 16vw, 5.5rem);
+      font-size:
+        clamp(3.4rem, 16vw, 5.5rem);
     }
 
     .bc-search-wrap {
@@ -1272,13 +1816,29 @@ const formatCount = (value: number) =>
       grid-template-columns: 1fr;
     }
 
-    .bc-search__field {
+    .bc-search__field,
+    .bc-search__field:nth-of-type(2),
+    .bc-search__field:nth-of-type(4) {
       border-right: 0;
-      border-bottom: 1px solid var(--bc-line);
+      border-bottom:
+        1px solid var(--bc-line);
     }
 
-    .bc-search__field:nth-of-type(2) {
-      border-right: 0;
+    .bc-search__submit {
+      min-height: 64px;
+    }
+
+    .bc-pagination {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .bc-pagination__links {
+      justify-content: space-between;
+    }
+
+    .bc-pagination__numbers {
+      display: none;
     }
 
     .bc-section-heading {
@@ -1288,7 +1848,8 @@ const formatCount = (value: number) =>
     }
 
     .bc-market-grid {
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns:
+        repeat(2, 1fr);
     }
 
     .bc-market-card {
@@ -1302,7 +1863,8 @@ const formatCount = (value: number) =>
     .bc-benefit,
     .bc-benefit:nth-child(2) {
       border-right: 0;
-      border-bottom: 1px solid var(--bc-line);
+      border-bottom:
+        1px solid var(--bc-line);
     }
 
     .bc-benefit:last-child {
@@ -1319,7 +1881,9 @@ const formatCount = (value: number) =>
 
     .bc-stat {
       padding: 20px 0;
-      border-top: 1px solid rgba(255, 255, 255, 0.16);
+      border-top:
+        1px solid
+        rgba(255, 255, 255, 0.16);
       border-left: 0;
     }
 
@@ -1332,7 +1896,8 @@ const formatCount = (value: number) =>
     }
 
     .bc-resource-strip > a:nth-child(-n + 2) {
-      border-bottom: 1px solid var(--bc-line);
+      border-bottom:
+        1px solid var(--bc-line);
     }
   }
 
@@ -1342,8 +1907,8 @@ const formatCount = (value: number) =>
     }
 
     .bc-listing-grid {
-  grid-template-columns: 1fr;
-}
+      grid-template-columns: 1fr;
+    }
 
     .bc-market-card {
       min-height: 210px;
@@ -1355,7 +1920,8 @@ const formatCount = (value: number) =>
 
     .bc-resource-strip > a {
       border-right: 0;
-      border-bottom: 1px solid var(--bc-line);
+      border-bottom:
+        1px solid var(--bc-line);
     }
 
     .bc-resource-strip > a:last-child {
