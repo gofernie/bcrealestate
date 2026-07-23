@@ -1,0 +1,816 @@
+---
+type Props = {
+  rootSelector?: string;
+};
+
+const {
+  rootSelector = "[data-listing-filter-root]",
+} = Astro.props;
+---
+
+<script is:inline define:vars={{ rootSelector }}>
+  function initializeListingFilters() {
+    const roots = document.querySelectorAll(rootSelector);
+
+    roots.forEach((root) => {
+      if (!(root instanceof HTMLElement)) return;
+      if (root.dataset.listingFiltersReady === "true") return;
+
+      root.dataset.listingFiltersReady = "true";
+
+      const grid = root.querySelector("[data-listing-grid]");
+      if (!(grid instanceof HTMLElement)) return;
+
+      const items = Array.from(
+        grid.querySelectorAll("[data-listing-item]")
+      ).filter((item) => item instanceof HTMLElement);
+
+      items.forEach((item, index) => {
+        item.dataset.originalIndex = String(index);
+      });
+
+      const filterControls = Array.from(
+  root.querySelectorAll("[data-listing-filter]")
+).filter(
+  (control) =>
+    control instanceof HTMLSelectElement ||
+    control instanceof HTMLInputElement
+);
+
+      const multiFilterGroups = Array.from(
+        root.querySelectorAll("[data-listing-multi-filter]")
+      ).filter((group) => group instanceof HTMLElement);
+
+      const sortControl = root.querySelector("[data-listing-sort]");
+      const clearButtons = Array.from(
+        root.querySelectorAll("[data-listing-clear]")
+      );
+      const showMoreButton = root.querySelector("[data-listing-show-more]");
+      const countElement = root.querySelector("[data-listing-count]");
+      const descriptionElement = root.querySelector(
+        "[data-listing-description]"
+      );
+      const emptyElement = root.querySelector("[data-listing-empty]");
+      const form = root.querySelector("[data-listing-filter-form]");
+
+      const initialLimit = Number(root.dataset.initialLimit) || 12;
+      const singularLabel = root.dataset.singularLabel || "property";
+      const pluralLabel = root.dataset.pluralLabel || "properties";
+
+      let visibleLimit = initialLimit;
+
+      const getNumber = (value) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+      };
+
+      const getDate = (value) => {
+        const timestamp = new Date(value || 0).getTime();
+        return Number.isFinite(timestamp) ? timestamp : 0;
+      };
+
+      const normalize = (value) =>
+        String(value || "").toLowerCase().trim();
+
+      const getItemValue = (item, key) => {
+        if (!(item instanceof HTMLElement)) return "";
+
+        if (item.dataset[key] !== undefined) {
+          return item.dataset[key] || "";
+        }
+
+        const card = item.querySelector("[data-listing-id]");
+        if (!(card instanceof HTMLElement)) return "";
+
+        if (key === "price") {
+          return card.dataset.rawPrice || card.dataset.price || "";
+        }
+
+        if (key === "type") {
+          return card.dataset.type || card.dataset.propertyType || "";
+        }
+
+        return card.dataset[key] || "";
+      };
+
+      const getSelectedMultiValues = (group) =>
+        Array.from(
+          group.querySelectorAll("[data-multi-filter-option]:checked")
+        )
+          .filter((input) => input instanceof HTMLInputElement)
+          .map((input) => input.value)
+          .filter(Boolean);
+
+      const itemMatchesControl = (item, control) => {
+        const selectedValue = control.value || "";
+        if (!selectedValue) return true;
+
+        const key = control.dataset.filterKey || "";
+        const mode = control.dataset.filterMode || "exact";
+        if (!key) return true;
+
+        const itemValue = getItemValue(item, key);
+
+        if (mode === "maximum") {
+          const maximum = getNumber(selectedValue);
+          const numericItemValue = getNumber(itemValue);
+
+          return numericItemValue > 0 && numericItemValue <= maximum;
+        }
+
+        if (mode === "minimum") {
+          return getNumber(itemValue) >= getNumber(selectedValue);
+        }
+
+        if (mode === "includes") {
+          return normalize(itemValue).includes(normalize(selectedValue));
+        }
+
+        return normalize(itemValue) === normalize(selectedValue);
+      };
+
+      const itemMatchesMultiGroup = (item, group) => {
+        const selectedValues = getSelectedMultiValues(group);
+        if (selectedValues.length === 0) return true;
+
+        const key = group.dataset.filterKey || "";
+        if (!key) return true;
+
+        const itemValue = normalize(getItemValue(item, key));
+
+        return selectedValues.some(
+          (selectedValue) =>
+            itemValue === normalize(selectedValue)
+        );
+      };
+
+      const getFilteredItems = () =>
+        items.filter(
+          (item) =>
+            filterControls.every((control) =>
+              itemMatchesControl(item, control)
+            ) &&
+            multiFilterGroups.every((group) =>
+              itemMatchesMultiGroup(item, group)
+            )
+        );
+
+      const getSortValue = () =>
+        sortControl instanceof HTMLSelectElement
+          ? sortControl.value
+          : "newest";
+
+      const sortItems = (filteredItems) => {
+        const sortValue = getSortValue();
+
+        return [...filteredItems].sort((itemA, itemB) => {
+          const priceA = getNumber(getItemValue(itemA, "price"));
+          const priceB = getNumber(getItemValue(itemB, "price"));
+          const dateA = getDate(getItemValue(itemA, "listedAt"));
+          const dateB = getDate(getItemValue(itemB, "listedAt"));
+          const originalA = getNumber(
+            getItemValue(itemA, "originalIndex")
+          );
+          const originalB = getNumber(
+            getItemValue(itemB, "originalIndex")
+          );
+
+          if (sortValue === "price-low") {
+            if (!priceA && priceB) return 1;
+            if (priceA && !priceB) return -1;
+            return priceA - priceB;
+          }
+
+          if (sortValue === "price-high") {
+            return priceB - priceA;
+          }
+
+          if (dateA === dateB) {
+            return originalA - originalB;
+          }
+
+          return dateB - dateA;
+        });
+      };
+const sortMultiOptions = (group) => {
+  const optionsContainer = group.querySelector(
+    ".area-filter__options"
+  );
+
+  if (!(optionsContainer instanceof HTMLElement)) {
+    return;
+  }
+
+  const rows = Array.from(
+    optionsContainer.querySelectorAll(
+      "[data-area-option-row]"
+    )
+  ).filter(
+    (row) => row instanceof HTMLElement
+  );
+
+  rows.sort((rowA, rowB) => {
+    const inputA = rowA.querySelector(
+      "[data-multi-filter-option]"
+    );
+
+    const inputB = rowB.querySelector(
+      "[data-multi-filter-option]"
+    );
+
+    const checkedA =
+      inputA instanceof HTMLInputElement &&
+      inputA.checked;
+
+    const checkedB =
+      inputB instanceof HTMLInputElement &&
+      inputB.checked;
+
+    if (checkedA !== checkedB) {
+      return checkedA ? -1 : 1;
+    }
+
+    const indexA = Number(
+      rowA.dataset.originalIndex || 0
+    );
+
+    const indexB = Number(
+      rowB.dataset.originalIndex || 0
+    );
+
+    return indexA - indexB;
+  });
+
+  rows.forEach((row) => {
+    optionsContainer.appendChild(row);
+  });
+};
+      const updateMultiSummary = (group) => {
+        const summary = group.querySelector(
+          "[data-multi-filter-summary]"
+        );
+
+        if (!(summary instanceof HTMLElement)) return;
+
+        const selectedInputs = Array.from(
+          group.querySelectorAll(
+            "[data-multi-filter-option]:checked"
+          )
+        ).filter((input) => input instanceof HTMLInputElement);
+
+        if (selectedInputs.length === 0) {
+          summary.textContent = "All areas";
+          return;
+        }
+
+        if (selectedInputs.length === 1) {
+          const option = selectedInputs[0].closest(
+            ".area-filter__option"
+          );
+          const label = option?.querySelector(
+            ".area-filter__label"
+          );
+
+          summary.textContent =
+            label?.textContent?.trim() ||
+            selectedInputs[0].value;
+
+          return;
+        }
+
+        summary.textContent =
+          `${selectedInputs.length} areas selected`;
+      };
+
+      const hasActiveFilters = () =>
+        filterControls.some((control) => Boolean(control.value)) ||
+        multiFilterGroups.some(
+          (group) => getSelectedMultiValues(group).length > 0
+        );
+
+      const updateUrl = () => {
+        const url = new URL(window.location.href);
+
+        filterControls.forEach((control) => {
+          const parameter =
+            control.dataset.urlParameter ||
+            control.name ||
+            control.dataset.filterKey;
+
+          if (!parameter) return;
+
+          if (control.value) {
+            url.searchParams.set(parameter, control.value);
+          } else {
+            url.searchParams.delete(parameter);
+          }
+        });
+
+        multiFilterGroups.forEach((group) => {
+          const parameter =
+            group.dataset.urlParameter ||
+            group.dataset.filterKey;
+
+          if (!parameter) return;
+
+          const values = getSelectedMultiValues(group);
+
+          if (values.length > 0) {
+            url.searchParams.set(parameter, values.join(","));
+          } else {
+            url.searchParams.delete(parameter);
+          }
+        });
+
+        if (sortControl instanceof HTMLSelectElement) {
+          const parameter =
+            sortControl.dataset.urlParameter || "sort";
+
+          if (
+            sortControl.value &&
+            sortControl.value !== "newest"
+          ) {
+            url.searchParams.set(parameter, sortControl.value);
+          } else {
+            url.searchParams.delete(parameter);
+          }
+        }
+
+        window.history.replaceState(
+          {},
+          "",
+          `${url.pathname}${url.search}${url.hash}`
+        );
+      };
+
+      const updateDescription = (filteredCount, visibleCount) => {
+        if (!descriptionElement) return;
+
+        if (filteredCount === 0) {
+          descriptionElement.textContent =
+            "No listings match these filters";
+          return;
+        }
+
+        if (visibleCount < filteredCount) {
+          descriptionElement.textContent =
+            `Showing ${visibleCount} of ${filteredCount}`;
+          return;
+        }
+
+        descriptionElement.textContent =
+          hasActiveFilters()
+            ? "All matching listings shown"
+            : "Showing the newest listings";
+      };
+
+      const renderListings = ({
+        resetLimit = false,
+        updateHistory = true,
+      } = {}) => {
+        if (resetLimit) {
+          visibleLimit = initialLimit;
+        }
+
+        const filteredItems = getFilteredItems();
+        const sortedItems = sortItems(filteredItems);
+        const visibleItems = sortedItems.slice(0, visibleLimit);
+
+        items.forEach((item) => {
+          item.hidden = true;
+        });
+
+        sortedItems.forEach((item) => {
+          grid.appendChild(item);
+        });
+
+        visibleItems.forEach((item) => {
+          item.hidden = false;
+        });
+
+        const filteredCount = filteredItems.length;
+        const visibleCount = visibleItems.length;
+
+        if (countElement) {
+          const label =
+            filteredCount === 1
+              ? singularLabel
+              : pluralLabel;
+
+          countElement.textContent =
+            `${filteredCount} ${label}`;
+        }
+
+        updateDescription(filteredCount, visibleCount);
+
+        clearButtons.forEach((button) => {
+          if (!(button instanceof HTMLElement)) return;
+
+          const hasActiveControls =
+            hasActiveFilters() ||
+            (
+              sortControl instanceof HTMLSelectElement &&
+              sortControl.value !== "newest"
+            );
+
+          button.hidden = !hasActiveControls;
+        });
+
+        if (showMoreButton instanceof HTMLElement) {
+          showMoreButton.hidden =
+            filteredCount === 0 ||
+            visibleCount >= filteredCount;
+        }
+
+        if (emptyElement instanceof HTMLElement) {
+          emptyElement.hidden = filteredCount !== 0;
+        }
+
+        grid.hidden = filteredCount === 0;
+
+        multiFilterGroups.forEach(updateMultiSummary);
+
+        if (updateHistory) {
+          updateUrl();
+        }
+      };
+filterControls.forEach((control) => {
+  control.addEventListener("change", () => {
+    renderListings({
+      resetLimit: true,
+      updateHistory: true,
+    });
+  });
+});
+      const loadValuesFromUrl = () => {
+        const params = new URLSearchParams(
+          window.location.search
+        );
+
+        filterControls.forEach((control) => {
+          const parameter =
+            control.dataset.urlParameter ||
+            control.name ||
+            control.dataset.filterKey;
+
+          if (!parameter) return;
+
+          const value = params.get(parameter) || "";
+
+          if (control instanceof HTMLSelectElement) {
+            const optionExists = Array.from(
+              control.options
+            ).some((option) => option.value === value);
+
+            if (optionExists) {
+              control.value = value;
+            }
+          } else {
+            control.value = value;
+          }
+        });
+
+        multiFilterGroups.forEach((group) => {
+          const parameter =
+            group.dataset.urlParameter ||
+            group.dataset.filterKey;
+
+          if (!parameter) return;
+
+          const values = (params.get(parameter) || "")
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean);
+
+          group.querySelectorAll(
+            "[data-multi-filter-option]"
+          ).forEach((input) => {
+            if (input instanceof HTMLInputElement) {
+              input.checked = values.includes(input.value);
+            }
+          });
+
+          sortMultiOptions(group);
+updateMultiSummary(group);
+        });
+
+        if (sortControl instanceof HTMLSelectElement) {
+          const parameter =
+            sortControl.dataset.urlParameter || "sort";
+          const value = params.get(parameter) || "newest";
+
+          const optionExists = Array.from(
+            sortControl.options
+          ).some((option) => option.value === value);
+
+          if (optionExists) {
+            sortControl.value = value;
+          }
+        }
+      };
+
+      const closeMultiGroup = (group) => {
+        const menu = group.querySelector(
+          "[data-multi-filter-menu]"
+        );
+        const trigger = group.querySelector(
+          "[data-multi-filter-trigger]"
+        );
+
+        group.dataset.open = "false";
+
+        if (menu instanceof HTMLElement) {
+          menu.hidden = true;
+        }
+
+        if (trigger instanceof HTMLElement) {
+          trigger.setAttribute("aria-expanded", "false");
+        }
+      };
+
+     const openMultiGroup = (group) => {
+  sortMultiOptions(group);
+
+  multiFilterGroups.forEach((candidate) => {
+    if (candidate !== group) {
+      closeMultiGroup(candidate);
+    }
+  });
+
+  const menu = group.querySelector(
+    "[data-multi-filter-menu]"
+  );
+
+  const trigger = group.querySelector(
+    "[data-multi-filter-trigger]"
+  );
+
+  group.dataset.open = "true";
+
+  if (menu instanceof HTMLElement) {
+    menu.hidden = false;
+  }
+
+  if (trigger instanceof HTMLElement) {
+    trigger.setAttribute(
+      "aria-expanded",
+      "true"
+    );
+  }
+};
+
+      multiFilterGroups.forEach((group) => {
+        const trigger = group.querySelector(
+          "[data-multi-filter-trigger]"
+        );
+        const doneButton = group.querySelector(
+          "[data-multi-filter-done]"
+        );
+        const clearButton = group.querySelector(
+          "[data-multi-filter-clear]"
+        );
+
+        trigger?.addEventListener("click", () => {
+          const isOpen = group.dataset.open === "true";
+
+          if (isOpen) {
+            closeMultiGroup(group);
+          } else {
+            openMultiGroup(group);
+          }
+        });
+
+        group.querySelectorAll(
+          "[data-multi-filter-option]"
+        ).forEach((input) => {
+     input.addEventListener("change", () => {
+  updateMultiSummary(group);
+
+  renderListings({
+              resetLimit: true,
+              updateHistory: true,
+            });
+          });
+        });
+
+        clearButton?.addEventListener("click", () => {
+          group.querySelectorAll(
+            "[data-multi-filter-option]"
+          ).forEach((input) => {
+            if (input instanceof HTMLInputElement) {
+              input.checked = false;
+            }
+          });
+
+          renderListings({
+            resetLimit: true,
+            updateHistory: true,
+          });
+        });
+
+      doneButton?.addEventListener("click", () => {
+  sortMultiOptions(group);
+  closeMultiGroup(group);
+});
+      });
+
+      document.addEventListener("click", (event) => {
+        const target = event.target;
+
+        multiFilterGroups.forEach((group) => {
+          if (
+            target instanceof Node &&
+            !group.contains(target)
+          ) {
+            closeMultiGroup(group);
+          }
+        });
+      });
+
+      sortControl?.addEventListener("change", () => {
+        renderListings({
+          resetLimit: true,
+          updateHistory: true,
+        });
+      });
+
+      form?.addEventListener("submit", (event) => {
+        event.preventDefault();
+
+        renderListings({
+          resetLimit: true,
+          updateHistory: true,
+        });
+      });
+
+      clearButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          filterControls.forEach((control) => {
+            control.value = "";
+          });
+
+          multiFilterGroups.forEach((group) => {
+            group.querySelectorAll(
+              "[data-multi-filter-option]"
+            ).forEach((input) => {
+              if (input instanceof HTMLInputElement) {
+                input.checked = false;
+              }
+            });
+
+            closeMultiGroup(group);
+          });
+
+          if (sortControl instanceof HTMLSelectElement) {
+            sortControl.value = "newest";
+          }
+
+          renderListings({
+            resetLimit: true,
+            updateHistory: true,
+          });
+        });
+      });
+
+      showMoreButton?.addEventListener("click", () => {
+        visibleLimit += initialLimit;
+
+        renderListings({
+          resetLimit: false,
+          updateHistory: false,
+        });
+      });
+
+      loadValuesFromUrl();
+
+      renderListings({
+        resetLimit: true,
+        updateHistory: false,
+      });
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener(
+      "DOMContentLoaded",
+      initializeListingFilters,
+      { once: true }
+    );
+  } else {
+    initializeListingFilters();
+  }
+
+  document.addEventListener(
+    "astro:page-load",
+    initializeListingFilters
+  );
+
+  const singleFilterGroups = document.querySelectorAll(
+  "[data-single-filter-group]"
+);
+
+function closeSingleFilter(group) {
+  const trigger = group.querySelector(
+    "[data-single-filter-trigger]"
+  );
+
+  const menu = group.querySelector(
+    "[data-single-filter-menu]"
+  );
+
+  group.dataset.open = "false";
+  trigger?.setAttribute("aria-expanded", "false");
+
+  if (menu) {
+    menu.hidden = true;
+  }
+}
+
+function openSingleFilter(group) {
+  document
+    .querySelectorAll("[data-single-filter-group]")
+    .forEach((otherGroup) => {
+      if (otherGroup !== group) {
+        closeSingleFilter(otherGroup);
+      }
+    });
+
+  const trigger = group.querySelector(
+    "[data-single-filter-trigger]"
+  );
+
+  const menu = group.querySelector(
+    "[data-single-filter-menu]"
+  );
+
+  group.dataset.open = "true";
+  trigger?.setAttribute("aria-expanded", "true");
+
+  if (menu) {
+    menu.hidden = false;
+  }
+}
+
+singleFilterGroups.forEach((group) => {
+  const trigger = group.querySelector(
+    "[data-single-filter-trigger]"
+  );
+
+  const input = group.querySelector(
+    "[data-single-filter-input]"
+  );
+
+  const summary = group.querySelector(
+    "[data-single-filter-summary]"
+  );
+
+  const options = group.querySelectorAll(
+    "[data-single-filter-option]"
+  );
+
+  trigger?.addEventListener("click", () => {
+    const isOpen = group.dataset.open === "true";
+
+    if (isOpen) {
+      closeSingleFilter(group);
+    } else {
+      openSingleFilter(group);
+    }
+  });
+
+  options.forEach((option) => {
+    option.addEventListener("click", () => {
+      const value = option.dataset.value || "";
+      const label = option.dataset.label || "";
+
+      if (input) {
+        input.value = value;
+        input.dispatchEvent(
+          new Event("change", { bubbles: true })
+        );
+      }
+
+      if (summary) {
+        summary.textContent = label;
+      }
+
+      options.forEach((item) => {
+        item.classList.toggle(
+          "is-selected",
+          item === option
+        );
+      });
+
+      closeSingleFilter(group);
+    });
+  });
+});
+
+document.addEventListener("click", (event) => {
+  singleFilterGroups.forEach((group) => {
+    if (!group.contains(event.target)) {
+      closeSingleFilter(group);
+    }
+  });
+});
+</script>

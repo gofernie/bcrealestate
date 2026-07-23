@@ -1,0 +1,358 @@
+---
+interface LocationCard {
+  area?: string;
+  label: string;
+  count?: number;
+}
+
+interface Props {
+  locationCards?: LocationCard[];
+}
+
+const { locationCards = [] } = Astro.props;
+
+const areas = locationCards
+  .filter((location) => Boolean(location.area))
+  .filter(
+    (location, index, all) =>
+      all.findIndex(
+        (candidate) => candidate.area === location.area
+      ) === index
+  );
+---
+
+<div
+  class="area-filter"
+  data-listing-multi-filter
+  data-filter-key="area"
+  data-url-parameter="areas"
+>
+  <button
+    class="area-filter__trigger"
+    type="button"
+    aria-haspopup="true"
+    aria-expanded="false"
+    data-multi-filter-trigger
+  >
+    <span class="bc-search__icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24">
+        <path d="M4 6h16"></path>
+        <path d="M6 12h12"></path>
+        <path d="M8 18h8"></path>
+      </svg>
+    </span>
+
+    <span class="bc-search__content">
+      <strong>Area</strong>
+      <span data-multi-filter-summary>All areas</span>
+    </span>
+
+    <svg
+      class="area-filter__chevron"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path d="m7 9 5 5 5-5"></path>
+    </svg>
+  </button>
+
+  <div
+    class="area-filter__menu"
+    data-multi-filter-menu
+    hidden
+  >
+    <div class="area-filter__header">
+      <strong>Select areas</strong>
+
+      <button type="button" data-multi-filter-clear>
+        Clear
+      </button>
+    </div>
+
+    <div class="area-filter__options">
+      {
+        areas.map((location, index) => (
+          <label
+            class="area-filter__option"
+            data-area-option-row
+            data-original-index={index}
+          >
+            <input
+              class="area-filter__checkbox"
+              type="checkbox"
+              value={location.area}
+              data-multi-filter-option
+            />
+
+            <span class="area-filter__label">
+              {location.label}
+            </span>
+
+            {
+              typeof location.count === "number" && (
+                <span class="area-filter__count">
+                  {location.count.toLocaleString()}
+                </span>
+              )
+            }
+
+            <span
+              class="area-filter__check"
+              aria-hidden="true"
+            >
+              ✓
+            </span>
+          </label>
+        ))
+      }
+    </div>
+
+    <div class="area-filter__footer">
+      <button
+        class="area-filter__done"
+        type="button"
+        data-multi-filter-done
+      >
+        Done
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .area-filter {
+    position: relative;
+    min-width: 0;
+    border-right: 1px solid var(--bc-line);
+  }
+
+  .area-filter__trigger {
+    display: flex;
+    width: 100%;
+    min-height: 98px;
+    align-items: center;
+    gap: 13px;
+    padding: 22px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .area-filter__trigger > span:first-child {
+    display: block;
+    width: 31px;
+    height: 31px;
+    flex: 0 0 31px;
+  }
+
+  .area-filter__trigger > span:first-child svg {
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.65;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .area-filter__trigger > span:nth-child(2) {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .area-filter__trigger > span:nth-child(2) strong {
+    font-size: 0.77rem;
+  }
+
+  .area-filter__trigger > span:nth-child(2) > span {
+    overflow: hidden;
+    color: var(--bc-muted);
+    font-size: 0.78rem;
+    font-weight: 400;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .area-filter__chevron {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 0.18s ease;
+  }
+
+  .area-filter[data-open="true"] .area-filter__chevron {
+    transform: rotate(180deg);
+  }
+
+  .area-filter__menu {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + 6px);
+    right: 0;
+    width: min(340px, calc(100vw - 32px));
+    overflow: hidden;
+    border: 1px solid var(--bc-line);
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 24px 70px rgba(20, 32, 28, 0.18);
+  }
+
+  .area-filter__header,
+  .area-filter__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 16px;
+  }
+
+  .area-filter__header {
+    border-bottom: 1px solid var(--bc-line);
+  }
+
+  .area-filter__header button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--bc-home-accent);
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .area-filter__options {
+    max-height: 330px;
+    overflow-y: auto;
+  }
+
+  .area-filter__option {
+    position: relative;
+    display: grid;
+    width: 100%;
+    min-height: 44px;
+    grid-template-columns: minmax(0, 1fr) auto 20px;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--bc-line);
+    background: #fff;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .area-filter__option:last-child {
+    border-bottom: 0;
+  }
+
+  .area-filter__option:hover {
+    background: var(--bc-cream);
+  }
+
+  .area-filter__checkbox {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .area-filter__label {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.82rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .area-filter__count {
+    color: var(--bc-muted);
+    font-size: 0.72rem;
+  }
+
+  .area-filter__check {
+    display: block;
+    opacity: 0;
+    color: var(--bc-home-accent);
+    font-size: 1rem;
+    font-weight: 900;
+    text-align: right;
+  }
+
+  .area-filter__option:has(
+      .area-filter__checkbox:checked
+    ) {
+    background:
+      color-mix(
+        in srgb,
+        var(--bc-home-accent) 8%,
+        white
+      );
+    color: var(--bc-home-accent);
+    font-weight: 750;
+  }
+
+  .area-filter__option:has(
+      .area-filter__checkbox:checked
+    )
+    .area-filter__count {
+    color: var(--bc-home-accent);
+  }
+
+  .area-filter__option:has(
+      .area-filter__checkbox:checked
+    )
+    .area-filter__check {
+    opacity: 1;
+  }
+
+  .area-filter__footer {
+    justify-content: flex-end;
+    border-top: 1px solid var(--bc-line);
+  }
+
+  .area-filter__done {
+    min-height: 39px;
+    padding: 0 18px;
+    border: 0;
+    border-radius: 7px;
+    background: var(--bc-home-accent);
+    color: #fff;
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  @media (max-width: 760px) {
+    .area-filter {
+      border-right: 0;
+      border-bottom: 1px solid var(--bc-line);
+    }
+
+    .area-filter__trigger {
+      min-height: auto;
+    }
+
+    .area-filter__menu {
+      top: calc(100% - 1px);
+      right: 16px;
+      left: 16px;
+      width: auto;
+      border-radius: 0 0 12px 12px;
+      box-shadow: 0 16px 35px rgba(20, 32, 28, 0.15);
+    }
+  }
+</style>

@@ -2,63 +2,77 @@
 import ListingCard from "../ListingCard.astro";
 import IntentModalController from "../IntentModalController.astro";
 import ListingFilterController from "../listings/ListingFilterController.astro";
-
-interface CityCard {
-  city: string;
+import AreaMultiSelect from "../listings/AreaMultiSelect.astro";
+import SingleSelectDropdown from "../listings/SingleSelectDropdown.astro";
+interface LocationCard {
+  city?: string;
+  area?: string;
   label: string;
-  siteName?: string;
   href: string;
-  areasHref?: string;
   count: number;
-  accent?: string;
+  image?: string;
 }
 
 interface Props {
   site?: any;
-  cityCards?: CityCard[];
   listings?: any[];
+  locationCards?: LocationCard[];
+  mode?: "province" | "city";
+  city?: string;
 }
 
 const {
   site,
-  cityCards = [],
   listings = [],
+  locationCards = [],
+  mode = "province",
+  city = "",
 } = Astro.props;
 
+const isCityMode = mode === "city";
 
+const locationName = isCityMode
+  ? city
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase())
+  : "British Columbia";
 
-const accent = site?.accent_color || "#1f5a49";
+const heroEyebrow = isCityMode
+  ? `Real estate in ${locationName}, British Columbia`
+  : "Real estate across British Columbia";
 
-const featuredCities = cityCards.slice(0, 6);
+const heroTitle = isCityMode
+  ? `Find your place in ${locationName}.`
+  : "Find your place in British Columbia.";
+
+const heroCopy = isCityMode
+  ? `Explore homes, condos, townhomes, and land across ${locationName}’s neighbourhoods.`
+  : "Explore homes, condos, townhomes, and land across British Columbia’s most desirable communities.";
+
+const browseEyebrow = isCityMode
+  ? "Browse by neighbourhood"
+  : "Browse by city";
+
+const browseHeading = isCityMode
+  ? `Explore ${locationName} neighbourhoods`
+  : "Explore BC markets";
+
+const accent =
+  site?.accent_color ||
+  "#1f5a49";
+
+const featuredLocations =
+  locationCards.slice(0, 6);
 
 const totalListings =
   listings.length ||
-  cityCards.reduce(
-    (total, city) => total + Number(city.count || 0),
+  locationCards.reduce(
+    (total, location) =>
+      total + Number(location.count || 0),
     0
   );
 
-const cityImages: Record<string, string> = {
-  nanaimo:
-    "https://images.unsplash.com/photo-1559511260-66a654ae982a?auto=format&fit=crop&w=1200&q=78",
-
-  parksville:
-    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=78",
-
-  whistler:
-    "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=78",
-
-  tofino:
-    "https://images.unsplash.com/photo-1500534314209-a25ddb2bd4297?auto=format&fit=crop&w=1200&q=78",
-
-  fernie:
-    "https://images.unsplash.com/photo-1486911278844-a81c5267e227?auto=format&fit=crop&w=1200&q=78",
-
-  sparwood:
-    "https://images.unsplash.com/photo-1464278533981-50106e6176b1?auto=format&fit=crop&w=1200&q=78",
-};
-
-const fallbackCityImages = [
+const fallbackLocationImages = [
   "https://images.unsplash.com/photo-1559511260-66a654ae982a?auto=format&fit=crop&w=1200&q=78",
   "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=78",
   "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=78",
@@ -71,8 +85,13 @@ const formatCount = (value: number) =>
   Number(value || 0).toLocaleString();
 ---
 
+
+
 <div
-  class="bc-homepage"
+  class:list={[
+    "bc-homepage",
+    { "bc-homepage--city": isCityMode },
+  ]}
   data-listing-filter-root
   data-initial-limit="12"
   data-singular-label="property"
@@ -84,21 +103,15 @@ const formatCount = (value: number) =>
 
     <div class="bc-hero__inner">
       <div class="bc-hero__content">
-        <p class="bc-eyebrow">
-          Real estate across British Columbia
-        </p>
+    <p class="bc-eyebrow">
+  {heroEyebrow}
+</p>
 
-        <h1>
-          Find your place
-          <br />
-          in British Columbia.
-        </h1>
+<h1>{heroTitle}</h1>
 
-        <p class="bc-hero__copy">
-          Explore homes, condos, townhomes, and land
-          across British Columbia’s most desirable
-          communities.
-        </p>
+<p class="bc-hero__copy">
+  {heroCopy}
+</p>
 
        
       </div>
@@ -106,91 +119,68 @@ const formatCount = (value: number) =>
   </section>
 
   <div class="bc-search-wrap">
- <form
-  class="bc-search"
+<form
+  class:list={[
+    "bc-search",
+    { "bc-search--city": isCityMode },
+  ]}
   data-listing-filter-form
 >
-      <label class="bc-search__field">
-        <span class="bc-search__icon">
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path
-              d="M12 21s7-6.2 7-12A7 7 0 0 0 5 9c0 5.8 7 12 7 12Z"
-            ></path>
-            <circle cx="12" cy="9" r="2.4"></circle>
-          </svg>
-        </span>
+      {
+        !isCityMode && (
+          <label class="bc-search__field">
+            <span class="bc-search__icon">
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M12 21s7-6.2 7-12A7 7 0 0 0 5 9c0 5.8 7 12 7 12Z"></path>
+                <circle cx="12" cy="9" r="2.4"></circle>
+              </svg>
+            </span>
 
-        <span class="bc-search__content">
-          <strong>Market</strong>
+            <span class="bc-search__content">
+              <strong>Market</strong>
 
-     <select
-  name="city"
-  data-listing-filter
-  data-filter-key="city"
-  data-url-parameter="city"
->
-       <option value="">All markets</option>
+              <select
+                name="city"
+                data-listing-filter
+                data-filter-key="city"
+                data-url-parameter="city"
+              >
+                <option value="">All markets</option>
 
-{
-  cityCards.map((city) => (
-   <option value={city.city.toLowerCase()}>
-  {city.label}
-</option>
-  ))
-}
-          </select>
-        </span>
-      </label>
+                {
+                  locationCards
+                    .filter((location) => location.city)
+                    .map((location) => (
+                      <option value={String(location.city).toLowerCase()}>
+                        {location.label}
+                      </option>
+                    ))
+                }
+              </select>
+            </span>
+          </label>
+        )
+      }
 
-      <label class="bc-search__field">
-        <span class="bc-search__icon">
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path d="M3 11.5 12 4l9 7.5"></path>
-            <path d="M5.5 10.5V21h13V10.5"></path>
-            <path d="M9.5 21v-6h5v6"></path>
-          </svg>
-        </span>
-
-     <span class="bc-search__content">
-  <strong>Property type</strong>
-
-<select
+      <SingleSelectDropdown
+  label="Property type"
   name="type"
-  data-listing-filter
-  data-filter-key="type"
-  data-url-parameter="type"
->
-    <option value="">Any type</option>
-
-   <option value="house">
-  Homes
-</option>
-
-   <option value="condo">
-  Condos
-</option>
-
- <option value="townhouse">
-  Townhomes
-</option>
-
-  <option value="mobile">
-  Mobile homes
-</option>
-
- <option value="land">
-  Land
-</option>
-  </select>
-</span>
-</label>
-
+  filterKey="type"
+  urlParameter="type"
+  defaultLabel="Any type"
+  icon="home"
+  options={[
+    { value: "house", label: "Homes" },
+    { value: "condo", label: "Condos" },
+    { value: "townhouse", label: "Townhomes" },
+    { value: "mobile", label: "Mobile homes" },
+    { value: "land", label: "Land" },
+  ]}
+/>
+<AreaMultiSelect locationCards={locationCards} />
       <label class="bc-search__field">
         <span class="bc-search__icon">
           <svg
@@ -299,7 +289,11 @@ const formatCount = (value: number) =>
   <section class="bc-search-results">
   <div class="bc-search-results__heading">
     <div>
-      <p class="bc-eyebrow">Homes across BC</p>
+      <p class="bc-eyebrow">
+        {isCityMode
+          ? `Homes for sale in ${locationName}`
+          : "Homes across BC"}
+      </p>
 
    <h2 data-listing-count>
   {listings.length} properties
@@ -355,8 +349,9 @@ const formatCount = (value: number) =>
           <h3>No matching listings</h3>
 
           <p>
-            Try changing the market, property type,
-            bedroom count, or maximum price.
+            {isCityMode
+              ? "Try changing the property type, bedroom count, or maximum price."
+              : "Try changing the market, property type, bedroom count, or maximum price."}
           </p>
 
           <button
@@ -395,48 +390,45 @@ const formatCount = (value: number) =>
     >
       <div class="bc-section-heading">
         <div>
-          <p class="bc-eyebrow">Browse by city</p>
-          <h2>Explore BC markets</h2>
+          <p class="bc-eyebrow">{browseEyebrow}</p>
+          <h2>{browseHeading}</h2>
         </div>
 
         <p>
-          Start with a city, then explore
-          neighbourhoods, listings, and local guides.
+          {isCityMode
+            ? `Explore ${locationName} neighbourhoods, listings, and local area guides.`
+            : "Start with a city, then explore neighbourhoods, listings, and local guides."}
         </p>
 
-        <a href="/explore">
-          View all markets
+        <a href={isCityMode ? `/${city}/areas` : "/explore"}>
+          {isCityMode ? "View all neighbourhoods" : "View all markets"}
           <span aria-hidden="true">→</span>
         </a>
       </div>
 
       <div class="bc-market-grid">
         {
-          featuredCities.map((city, index) => {
-            const key = city.city
-              .toLowerCase()
-              .replace(/\s+/g, "-");
-
+          featuredLocations.map((location, index) => {
             const image =
-              cityImages[key] ||
-              fallbackCityImages[
-                index % fallbackCityImages.length
+              location.image ||
+              fallbackLocationImages[
+                index % fallbackLocationImages.length
               ];
 
             return (
               <a
                 class="bc-market-card"
-                href={city.href}
+                href={location.href}
                 style={`--market-image: url('${image}')`}
               >
                 <div class="bc-market-card__shade"></div>
 
                 <div class="bc-market-card__content">
-                  <strong>{city.label}</strong>
+                  <strong>{location.label}</strong>
 
                   <span>
-                    {formatCount(city.count)} active{" "}
-                    {city.count === 1
+                    {formatCount(location.count)} active{" "}
+                    {location.count === 1
                       ? "listing"
                       : "listings"}
                   </span>
@@ -468,8 +460,9 @@ const formatCount = (value: number) =>
         <div>
           <h3>Local knowledge</h3>
           <p>
-            Detailed insights into communities across
-            British Columbia.
+            {isCityMode
+              ? `Detailed insights into neighbourhoods across ${locationName}.`
+              : "Detailed insights into communities across British Columbia."}
           </p>
         </div>
       </article>
@@ -520,10 +513,11 @@ const formatCount = (value: number) =>
         </span>
 
         <div>
-          <h3>BC lifestyle</h3>
+          <h3>{isCityMode ? `${locationName} lifestyle` : "BC lifestyle"}</h3>
           <p>
-            From mountains to ocean, find the lifestyle
-            that fits you.
+            {isCityMode
+              ? `Explore the communities and lifestyle that make ${locationName} distinctive.`
+              : "From mountains to ocean, find the lifestyle that fits you."}
           </p>
         </div>
       </article>
@@ -542,12 +536,12 @@ const formatCount = (value: number) =>
         </h2>
 
         <p>
-          Whether you’re buying your first home,
-          upgrading, relocating, or investing, begin
-          with the market that interests you.
+          {isCityMode
+            ? `Whether you’re buying your first home, upgrading, relocating, or investing, begin with the ${locationName} neighbourhood that interests you.`
+            : "Whether you’re buying your first home, upgrading, relocating, or investing, begin with the market that interests you."}
         </p>
 
-        <a href="/explore">
+        <a href={isCityMode ? `/explore?city=${encodeURIComponent(city)}` : "/explore"}>
           View homes for sale
           <span aria-hidden="true">→</span>
         </a>
@@ -558,12 +552,20 @@ const formatCount = (value: number) =>
           <strong>
             {formatCount(totalListings)}+
           </strong>
-          <span>Active listings across BC</span>
+          <span>
+            {isCityMode
+              ? `Active listings in ${locationName}`
+              : "Active listings across BC"}
+          </span>
         </div>
 
         <div class="bc-stat">
-          <strong>{cityCards.length}+</strong>
-          <span>Communities to explore</span>
+          <strong>{locationCards.length}+</strong>
+          <span>
+            {isCityMode
+              ? "Neighbourhoods to explore"
+              : "Communities to explore"}
+          </span>
         </div>
 
         <div class="bc-stat">
@@ -592,10 +594,12 @@ const formatCount = (value: number) =>
         </div>
       </a>
 
-      <a href="/explore">
+      <a href={isCityMode ? `/explore?city=${encodeURIComponent(city)}` : "/explore"}>
         <span>03</span>
         <div>
-          <strong>Explore BC</strong>
+          <strong>
+            {isCityMode ? `Explore ${locationName}` : "Explore BC"}
+          </strong>
           <small>Browse homes on the map</small>
         </div>
       </a>
@@ -708,12 +712,17 @@ const formatCount = (value: number) =>
       grid-template-columns:
     1.1fr 1.1fr 0.75fr 0.75fr 1fr 0.9fr;
   min-height: 98px;
-    overflow: hidden;
+   overflow: visible;
     border: 1px solid var(--bc-line);
     border-radius: 14px;
     background: rgba(255, 255, 255, 0.96);
     box-shadow: 0 20px 60px rgba(22, 36, 31, 0.14);
     backdrop-filter: blur(18px);
+  }
+
+  .bc-search--city {
+    grid-template-columns:
+      1.2fr 0.8fr 0.8fr 1fr 0.9fr;
   }
 
   .bc-search__field {
