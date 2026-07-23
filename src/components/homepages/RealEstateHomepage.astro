@@ -1,7 +1,8 @@
 ---
 import ListingCard from "../ListingCard.astro";
 import IntentModalController from "../IntentModalController.astro";
-
+import AreaMultiSelect from "../listings/AreaMultiSelect.astro";
+import SingleSelectDropdown from "../listings/SingleSelectDropdown.astro";
 interface LocationCard {
   city?: string;
   area?: string;
@@ -204,6 +205,117 @@ const priceFilterLabel = (() => {
 
   return "";
 })();
+
+const marketOptions = locationCards
+  .filter(
+    (
+      location
+    ): location is LocationCard & {
+      city: string;
+    } => Boolean(location.city)
+  )
+  .filter(
+    (location, index, all) =>
+      all.findIndex(
+        (candidate) =>
+          candidate.city ===
+          location.city
+      ) === index
+  )
+  .map((location) => ({
+    value: String(
+      location.city
+    ).toLowerCase(),
+    label: location.label,
+  }));
+
+const propertyTypeOptions = [
+  {
+    value: "house",
+    label: "Homes",
+  },
+  {
+    value: "condo",
+    label: "Condos",
+  },
+  {
+    value: "townhouse",
+    label: "Townhomes",
+  },
+  {
+    value: "mobile",
+    label: "Mobile homes",
+  },
+  {
+    value: "land",
+    label: "Land",
+  },
+];
+
+const bedOptions = [
+  {
+    value: "1",
+    label: "1+ beds",
+  },
+  {
+    value: "2",
+    label: "2+ beds",
+  },
+  {
+    value: "3",
+    label: "3+ beds",
+  },
+  {
+    value: "4",
+    label: "4+ beds",
+  },
+  {
+    value: "5",
+    label: "5+ beds",
+  },
+];
+
+const priceOptions = [
+  {
+    value: "500000",
+    label: "Under $500,000",
+  },
+  {
+    value: "700000",
+    label: "Under $700,000",
+  },
+  {
+    value: "900000",
+    label: "Under $900,000",
+  },
+  {
+    value: "1200000",
+    label: "Under $1.2M",
+  },
+  {
+    value: "1600000",
+    label: "Under $1.6M",
+  },
+  {
+    value: "2000000",
+    label: "Under $2M",
+  },
+];
+
+const sortOptions = [
+  {
+    value: "newest",
+    label: "Newest",
+  },
+  {
+    value: "price-low",
+    label: "Price: low to high",
+  },
+  {
+    value: "price-high",
+    label: "Price: high to low",
+  },
+];
 
 const clearHref =
   isCityMode
@@ -420,8 +532,9 @@ if (
             isCityMode,
         },
       ]}
-      method="GET"
+         method="GET"
       action={formAction}
+      data-async-search-form
     >
     {
   filters.baths !== null &&
@@ -466,420 +579,77 @@ if (
     />
   )
 }
-      {
+           {
         !isCityMode && (
-          <label class="bc-search__field">
-            <span class="bc-search__icon">
-              <svg
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path d="M12 21s7-6.2 7-12A7 7 0 0 0 5 9c0 5.8 7 12 7 12Z"></path>
-                <circle
-                  cx="12"
-                  cy="9"
-                  r="2.4"
-                ></circle>
-              </svg>
-            </span>
-
-            <span class="bc-search__content">
-              <strong>
-                Market
-              </strong>
-
-              <select
-                name="city"
-              >
-                <option value="">
-                  All markets
-                </option>
-
-                {
-                  locationCards
-                    .filter(
-                      (location) =>
-                        location.city
-                    )
-                    .map(
-                      (location) => (
-                        <option
-                          value={String(
-                            location.city
-                          ).toLowerCase()}
-                          selected={
-                            filters.city ===
-                            String(
-                              location.city
-                            ).toLowerCase()
-                          }
-                        >
-                          {
-                            location.label
-                          }
-                        </option>
-                      )
-                    )
-                }
-              </select>
-            </span>
-          </label>
+          <SingleSelectDropdown
+            label="Market"
+            name="city"
+            icon="location"
+            defaultLabel="All markets"
+            options={marketOptions}
+            value={filters.city}
+          />
         )
       }
 
-      <label
-        class="bc-search__field"
-      >
-        <span
-          class="bc-search__icon"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path d="M3 11.5 12 4l9 7.5"></path>
-            <path d="M5.5 10.5V21h13V10.5"></path>
-            <path d="M9.5 21v-6h5v6"></path>
-          </svg>
-        </span>
+      <SingleSelectDropdown
+        label="Property type"
+        name="type"
+        icon="home"
+        defaultLabel="Any type"
+        options={propertyTypeOptions}
+        value={filters.type}
+      />
 
-        <span
-          class="bc-search__content"
-        >
-          <strong>
-            Property type
-          </strong>
+   {
+  isCityMode && (
+    <AreaMultiSelect
+      locationCards={locationCards}
+      selectedAreas={selectedAreas}
+    />
+  )
+}
 
-          <select name="type">
-            <option value="">
-              Any type
-            </option>
-            <option
-              value="house"
-              selected={
-                filters.type ===
-                "house"
-              }
-            >
-              Homes
-            </option>
-            <option
-              value="condo"
-              selected={
-                filters.type ===
-                "condo"
-              }
-            >
-              Condos
-            </option>
-            <option
-              value="townhouse"
-              selected={
-                filters.type ===
-                "townhouse"
-              }
-            >
-              Townhomes
-            </option>
-            <option
-              value="mobile"
-              selected={
-                filters.type ===
-                "mobile"
-              }
-            >
-              Mobile homes
-            </option>
-            <option
-              value="land"
-              selected={
-                filters.type ===
-                "land"
-              }
-            >
-              Land
-            </option>
-          </select>
-        </span>
-      </label>
+      <SingleSelectDropdown
+        label="Beds"
+        name="beds"
+        icon="beds"
+        defaultLabel="Any beds"
+        options={bedOptions}
+        value={filters.beds}
+      />
 
-      <label
-        class="bc-search__field"
-      >
-        <span
-          class="bc-search__icon"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path d="M12 21s7-6.2 7-12A7 7 0 0 0 5 9c0 5.8 7 12 7 12Z"></path>
-            <circle
-              cx="12"
-              cy="9"
-              r="2.4"
-            ></circle>
-          </svg>
-        </span>
-
-        <span
-          class="bc-search__content"
-        >
-          <strong>
-            Area
-          </strong>
-
-          <select
-            name="area"
-            multiple
-            size="1"
-            aria-label="Neighbourhoods"
-          >
-            {
-              locationCards
-                .filter(
-                  (location) =>
-                    location.area
-                )
-                .map(
-                  (location) => (
-                    <option
-                      value={
-                        location.area
-                      }
-                      selected={selectedAreas.includes(
-                        String(
-                          location.area
-                        )
-                      )}
-                    >
-                      {
-                        location.label
-                      }
-                    </option>
-                  )
-                )
-            }
-          </select>
-        </span>
-      </label>
-
-      <label
-        class="bc-search__field"
-      >
-        <span
-          class="bc-search__icon"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path d="M3 18v-7h18v7"></path>
-            <path d="M5 11V7h6v4"></path>
-            <path d="M13 11V7h6v4"></path>
-            <path d="M3 18v3"></path>
-            <path d="M21 18v3"></path>
-          </svg>
-        </span>
-
-        <span
-          class="bc-search__content"
-        >
-          <strong>
-            Beds
-          </strong>
-
-          <select name="beds">
-            <option value="">
-              Any
-            </option>
-            {
-              [1, 2, 3, 4, 5].map(
-                (beds) => (
-                  <option
-                    value={beds}
-                    selected={
-                      filters.beds ===
-                      beds
-                    }
-                  >
-                    {beds}+
-                  </option>
-                )
-              )
-            }
-          </select>
-        </span>
-      </label>
-
-      <label
-        class="bc-search__field"
-      >
-        <span
-          class="bc-search__icon"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <circle
-              cx="12"
-              cy="12"
-              r="9"
-            ></circle>
-            <path d="M15 8.5c-.7-.7-1.7-1-3-1-1.7 0-3 .9-3 2.2 0 1.4 1.2 2 3.2 2.5 1.8.5 2.8 1.1 2.8 2.3 0 1.3-1.2 2.2-3 2.2-1.3 0-2.5-.4-3.3-1.2"></path>
-            <path d="M12 5.5v13"></path>
-          </svg>
-        </span>
-
-        <span
-          class="bc-search__content"
-        >
-          <strong>
-            Price
-          </strong>
-
-         <select
-  name="maxPrice"
->
-  {
-    priceFilterLabel && (
-      <option
-        value={
-          filters.maxPrice ??
-          ""
+      <SingleSelectDropdown
+        label="Price"
+        name="maxPrice"
+        icon="price"
+        defaultLabel="Any price"
+        options={priceOptions}
+        value={filters.maxPrice}
+        summary={
+          priceFilterLabel ||
+          undefined
         }
-        selected
-      >
-        {priceFilterLabel}
-      </option>
-    )
-  }
+        clearNames={[
+          "minPrice",
+        ]}
+      />
 
-  <option
-    value=""
-    selected={
-      !priceFilterLabel
-    }
-  >
-    Any price
-  </option>
+      <SingleSelectDropdown
+        label="Sort"
+        name="sort"
+        icon="sort"
+        defaultLabel="Newest"
+        options={sortOptions}
+        value={
+          filters.sort ||
+          "newest"
+        }
+      />
+     
+         </form>
 
-  {
-    [
-      [
-        500000,
-        "Under $500,000",
-      ],
-      [
-        700000,
-        "Under $700,000",
-      ],
-      [
-        900000,
-        "Under $900,000",
-      ],
-      [
-        1200000,
-        "Under $1.2M",
-      ],
-      [
-        1600000,
-        "Under $1.6M",
-      ],
-      [
-        2000000,
-        "Under $2M",
-      ],
-    ].map(
-      ([
-        value,
-        label,
-      ]) => (
-        <option
-          value={value}
-          selected={
-            !filters.minPrice &&
-            filters.maxPrice ===
-              value
-          }
-        >
-          {label}
-        </option>
-      )
-    )
-  }
-</select>
-        </span>
-      </label>
-
-      <label
-        class="bc-search__field"
-      >
-        <span
-          class="bc-search__icon"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path d="M7 6h10"></path>
-            <path d="M9 12h6"></path>
-            <path d="M11 18h2"></path>
-          </svg>
-        </span>
-
-        <span
-          class="bc-search__content"
-        >
-          <strong>
-            Sort
-          </strong>
-
-          <select name="sort">
-            <option
-              value="newest"
-              selected={
-                !filters.sort ||
-                filters.sort ===
-                  "newest"
-              }
-            >
-              Newest
-            </option>
-
-            <option
-              value="price-low"
-              selected={
-                filters.sort ===
-                "price-low"
-              }
-            >
-              Price: low to high
-            </option>
-
-            <option
-              value="price-high"
-              selected={
-                filters.sort ===
-                "price-high"
-              }
-            >
-              Price: high to low
-            </option>
-          </select>
-        </span>
-      </label>
-
-      <div
-        class="bc-search__submit"
-      >
-        <button type="submit">
-          Search
-        </button>
-      </div>
-      </form>
-
+    <div data-async-search-results>
     {
   hasActiveFilters && (
     <div class="bc-active-filters">
@@ -1089,8 +859,9 @@ if (
           </a>
         </div>
       )
-    }
-  </section>
+      }
+    </div>
+  </div>
 
   <main class="bc-main">
     <section
@@ -1430,6 +1201,666 @@ if (
   listings={listings}
 />
 
+<script>
+  const SEARCH_FORM_SELECTOR =
+    "[data-async-search-form]";
+
+  const RESULTS_SELECTOR =
+    "[data-async-search-results]";
+
+  const FILTER_SELECTOR =
+    "[data-single-select], [data-area-multi-select]";
+
+  let activeRequest:
+    AbortController | null =
+    null;
+
+  const getSearchForm = () =>
+    document.querySelector(
+      SEARCH_FORM_SELECTOR
+    );
+
+  const getResultsContainer = () =>
+    document.querySelector(
+      RESULTS_SELECTOR
+    );
+
+  const closeAllSearchMenus = (
+    except: Element | null = null
+  ) => {
+    document
+      .querySelectorAll(
+        FILTER_SELECTOR
+      )
+      .forEach((element) => {
+        if (element === except) {
+          return;
+        }
+
+        element.removeAttribute(
+          "data-open"
+        );
+
+        const trigger =
+          element.querySelector(
+            "[data-single-trigger], [data-area-trigger]"
+          );
+
+        const menu =
+          element.querySelector(
+            "[data-single-menu], [data-area-menu]"
+          );
+
+        trigger?.setAttribute(
+          "aria-expanded",
+          "false"
+        );
+
+        if (
+          menu instanceof HTMLElement
+        ) {
+          menu.hidden = true;
+        }
+      });
+  };
+
+  const buildSearchUrl = (
+    form: HTMLFormElement
+  ) => {
+    const url =
+      new URL(
+        form.action,
+        window.location.origin
+      );
+
+    const formData =
+      new FormData(form);
+
+    for (
+      const [key, rawValue]
+      of formData.entries()
+    ) {
+      const value =
+        String(rawValue).trim();
+
+      if (!value) {
+        continue;
+      }
+
+      url.searchParams.append(
+        key,
+        value
+      );
+    }
+
+    return url;
+  };
+
+  const setLoadingState = (
+    loading: boolean
+  ) => {
+    const results =
+      getResultsContainer();
+
+    const form =
+      getSearchForm();
+
+    results?.classList.toggle(
+      "is-loading",
+      loading
+    );
+
+    form?.toggleAttribute(
+      "aria-busy",
+      loading
+    );
+  };
+
+  const replaceResults = (
+    html: string
+  ) => {
+    const parser =
+      new DOMParser();
+
+    const nextDocument =
+      parser.parseFromString(
+        html,
+        "text/html"
+      );
+
+    const nextResults =
+      nextDocument.querySelector(
+        RESULTS_SELECTOR
+      );
+
+    const currentResults =
+      getResultsContainer();
+
+    if (
+      !nextResults ||
+      !currentResults
+    ) {
+      throw new Error(
+        "Search results container was not found."
+      );
+    }
+
+    currentResults.innerHTML =
+      nextResults.innerHTML;
+  };
+
+  const loadSearchUrl = async (
+    url: URL,
+    options: {
+      updateHistory?: boolean;
+      scrollToResults?: boolean;
+    } = {}
+  ) => {
+    const {
+      updateHistory = true,
+      scrollToResults = false,
+    } = options;
+
+    activeRequest?.abort();
+
+    activeRequest =
+      new AbortController();
+
+    setLoadingState(true);
+
+    try {
+      const response =
+        await fetch(
+          url.toString(),
+          {
+            headers: {
+              "X-Requested-With":
+                "async-search",
+            },
+            signal:
+              activeRequest.signal,
+          }
+        );
+
+      if (!response.ok) {
+        throw new Error(
+          `Search request failed with status ${response.status}.`
+        );
+      }
+
+      const html =
+        await response.text();
+
+      replaceResults(html);
+
+      if (updateHistory) {
+        window.history.pushState(
+          {
+            asyncSearch: true,
+          },
+          "",
+          url
+        );
+      }
+
+      if (scrollToResults) {
+        const results =
+          getResultsContainer();
+
+        results?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+    } catch (error) {
+      if (
+        error instanceof DOMException &&
+        error.name === "AbortError"
+      ) {
+        return;
+      }
+
+      console.error(
+        "Async listing search failed:",
+        error
+      );
+
+      window.location.assign(
+        url.toString()
+      );
+    } finally {
+      setLoadingState(false);
+    }
+  };
+
+  const submitSearchForm = (
+    scrollToResults = false
+  ) => {
+    const form =
+      getSearchForm();
+
+    if (
+      !(form instanceof HTMLFormElement)
+    ) {
+      return;
+    }
+
+    const url =
+      buildSearchUrl(form);
+
+    loadSearchUrl(url, {
+      updateHistory: true,
+      scrollToResults,
+    });
+  };
+
+  document
+    .querySelectorAll(
+      "[data-single-select]"
+    )
+    .forEach((group) => {
+      const trigger =
+        group.querySelector(
+          "[data-single-trigger]"
+        );
+
+      const menu =
+        group.querySelector(
+          "[data-single-menu]"
+        );
+
+      const summary =
+        group.querySelector(
+          "[data-single-summary]"
+        );
+
+      const input =
+        group.querySelector(
+          "[data-single-input]"
+        );
+
+      const options =
+        group.querySelectorAll(
+          "[data-single-option]"
+        );
+
+      if (
+        !(
+          trigger instanceof
+          HTMLButtonElement
+        ) ||
+        !(
+          menu instanceof
+          HTMLElement
+        ) ||
+        !(
+          input instanceof
+          HTMLInputElement
+        )
+      ) {
+        return;
+      }
+
+      trigger.addEventListener(
+        "click",
+        () => {
+          const willOpen =
+            group.getAttribute(
+              "data-open"
+            ) !== "true";
+
+          closeAllSearchMenus(
+            willOpen
+              ? group
+              : null
+          );
+
+          if (willOpen) {
+            group.setAttribute(
+              "data-open",
+              "true"
+            );
+
+            trigger.setAttribute(
+              "aria-expanded",
+              "true"
+            );
+
+            menu.hidden = false;
+          }
+        }
+      );
+
+      options.forEach(
+        (option) => {
+          if (
+            !(
+              option instanceof
+              HTMLButtonElement
+            )
+          ) {
+            return;
+          }
+
+          option.addEventListener(
+            "click",
+            () => {
+              input.value =
+                option.dataset.value ||
+                "";
+
+              if (
+                summary instanceof
+                HTMLElement
+              ) {
+                summary.textContent =
+                  option.dataset.label ||
+                  "";
+              }
+
+              options.forEach(
+                (candidate) => {
+                  candidate.classList.toggle(
+                    "is-selected",
+                    candidate ===
+                      option
+                  );
+                }
+              );
+
+              const clearNames =
+                group
+                  .getAttribute(
+                    "data-clear-names"
+                  )
+                  ?.split(",")
+                  .map((name) =>
+                    name.trim()
+                  )
+                  .filter(Boolean) ||
+                [];
+
+              const form =
+                group.closest(
+                  "form"
+                );
+
+              clearNames.forEach(
+                (name) => {
+                  const companion =
+                    form?.querySelector(
+                      `input[name="${CSS.escape(
+                        name
+                      )}"]`
+                    );
+
+                  if (
+                    companion instanceof
+                    HTMLInputElement
+                  ) {
+                    companion.value =
+                      "";
+                  }
+                }
+              );
+
+              closeAllSearchMenus();
+
+              submitSearchForm();
+            }
+          );
+        }
+      );
+    });
+
+  document
+    .querySelectorAll(
+      "[data-area-multi-select]"
+    )
+    .forEach((group) => {
+      const trigger =
+        group.querySelector(
+          "[data-area-trigger]"
+        );
+
+      const menu =
+        group.querySelector(
+          "[data-area-menu]"
+        );
+
+      const summary =
+        group.querySelector(
+          "[data-area-summary]"
+        );
+
+      const clearButton =
+        group.querySelector(
+          "[data-area-clear]"
+        );
+
+      const doneButton =
+        group.querySelector(
+          "[data-area-done]"
+        );
+
+      const checkboxes =
+        group.querySelectorAll(
+          "[data-area-option]"
+        );
+
+      if (
+        !(
+          trigger instanceof
+          HTMLButtonElement
+        ) ||
+        !(
+          menu instanceof
+          HTMLElement
+        )
+      ) {
+        return;
+      }
+
+      const updateSummary =
+        () => {
+          const selected =
+            Array.from(
+              checkboxes
+            ).filter(
+              (
+                checkbox
+              ): checkbox is HTMLInputElement =>
+                checkbox instanceof
+                  HTMLInputElement &&
+                checkbox.checked
+            );
+
+          const labels =
+            selected.map(
+              (checkbox) =>
+                checkbox.dataset.label ||
+                checkbox.value
+            );
+
+          if (
+            summary instanceof
+            HTMLElement
+          ) {
+            summary.textContent =
+              labels.length === 0
+                ? "All areas"
+                : labels.length === 1
+                  ? labels[0]
+                  : `${labels.length} areas`;
+          }
+        };
+
+      trigger.addEventListener(
+        "click",
+        () => {
+          const willOpen =
+            group.getAttribute(
+              "data-open"
+            ) !== "true";
+
+          closeAllSearchMenus(
+            willOpen
+              ? group
+              : null
+          );
+
+          if (willOpen) {
+            group.setAttribute(
+              "data-open",
+              "true"
+            );
+
+            trigger.setAttribute(
+              "aria-expanded",
+              "true"
+            );
+
+            menu.hidden = false;
+          }
+        }
+      );
+
+      checkboxes.forEach(
+        (checkbox) => {
+          checkbox.addEventListener(
+            "change",
+            updateSummary
+          );
+        }
+      );
+
+      clearButton?.addEventListener(
+        "click",
+        () => {
+          checkboxes.forEach(
+            (checkbox) => {
+              if (
+                checkbox instanceof
+                HTMLInputElement
+              ) {
+                checkbox.checked =
+                  false;
+              }
+            }
+          );
+
+          updateSummary();
+        }
+      );
+
+      doneButton?.addEventListener(
+        "click",
+        () => {
+          updateSummary();
+          closeAllSearchMenus();
+          submitSearchForm();
+        }
+      );
+    });
+
+  document.addEventListener(
+    "submit",
+    (event) => {
+      const form =
+        event.target;
+
+      if (
+        !(
+          form instanceof
+          HTMLFormElement
+        ) ||
+        !form.matches(
+          SEARCH_FORM_SELECTOR
+        )
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+
+      submitSearchForm();
+    }
+  );
+
+  document.addEventListener(
+    "click",
+    (event) => {
+      const target =
+        event.target;
+
+      if (
+        !(target instanceof Element)
+      ) {
+        return;
+      }
+
+      const paginationLink =
+        target.closest(
+          `${RESULTS_SELECTOR} .bc-pagination a`
+        );
+
+      if (
+        paginationLink instanceof
+        HTMLAnchorElement
+      ) {
+        event.preventDefault();
+
+        const url =
+          new URL(
+            paginationLink.href,
+            window.location.origin
+          );
+
+        loadSearchUrl(url, {
+          updateHistory: true,
+          scrollToResults: true,
+        });
+
+        return;
+      }
+
+      if (
+        !target.closest(
+          FILTER_SELECTOR
+        )
+      ) {
+        closeAllSearchMenus();
+      }
+    }
+  );
+
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (
+        event.key === "Escape"
+      ) {
+        closeAllSearchMenus();
+      }
+    }
+  );
+
+  window.addEventListener(
+    "popstate",
+    () => {
+      loadSearchUrl(
+        new URL(
+          window.location.href
+        ),
+        {
+          updateHistory: false,
+          scrollToResults: false,
+        }
+      );
+    }
+  );
+</script>
+
 <style>
   .bc-homepage {
     --bc-ink: #14201c;
@@ -1517,8 +1948,7 @@ if (
   .bc-search {
     display: grid;
     grid-template-columns:
-      1.1fr 1.1fr 0.9fr 0.75fr
-      1fr 0.9fr auto;
+      repeat(5, minmax(0, 1fr));
     min-height: 98px;
     overflow: visible;
     border: 1px solid var(--bc-line);
@@ -1528,10 +1958,9 @@ if (
     backdrop-filter: blur(18px);
   }
 
-  .bc-search--city {
+    .bc-search--city {
     grid-template-columns:
-      1.1fr 1.1fr 0.75fr 1fr
-      0.9fr auto;
+      repeat(5, minmax(0, 1fr));
   }
 
   .bc-search__field {
@@ -1584,23 +2013,7 @@ if (
     cursor: pointer;
   }
 
-  .bc-search__submit {
-    display: flex;
-    align-items: stretch;
-    padding: 12px;
-  }
-
-  .bc-search__submit button {
-    min-width: 92px;
-    border: 0;
-    border-radius: 9px;
-    background: var(--bc-home-accent);
-    color: #fff;
-    font: inherit;
-    font-size: 0.78rem;
-    font-weight: 850;
-    cursor: pointer;
-  }
+  
 
   .bc-search-results {
     width: min(1240px, calc(100% - 48px));
@@ -2035,14 +2448,7 @@ if (
       grid-template-columns: repeat(2, 1fr);
     }
 
-    .bc-search__submit {
-      grid-column: 1 / -1;
-    }
-
-    .bc-search__submit button {
-      min-height: 52px;
-      width: 100%;
-    }
+   
 
     .bc-listing-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2124,9 +2530,7 @@ if (
       border-bottom: 1px solid var(--bc-line);
     }
 
-    .bc-search__submit {
-      grid-column: auto;
-    }
+   
 
     .bc-pagination {
       flex-wrap: wrap;
@@ -2239,5 +2643,63 @@ if (
 .bc-active-filters a {
   border-color: var(--bc-home-accent);
   color: var(--bc-home-accent);
+}
+
+[data-async-search-results] {
+  position: relative;
+  min-height: 200px;
+  transition:
+    opacity 0.16s ease;
+}
+
+[data-async-search-results].is-loading {
+  opacity: 0.48;
+  pointer-events: none;
+}
+
+[data-async-search-results].is-loading::after {
+  position: absolute;
+  z-index: 10;
+  top: 34px;
+  left: 50%;
+  width: 28px;
+  height: 28px;
+  border: 3px solid
+    color-mix(
+      in srgb,
+      var(--bc-home-accent) 18%,
+      transparent
+    );
+  border-top-color:
+    var(--bc-home-accent);
+  border-radius: 50%;
+  content: "";
+  animation:
+    bc-search-spin 0.7s
+    linear infinite;
+}
+
+@keyframes bc-search-spin {
+  to {
+    transform:
+      translateX(-50%)
+      rotate(360deg);
+  }
+
+  from {
+    transform:
+      translateX(-50%)
+      rotate(0deg);
+  }
+}
+
+.bc-search {
+  position: relative;
+  z-index: 50;
+}
+
+[data-async-search-results] {
+  position: relative;
+  z-index: 1;
 }
 </style>

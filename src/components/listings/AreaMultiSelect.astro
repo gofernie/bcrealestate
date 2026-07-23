@@ -7,34 +7,65 @@ interface LocationCard {
 
 interface Props {
   locationCards?: LocationCard[];
+  selectedAreas?: string[];
 }
 
-const { locationCards = [] } = Astro.props;
+const {
+  locationCards = [],
+  selectedAreas = [],
+} = Astro.props;
 
 const areas = locationCards
-  .filter((location) => Boolean(location.area))
+  .filter(
+    (
+      location
+    ): location is LocationCard & {
+      area: string;
+    } => Boolean(location.area)
+  )
   .filter(
     (location, index, all) =>
       all.findIndex(
-        (candidate) => candidate.area === location.area
+        (candidate) =>
+          candidate.area ===
+          location.area
       ) === index
   );
+
+const selectedLabels = areas
+  .filter((location) =>
+    selectedAreas.includes(
+      location.area
+    )
+  )
+  .map(
+    (location) =>
+      location.label
+  );
+
+const initialSummary =
+  selectedLabels.length === 0
+    ? "All areas"
+    : selectedLabels.length === 1
+      ? selectedLabels[0]
+      : `${selectedLabels.length} areas`;
 ---
 
 <div
   class="area-filter"
-  data-listing-multi-filter
-  data-filter-key="area"
-  data-url-parameter="areas"
+  data-area-multi-select
 >
   <button
     class="area-filter__trigger"
     type="button"
     aria-haspopup="true"
     aria-expanded="false"
-    data-multi-filter-trigger
+    data-area-trigger
   >
-    <span class="bc-search__icon" aria-hidden="true">
+    <span
+      class="bc-search__icon"
+      aria-hidden="true"
+    >
       <svg viewBox="0 0 24 24">
         <path d="M4 6h16"></path>
         <path d="M6 12h12"></path>
@@ -44,7 +75,10 @@ const areas = locationCards
 
     <span class="bc-search__content">
       <strong>Area</strong>
-      <span data-multi-filter-summary>All areas</span>
+
+      <span data-area-summary>
+        {initialSummary}
+      </span>
     </span>
 
     <svg
@@ -58,52 +92,61 @@ const areas = locationCards
 
   <div
     class="area-filter__menu"
-    data-multi-filter-menu
+    data-area-menu
     hidden
   >
     <div class="area-filter__header">
-      <strong>Select areas</strong>
+      <strong>
+        Select areas
+      </strong>
 
-      <button type="button" data-multi-filter-clear>
+      <button
+        type="button"
+        data-area-clear
+      >
         Clear
       </button>
     </div>
 
     <div class="area-filter__options">
       {
-        areas.map((location, index) => (
-          <label
-            class="area-filter__option"
-            data-area-option-row
-            data-original-index={index}
-          >
-            <input
-              class="area-filter__checkbox"
-              type="checkbox"
-              value={location.area}
-              data-multi-filter-option
-            />
+        areas.map(
+          (location) => (
+            <label class="area-filter__option">
+              <input
+                class="area-filter__checkbox"
+                type="checkbox"
+                name="area"
+                value={location.area}
+                checked={selectedAreas.includes(
+                  location.area
+                )}
+                data-area-option
+                data-label={location.label}
+              />
 
-            <span class="area-filter__label">
-              {location.label}
-            </span>
+              <span class="area-filter__label">
+                {location.label}
+              </span>
 
-            {
-              typeof location.count === "number" && (
-                <span class="area-filter__count">
-                  {location.count.toLocaleString()}
-                </span>
-              )
-            }
+              {
+                typeof location.count ===
+                  "number" && (
+                  <span class="area-filter__count">
+                    {location.count.toLocaleString()}
+                  </span>
+                )
+              }
 
-            <span
-              class="area-filter__check"
-              aria-hidden="true"
-            >
-              ✓
-            </span>
-          </label>
-        ))
+              <span
+                class="area-filter__check"
+                aria-hidden="true"
+              >
+                ✓
+              </span>
+            </label>
+          )
+        )
       }
     </div>
 
@@ -111,7 +154,7 @@ const areas = locationCards
       <button
         class="area-filter__done"
         type="button"
-        data-multi-filter-done
+        data-area-done
       >
         Done
       </button>
@@ -191,7 +234,8 @@ const areas = locationCards
     transition: transform 0.18s ease;
   }
 
-  .area-filter[data-open="true"] .area-filter__chevron {
+  .area-filter[data-open="true"]
+    .area-filter__chevron {
     transform: rotate(180deg);
   }
 
@@ -242,7 +286,8 @@ const areas = locationCards
     display: grid;
     width: 100%;
     min-height: 44px;
-    grid-template-columns: minmax(0, 1fr) auto 20px;
+    grid-template-columns:
+      minmax(0, 1fr) auto 20px;
     align-items: center;
     gap: 12px;
     padding: 10px 14px;
