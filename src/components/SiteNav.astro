@@ -5,6 +5,7 @@ type NavItem = {
 };
 
 const {
+  mode = "city",
   city: incomingCity = "nanaimo",
   site = null,
   areas = [],
@@ -13,81 +14,150 @@ const {
   showAreaNav = false,
   activeSection = "",
 } = Astro.props;
+
 const hostname = Astro.url.hostname
   .toLowerCase()
   .replace(/^www\./, "");
 
-const siteDomain = String(site?.domain || "")
+const siteDomain = String(
+  site?.domain || ""
+)
   .toLowerCase()
   .replace(/^www\./, "");
 
+const isProvinceNav =
+  mode === "province";
+
 const isMobileHomeSite =
-  site?.property_type_filter === "mobile" ||
-  site?.template === "mobile-homes" ||
-  siteDomain === "nanaimomobiles.com" ||
-  hostname === "nanaimomobiles.com";
+  site?.property_type_filter ===
+    "mobile" ||
+  site?.template ===
+    "mobile-homes" ||
+  siteDomain ===
+    "nanaimomobiles.com" ||
+  hostname ===
+    "nanaimomobiles.com";
 
 const types = isMobileHomeSite
   ? []
   : suppliedTypes.length > 0
     ? suppliedTypes
-    : ["house", "condo", "townhouse", "land"];
+    : [
+        "house",
+        "condo",
+        "townhouse",
+        "land",
+      ];
 
 const city =
-  String(incomingCity).toLowerCase() === "404"
-    ? String(site?.city || "nanaimo")
+  String(
+    incomingCity
+  ).toLowerCase() === "404"
+    ? String(
+        site?.city ||
+          "nanaimo"
+      )
     : incomingCity;
 
 const currentPath =
-  Astro.url.pathname.replace(/\/$/, "") || "/";
+  Astro.url.pathname.replace(
+    /\/$/,
+    ""
+  ) || "/";
 
-const cityLabel = String(city)
-  .replace(/-/g, " ")
-  .replace(/\b\w/g, (char) => char.toUpperCase());
+const cityLabel =
+  String(city)
+    .replace(/-/g, " ")
+    .replace(
+      /\b\w/g,
+      (char) =>
+        char.toUpperCase()
+    );
 
-const slugify = (value: string) =>
+const slugify = (
+  value: string
+) =>
   String(value || "")
     .toLowerCase()
     .trim()
     .replace(/\s+/g, "-");
 
 const isBcRealEstate =
-  hostname === "bc.realestate" ||
-  hostname === "bcrealestate.netlify.app" ||
-  hostname === "localhost";
+  hostname ===
+    "bc.realestate" ||
+  hostname ===
+    "bcrealestate.netlify.app" ||
+  hostname ===
+    "localhost" ||
+  hostname ===
+    "127.0.0.1";
 
-const brandName = isBcRealEstate
-  ? `${cityLabel} Real Estate`
-  : site?.site_name || `${cityLabel} Homes`;
+const isBcHomepage =
+  isBcRealEstate &&
+  currentPath === "/";
+
+const brandName =
+  isProvinceNav ||
+  isBcHomepage
+    ? "BC Real Estate"
+    : isBcRealEstate
+      ? `${cityLabel} Real Estate`
+      : site?.site_name ||
+        `${cityLabel} Homes`;
 
 const usesRootPageUrls =
-  hostname === "nanaimomobiles.com" ||
-  siteDomain === "nanaimomobiles.com";
+  hostname ===
+    "nanaimomobiles.com" ||
+  siteDomain ===
+    "nanaimomobiles.com";
 
-const brandHref = usesRootPageUrls
-  ? "/"
-  : `/${slugify(city)}/`;
+const brandHref =
+  isProvinceNav
+    ? "/"
+    : usesRootPageUrls
+      ? "/"
+      : `/${slugify(city)}/`;
 
-const buildPageHref = (pageSlug: string) =>
+const buildPageHref = (
+  pageSlug: string
+) =>
   usesRootPageUrls
     ? `/${pageSlug}`
-    : `/${slugify(city)}/${pageSlug}`;
+    : `/${slugify(
+        city
+      )}/${pageSlug}`;
 
-const buildAreaHref = (areaSlug: string) =>
+const buildAreaHref = (
+  areaSlug: string
+) =>
   usesRootPageUrls
     ? `/${areaSlug}`
-    : `/${slugify(city)}/${areaSlug}`;
+    : `/${slugify(
+        city
+      )}/${areaSlug}`;
 
-const areasHref = `/${slugify(city)}/areas`;
+const areasHref =
+  `/${slugify(city)}/areas`;
 
-const isActive = (href: string) => {
-  const cleanHref =
-    href.replace(/\/$/, "") || "/";
+const isActive = (
+  href: string
+) => {
+  const hrefPath =
+    href
+      .split("#")[0]
+      .split("?")[0]
+      .replace(/\/$/, "") ||
+    "/";
 
-  return currentPath === cleanHref;
+  return (
+    currentPath === hrefPath
+  );
 };
 
-const TYPE_PAGE_MAP: Record<string, string> = {
+const TYPE_PAGE_MAP: Record<
+  string,
+  string
+> = {
   house: "homes",
   home: "homes",
   condo: "condos",
@@ -96,104 +166,197 @@ const TYPE_PAGE_MAP: Record<string, string> = {
   land: "land",
 };
 
-const cleanAreaLabel = (value: string) =>
+const cleanAreaLabel = (
+  value: string
+) =>
   String(value || "")
     .replace(/^pq\s+/i, "")
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+    .replace(
+      /\b\w/g,
+      (char) =>
+        char.toUpperCase()
+    );
 
-const areaLinks: NavItem[] = areas
-  .slice(0, 8)
-  .map((area: string) => ({
-    label: cleanAreaLabel(area),
-    href: buildAreaHref(slugify(area)),
-  }));
-const typeLinks: NavItem[] = types
-  .map((type: string) => {
-    const normalizedType = String(type || "")
-      .toLowerCase()
-      .trim();
+const provinceNavLinks: NavItem[] =
+  [
+    {
+      label: "Cities",
+      href: "/#bc-markets",
+    },
+   {
+  label: "Explore BC",
+  href: "/explore-bc",
+},
+    {
+      label: "About BC",
+      href: "/about-bc",
+    },
+    {
+      label:
+        "Market Insights",
+      href:
+        "/market-insights",
+    },
+    {
+      label:
+        "Buying Guide",
+      href:
+        "/buying-guide",
+    },
+    {
+      label: "Contact",
+      href: "/contact",
+    },
+  ];
 
-    const pageSlug =
-      TYPE_PAGE_MAP[normalizedType];
+const areaLinks: NavItem[] =
+  areas
+    .slice(0, 8)
+    .map(
+      (area: string) => ({
+        label:
+          cleanAreaLabel(
+            area
+          ),
 
-    if (!pageSlug) return null;
+        href:
+          buildAreaHref(
+            slugify(area)
+          ),
+      })
+    );
 
-    const labels: Record<string, string> = {
-      homes: "Homes",
-      condos: "Condos",
-      townhomes: "Townhomes",
-      land: "Land",
-    };
+const typeLinks: NavItem[] =
+  types
+    .map(
+      (type: string) => {
+        const normalizedType =
+          String(type || "")
+            .toLowerCase()
+            .trim();
 
-    return {
-      label: labels[pageSlug] || pageSlug,
-      href: buildPageHref(pageSlug),
-    };
-  })
-  .filter(Boolean) as NavItem[];
-const intentLinks: NavItem[] = intentPages
-  .slice(0, 6)
-  .map((page: any) => {
-    const label =
-      page.nav_label ||
-      page.card_title ||
-      page.hero_heading ||
-      page.seo_heading ||
-      page.lifestyle_angle ||
-      page.slug
-        .replace(/-/g, " ")
-        .replace(
-          /\b\w/g,
-          (char: string) => char.toUpperCase()
+        const pageSlug =
+          TYPE_PAGE_MAP[
+            normalizedType
+          ];
+
+        if (!pageSlug) {
+          return null;
+        }
+
+        const labels: Record<
+          string,
+          string
+        > = {
+          homes: "Homes",
+          condos: "Condos",
+          townhomes:
+            "Townhomes",
+          land: "Land",
+        };
+
+        return {
+          label:
+            labels[
+              pageSlug
+            ] || pageSlug,
+
+          href:
+            buildPageHref(
+              pageSlug
+            ),
+        };
+      }
+    )
+    .filter(
+      Boolean
+    ) as NavItem[];
+
+const intentLinks: NavItem[] =
+  intentPages
+    .slice(0, 6)
+    .map((page: any) => {
+      const label =
+        page.nav_label ||
+        page.card_title ||
+        page.hero_heading ||
+        page.seo_heading ||
+        page.lifestyle_angle ||
+        page.slug
+          .replace(/-/g, " ")
+          .replace(
+            /\b\w/g,
+            (
+              char: string
+            ) =>
+              char.toUpperCase()
+          );
+
+      const normalizedLabel =
+        String(label)
+          .toLowerCase()
+          .trim();
+
+      let href =
+        buildPageHref(
+          page.slug
         );
 
-    const normalizedLabel = String(label)
-      .toLowerCase()
-      .trim();
+      /*
+       * On nanaimomobiles.com,
+       * these intent pages live
+       * under /nanaimo/.
+       */
+      if (
+        usesRootPageUrls &&
+        (
+          normalizedLabel ===
+            "mobile homes" ||
+          normalizedLabel ===
+            "mobile homes for sale" ||
+          normalizedLabel ===
+            "55+" ||
+          page.slug ===
+            "nanaimo-mobile-homes" ||
+          page.slug ===
+            "nanaimo-mobile-55-mobile-homes"
+        )
+      ) {
+        href =
+          `/${slugify(
+            city
+          )}/${page.slug}`;
+      }
 
-    let href = buildPageHref(page.slug);
+      return {
+        label,
+        href,
+      };
+    });
 
-    /*
-     * On nanaimomobiles.com, these polished intent pages
-     * live under /nanaimo/ rather than at the root.
-     */
-    if (
-      usesRootPageUrls &&
-      (
-        normalizedLabel === "mobile homes" ||
-        normalizedLabel === "mobile homes for sale" ||
-        normalizedLabel === "55+" ||
-        page.slug === "nanaimo-mobile-homes" ||
-        page.slug === "nanaimo-mobile-55-mobile-homes"
-      )
-    ) {
-      href = `/${slugify(city)}/${page.slug}`;
-    }
+const finalNavLinks: NavItem[] =
+  [
+    ...typeLinks,
 
-    return {
-      label,
-      href,
-    };
-  });
-
-const finalNavLinks: NavItem[] = [
-  ...typeLinks,
-  ...intentLinks.filter(
-    (intentItem) =>
-      !typeLinks.some(
-        (typeItem) =>
-          typeItem.href === intentItem.href ||
-          typeItem.label.toLowerCase() ===
-            intentItem.label.toLowerCase()
-      )
-  ),
-];
+    ...intentLinks.filter(
+      (intentItem) =>
+        !typeLinks.some(
+          (typeItem) =>
+            typeItem.href ===
+              intentItem.href ||
+            typeItem.label.toLowerCase() ===
+              intentItem.label.toLowerCase()
+        )
+    ),
+  ];
 ---
 
 <nav class="site-nav">
-  <div class="shell site-nav__inner">
+  <div
+    class="shell site-nav__inner"
+  >
     <a
       class="site-nav__brand"
       href={brandHref}
@@ -208,101 +371,160 @@ const finalNavLinks: NavItem[] = [
       aria-expanded="false"
       aria-controls="site-nav-links"
     >
-      <span aria-hidden="true">&equiv;</span>
+      <span aria-hidden="true">
+        &equiv;
+      </span>
     </button>
 
     <div
       class="site-nav__links"
       id="site-nav-links"
     >
-      <a
-        class:list={{
-          active:
-            activeSection === "areas" ||
-            currentPath === areasHref,
-        }}
-        href={areasHref}
-      >
-        Areas
-      </a>
-
       {
-        finalNavLinks.map((item) => (
+        isProvinceNav ? (
+          provinceNavLinks.map(
+            (item) => (
+              <a
+                class:list={{
+                  active:
+                    isActive(
+                      item.href
+                    ),
+                }}
+                href={
+                  item.href
+                }
+              >
+                {item.label}
+              </a>
+            )
+          )
+        ) : (
           <>
             <a
               class:list={{
-                active: isActive(item.href),
+                active:
+                  activeSection ===
+                    "areas" ||
+                  currentPath ===
+                    areasHref,
               }}
-              href={item.href}
+              href={areasHref}
             >
-              {item.label}
+              Areas
             </a>
 
             {
-              usesRootPageUrls &&
-              (
-                item.label.toLowerCase() ===
-                  "mobile homes" ||
-                item.label.toLowerCase() ===
-                  "mobile homes for sale"
-              ) && (
-                <a
-                  class:list={{
-                    active: isActive(
-                      "/park-directory"
-                    ),
-                  }}
-                  href="/park-directory"
-                >
-                  Park Directory
-                </a>
+              finalNavLinks.map(
+                (item) => (
+                  <>
+                    <a
+                      class:list={{
+                        active:
+                          isActive(
+                            item.href
+                          ),
+                      }}
+                      href={
+                        item.href
+                      }
+                    >
+                      {
+                        item.label
+                      }
+                    </a>
+
+                    {
+                      usesRootPageUrls &&
+                      (
+                        item.label.toLowerCase() ===
+                          "mobile homes" ||
+                        item.label.toLowerCase() ===
+                          "mobile homes for sale"
+                      ) && (
+                        <a
+                          class:list={{
+                            active:
+                              isActive(
+                                "/park-directory"
+                              ),
+                          }}
+                          href="/park-directory"
+                        >
+                          Park Directory
+                        </a>
+                      )
+                    }
+                  </>
+                )
               )
             }
           </>
-        ))
+        )
       }
     </div>
   </div>
 </nav>
 
 {
+  !isProvinceNav &&
   showAreaNav &&
   areaLinks.length > 0 && (
     <div class="site-subnav">
-      <div class="shell site-subnav__inner">
-        {areaLinks.map((item) => (
-          <a
-            class:list={{
-              active: isActive(item.href),
-            }}
-            href={item.href}
-          >
-            {item.label}
-          </a>
-        ))}
+      <div
+        class="shell site-subnav__inner"
+      >
+        {
+          areaLinks.map(
+            (item) => (
+              <a
+                class:list={{
+                  active:
+                    isActive(
+                      item.href
+                    ),
+                }}
+                href={
+                  item.href
+                }
+              >
+                {item.label}
+              </a>
+            )
+          )
+        }
       </div>
     </div>
   )
 }
 
 <script is:inline>
-  const navToggle = document.querySelector(
-    ".site-nav__toggle"
-  );
-
-  const navLinks = document.querySelector(
-    ".site-nav__links"
-  );
-
-  navToggle?.addEventListener("click", () => {
-    const isOpen =
-      navLinks?.classList.toggle("open");
-
-    navToggle.setAttribute(
-      "aria-expanded",
-      isOpen ? "true" : "false"
+  const navToggle =
+    document.querySelector(
+      ".site-nav__toggle"
     );
-  });
+
+  const navLinks =
+    document.querySelector(
+      ".site-nav__links"
+    );
+
+  navToggle?.addEventListener(
+    "click",
+    () => {
+      const isOpen =
+        navLinks?.classList.toggle(
+          "open"
+        );
+
+      navToggle.setAttribute(
+        "aria-expanded",
+        isOpen
+          ? "true"
+          : "false"
+      );
+    }
+  );
 </script>
 
 <style>
@@ -310,50 +532,68 @@ const finalNavLinks: NavItem[] = [
     position: sticky;
     top: 0;
     z-index: 50;
+    border-bottom:
+      1px solid var(--line);
     background: #fff;
-    border-bottom: 1px solid var(--line);
   }
 
   .site-nav__inner,
   .site-subnav__inner {
     width: min(
       var(--page-max-width),
-      calc(100% - (var(--page-gutter) * 2))
+      calc(
+        100% -
+          (
+            var(--page-gutter) *
+              2
+          )
+      )
     );
 
-    max-width: var(--page-max-width);
+    max-width:
+      var(--page-max-width);
+
     margin-inline: auto;
   }
 
   .site-nav__inner {
-    min-height: 58px;
     display: flex;
+    min-height: 58px;
     align-items: center;
-    justify-content: space-between;
+    justify-content:
+      space-between;
     gap: 24px;
   }
 
   .site-nav__brand {
     flex: 0 0 auto;
-    font-family: var(--f-display, Georgia, serif);
+    color: var(--ink);
+    font-family:
+      var(
+        --f-display,
+        Georgia,
+        serif
+      );
     font-size: 1.35rem;
     font-weight: 600;
-    letter-spacing: -0.04em;
-    white-space: nowrap;
-    color: var(--ink);
+    letter-spacing:
+      -0.04em;
     text-decoration: none;
+    white-space: nowrap;
   }
 
   .site-nav__toggle {
-    display: none !important;
+    display:
+      none !important;
   }
 
   .site-nav__links {
-    display: flex !important;
+    display:
+      flex !important;
     align-items: center;
     gap: 8px;
-    flex-wrap: nowrap;
     overflow-x: auto;
+    flex-wrap: nowrap;
     scrollbar-width: none;
   }
 
@@ -366,44 +606,58 @@ const finalNavLinks: NavItem[] = [
     padding: 9px 14px;
     border-radius: 6px;
     color: var(--muted);
-    font-family: system-ui, sans-serif;
+    font-family:
+      system-ui,
+      sans-serif;
     font-size: 0.86rem;
     font-weight: 700;
-    white-space: nowrap;
     text-decoration: none;
+    white-space: nowrap;
   }
 
   .site-nav__links a:hover,
   .site-subnav__inner a:hover {
-    background: var(--accent-soft);
+    background:
+      var(--accent-soft);
     color: var(--accent);
   }
 
   .site-nav__links a.active,
   .site-subnav__inner a.active {
-    background: var(--accent);
+    background:
+      var(--accent);
     color: #fff;
   }
 
   .site-subnav {
-    background: var(--surface);
-    border-bottom: 1px solid var(--line);
+    border-bottom:
+      1px solid var(--line);
+    background:
+      var(--surface);
   }
 
   .site-subnav__inner {
-    min-height: 50px;
-    padding: 6px 0;
     display: flex;
+    min-height: 50px;
     align-items: center;
     gap: 8px;
+    padding: 6px 0;
     flex-wrap: wrap;
   }
 
-  @media (max-width: 760px) {
+  @media (
+    max-width: 760px
+  ) {
     .site-nav__inner,
     .site-subnav__inner {
       width: calc(
-        100% - (var(--page-gutter-mobile) * 2)
+        100% -
+          (
+            var(
+                --page-gutter-mobile
+              ) *
+              2
+          )
       );
 
       max-width: none;
@@ -415,22 +669,27 @@ const finalNavLinks: NavItem[] = [
     }
 
     .site-nav__toggle {
-      display: inline-flex !important;
+      display:
+        inline-flex !important;
+      width: 42px;
+      height: 38px;
       align-items: center;
       justify-content: center;
       margin-left: auto;
-      width: 42px;
-      height: 38px;
-      border: 1px solid var(--line-warm);
+      border:
+        1px solid
+        var(--line-warm);
       border-radius: 6px;
-      background: var(--surface);
+      background:
+        var(--surface);
       color: var(--ink);
-      font-size: 1.2rem;
       cursor: pointer;
+      font-size: 1.2rem;
     }
 
     .site-nav__links {
-      display: none !important;
+      display:
+        none !important;
     }
 
     .site-nav__links.open {
@@ -438,24 +697,37 @@ const finalNavLinks: NavItem[] = [
       top: 58px;
       right: 0;
       left: 0;
-      display: grid !important;
+      display:
+        grid !important;
       gap: 8px;
       padding: 12px;
-      border: 1px solid var(--line-warm);
+      border:
+        1px solid
+        var(--line-warm);
       border-radius: 12px;
       background: #fff;
-      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.12);
+      box-shadow:
+        0 18px 50px
+        rgba(
+          0,
+          0,
+          0,
+          0.12
+        );
     }
 
     .site-nav__links.open a {
       padding: 12px 14px;
-      border: 1px solid var(--line-warm);
-      background: var(--surface);
+      border:
+        1px solid
+        var(--line-warm);
+      background:
+        var(--surface);
     }
 
     .site-subnav__inner {
-      flex-wrap: nowrap;
       overflow-x: auto;
+      flex-wrap: nowrap;
     }
   }
 </style>

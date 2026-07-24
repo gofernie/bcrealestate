@@ -757,66 +757,125 @@ if (
     },
   ]}
 >
-      <div>
-      <p class="bc-eyebrow">
-  {resultsEyebrow}
-</p>
+  <div>
+    <p class="bc-eyebrow">
+      {resultsEyebrow}
+    </p>
 
-        <h2>
-          {formatCount(
-            totalMatchingCount
-          )}{" "}
-          {
-            totalMatchingCount ===
-            1
-              ? "property"
-              : "properties"
-          }
-        </h2>
+    <h2>
+      {formatCount(totalMatchingCount)}{" "}
+      {totalMatchingCount === 1
+        ? "property"
+        : "properties"}
+    </h2>
 
-        <p
-          class="bc-listing-description"
-        >
-          {
-            totalMatchingCount >
-            0
-              ? `Showing ${formatCount(
-                  paginationStart
-                )}–${formatCount(
-                  paginationEnd
-                )} of ${formatCount(
-                  totalMatchingCount
-                )} properties`
-              : "No matching properties"
-          }
-        </p>
-      </div>
-
+    <p class="bc-listing-description">
       {
-        hasActiveFilters && (
-          <a
-            class="bc-clear-search"
-            href={clearHref}
-          >
-            Clear filters
-          </a>
-        )
+        totalMatchingCount > 0
+          ? `Showing ${formatCount(
+              paginationStart
+            )}–${formatCount(
+              paginationEnd
+            )} of ${formatCount(
+              totalMatchingCount
+            )} properties`
+          : "No matching properties"
       }
-    </div>
+    </p>
+  </div>
 
+  <div class="bc-results-heading__actions">
     {
+      hasActiveFilters && (
+        <a
+          class="bc-clear-search"
+          href={clearHref}
+        >
+          Clear filters
+        </a>
+      )
+    }
+
+    <div
+      class="bc-view-toggle"
+      role="group"
+      aria-label="Choose listing view"
+    >
+      <button
+        type="button"
+        class="bc-view-toggle__button is-active"
+        data-home-view="list"
+        aria-pressed="true"
+      >
+        <span aria-hidden="true">☷</span>
+        Listings
+      </button>
+
+      <button
+        type="button"
+        class="bc-view-toggle__button"
+        data-home-view="map"
+        aria-pressed="false"
+      >
+        <span aria-hidden="true">⌖</span>
+        Map
+      </button>
+    </div>
+  </div>
+</div>
+
+   {
       listings.length > 0 ? (
         <>
+         
+
           <div
-            class="bc-listing-grid"
-          >
+  class="bc-home-list-view is-active"
+  data-home-list-view
+>
+  <div class="bc-listing-grid">
             {
               listings.map(
                 (
                   listing,
                   index
                 ) => (
-                  <div class="bc-filterable-listing">
+                  <div
+  class="bc-filterable-listing"
+  data-map-listing
+  data-lat={String(listing?.lat || "")}
+  data-lng={String(listing?.lng || "")}
+  data-price={
+    listing?.price
+      ? `$${Number(listing.price).toLocaleString()}`
+      : ""
+  }
+  data-address={
+    typeof listing?.address === "string"
+      ? listing.address
+      : [
+          listing?.address?.streetNumber,
+          listing?.address?.streetName ||
+            listing?.address?.streetAddress,
+          listing?.address?.streetSuffix,
+          listing?.address?.unitNumber
+            ? `#${listing.address.unitNumber}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+  }
+  data-beds={String(listing?.beds || "")}
+  data-baths={String(listing?.baths || "")}
+  data-image={String(
+    listing?.image_url ||
+      listing?.images?.[0]?.highRes ||
+      listing?.images?.[0]?.mediumRes ||
+      listing?.images?.[0]?.url ||
+      listing?.images?.[0] ||
+      ""
+  )}
+>
                     <ListingCard
                       listing={
                         listing
@@ -830,6 +889,29 @@ if (
               )
             }
           </div>
+
+                </div>
+
+<div
+  class="bc-home-map-view"
+          data-home-map-view
+          hidden
+        >
+          <div
+            class="bc-home-listing-map"
+            data-home-listing-map
+            data-accent={accent}
+            data-city={city}
+          ></div>
+
+          <div
+            class="bc-home-map-empty"
+            data-home-map-empty
+            hidden
+          >
+            Map locations are not available for these listings.
+          </div>
+        </div>
 
           {
             totalPages > 1 && (
@@ -1403,8 +1485,33 @@ if (
       );
     }
 
-    currentResults.innerHTML =
-      nextResults.innerHTML;
+   const activeView =
+  document
+    .querySelector(
+      "[data-home-view].is-active"
+    )
+    ?.getAttribute(
+      "data-home-view"
+    ) || "list";
+
+currentResults.innerHTML =
+  nextResults.innerHTML;
+
+homeListingMarkers.forEach(
+  (marker) =>
+    marker.remove()
+);
+
+homeListingMarkers = [];
+
+if (homeListingMap) {
+  homeListingMap.remove();
+  homeListingMap = null;
+}
+
+setHomepageView(
+  activeView
+);
   };
 
   const loadSearchUrl = async (
@@ -1903,8 +2010,547 @@ if (
     }
   );
 
-  window.addEventListener(
-    "popstate",
+  
+let homeListingMap = null;
+let homeListingMarkers = [];
+let leafletPromise = null;
+
+const loadHomepageLeaflet = () => {
+  if (window.L) {
+    return Promise.resolve(window.L);
+  }
+
+  if (leafletPromise) {
+    return leafletPromise;
+  }
+
+  leafletPromise = new Promise((resolve, reject) => {
+    if (
+      !document.querySelector(
+        'link[data-home-leaflet-css]'
+      )
+    ) {
+      const stylesheet =
+        document.createElement("link");
+
+      stylesheet.rel = "stylesheet";
+      stylesheet.href =
+        "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+
+      stylesheet.dataset.homeLeafletCss =
+        "true";
+
+      document.head.appendChild(
+        stylesheet
+      );
+    }
+
+    const existingScript =
+      document.querySelector(
+        "script[data-home-leaflet-script]"
+      );
+
+    if (existingScript) {
+      const waitForLeaflet = () => {
+        if (window.L) {
+          resolve(window.L);
+          return;
+        }
+
+        window.setTimeout(
+          waitForLeaflet,
+          50
+        );
+      };
+
+      waitForLeaflet();
+      return;
+    }
+
+    const script =
+      document.createElement("script");
+
+    script.src =
+      "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+
+    script.async = true;
+    script.dataset.homeLeafletScript =
+      "true";
+
+    script.addEventListener(
+      "load",
+      () => resolve(window.L)
+    );
+
+    script.addEventListener(
+      "error",
+      () => reject(
+        new Error(
+          "Leaflet could not be loaded."
+        )
+      )
+    );
+
+    document.body.appendChild(script);
+  });
+
+  return leafletPromise;
+};
+
+const getHomepageMapListings = () =>
+  Array.from(
+    document.querySelectorAll(
+      "[data-map-listing]"
+    )
+  )
+    .map((element) => {
+      if (
+        !(element instanceof HTMLElement)
+      ) {
+        return null;
+      }
+
+      const lat =
+        Number(element.dataset.lat);
+
+      const lng =
+        Number(element.dataset.lng);
+
+      if (
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng) ||
+        !lat ||
+        !lng
+      ) {
+        return null;
+      }
+
+      return {
+        element,
+        lat,
+        lng,
+        price:
+          element.dataset.price || "",
+        address:
+          element.dataset.address || "",
+        beds:
+          element.dataset.beds || "",
+        baths:
+          element.dataset.baths || "",
+        image:
+          element.dataset.image || "",
+      };
+    })
+    .filter(Boolean);
+
+const escapeMapHtml = (
+  value
+) =>
+  String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+
+const createHomepageMapIcon = (
+  accent
+) =>
+  window.L.divIcon({
+    className: "bc-home-map-marker",
+    iconSize: [32, 38],
+    iconAnchor: [16, 38],
+    popupAnchor: [0, -35],
+    html: `
+      <div
+        style="
+          width:32px;
+          height:32px;
+          display:grid;
+          place-items:center;
+          border:3px solid #fff;
+          border-radius:50% 50% 50% 0;
+          background:${accent};
+          box-shadow:0 5px 16px rgba(0,0,0,.28);
+          transform:rotate(-45deg);
+        "
+      >
+        <span
+          style="
+            display:block;
+            color:#fff;
+            font-size:12px;
+            transform:rotate(45deg);
+          "
+        >
+          ●
+        </span>
+      </div>
+    `,
+  });
+
+const buildHomepageMapPopup = (
+  listing
+) => `
+  <button
+    type="button"
+    class="bc-home-map-popup"
+    data-map-card-trigger
+    style="
+      width:220px;
+      padding:0;
+      border:0;
+      background:#fff;
+      color:#14201c;
+      text-align:left;
+      cursor:pointer;
+      font-family:system-ui,sans-serif;
+    "
+  >
+    ${
+      listing.image
+        ? `
+          <img
+            src="${escapeMapHtml(
+              listing.image
+            )}"
+            alt=""
+            style="
+              display:block;
+              width:100%;
+              height:125px;
+              object-fit:cover;
+            "
+          />
+        `
+        : ""
+    }
+
+    <span
+      style="
+        display:block;
+        padding:12px 13px 13px;
+      "
+    >
+      <strong
+        style="
+          display:block;
+          margin-bottom:4px;
+          font-size:1rem;
+        "
+      >
+        ${escapeMapHtml(
+          listing.price
+        )}
+      </strong>
+
+      <span
+        style="
+          display:block;
+          margin-bottom:5px;
+          color:#65716c;
+          font-size:.8rem;
+          line-height:1.4;
+        "
+      >
+        ${escapeMapHtml(
+          listing.address
+        )}
+      </span>
+
+      <span
+        style="
+          display:block;
+          color:#65716c;
+          font-size:.75rem;
+        "
+      >
+        ${escapeMapHtml(
+          listing.beds
+        )} beds ·
+        ${escapeMapHtml(
+          listing.baths
+        )} baths
+      </span>
+    </span>
+  </button>
+`;
+
+const initializeHomepageMap = async () => {
+  const mapElement =
+    document.querySelector(
+      "[data-home-listing-map]"
+    );
+
+  const emptyElement =
+    document.querySelector(
+      "[data-home-map-empty]"
+    );
+
+  if (
+    !(mapElement instanceof HTMLElement)
+  ) {
+    return;
+  }
+
+  const listings =
+    getHomepageMapListings();
+
+  if (!listings.length) {
+    mapElement.hidden = true;
+
+    if (
+      emptyElement instanceof HTMLElement
+    ) {
+      emptyElement.hidden = false;
+    }
+
+    return;
+  }
+
+  mapElement.hidden = false;
+
+  if (
+    emptyElement instanceof HTMLElement
+  ) {
+    emptyElement.hidden = true;
+  }
+
+  await loadHomepageLeaflet();
+
+  const accent =
+    mapElement.dataset.accent ||
+    "#1f5a49";
+
+  if (!homeListingMap) {
+    homeListingMap =
+      window.L.map(
+        mapElement,
+        {
+          zoomControl: true,
+          scrollWheelZoom: false,
+          attributionControl: true,
+        }
+      );
+
+    window.L
+      .tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+          maxZoom: 19,
+          attribution:
+            "© OpenStreetMap contributors",
+        }
+      )
+      .addTo(homeListingMap);
+  }
+
+  homeListingMarkers.forEach(
+    (marker) =>
+      marker.remove()
+  );
+
+  homeListingMarkers = [];
+
+  const bounds =
+    window.L.latLngBounds([]);
+
+  const icon =
+    createHomepageMapIcon(
+      accent
+    );
+
+  listings.forEach(
+    (listing) => {
+      const marker =
+        window.L.marker(
+          [
+            listing.lat,
+            listing.lng,
+          ],
+          {
+            icon,
+          }
+        )
+          .addTo(
+            homeListingMap
+          )
+          .bindPopup(
+            buildHomepageMapPopup(
+              listing
+            ),
+            {
+              maxWidth: 220,
+              closeButton: false,
+              className:
+                "bc-home-map-popup-shell",
+            }
+          );
+
+      marker.on(
+        "popupopen",
+        (event) => {
+          const popupElement =
+            event.popup
+              .getElement();
+
+          const trigger =
+            popupElement?.querySelector(
+              "[data-map-card-trigger]"
+            );
+
+          trigger?.addEventListener(
+            "click",
+            () => {
+              const card =
+                listing.element.querySelector(
+                  "[data-listing-id], article, a"
+                );
+
+              if (
+                card instanceof HTMLElement
+              ) {
+                card.click();
+              } else {
+                listing.element.click();
+              }
+            },
+            {
+              once: true,
+            }
+          );
+        }
+      );
+
+      homeListingMarkers.push(
+        marker
+      );
+
+      bounds.extend([
+        listing.lat,
+        listing.lng,
+      ]);
+    }
+  );
+
+  if (bounds.isValid()) {
+    homeListingMap.fitBounds(
+      bounds,
+      {
+        padding: [36, 36],
+        maxZoom: 14,
+      }
+    );
+  }
+
+  window.setTimeout(
+    () => {
+      homeListingMap?.invalidateSize();
+    },
+    100
+  );
+};
+
+const setHomepageView = (
+  view
+) => {
+  const listView =
+    document.querySelector(
+      "[data-home-list-view]"
+    );
+
+  const mapView =
+    document.querySelector(
+      "[data-home-map-view]"
+    );
+
+  document
+    .querySelectorAll(
+      "[data-home-view]"
+    )
+    .forEach(
+      (button) => {
+        const isActive =
+          button.dataset.homeView ===
+          view;
+
+        button.classList.toggle(
+          "is-active",
+          isActive
+        );
+
+        button.setAttribute(
+          "aria-pressed",
+          String(isActive)
+        );
+      }
+    );
+
+  if (
+    listView instanceof HTMLElement
+  ) {
+    listView.hidden =
+      view !== "list";
+
+    listView.classList.toggle(
+      "is-active",
+      view === "list"
+    );
+  }
+
+  if (
+    mapView instanceof HTMLElement
+  ) {
+    mapView.hidden =
+      view !== "map";
+
+    mapView.classList.toggle(
+      "is-active",
+      view === "map"
+    );
+  }
+
+  if (view === "map") {
+    requestAnimationFrame(
+      initializeHomepageMap
+    );
+  }
+};
+
+document.addEventListener(
+  "click",
+  (event) => {
+    const target =
+      event.target;
+
+    if (
+      !(target instanceof Element)
+    ) {
+      return;
+    }
+
+    const viewButton =
+      target.closest(
+        "[data-home-view]"
+      );
+
+    if (
+      !(
+        viewButton instanceof
+        HTMLButtonElement
+      )
+    ) {
+      return;
+    }
+
+    setHomepageView(
+      viewButton.dataset
+        .homeView || "list"
+    );
+  }
+);
+window.addEventListener(
+  "popstate",
     () => {
       loadSearchUrl(
         new URL(
@@ -2094,6 +2740,97 @@ letter-spacing: -0.055em;
     letter-spacing: -0.045em;
   }
 
+
+  .bc-results-heading__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bc-view-toggle {
+  display: inline-flex;
+  overflow: hidden;
+  padding: 3px;
+  border: 1px solid var(--bc-line);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.bc-view-toggle__button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--bc-muted);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.bc-view-toggle__button.is-active {
+  background: var(--bc-home-accent);
+  color: #fff;
+}
+
+.bc-home-list-view,
+.bc-home-map-view {
+  width: 100%;
+}
+
+.bc-home-list-view[hidden],
+.bc-home-map-view[hidden] {
+  display: none !important;
+}
+
+.bc-home-listing-map {
+  width: 100%;
+  height: min(720px, 72vh);
+  min-height: 500px;
+  overflow: hidden;
+  border: 1px solid var(--bc-line);
+  border-radius: 14px;
+  background: var(--bc-cream);
+}
+
+.bc-home-map-empty {
+  min-height: 360px;
+  display: grid;
+  place-items: center;
+  padding: 30px;
+  border: 1px solid var(--bc-line);
+  border-radius: 14px;
+  background: var(--bc-cream);
+  color: var(--bc-muted);
+  text-align: center;
+}
+
+.bc-home-map-empty[hidden] {
+  display: none !important;
+}
+
+.bc-home-map-marker {
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.bc-home-map-popup-shell .leaflet-popup-content-wrapper {
+  overflow: hidden;
+  padding: 0;
+  border-radius: 10px;
+}
+
+.bc-home-map-popup-shell .leaflet-popup-content {
+  margin: 0;
+}
+
+.bc-home-map-popup-shell .leaflet-popup-tip-container {
+  display: none;
+}
   .bc-listing-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2500,10 +3237,39 @@ letter-spacing: -0.055em;
     font-size: 0.7rem;
   }
 
-  @media (max-width: 1100px) {
-    .bc-search {
-      grid-template-columns: repeat(2, 1fr);
-    }
+ @media (max-width: 1100px) {
+ .bc-search {
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  grid-template-rows:
+    repeat(3, minmax(96px, auto));
+
+  background:
+    linear-gradient(
+      to right,
+      transparent calc(50% - 0.5px),
+      var(--bc-line) calc(50% - 0.5px),
+      var(--bc-line) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    ),
+    linear-gradient(
+      to bottom,
+      transparent calc(33.333% - 0.5px),
+      var(--bc-line) calc(33.333% - 0.5px),
+      var(--bc-line) calc(33.333% + 0.5px),
+      transparent calc(33.333% + 0.5px),
+      transparent calc(66.666% - 0.5px),
+      var(--bc-line) calc(66.666% - 0.5px),
+      var(--bc-line) calc(66.666% + 0.5px),
+      transparent calc(66.666% + 0.5px)
+    ),
+    rgba(255, 255, 255, 0.96);
+}
+
+:global(.bc-search__field) {
+  border: 0 !important;
+}
 
    
 
@@ -2534,7 +3300,21 @@ letter-spacing: -0.055em;
   }
 
   @media (max-width: 760px) {
-   .bc-hero {
+   .bc-results-heading__actions {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.bc-view-toggle {
+  margin-left: auto;
+}
+
+.bc-home-listing-map {
+  height: 68vh;
+  min-height: 430px;
+}
+   
+    .bc-hero {
   min-height: 620px;
   background-image:
     var(
@@ -2580,10 +3360,16 @@ letter-spacing: -0.055em;
       grid-template-columns: 1fr;
     }
 
-    .bc-search__field {
-      border-right: 0;
-      border-bottom: 1px solid var(--bc-line);
-    }
+:global(.bc-search__field) {
+  grid-column: auto;
+  border: 0 !important;
+  box-shadow:
+    inset 0 -1px 0 var(--bc-line);
+}
+
+:global(.bc-search__field:last-of-type) {
+  box-shadow: none;
+}
 
    
 
@@ -2673,7 +3459,9 @@ letter-spacing: -0.055em;
     }
   }
 
-  .bc-active-filters {
+ 
+
+.bc-active-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
