@@ -143,4 +143,6 @@ export default async function handler(request: Request) {
   }
 }
 
-export const config: Config = {};
+export const config: Config = {
+  background: true
+};
