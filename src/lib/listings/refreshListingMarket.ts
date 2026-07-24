@@ -110,7 +110,7 @@ export type RefreshListingMarketOptions = {
 
 export type RefreshListingMarketResult = {
   ok: true;
-  mode: "snapshot_and_rebuild";
+  mode: "direct_rebuild";
   runId: string;
   city: string;
   searchKey: string;
@@ -432,37 +432,19 @@ export async function refreshListingMarket(
 
     if (allListings.length === 0) {
       throw new Error(
-        `Repliers returned zero active listings for ${rawCity}. Existing snapshot was not replaced.`
-      );
-    }
-
-    const {
-      error: snapshotError
-    } = await supabase
-      .from("listing_snapshots")
-      .upsert(
-        {
-          search_key: searchKey,
-          city: rawCity,
-          listings: allListings
-        },
-        {
-          onConflict: "search_key"
-        }
-      );
-
-    if (snapshotError) {
-      throw new Error(
-        `Could not save listing snapshot: ${snapshotError.message}`
+        `Repliers returned zero active listings for ${rawCity}. Existing listing_rows were not changed.`
       );
     }
 
     console.log(
-      `Starting listing_rows rebuild for ${searchKey}...`
+      `Starting direct listing_rows rebuild for ${searchKey} with ${allListings.length} listings...`
     );
 
     const rebuildResult =
-      await rebuildListingRows(searchKey);
+      await rebuildListingRows({
+        city: searchKey,
+        listings: allListings
+      });
 
     if (!rebuildResult?.ok) {
       throw new Error(
@@ -475,7 +457,7 @@ export async function refreshListingMarket(
     );
 
     const metadata = {
-      mode: "snapshot_and_rebuild",
+      mode: "direct_rebuild",
       searchKey,
       citiesFetched: citiesToFetch,
       boardId: boardId || null,
@@ -515,7 +497,7 @@ export async function refreshListingMarket(
 
     return {
       ok: true,
-      mode: "snapshot_and_rebuild",
+      mode: "direct_rebuild",
       runId,
       city: rawCity,
       searchKey,
@@ -530,7 +512,7 @@ export async function refreshListingMarket(
         rebuildResult.rowsUpserted,
       rebuild: rebuildResult,
       message:
-        "Fresh raw listings were saved and listing_rows was rebuilt successfully."
+        "Fresh listings were normalized and written directly to listing_rows successfully."
     };
   } catch (error: any) {
     const message =
@@ -543,7 +525,7 @@ export async function refreshListingMarket(
     );
 
     const metadata = {
-      mode: "snapshot_and_rebuild",
+      mode: "direct_rebuild",
       searchKey,
       citiesFetched: citiesToFetch,
       boardId: boardId || null

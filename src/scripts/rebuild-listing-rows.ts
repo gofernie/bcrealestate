@@ -991,33 +991,97 @@ const getListedAt = (listing: any, snapshot: any) =>
   snapshot?.created_at ||
   null;
 
-export const rebuildListingRows = async (targetCity = "") => {
-  console.log("Fetching snapshots...");
+export type RebuildListingRowsInput =
+  | string
+  | {
+      city: string;
+      listings: any[];
+      createdAt?: string | null;
+    };
 
-  const TARGET_CITY = targetCity.trim();
+export const rebuildListingRows = async (
+  input: RebuildListingRowsInput = ""
+) => {
+  const directInput =
+    typeof input === "object" && input !== null
+      ? input
+      : null;
 
-  let snapshotsQuery = supabase
-    .from("listing_snapshots")
-    .select("id, city, search_key, created_at, listings")
-    .order("created_at", { ascending: false });
-
-if (TARGET_CITY) {
-  snapshotsQuery = snapshotsQuery.eq(
-    "search_key",
-    clean(TARGET_CITY)
+  const TARGET_CITY = clean(
+    directInput?.city || input || ""
   );
-}
 
-const snapshotLimit = TARGET_CITY ? 1 : 20;
+  let snapshots: any[] = [];
+  let sourceMode: "direct" | "snapshot" = "snapshot";
 
-const { data: snapshots, error } = await snapshotsQuery.limit(snapshotLimit);
+  if (directInput) {
+    sourceMode = "direct";
 
-  if (error) {
-    console.error("Snapshot fetch failed:", error);
-    return;
+    if (!TARGET_CITY) {
+      throw new Error(
+        "Missing city for direct listing_rows rebuild."
+      );
+    }
+
+    if (!Array.isArray(directInput.listings)) {
+      throw new Error(
+        `Direct listing_rows rebuild for ${TARGET_CITY} did not receive a listings array.`
+      );
+    }
+
+    if (directInput.listings.length === 0) {
+      throw new Error(
+        `Direct listing_rows rebuild for ${TARGET_CITY} received zero listings. Existing rows were not changed.`
+      );
+    }
+
+    snapshots = [
+      {
+        id: null,
+        city: TARGET_CITY,
+        search_key: TARGET_CITY,
+        created_at: directInput.createdAt || null,
+        listings: directInput.listings
+      }
+    ];
+
+    console.log(
+      `Using ${directInput.listings.length} listings supplied directly for ${TARGET_CITY}.`
+    );
+  } else {
+    console.log("Fetching snapshots...");
+
+    let snapshotsQuery = supabase
+      .from("listing_snapshots")
+      .select("id, city, search_key, created_at, listings")
+      .order("created_at", { ascending: false });
+
+    if (TARGET_CITY) {
+      snapshotsQuery = snapshotsQuery.eq(
+        "search_key",
+        TARGET_CITY
+      );
+    }
+
+    const snapshotLimit = TARGET_CITY ? 1 : 20;
+
+    const {
+      data: snapshotRows,
+      error
+    } = await snapshotsQuery.limit(snapshotLimit);
+
+    if (error) {
+      throw new Error(
+        `Snapshot fetch failed: ${error.message}`
+      );
+    }
+
+    snapshots = snapshotRows || [];
+
+    console.log(
+      `Snapshots found: ${snapshots.length}`
+    );
   }
-
-  console.log(`Snapshots found: ${snapshots?.length || 0}`);
 
 const { data: existingRows, error: existingError } = await supabase
   .from("listing_rows")
@@ -1540,7 +1604,9 @@ console.log("Done.");
 return {
   ok: true,
   city: cleanupCity,
-  snapshotsFound: snapshots?.length || 0,
+  sourceMode,
+  snapshotsFound:
+    sourceMode === "snapshot" ? snapshots.length : 0,
   rowsNormalized: rows.length,
   rowsUpserted: uniqueRows.length,
   missingCoords,
