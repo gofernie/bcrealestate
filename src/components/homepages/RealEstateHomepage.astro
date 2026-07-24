@@ -34,6 +34,7 @@ interface Props {
   site?: any;
   heroImageUrl?: string;
   listings?: any[];
+  mapListings?: any[];
   locationCards?: LocationCard[];
   mode?: "province" | "city";
   city?: string;
@@ -55,6 +56,7 @@ const {
   site,
   heroImageUrl = "",
   listings = [],
+  mapListings = listings,
   locationCards = [],
   mode = "province",
   city = "",
@@ -70,7 +72,31 @@ const {
   previousPageHref = null,
   nextPageHref = null,
 } = Astro.props;
+const visibleListingIds = new Set(
+  listings
+    .map((listing) =>
+      String(
+        listing?.id ||
+        listing?.mls_number ||
+        ""
+      )
+    )
+    .filter(Boolean)
+);
 
+const modalOnlyListings =
+  mapListings.filter((listing) => {
+    const listingId = String(
+      listing?.id ||
+      listing?.mls_number ||
+      ""
+    );
+
+    return (
+      listingId &&
+      !visibleListingIds.has(listingId)
+    );
+  });
 const isCityMode =
   mode === "city";
 
@@ -833,65 +859,90 @@ if (
   class="bc-home-list-view is-active"
   data-home-list-view
 >
-  <div class="bc-listing-grid">
-            {
-              listings.map(
-                (
-                  listing,
-                  index
-                ) => (
-                  <div
-  class="bc-filterable-listing"
-  data-map-listing
-  data-lat={String(listing?.lat || "")}
-  data-lng={String(listing?.lng || "")}
-  data-price={
-    listing?.price
-      ? `$${Number(listing.price).toLocaleString()}`
-      : ""
+<div class="bc-listing-grid">
+  {
+    listings.map(
+      (listing, index) => (
+        <div class="bc-filterable-listing">
+          <ListingCard
+            listing={listing}
+            priority={index < 4}
+          />
+        </div>
+      )
+    )
   }
-  data-address={
-    typeof listing?.address === "string"
-      ? listing.address
-      : [
-          listing?.address?.streetNumber,
-          listing?.address?.streetName ||
-            listing?.address?.streetAddress,
-          listing?.address?.streetSuffix,
-          listing?.address?.unitNumber
-            ? `#${listing.address.unitNumber}`
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" ")
-  }
-  data-beds={String(listing?.beds || "")}
-  data-baths={String(listing?.baths || "")}
-  data-image={String(
-    listing?.image_url ||
-      listing?.images?.[0]?.highRes ||
-      listing?.images?.[0]?.mediumRes ||
-      listing?.images?.[0]?.url ||
-      listing?.images?.[0] ||
-      ""
-  )}
+</div>
+
+<div
+  class="bc-modal-listing-sources"
+  aria-hidden="true"
 >
-                    <ListingCard
-                      listing={
-                        listing
-                      }
-                      priority={
-                        index < 4
-                      }
-                    />
-                  </div>
-                )
-              )
-            }
-          </div>
+  {
+    modalOnlyListings.map(
+      (listing) => (
+        <ListingCard
+          listing={listing}
+        />
+      )
+    )
+  }
+</div>
 
                 </div>
+<script
+  id="homepage-map-data"
+  type="application/json"
+  set:html={JSON.stringify(
+ mapListings.map((listing) => ({
+  id:
+    listing?.id ||
+    listing?.mls_number ||
+    "",
 
+  href:
+    listing?.listing_url ||
+    listing?.href ||
+    listing?.url ||
+    "",
+
+  lat: listing?.lat ?? null,
+      lng: listing?.lng ?? null,
+      price: listing?.price ?? null,
+      address:
+        typeof listing?.address ===
+        "string"
+          ? listing.address
+          : [
+              listing?.address
+                ?.streetNumber,
+              listing?.address
+                ?.streetName ||
+                listing?.address
+                  ?.streetAddress,
+              listing?.address
+                ?.streetSuffix,
+              listing?.address
+                ?.unitNumber
+                ? `#${listing.address.unitNumber}`
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" "),
+      beds: listing?.beds ?? null,
+      baths: listing?.baths ?? null,
+      image:
+        listing?.image_url ||
+        listing?.images?.[0]
+          ?.highRes ||
+        listing?.images?.[0]
+          ?.mediumRes ||
+        listing?.images?.[0]?.url ||
+        listing?.images?.[0] ||
+        "",
+    }))
+  ).replace(/</g, "\\u003c")}
+/>
 <div
   class="bc-home-map-view"
           data-home-map-view
@@ -1338,7 +1389,7 @@ if (
 </div>
 
 <IntentModalController
-  listings={listings}
+  listings={mapListings}
 />
 
 <script>
@@ -2096,52 +2147,87 @@ const loadHomepageLeaflet = () => {
 
   return leafletPromise;
 };
+const getHomepageMapListings = () => {
+  const dataElement =
+    document.getElementById(
+      "homepage-map-data"
+    );
 
-const getHomepageMapListings = () =>
-  Array.from(
-    document.querySelectorAll(
-      "[data-map-listing]"
-    )
-  )
-    .map((element) => {
-      if (
-        !(element instanceof HTMLElement)
-      ) {
-        return null;
-      }
+  if (!dataElement?.textContent) {
+    return [];
+  }
 
-      const lat =
-        Number(element.dataset.lat);
+  try {
+    const parsed =
+      JSON.parse(
+        dataElement.textContent
+      );
 
-      const lng =
-        Number(element.dataset.lng);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
 
-      if (
-        !Number.isFinite(lat) ||
-        !Number.isFinite(lng) ||
-        !lat ||
-        !lng
-      ) {
-        return null;
-      }
+    return parsed
+      .map((listing) => {
+        const lat =
+          Number(listing?.lat);
 
-      return {
-        element,
-        lat,
-        lng,
-        price:
-          element.dataset.price || "",
-        address:
-          element.dataset.address || "",
-        beds:
-          element.dataset.beds || "",
-        baths:
-          element.dataset.baths || "",
-        image:
-          element.dataset.image || "",
-      };
-    })
-    .filter(Boolean);
+        const lng =
+          Number(listing?.lng);
+
+        if (
+          !Number.isFinite(lat) ||
+          !Number.isFinite(lng) ||
+          !lat ||
+          !lng
+        ) {
+          return null;
+        }
+
+       return {
+  id:
+    String(
+      listing?.id || ""
+    ),
+
+  
+
+  lat,
+  lng,
+          price:
+            listing?.price
+              ? `$${Number(
+                  listing.price
+                ).toLocaleString()}`
+              : "",
+          address:
+            String(
+              listing?.address || ""
+            ),
+          beds:
+            String(
+              listing?.beds ?? ""
+            ),
+          baths:
+            String(
+              listing?.baths ?? ""
+            ),
+          image:
+            String(
+              listing?.image || ""
+            ),
+        };
+      })
+      .filter(Boolean);
+  } catch (error) {
+    console.error(
+      "Homepage map data could not be parsed:",
+      error
+    );
+
+    return [];
+  }
+};
 
 const escapeMapHtml = (
   value
@@ -2195,8 +2281,11 @@ const buildHomepageMapPopup = (
   <button
     type="button"
     class="bc-home-map-popup"
-    data-map-card-trigger
+    data-map-listing-id="${escapeMapHtml(
+      listing.id
+    )}"
     style="
+      display:block;
       width:220px;
       padding:0;
       border:0;
@@ -2273,7 +2362,7 @@ const buildHomepageMapPopup = (
         )} baths
       </span>
     </span>
-  </button>
+</button>
 `;
 
 const initializeHomepageMap = async () => {
@@ -2362,65 +2451,81 @@ const initializeHomepageMap = async () => {
 
   listings.forEach(
     (listing) => {
-      const marker =
-        window.L.marker(
-          [
-            listing.lat,
-            listing.lng,
-          ],
-          {
-            icon,
-          }
-        )
-          .addTo(
-            homeListingMap
-          )
-          .bindPopup(
-            buildHomepageMapPopup(
-              listing
-            ),
-            {
-              maxWidth: 220,
-              closeButton: false,
-              className:
-                "bc-home-map-popup-shell",
-            }
-          );
+     const marker =
+  window.L.marker(
+    [
+      listing.lat,
+      listing.lng,
+    ],
+    {
+      icon,
+    }
+  )
+    .addTo(
+      homeListingMap
+    )
+    .bindPopup(
+      buildHomepageMapPopup(
+        listing
+      ),
+      {
+        maxWidth: 220,
+        closeButton: false,
+        className:
+          "bc-home-map-popup-shell",
+      }
+    );
 
-      marker.on(
-        "popupopen",
-        (event) => {
-          const popupElement =
-            event.popup
-              .getElement();
+marker.on(
+  "popupopen",
+  () => {
+    const popupElement =
+      marker
+        .getPopup()
+        ?.getElement();
 
-          const trigger =
-            popupElement?.querySelector(
-              "[data-map-card-trigger]"
-            );
-
-          trigger?.addEventListener(
-            "click",
-            () => {
-              const card =
-                listing.element.querySelector(
-                  "[data-listing-id], article, a"
-                );
-
-              if (
-                card instanceof HTMLElement
-              ) {
-                card.click();
-              } else {
-                listing.element.click();
-              }
-            },
-            {
-              once: true,
-            }
-          );
-        }
+    const popupButton =
+      popupElement?.querySelector(
+        "[data-map-listing-id]"
       );
+
+    if (
+      !(
+        popupButton instanceof
+        HTMLButtonElement
+      )
+    ) {
+      return;
+    }
+
+    popupButton.onclick = () => {
+      const listingId =
+        String(
+          listing.id || ""
+        );
+
+      const card =
+        document.querySelector(
+          `.original-card[data-listing-id="${CSS.escape(
+            listingId
+          )}"],
+           .refined-card[data-listing-id="${CSS.escape(
+             listingId
+           )}"]`
+        );
+
+      if (
+        card instanceof HTMLElement &&
+        typeof window.openSheet ===
+          "function"
+      ) {
+        window.openSheet(card);
+      }
+    };
+  }
+);
+
+     
 
       homeListingMarkers.push(
         marker
@@ -2463,6 +2568,11 @@ const setHomepageView = (
     document.querySelector(
       "[data-home-map-view]"
     );
+
+    const pagination =
+  document.querySelector(
+    ".bc-pagination"
+  );
 
   document
     .querySelectorAll(
@@ -2509,7 +2619,14 @@ const setHomepageView = (
       view === "map"
     );
   }
-
+if (
+  pagination instanceof HTMLElement
+) {
+  pagination.style.display =
+    view === "map"
+      ? "none"
+      : "";
+}
   if (view === "map") {
     requestAnimationFrame(
       initializeHomepageMap
@@ -3545,5 +3662,15 @@ letter-spacing: -0.055em;
 [data-async-search-results] {
   position: relative;
   z-index: 1;
+}
+.bc-modal-listing-sources {
+  position: fixed;
+  top: 0;
+  left: -100000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 </style>

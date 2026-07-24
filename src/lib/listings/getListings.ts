@@ -377,8 +377,196 @@ if (maxSqft !== null) {
     return await query;
   };
 
-  const initialResult =
+let initialResult: any;
+
+if (paginate) {
+  initialResult =
     await runQuery(requestedPage);
+} else {
+  const batchSize = 1000;
+  const allListings: any[] = [];
+  let totalCount = 0;
+  let batchError: any = null;
+
+  for (
+    let rangeStart = 0;
+    ;
+    rangeStart += batchSize
+  ) {
+    const rangeEnd =
+      rangeStart + batchSize - 1;
+
+    let query = supabase
+      .from("listing_rows")
+      .select(listingSelect, {
+        count:
+          rangeStart === 0
+            ? "exact"
+            : undefined,
+      });
+
+    if (status) {
+      query = query.eq(
+        "status",
+        status
+      );
+    }
+
+    if (city) {
+      query = query.eq(
+        "normalized_city",
+        city
+      );
+    } else if (
+      cities.length > 0
+    ) {
+      query = query.in(
+        "normalized_city",
+        cities
+      );
+    }
+
+    if (type) {
+      query = query.eq(
+        "normalized_type",
+        type
+      );
+    }
+
+    if (areas.length > 0) {
+      query = query.in(
+        "normalized_area",
+        areas
+      );
+    }
+
+    if (beds !== null) {
+      query = query.gte(
+        "beds",
+        beds
+      );
+    }
+
+    if (baths !== null) {
+      query = query.gte(
+        "baths",
+        baths
+      );
+    }
+
+    if (minPrice !== null) {
+      query = query.gte(
+        "price",
+        minPrice
+      );
+    }
+
+    if (maxPrice !== null) {
+      query = query.lte(
+        "price",
+        maxPrice
+      );
+    }
+
+    if (minSqft !== null) {
+      query = query.gte(
+        "sqft",
+        minSqft
+      );
+    }
+
+    if (maxSqft !== null) {
+      query = query.lte(
+        "sqft",
+        maxSqft
+      );
+    }
+
+    if (
+      sort === "price-low"
+    ) {
+      query = query
+        .order("price", {
+          ascending: true,
+          nullsFirst: false,
+        })
+        .order("listed_at", {
+          ascending: false,
+          nullsFirst: false,
+        })
+        .order("created_at", {
+          ascending: false,
+          nullsFirst: false,
+        });
+    } else if (
+      sort === "price-high"
+    ) {
+      query = query
+        .order("price", {
+          ascending: false,
+          nullsFirst: false,
+        })
+        .order("listed_at", {
+          ascending: false,
+          nullsFirst: false,
+        })
+        .order("created_at", {
+          ascending: false,
+          nullsFirst: false,
+        });
+    } else {
+      query = query
+        .order("listed_at", {
+          ascending: false,
+          nullsFirst: false,
+        })
+        .order("created_at", {
+          ascending: false,
+          nullsFirst: false,
+        });
+    }
+
+    const batchResult =
+      await query.range(
+        rangeStart,
+        rangeEnd
+      );
+
+    if (batchResult.error) {
+      batchError =
+        batchResult.error;
+      break;
+    }
+
+    const batch =
+      batchResult.data || [];
+
+    if (rangeStart === 0) {
+      totalCount =
+        batchResult.count ||
+        batch.length;
+    }
+
+    allListings.push(
+      ...batch
+    );
+
+    if (
+      batch.length <
+        batchSize ||
+      allListings.length >=
+        totalCount
+    ) {
+      break;
+    }
+  }
+
+  initialResult = {
+    data: allListings,
+    count: totalCount,
+    error: batchError,
+  };
+}
 
   if (initialResult.error) {
     return {
