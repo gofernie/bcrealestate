@@ -9,12 +9,13 @@ const supabase = createClient(
 const PUBLIC_SITE_URL = process.env.PUBLIC_SITE_URL;
 const CRON_SECRET = process.env.CRON_SECRET;
 
-const DISPATCH_DELAY_MS = 1000;
+const DISPATCH_DELAY_MS = 250;
+const MARKETS_PER_RUN = 4;
 
 const sleep = (milliseconds: number) =>
-  new Promise((resolve) =>
-    setTimeout(resolve, milliseconds)
-  );
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
 
 export default async function handler() {
   if (!PUBLIC_SITE_URL) {
@@ -27,11 +28,18 @@ export default async function handler() {
 
   const { data: markets, error } = await supabase
     .from("listing_markets")
-    .select("city, refresh_priority")
+    .select(
+      "city, refresh_priority, last_success_at"
+    )
     .eq("enabled", true)
+    .order("last_success_at", {
+      ascending: true,
+      nullsFirst: true
+    })
     .order("refresh_priority", {
       ascending: true
-    });
+    })
+    .limit(MARKETS_PER_RUN);
 
   if (error) {
     throw new Error(
@@ -46,12 +54,15 @@ export default async function handler() {
       JSON.stringify({
         ok: true,
         dispatched: 0,
+        failed: 0,
         results: []
       }),
       {
         status: 200,
         headers: {
-          "content-type": "application/json"
+          "content-type":
+            "application/json; charset=utf-8",
+          "cache-control": "no-store"
         }
       }
     );
@@ -65,6 +76,10 @@ export default async function handler() {
     status?: number;
     error?: string;
   }> = [];
+
+  console.log(
+    `Preparing to dispatch ${markets.length} listing markets`
+  );
 
   for (
     let index = 0;
