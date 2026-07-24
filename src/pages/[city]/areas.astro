@@ -28,39 +28,19 @@ const city =
 
 const site = await getSite(Astro.url.hostname, city);
 
-    console.log({
-  hostname: Astro.url.hostname,
-  paramCity: Astro.params.city,
-  siteCity: site?.city,
-  finalCity: city,
-});
+    
 
 
 
 const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
-const agentPageSlug =
-  site?.city?.toLowerCase() === "parksville"
-    ? "parksville"
-    : "chris-crump";
 
-const { data: agentPage } = await supabase
-  .from("agent_pages")
-  .select("data")
-  .eq("slug", agentPageSlug)
-  .maybeSingle();
 
 const accentColor =
   site?.accent_color ||
   "#2f6f73";
 
-console.log("COLOUR SOURCE DEBUG", {
-  city,
-  agentPageSlug,
-  agentPageAccent: agentPage?.data?.accentColor,
-  siteAccent: site?.accent_color,
-  finalAccent: accentColor,
-});
+
 
 let listingsQuery = supabase
   .from("listing_rows")
@@ -380,12 +360,7 @@ const areasHeroMapData = areaMetaRows
   });
 
 ---
-{console.log("LAYOUT ACCENT", {
-  city,
-  agentPageSlug,
-  agentPage,
-  accentColor
-})}
+
 <Layout title={`${cityLabel} Real Estate Market Report`} accentColor={accentColor} city={city}>
  
   
@@ -426,27 +401,27 @@ const areasHeroMapData = areaMetaRows
   <div class="market-summary-card">
     <div class="market-summary-card__inner">
 
-      <div class="market-dashboard__head">
-        <div>
-          <span>Neighbourhoods</span>
-          <strong>Explore {cityLabel}</strong>
-        </div>
+     <div class="market-dashboard__head">
+  <div>
+    <span>{cityLabel} market</span>
+    <strong>Market at a glance</strong>
+  </div>
 
-        <span class="market-dashboard__live">Live data</span>
-      </div>
+  <span class="market-dashboard__live">
+    Live inventory
+  </span>
+</div>
 
-     <div class="market-dashboard__primary">
-  <span>Neighbourhoods</span>
+<div class="market-dashboard__primary">
+  <span>Active listings</span>
 
   <strong>
-    {
-      topAreas.filter(
-        ([area, count]) => getAreaCardCount(area, count) > 0
-      ).length
-    }
+    {activeListings.toLocaleString()}
   </strong>
 
-  <small>Areas with active listings</small>
+  <small>
+    Homes currently available across {cityLabel}
+  </small>
 </div>
 
       <div class="market-dashboard__grid">
@@ -460,8 +435,16 @@ const areasHeroMapData = areaMetaRows
           </span>
 
           <div>
-           <strong>{activeListings}</strong>
-<small>Homes for sale across all areas</small>
+       <strong>
+  {
+    topAreas.filter(
+      ([area, count]) =>
+        getAreaCardCount(area, count) > 0
+    ).length
+  }
+</strong>
+
+<small>Neighbourhoods with listings</small>
           </div>
         </article>
 
@@ -592,168 +575,238 @@ const areasHeroMapData = areaMetaRows
     ))}
 </div>
 </section>
-
-   <!-- ── Latest listings ── -->
-<section class="listings-section">
-  <div class="section-heading" style="margin-bottom: 24px;">
-    <span class="eyebrow">Latest Listings</span>
-    <h2>Newest {cityLabel} Listings</h2>
-    <p>
-      A quick look at some of the newest active listings currently available
-      across {cityLabel}.
-    </p>
-  </div>
-
-  <div class="listing-grid">
-    {listings.map((listing, index) => (
-      <div
-        class="listing-card-wrap"
-        data-type={listing.normalized_type || ""}
-        data-price={listing.price || 0}
-        data-beds={listing.beds || 0}
-        data-listed={listing.listed_at || ""}
-      >
-        <ListingCard
-  listing={listing}
-  image={getListingImage(listing)}
-  priority={index < 3}
-/>
-      </div>
-    ))}
-  </div>
-</section>
 <!-- ── Market Snapshot ── -->
 <section class="market-row market-mini-grid">
-
   <section class="market-mini-card">
     <div class="market-mini-head">
-      <span class="eyebrow">Price Distribution</span>
+      <span class="eyebrow">
+        Price Distribution
+      </span>
+
       <h2>Inventory by Price</h2>
 
       <p>
         Most listings currently fall in the
         <strong>
-          {priceBuckets[
-            priceBucketCounts.indexOf(Math.max(...priceBucketCounts))
-          ]?.label || "most active price range"}
+          {
+            priceBuckets[
+              priceBucketCounts.indexOf(
+                Math.max(...priceBucketCounts)
+              )
+            ]?.label ||
+              "most active price range"
+          }
         </strong>
         range.
       </p>
     </div>
 
     <div class="mini-bars">
-      {priceBuckets.map((bucket, index) => {
-        const count = priceBucketCounts[index];
-        const maxCount = Math.max(...priceBucketCounts, 1);
-        const width = Math.max(6, (count / maxCount) * 100);
-        const percentage = activeListings
-          ? Math.round((count / activeListings) * 100)
-          : 0;
+      {
+        priceBuckets.map(
+          (bucket, index) => {
+            const count =
+              priceBucketCounts[index];
 
-        return (
-          <div class="mini-bar">
-            <span>{bucket.label}</span>
+            const maxCount =
+              Math.max(
+                ...priceBucketCounts,
+                1
+              );
 
-            <div class="mini-bar-track">
-              <div
-                class="mini-bar-fill"
-                style={`width: ${width}%`}
-              ></div>
-            </div>
+            const width =
+              Math.max(
+                6,
+                (count / maxCount) * 100
+              );
 
-            <strong>
-              {count}
-              <small>{percentage}%</small>
-            </strong>
-          </div>
-        );
-      })}
+            const percentage =
+              activeListings
+                ? Math.round(
+                    (count /
+                      activeListings) *
+                      100
+                  )
+                : 0;
+
+            return (
+              <div class="mini-bar">
+                <span>
+                  {bucket.label}
+                </span>
+
+                <div class="mini-bar-track">
+                  <div
+                    class="mini-bar-fill"
+                    style={`width: ${width}%`}
+                  ></div>
+                </div>
+
+                <strong>
+                  {count}
+                  <small>
+                    {percentage}%
+                  </small>
+                </strong>
+              </div>
+            );
+          }
+        )
+      }
     </div>
   </section>
 
   <section class="market-mini-card">
     <div class="market-mini-head">
-      <span class="eyebrow">Area Activity</span>
+      <span class="eyebrow">
+        Area Activity
+      </span>
+
       <h2>Most Active Areas</h2>
 
       <p>
         <strong>
-          {topAreas.length ? labelize(topAreas[0][0]) : cityLabel}
+          {
+            topAreas.length
+              ? labelize(
+                  topAreas[0][0]
+                )
+              : cityLabel
+          }
         </strong>
-        currently has the largest selection of active listings.
+        currently has the largest selection
+        of active listings.
       </p>
     </div>
 
     <div class="mini-bars">
-      {topAreas.slice(0, 5).map(([area, count]) => {
-        const largestAreaCount = Number(topAreas[0]?.[1] || 1);
-        const numericCount = Number(count || 0);
-        const width = Math.max(
-          6,
-          (numericCount / largestAreaCount) * 100
-        );
+      {
+        topAreas
+          .slice(0, 5)
+          .map(([area, count]) => {
+            const largestAreaCount =
+              Number(
+                topAreas[0]?.[1] || 1
+              );
 
-        const percentage = activeListings
-          ? Math.round((numericCount / activeListings) * 100)
-          : 0;
+            const numericCount =
+              Number(count || 0);
 
-        return (
-          <a
-            class="mini-bar mini-area"
-            href={`/${city}/${areaToSlug(area)}`}
-          >
-            <span>{labelize(area)}</span>
+            const width =
+              Math.max(
+                6,
+                (numericCount /
+                  largestAreaCount) *
+                  100
+              );
 
-            <div class="mini-bar-track">
-              <div
-                class="mini-bar-fill"
-                style={`width: ${width}%`}
-              ></div>
-            </div>
+            const percentage =
+              activeListings
+                ? Math.round(
+                    (numericCount /
+                      activeListings) *
+                      100
+                  )
+                : 0;
 
-            <strong>
-              {numericCount}
-              <small>{percentage}%</small>
-            </strong>
-          </a>
-        );
-      })}
+            return (
+              <a
+                class="mini-bar mini-area"
+                href={`/${city}/${areaToSlug(
+                  area
+                )}`}
+              >
+                <span>
+                  {labelize(area)}
+                </span>
+
+                <div class="mini-bar-track">
+                  <div
+                    class="mini-bar-fill"
+                    style={`width: ${width}%`}
+                  ></div>
+                </div>
+
+                <strong>
+                  {numericCount}
+                  <small>
+                    {percentage}%
+                  </small>
+                </strong>
+              </a>
+            );
+          })
+      }
     </div>
   </section>
-
-</section>
-<!-- ── Stats ── -->
-<section class="area-stats">
-  <div class="stat-card">
-    <strong>{activeListings}</strong>
-    <span>Active Listings</span>
-  </div>
-  <div class="stat-card">
-    <strong>${avgPrice.toLocaleString()}</strong>
-    <span>Average Price</span>
-  </div>
-  <div class="stat-card">
-    <strong>${medianPrice.toLocaleString()}</strong>
-    <span>Median Price</span>
-  </div>
-  <div class="stat-card">
-    <strong>{houseCount}</strong>
-    <span>Houses</span>
-  </div>
-  <div class="stat-card">
-    <strong>{condoCount}</strong>
-    <span>Condos</span>
-  </div>
-  <div class="stat-card">
-    <strong>{townhomeCount}</strong>
-    <span>Townhomes</span>
-  </div>
 </section>
 
+<!-- ── Latest Listings ── -->
+<section class="listings-section">
+  <div
+    class="section-heading section-heading--action"
+  >
+    <div>
+      <span class="eyebrow">
+        Latest listings
+      </span>
 
+      <h2>
+        Newest {cityLabel} listings
+      </h2>
 
- 
+      <p>
+        Recently listed homes currently
+        available across {cityLabel}.
+      </p>
+    </div>
 
+    <a
+      class="section-heading__link"
+      href={`/${city}`}
+    >
+      View all{" "}
+      {activeListings.toLocaleString()}{" "}
+      listings
+
+      <span aria-hidden="true">
+        →
+      </span>
+    </a>
+  </div>
+
+  <div class="listing-grid">
+    {
+      listings.map(
+        (listing, index) => (
+          <div
+            class="listing-card-wrap"
+            data-type={
+              listing.normalized_type ||
+              ""
+            }
+            data-price={
+              listing.price || 0
+            }
+            data-beds={
+              listing.beds || 0
+            }
+            data-listed={
+              listing.listed_at || ""
+            }
+          >
+            <ListingCard
+              listing={listing}
+              image={getListingImage(
+                listing
+              )}
+              priority={index < 3}
+            />
+          </div>
+        )
+      )
+    }
+  </div>
 </section>
 
     <!-- ── Intent interrupter ── -->
@@ -781,19 +834,7 @@ home searches.
 
     
 
-    <!-- ── Popular searches ── -->
-    <section class="content-card">
-    <h2>Popular {cityLabel} Searches</h2>
-     <ul>
-  {featuredIntentPages.map((intentPage) => (
-    <li>
-      <a href={`/${city}/${intentPage.slug}`}>
-        {intentPage.hero_heading}
-      </a>
-    </li>
-  ))}
-</ul>
-    </section>
+    
 
     </div>
   </div>
@@ -1141,37 +1182,42 @@ areaLayers.push(layer);
     max-width: 560px;
   }
 
-  /* ── Stats row ── */
-  .area-stats {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 8px;
-    margin-bottom: 40px;
-  }
+  .section-heading--action {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
 
-  .stat-card {
-    background: #fff;
-    border: 0.5px solid rgba(0,0,0,0.1);
-    border-radius: 12px;
-    padding: 16px 18px;
-  }
+.section-heading--action > div {
+  min-width: 0;
+}
 
-  .stat-card strong {
-    display: block;
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--ink);
-    margin-bottom: 4px;
-    letter-spacing: -0.03em;
-  }
+.section-heading__link {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 9px;
+  padding-bottom: 5px;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 850;
+  text-decoration: none;
+}
 
-  .stat-card span {
-    font-size: 0.75rem;
-    color: var(--muted);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+.section-heading__link:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+@media (max-width: 640px) {
+  .section-heading--action {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 16px;
   }
+}
 
   /* ── Listings section ── */
   .listings-section { margin-bottom: 54px; }
@@ -1488,42 +1534,7 @@ areaLayers.push(layer);
   .intent-tile strong { display: block; margin-bottom: 8px; font-size: 1rem; color: #fff; }
   .intent-tile span { display: block; color: rgba(255,255,255,0.68); font-size: 0.9rem; line-height: 1.5; }
 
-  /* ── Popular searches ── */
-  .content-card h2 {
-    font-family: var(--f-display, Georgia, serif);
-    font-size: clamp(1.8rem, 3vw, 2.4rem);
-    line-height: 0.98;
-    letter-spacing: -0.05em;
-    font-weight: 500;
-    margin-bottom: 20px;
-  }
-
-  .content-card ul {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 12px;
-    list-style: none;
-    margin-top: 18px;
-    padding: 0;
-  }
-
-.content-card li a {
-    display: block;
-    padding: 18px;
-    border-radius: 6px;
-    background: #fff;
-    border: 1px solid rgba(28,25,23,0.1);
-    font-weight: 700;
-    color: var(--ink);
-    text-decoration: none;
-    transition: all 0.2s ease;
-  }
-
-  .content-card li a:hover {
-    transform: translateY(-2px);
-    border-color: var(--accent-light);
-    box-shadow: 0 12px 28px rgba(28,25,23,0.08);
-  }
+  
 .listing-grid {
   margin-bottom: 32px;
 }
