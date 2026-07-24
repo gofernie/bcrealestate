@@ -27,19 +27,20 @@ export default async function handler() {
   }
 
   const { data: markets, error } = await supabase
-    .from("listing_markets")
-    .select(
-      "city, refresh_priority, last_success_at"
-    )
-    .eq("enabled", true)
-    .order("last_success_at", {
-      ascending: true,
-      nullsFirst: true
-    })
-    .order("refresh_priority", {
-      ascending: true
-    })
-    .limit(MARKETS_PER_RUN);
+  .from("listing_markets")
+  .select(
+    "city, refresh_priority, last_success_at"
+  )
+  .eq("enabled", true)
+  .neq("last_refresh_status", "running")
+  .order("last_success_at", {
+    ascending: true,
+    nullsFirst: true
+  })
+  .order("refresh_priority", {
+    ascending: true
+  })
+  .limit(MARKETS_PER_RUN);
 
   if (error) {
     throw new Error(
