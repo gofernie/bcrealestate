@@ -1591,7 +1591,10 @@ for (let i = 0; i < uniqueRows.length; i += BATCH) {
 .upsert(batch, { onConflict: "id", ignoreDuplicates: false });
 if (upsertError) {
   console.error("Batch failed:", upsertError);
-  return;
+
+  throw new Error(
+    `listing_rows batch upsert failed: ${upsertError.message}`
+  );
 }
 
 console.log(
