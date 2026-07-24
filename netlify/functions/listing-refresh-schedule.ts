@@ -9,7 +9,7 @@ const supabase = createClient(
 const PUBLIC_SITE_URL = process.env.PUBLIC_SITE_URL;
 const CRON_SECRET = process.env.CRON_SECRET;
 
-const DISPATCH_DELAY_MS = 2500;
+const DISPATCH_DELAY_MS = 1000;
 
 const sleep = (milliseconds: number) =>
   new Promise((resolve) =>
