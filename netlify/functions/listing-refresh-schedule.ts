@@ -9,6 +9,13 @@ const supabase = createClient(
 const PUBLIC_SITE_URL = process.env.PUBLIC_SITE_URL;
 const CRON_SECRET = process.env.CRON_SECRET;
 
+const DISPATCH_DELAY_MS = 2500;
+
+const sleep = (milliseconds: number) =>
+  new Promise((resolve) =>
+    setTimeout(resolve, milliseconds)
+  );
+
 export default async function handler() {
   if (!PUBLIC_SITE_URL) {
     throw new Error("Missing PUBLIC_SITE_URL");
@@ -34,7 +41,20 @@ export default async function handler() {
 
   if (!markets?.length) {
     console.log("No enabled listing markets found.");
-    return;
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        dispatched: 0,
+        results: []
+      }),
+      {
+        status: 200,
+        headers: {
+          "content-type": "application/json"
+        }
+      }
+    );
   }
 
   const baseUrl = PUBLIC_SITE_URL.replace(/\/$/, "");
@@ -46,21 +66,39 @@ export default async function handler() {
     error?: string;
   }> = [];
 
-  for (const market of markets) {
-    const city = String(market.city || "").trim();
+  for (
+    let index = 0;
+    index < markets.length;
+    index += 1
+  ) {
+    const market = markets[index];
 
-    if (!city) continue;
+    const city = String(
+      market.city || ""
+    ).trim();
+
+    if (!city) {
+      continue;
+    }
 
     try {
+      console.log(
+        `Dispatching listing refresh ${index + 1}/${markets.length}: ${city}`
+      );
+
       const response = await fetch(
-`${baseUrl}/.netlify/functions/refresh-listing-market-background?city=${encodeURIComponent(city)}`,
+        `${baseUrl}/.netlify/functions/refresh-listing-market-background?city=${encodeURIComponent(
+          city
+        )}`,
         {
           method: "POST",
-         headers: {
-  Authorization: `Bearer ${CRON_SECRET}`,
-  "Content-Type": "application/json"
-},
-          body: JSON.stringify({ city })
+          headers: {
+            Authorization: `Bearer ${CRON_SECRET}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            city
+          })
         }
       );
 
@@ -69,19 +107,67 @@ export default async function handler() {
         dispatched: response.ok,
         status: response.status
       });
+
+      console.log("Listing refresh dispatched", {
+        city,
+        status: response.status,
+        accepted: response.ok
+      });
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unknown dispatch error";
+
+      console.error(
+        `Could not dispatch listing refresh for ${city}:`,
+        message
+      );
+
       results.push({
         city,
         dispatched: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unknown dispatch error"
+        error: message
       });
+    }
+
+    const hasAnotherMarket =
+      index < markets.length - 1;
+
+    if (hasAnotherMarket) {
+      console.log(
+        `Waiting ${DISPATCH_DELAY_MS}ms before next market...`
+      );
+
+      await sleep(DISPATCH_DELAY_MS);
     }
   }
 
-  console.log("Listing refresh dispatch results:", results);
+  console.log(
+    "Listing refresh dispatch results:",
+    results
+  );
+
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      dispatched: results.filter(
+        (result) => result.dispatched
+      ).length,
+      failed: results.filter(
+        (result) => !result.dispatched
+      ).length,
+      results
+    }),
+    {
+      status: 200,
+      headers: {
+        "content-type":
+          "application/json; charset=utf-8",
+        "cache-control": "no-store"
+      }
+    }
+  );
 }
 
 export const config: Config = {
