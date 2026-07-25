@@ -61,6 +61,12 @@ whistler: {
       tofino: { bbox: [49.080, -125.960, 49.175, -125.840] },
     },
   },
+
+   sparwood: {
+    areas: {
+      sparwood: { bbox: [49.680, -114.980, 49.790, -114.780] },
+    },
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -106,12 +112,11 @@ function buildAmenitiesQuery(bbox: [number, number, number, number]): string {
 }
 
 function buildBoundaryQuery(areaName: string, city: string): string {
-  // Try to fetch the admin boundary polygon for the area by name
   return `[out:json][timeout:30];
 (
-  relation["name"~"${areaName}","i"]["boundary"="administrative"];
-  relation["name"~"${areaName}","i"]["place"~"suburb|neighbourhood|quarter"];
-  way["name"~"${areaName}","i"]["boundary"="administrative"];
+  relation["name"~"${areaName}",i]["boundary"="administrative"];
+  relation["name"~"${areaName}",i]["place"~"suburb|neighbourhood|quarter"];
+  way["name"~"${areaName}",i]["boundary"="administrative"];
 );
 out geom;`;
 }
