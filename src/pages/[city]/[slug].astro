@@ -919,6 +919,55 @@ const generatedCopy = pageKind === "area"
   ? generateAreaCopy(listings, censusData, osmSummary, page.area || "", city)
   : null;
 
+const nearbyProfile =
+  pageKind === "area"
+    ? [
+       {
+  title: "Everyday",
+  text: "Grocery, dining and medical services nearby.",
+  target: "grocery",
+  show:
+    osmSummary.grocery > 0 ||
+    osmSummary.restaurants > 0 ||
+    osmSummary.medical > 0,
+},
+       {
+  title: "Families",
+  text: "Schools, playgrounds and recreation options in and around the area.",
+  target: "schools",
+  show:
+    osmSummary.schools > 0 ||
+    osmSummary.childcare > 0 ||
+    osmSummary.playgrounds > 0,
+},
+{
+  title: "Outdoors",
+  text: "Parks, trails and outdoor recreation close to home.",
+  target: "parks",
+  show:
+    osmSummary.parks > 0 ||
+    osmSummary.trails > 0 ||
+    osmSummary.recreation > 0,
+},
+{
+  title: "Coast & water",
+  text: "Beaches, marinas and waterfront recreation nearby.",
+  target: "beaches",
+  show:
+    osmSummary.beaches > 0 ||
+    osmSummary.marinas > 0,
+},
+{
+  title: "Getting around",
+  text: "Transit and EV charging options serving the area.",
+  target: "transit",
+  show:
+    osmSummary.transit > 0 ||
+    osmSummary.evCharging > 0,
+},
+      ].filter((item) => item.show)
+    : [];
+
 let relatedIntentQuery = supabase
   .from("intent_pages")
   .select("*")
@@ -1913,7 +1962,109 @@ body.is-map-mode .bottom-refine-cta {
     padding: 10px 16px;
   }
 }
+.nearby-profile {
+  margin: 28px 0 26px;
+  padding: 26px;
+  border: 0.5px solid rgba(0, 0, 0, 0.1);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+}
 
+.nearby-profile__head {
+  max-width: 760px;
+  margin-bottom: 20px;
+}
+
+.nearby-profile__eyebrow {
+  margin-bottom: 6px;
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.nearby-profile__head h2 {
+  margin: 0 0 8px;
+  font-size: clamp(1.45rem, 2.5vw, 2rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.nearby-profile__head p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.nearby-profile__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.nearby-profile__card {
+  padding: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.nearby-profile__card h3 {
+  margin: 0 0 6px;
+  font-size: 0.92rem;
+}
+
+.nearby-profile__card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.nearby-profile__card {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.nearby-profile__card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 40%, rgba(0,0,0,0.07));
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.07);
+}
+
+.nearby-profile__card:hover h3 {
+  color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .nearby-profile__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .nearby-profile {
+    padding: 20px;
+  }
+
+  .nearby-profile__grid {
+    grid-template-columns: 1fr;
+  }
+}
+#amenity-groups-anchor {
+  scroll-margin-top: 105px;
+}
 .area-amenity-controls {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4135,6 +4286,38 @@ Approximate driving times from{" "}
     </div>
   </div>
 </div>
+
+{pageKind === "area" && nearbyProfile.length > 0 && (
+  <section class="nearby-profile">
+    <div class="nearby-profile__head">
+      <div class="nearby-profile__eyebrow">Neighbourhood amenities</div>
+
+      <h2>
+        What’s nearby in {titleCase(page.area || city)}
+      </h2>
+
+      <p>
+        A snapshot of the everyday services, family amenities,
+        recreation and transportation options around the neighbourhood.
+      </p>
+    </div>
+
+  <div class="nearby-profile__grid">
+  {nearbyProfile.map((item) => (
+    <button
+      type="button"
+      class="nearby-profile__card"
+      data-nearby-target={item.target}
+    >
+      <h3>{item.title}</h3>
+      <p>{item.text}</p>
+    </button>
+  ))}
+</div>
+  </section>
+)}
+
+<div id="amenity-groups-anchor"></div>
 
 <div class="area-amenity-controls">
 
@@ -6973,6 +7156,30 @@ document.querySelectorAll(".amenity-chip").forEach((button) => {
     button.classList.add("active");
     const category = amenityCategoryMap[button.dataset.amenity] || "school";
     loadAreaAmenities(category);
+  });
+});
+
+// Nearby profile card clicks
+document.querySelectorAll("[data-nearby-target]").forEach((card) => {
+  card.addEventListener("click", () => {
+    const target = card.dataset.nearbyTarget;
+
+    if (!target) return;
+
+    const chip = document.querySelector(
+      `.amenity-chip[data-amenity="${target}"]`
+    );
+
+    if (!chip || chip.hidden) return;
+
+    chip.click();
+
+   document
+  .querySelector("#amenity-groups-anchor")
+  ?.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
   });
 });
 
