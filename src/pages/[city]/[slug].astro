@@ -416,7 +416,23 @@ if (pageKind === "area" && page.polygon_geojson) {
 }
 
 // Fetch OSM amenities server-side for copy generation
-let osmSummary = { schools: 0, parks: 0, transit: 0, grocery: 0, restaurants: 0, medical: 0 };
+let osmSummary = {
+  schools: 0,
+  parks: 0,
+  transit: 0,
+  grocery: 0,
+  restaurants: 0,
+  medical: 0,
+
+  childcare: 0,
+  playgrounds: 0,
+  recreation: 0,
+  trails: 0,
+  beaches: 0,
+  golf: 0,
+  marinas: 0,
+  evCharging: 0,
+};
 
 if (osmLat && osmLng) {
   try {
@@ -425,14 +441,23 @@ if (osmLat && osmLng) {
     );
     const osmData = await osmRes.json();
     const cats = osmData.categories || {};
-    osmSummary = {
-      schools: (cats.school || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-      parks: (cats.park || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-      transit: (cats.transit || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-      grocery: (cats.grocery || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-      restaurants: (cats.restaurant || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-      medical: (cats.medical || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-    };
+   osmSummary = {
+  schools: (cats.school || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+  parks: (cats.park || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+  transit: (cats.transit || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+  grocery: (cats.grocery || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+  restaurants: (cats.restaurant || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+  medical: (cats.medical || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+
+  childcare: (cats.childcare || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+  playgrounds: (cats.playground || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+  recreation: (cats.recreation || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+  trails: (cats.trail || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+  beaches: (cats.beach || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+  golf: (cats.golf || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+  marinas: (cats.marina || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+  evCharging: (cats.ev_charging || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+};
   } catch (e) {
     // silently fail
   }
@@ -4073,6 +4098,37 @@ Approximate driving times from{" "}
       <button type="button" class="amenity-chip" data-amenity="medical">
         🏥 Medical <strong></strong>
       </button>
+      <button type="button" class="amenity-chip" data-amenity="childcare">
+  🧸 Childcare <strong></strong>
+</button>
+
+<button type="button" class="amenity-chip" data-amenity="playgrounds">
+  🛝 Playgrounds <strong></strong>
+</button>
+
+<button type="button" class="amenity-chip" data-amenity="recreation">
+  🏟️ Recreation <strong></strong>
+</button>
+
+<button type="button" class="amenity-chip" data-amenity="trails">
+  🥾 Trails <strong></strong>
+</button>
+
+<button type="button" class="amenity-chip" data-amenity="beaches">
+  🏖️ Beaches <strong></strong>
+</button>
+
+<button type="button" class="amenity-chip" data-amenity="golf">
+  ⛳ Golf <strong></strong>
+</button>
+
+<button type="button" class="amenity-chip" data-amenity="marinas">
+  ⚓ Marinas <strong></strong>
+</button>
+
+<button type="button" class="amenity-chip" data-amenity="ev-charging">
+  ⚡ EV Charging <strong></strong>
+</button>
     </div>
 
     <div class="area-map-layout">
@@ -6289,6 +6345,15 @@ const amenityCategoryMap = {
   parks: "park",
   restaurants: "restaurant",
   medical: "medical",
+
+  childcare: "childcare",
+  playgrounds: "playground",
+  recreation: "recreation",
+  trails: "trail",
+  beaches: "beach",
+  golf: "golf",
+  marinas: "marina",
+  "ev-charging": "ev_charging",
 };
 
 // --- Helpers ---
@@ -6500,15 +6565,67 @@ async function loadAreaAmenities(category = "school") {
     const payload = await res.json();
 
     // Update chip counts
-    document.querySelectorAll(".amenity-chip").forEach((chip) => {
-      const key = amenityCategoryMap[chip.dataset.amenity] || chip.dataset.amenity;
-      const items = payload.categories?.[key] || [];
-const count = items.filter((i) => Number(i.distKm || 0) <= amenityRadius).length;
-      const strong = chip.querySelector("strong");
-      if (strong) strong.textContent = String(count);
+   document.querySelectorAll(".amenity-chip").forEach((chip) => {
+  // Keep the listings toggle visible.
+  if (chip.id === "toggle-listings-btn") return;
+
+  const key =
+    amenityCategoryMap[chip.dataset.amenity] ||
+    chip.dataset.amenity;
+
+  const items =
+    payload.categories?.[key] || [];
+
+  const count = items.filter(
+    (i) =>
+      Number(i.distKm || 0) <= amenityRadius
+  ).length;
+
+  const strong =
+    chip.querySelector("strong");
+
+  if (strong) {
+    strong.textContent = String(count);
+  }
+
+  chip.hidden = count === 0;
+});
+
+const visibleAmenityChips = Array.from(
+  document.querySelectorAll(
+    ".amenity-chip:not(#toggle-listings-btn)"
+  )
+).filter((chip) => !chip.hidden);
+
+let activeChip = document.querySelector(
+  ".amenity-chip.active:not(#toggle-listings-btn)"
+);
+
+if (!activeChip || activeChip.hidden) {
+  document
+    .querySelectorAll(
+      ".amenity-chip.active:not(#toggle-listings-btn)"
+    )
+    .forEach((chip) => {
+      chip.classList.remove("active");
     });
 
-const rows = (payload.categories?.[category] || []).filter((i) => Number(i.distKm || 0) <= amenityRadius);
+  activeChip = visibleAmenityChips[0] || null;
+
+  activeChip?.classList.add("active");
+}
+
+const activeCategory = activeChip
+  ? amenityCategoryMap[activeChip.dataset.amenity] ||
+    activeChip.dataset.amenity
+  : category;
+
+const rows = (
+  payload.categories?.[activeCategory] || []
+).filter(
+  (i) =>
+    Number(i.distKm || 0) <= amenityRadius
+);
 
     // Update panel
     const activeChip = document.querySelector(".amenity-chip.active");
