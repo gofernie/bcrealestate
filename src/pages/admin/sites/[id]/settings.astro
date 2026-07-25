@@ -990,7 +990,14 @@ const siteId = Astro.params.id || "";
                   <label for="accentColorPicker">Custom</label>
                 </div>
               <input type="text" id="accentColorHex" class="field" placeholder="#2f6f73" maxlength="7" />
-                <button type="button" class="btn btn--ghost" id="saveCustomBtn" style="white-space:nowrap; padding: 9px 16px; border-radius: 999px; font-size: 0.82rem;">Save colour</button>
+<button
+  type="button"
+  class="btn btn--ghost"
+  id="saveCustomBtn"
+  style="white-space:nowrap; padding:9px 16px; border-radius:999px; font-size:0.82rem;"
+>
+  Add to palette
+</button>
               </div>
               <div class="colour-preview-strip">
                 <div class="swatch-preview" id="swatchAccent"></div>
@@ -1700,10 +1707,52 @@ agentPickTitle: "Not a giant listing portal.", agentPickText: "Just the homes an
         if (/^#[0-9a-f]{6}$/i.test(val)) applyColour(val, "hex");
       });
 
-let customColours = [];
+const SAVED_COLOURS_KEY = "locus-saved-custom-colours";
 
-      function isBuiltin(hex) { return colourPresets.some(p => p.colour.toLowerCase() === hex.toLowerCase()); }
-      function isAlreadySaved(hex) { return customColours.some(c => c.colour.toLowerCase() === hex.toLowerCase()); }
+function readSavedColours() {
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem(SAVED_COLOURS_KEY) || "[]"
+    );
+
+    return Array.isArray(saved)
+      ? saved.filter(
+          (item) =>
+            item &&
+            /^#[0-9a-f]{6}$/i.test(item.colour)
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistSavedColours() {
+  try {
+    localStorage.setItem(
+      SAVED_COLOURS_KEY,
+      JSON.stringify(customColours)
+    );
+  } catch (error) {
+    console.warn("Could not save custom colours:", error);
+  }
+}
+
+let customColours = readSavedColours();
+
+function isBuiltin(hex) {
+  return colourPresets.some(
+    (preset) =>
+      preset.colour.toLowerCase() === hex.toLowerCase()
+  );
+}
+
+function isAlreadySaved(hex) {
+  return customColours.some(
+    (saved) =>
+      saved.colour.toLowerCase() === hex.toLowerCase()
+  );
+}
 
       function renderCustomSwatches() {
         const container = document.getElementById("customSwatches");
@@ -1729,10 +1778,15 @@ rmv.style.cssText = "position:absolute;top:-6px;right:-6px;width:20px;height:20p
             e.stopPropagation();
             e.preventDefault();
             if (!confirm("Remove this saved colour?")) return;
-            customColours = customColours.filter(x => x.colour !== c.colour);
-           
-            renderCustomSwatches();
-            syncSaveBtn();
+       customColours = customColours.filter(
+  (item) =>
+    item.colour.toLowerCase() !==
+    c.colour.toLowerCase()
+);
+
+persistSavedColours();
+renderCustomSwatches();
+syncSaveBtn();
           });
           btn.addEventListener("mouseenter", () => rmv.style.display = "flex");
           btn.addEventListener("mouseleave", () => rmv.style.display = "none");
@@ -1743,23 +1797,53 @@ rmv.style.cssText = "position:absolute;top:-6px;right:-6px;width:20px;height:20p
         if (hex) container.querySelectorAll(".preset-swatch").forEach(b => b.classList.toggle("is-selected", b.dataset.colour.toLowerCase() === hex));
       }
 
-      function syncSaveBtn() {
-        const hex = (document.getElementById("accentColorHex")?.value || "").toLowerCase();
-        const btn = document.getElementById("saveCustomBtn");
-        if (!btn) return;
-        const exists = isBuiltin(hex) || isAlreadySaved(hex);
-        btn.disabled = exists;
-        btn.textContent = exists ? "Saved \u2713" : "Save colour";
-      }
+     function syncSaveBtn() {
+  const hex = (
+    document.getElementById("accentColorHex")?.value || ""
+  ).toLowerCase();
 
-      document.getElementById("saveCustomBtn")?.addEventListener("click", () => {
-        const hex = (document.getElementById("accentColorHex")?.value || "").toLowerCase();
-        if (!hex || !/^#[0-9a-f]{6}$/.test(hex) || isBuiltin(hex) || isAlreadySaved(hex)) return;
-        customColours.push({ colour: hex, name: hex.toUpperCase() });
-        
-        renderCustomSwatches();
-        syncSaveBtn();
-      });
+  const btn = document.getElementById("saveCustomBtn");
+
+  if (!btn) return;
+
+  const exists =
+    isBuiltin(hex) ||
+    isAlreadySaved(hex);
+
+  btn.disabled = exists;
+
+  btn.textContent = exists
+    ? "In palette ✓"
+    : "Add to palette";
+}
+
+document
+  .getElementById("saveCustomBtn")
+  ?.addEventListener("click", () => {
+    const hex = (
+      document.getElementById("accentColorHex")?.value || ""
+    ).toLowerCase();
+
+    if (
+      !hex ||
+      !/^#[0-9a-f]{6}$/.test(hex) ||
+      isBuiltin(hex) ||
+      isAlreadySaved(hex)
+    ) {
+      return;
+    }
+
+    customColours.unshift({
+      colour: hex,
+      name: hex.toUpperCase()
+    });
+
+    customColours = customColours.slice(0, 16);
+
+    persistSavedColours();
+    renderCustomSwatches();
+    syncSaveBtn();
+  });
 
       window.seedAccentColour = (hex) => { if (hex && /^#[0-9a-f]{6}$/i.test(hex)) applyColour(hex, "seed"); };
       applyColour("#2f6f73", "seed");
@@ -2386,14 +2470,45 @@ field.value = [
           form.elements[`group${num}MaxPrice`].value = g.maxPrice || "";
         });
 
-customColours = Array.isArray(merged.savedColours)
+const siteSavedColours = Array.isArray(
+  merged.savedColours
+)
   ? merged.savedColours
   : [];
 
+const globalSavedColours =
+  readSavedColours();
+
+customColours = [
+  ...globalSavedColours,
+  ...siteSavedColours
+]
+  .filter(
+    (item) =>
+      item &&
+      /^#[0-9a-f]{6}$/i.test(item.colour)
+  )
+  .filter(
+    (item, index, all) =>
+      all.findIndex(
+        (candidate) =>
+          candidate.colour.toLowerCase() ===
+          item.colour.toLowerCase()
+      ) === index
+  )
+  .slice(0, 16);
+
+persistSavedColours();
 renderCustomSwatches();
 
-if (typeof window.seedAccentColour === "function")
-  window.seedAccentColour(merged.accentColor || "#2f6f73");
+if (
+  typeof window.seedAccentColour ===
+  "function"
+) {
+  window.seedAccentColour(
+    merged.accentColor || "#2f6f73"
+  );
+}
       }
 
       // ── Load ───────────────────────────────────────────────

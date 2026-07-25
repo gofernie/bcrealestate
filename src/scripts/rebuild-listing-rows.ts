@@ -10,9 +10,7 @@ const supabase = createClient(
 
 const clean = (v: any) => String(v || "").toLowerCase().trim();
 
-function isLikelyApartment(address: string) {
-  return /^#?[a-z0-9-]{1,6}\s+\d+\s+/.test(clean(address));
-}
+
 
 function isKnownTownhouse(listing: any, address: string) {
   const building = clean(getBuildingName(listing));
@@ -148,32 +146,54 @@ const getLng = (listing: any) =>
 
 const normalizeType = (listing: any) => {
   const raw = clean(
-    [
-      listing?.normalized_type,
-      listing?.property_type,
-      listing?.propertyType,
-      listing?.type,
-      listing?.class,
-      listing?.style,
-      listing?.details?.propertyType,
-      listing?.details?.style,
-      listing?.details?.type,
-      listing?.details?.propertySubType,
-      listing?.details?.buildingType,
-      listing?.raw?.propertyType,
-      listing?.raw?.type,
-      listing?.raw?.details?.propertyType,
-      listing?.raw?.details?.style,
-      listing?.raw?.details?.type,
-      listing?.raw?.details?.propertySubType,
-      listing?.raw?.details?.buildingType,
-      listing?.raw?.details?.sType,
-      listing?.raw?.s_type,
-      listing?.raw?.sType
-    ]
-      .filter(Boolean)
-      .join(" ")
-   );
+  [
+    listing?.normalized_type,
+    listing?.property_type,
+    listing?.propertyType,
+    listing?.type,
+    listing?.class,
+    listing?.style,
+    listing?.details?.propertyType,
+    listing?.details?.style,
+    listing?.details?.type,
+    listing?.details?.propertySubType,
+    listing?.details?.buildingType,
+    listing?.raw?.propertyType,
+    listing?.raw?.type,
+    listing?.raw?.details?.propertyType,
+    listing?.raw?.details?.style,
+    listing?.raw?.details?.type,
+    listing?.raw?.details?.propertySubType,
+    listing?.raw?.details?.buildingType,
+    listing?.raw?.details?.sType,
+    listing?.raw?.s_type,
+    listing?.raw?.sType,
+
+    listing?.description,
+    listing?.remarks,
+    listing?.publicRemarks,
+    listing?.public_remarks,
+    listing?.marketingRemarks,
+    listing?.marketing_remarks,
+
+    listing?.details?.description,
+    listing?.details?.remarks,
+    listing?.details?.publicRemarks,
+
+    listing?.raw?.description,
+    listing?.raw?.remarks,
+    listing?.raw?.publicRemarks,
+    listing?.raw?.public_remarks,
+    listing?.raw?.marketingRemarks,
+    listing?.raw?.marketing_remarks,
+
+    listing?.raw?.details?.description,
+    listing?.raw?.details?.remarks,
+    listing?.raw?.details?.publicRemarks
+  ]
+    .filter(Boolean)
+    .join(" ")
+);
 
   const address = clean(
     getAddress(listing) ||
@@ -198,6 +218,36 @@ const normalizeType = (listing: any) => {
     return "house";
   }
 
+  const rawBeds =
+    listing?.beds ??
+    listing?.bedrooms ??
+    listing?.details?.numBedrooms ??
+    listing?.details?.bedrooms ??
+    listing?.raw?.details?.numBedrooms ??
+    listing?.raw?.details?.bedrooms;
+
+  const rawBaths =
+    listing?.baths ??
+    listing?.bathrooms ??
+    listing?.details?.numBathrooms ??
+    listing?.details?.bathrooms ??
+    listing?.raw?.details?.numBathrooms ??
+    listing?.raw?.details?.bathrooms;
+
+  const beds = Number(rawBeds);
+  const baths = Number(rawBaths);
+
+  // A listing explicitly reported as 0 bed / 0 bath is land,
+  // even when the remarks mention an old mobile or modular structure.
+  if (
+    Number.isFinite(beds) &&
+    Number.isFinite(baths) &&
+    beds === 0 &&
+    baths === 0
+  ) {
+    return "land";
+  }
+
   // Commercial stays excluded later
   if (
     raw.includes("commercial") ||
@@ -209,7 +259,20 @@ const normalizeType = (listing: any) => {
     return "commercial";
   }
 
-  // Mobile MUST come before condo/house
+  // Strong land classifications must win when remarks mention
+  // an old mobile or modular structure that is being removed.
+  if (
+    raw.includes("vacant land") ||
+    raw.includes("land-focused") ||
+    raw.includes("piece of land") ||
+    raw.includes("acreage") ||
+    raw.includes("building lot") ||
+    raw.includes("bare land")
+  ) {
+    return "land";
+  }
+
+  // Mobile must still come before condo/house.
   if (
     raw.includes("mobile") ||
     raw.includes("manufactured") ||
@@ -223,7 +286,6 @@ const normalizeType = (listing: any) => {
   if (
     raw.includes("land") ||
     raw.includes("lot") ||
-    raw.includes("acreage") ||
     raw.includes("farm")
   ) {
     return "land";
@@ -1172,12 +1234,7 @@ const normalized_city =
 
 const rowAddressForType = clean(getNormalizedAddress(listing));
 
-const hasUnitPrefix = isLikelyApartment(rowAddressForType);
-let finalType =
-  hasUnitPrefix &&
-  !["mobile", "land", "commercial", "business", "townhouse"].includes(normalized_type)
-    ? "condo"
-    : normalized_type;
+let finalType = normalized_type;
 
 if (isKnownTownhouse(listing, rowAddressForType)) {
   finalType = "townhouse";
