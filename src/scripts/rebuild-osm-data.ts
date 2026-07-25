@@ -125,8 +125,12 @@ const CATEGORY_QUERIES: Record<Category, string> = {
   recreation:
     `node["leisure"~"^(sports_centre|fitness_centre|swimming_pool|pitch)$"]; way["leisure"~"^(sports_centre|fitness_centre|swimming_pool|pitch)$"];`,
 
-  trail:
-    `node["highway"="trailhead"];`,
+trail:
+  `
+  node["highway"="trailhead"];
+  way["highway"="path"]["name"];
+  relation["route"="hiking"];
+  `,
 
   beach:
     `node["natural"="beach"]; way["natural"="beach"];`,
@@ -173,7 +177,11 @@ const TAG_TO_CATEGORY: Record<string, Category> = {
   swimming_pool: "recreation",
   pitch: "recreation",
 
-  trailhead: "trail",
+ trailhead: "trail",
+path: "trail",
+footway: "trail",
+track: "trail",
+hiking: "trail",
   beach: "beach",
   golf_course: "golf",
   marina: "marina",
@@ -263,9 +271,22 @@ function extractLatLng(el: any): { lat: number; lng: number } | null {
 
 // Detect which category tag applies to this element
 function detectCategory(tags: Record<string, string>): Category | null {
-  for (const [key, val] of Object.entries(tags)) {
-    if (TAG_TO_CATEGORY[val]) return TAG_TO_CATEGORY[val];
+  const candidates = [
+    tags.amenity,
+    tags.shop,
+    tags.leisure,
+    tags.highway,
+    tags.railway,
+    tags.natural,
+    tags.route,
+  ].filter(Boolean);
+
+  for (const value of candidates) {
+    if (TAG_TO_CATEGORY[value]) {
+      return TAG_TO_CATEGORY[value];
+    }
   }
+
   return null;
 }
 
@@ -323,13 +344,14 @@ async function refreshArea(city: string, area: string, bbox: [number, number, nu
       if (!pos || !category) return null;
 
       // Determine the raw type tag value
-    const osmType =
+ const osmType =
   el.tags?.amenity ??
   el.tags?.shop ??
   el.tags?.leisure ??
   el.tags?.highway ??
   el.tags?.railway ??
   el.tags?.natural ??
+  el.tags?.route ??
   "";
 
       return {
