@@ -2470,30 +2470,54 @@ field.value = [
           form.elements[`group${num}MaxPrice`].value = g.maxPrice || "";
         });
 
+function normalizeSavedColour(item) {
+  const colour =
+    typeof item === "string"
+      ? item
+      : item?.colour;
+
+  if (
+    !colour ||
+    !/^#[0-9a-f]{6}$/i.test(colour)
+  ) {
+    return null;
+  }
+
+  const normalizedColour =
+    colour.toLowerCase();
+
+  return {
+    colour: normalizedColour,
+    name:
+      typeof item === "object" &&
+      item?.name
+        ? item.name
+        : normalizedColour.toUpperCase()
+  };
+}
+
 const siteSavedColours = Array.isArray(
   merged.savedColours
 )
   ? merged.savedColours
+      .map(normalizeSavedColour)
+      .filter(Boolean)
   : [];
 
 const globalSavedColours =
-  readSavedColours();
+  readSavedColours()
+    .map(normalizeSavedColour)
+    .filter(Boolean);
 
 customColours = [
-  ...globalSavedColours,
-  ...siteSavedColours
+  ...siteSavedColours,
+  ...globalSavedColours
 ]
-  .filter(
-    (item) =>
-      item &&
-      /^#[0-9a-f]{6}$/i.test(item.colour)
-  )
   .filter(
     (item, index, all) =>
       all.findIndex(
         (candidate) =>
-          candidate.colour.toLowerCase() ===
-          item.colour.toLowerCase()
+          candidate.colour === item.colour
       ) === index
   )
   .slice(0, 16);
