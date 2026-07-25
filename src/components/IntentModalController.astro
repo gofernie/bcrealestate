@@ -738,21 +738,44 @@ const osmEl = document.getElementById("sheet-osm-amenities");
 if (osmEl) {
   const lat = parseFloat(card.dataset.lat || "");
   const lng = parseFloat(card.dataset.lng || "");
-  const cardCity = card.dataset.city || document.querySelector("[data-city]")?.dataset.city || "nanaimo";
-  if (isFinite(lat) && isFinite(lng)) {
-    osmEl.hidden = false;
-    osmEl.innerHTML = `<div class="panel__osm-loading">Loading nearby amenitiesâ€¦</div>`;
-fetch(`/api/osm-amenities?city=${encodeURIComponent(cardCity)}&lat=${lat}&lng=${lng}&radius=3`)
+const cardCity =
+  card.dataset.city ||
+  document.querySelector("[data-city]")?.dataset.city ||
+  "nanaimo";
+
+console.log("OSM DEBUG", {
+  cardCity,
+  lat,
+  lng,
+  address: card.dataset.address,
+});
+
+if (isFinite(lat) && isFinite(lng)) {
+  osmEl.hidden = false;
+  osmEl.innerHTML = `<div class="panel__osm-loading">Loading nearby amenities…</div>`;
+
+  fetch(
+    `/api/osm-amenities?city=${encodeURIComponent(cardCity)}&lat=${lat}&lng=${lng}&radius=8`
+  )
       .then(r => r.json())
       .then(data => {
         const cats = data.categories || {};
-      const catMeta = {
-  school:     { icon: "🎓", label: "Schools" },
-  grocery:    { icon: "🛒", label: "Grocery" },
-  transit:    { icon: "🚌", label: "Transit" },
-  park:       { icon: "🌲", label: "Parks" },
-  restaurant: { icon: "🍴", label: "Restaurants" },
-  medical:    { icon: "✚", label: "Medical" },
+    const catMeta = {
+  school:      { icon: "🎓", label: "Schools" },
+  grocery:     { icon: "🛒", label: "Grocery" },
+  transit:     { icon: "🚌", label: "Transit" },
+  park:        { icon: "🌲", label: "Parks" },
+  restaurant:  { icon: "🍴", label: "Restaurants" },
+  medical:     { icon: "✚", label: "Medical" },
+
+  childcare:   { icon: "🧸", label: "Childcare" },
+  playground:  { icon: "🛝", label: "Playgrounds" },
+  recreation:  { icon: "🏟️", label: "Recreation" },
+  trail:       { icon: "🥾", label: "Trails" },
+  beach:       { icon: "🏖️", label: "Beaches" },
+  golf:        { icon: "⛳", label: "Golf" },
+  marina:      { icon: "⚓", label: "Marinas" },
+  ev_charging: { icon: "⚡", label: "EV Charging" },
 };
      const cards = Object.entries(catMeta).map(([cat, meta]) => {
           const items = cats[cat] || [];

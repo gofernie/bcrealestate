@@ -14,7 +14,10 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+const OVERPASS_URLS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+];
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
@@ -67,30 +70,114 @@ whistler: {
       sparwood: { bbox: [49.680, -114.980, 49.790, -114.780] },
     },
   },
+
+   duncan: {
+  areas: {
+    duncan: { bbox: [48.940, -123.900, 49.080, -123.750] },
+  },
+},
 };
 
 // ---------------------------------------------------------------------------
 // OSM category definitions
 // ---------------------------------------------------------------------------
-type Category = "school" | "grocery" | "transit" | "park" | "restaurant" | "medical";
+type Category =
+  | "school"
+  | "grocery"
+  | "transit"
+  | "park"
+  | "restaurant"
+  | "medical"
+  | "childcare"
+  | "playground"
+  | "recreation"
+  | "trail"
+  | "beach"
+  | "golf"
+  | "marina"
+  | "ev_charging";
 
 const CATEGORY_QUERIES: Record<Category, string> = {
-  school:     `node["amenity"~"^(school|kindergarten|college|university|prep_school)$"]; node["amenity"="school"]; way["amenity"="school"];`,
-  grocery:    `node["shop"~"^(supermarket|convenience|grocery)$"]`,
-  transit:    `node["highway"="bus_stop"]; node["railway"="station"];`,
-  park:       `node["leisure"~"^(park|nature_reserve)$"]; way["leisure"~"^(park|nature_reserve)$"];`,
-  restaurant: `node["amenity"~"^(restaurant|cafe|fast_food)$"]`,
-  medical:    `node["amenity"~"^(hospital|clinic|pharmacy|doctors)$"]`,
+  school:
+    `node["amenity"~"^(school|kindergarten|college|university|prep_school)$"]; way["amenity"="school"];`,
+
+  grocery:
+    `node["shop"~"^(supermarket|convenience|grocery)$"]`,
+
+  transit:
+    `node["highway"="bus_stop"]; node["railway"="station"];`,
+
+  park:
+    `node["leisure"~"^(park|nature_reserve)$"]; way["leisure"~"^(park|nature_reserve)$"];`,
+
+  restaurant:
+    `node["amenity"~"^(restaurant|cafe|fast_food)$"]`,
+
+  medical:
+    `node["amenity"~"^(hospital|clinic|pharmacy|doctors)$"]`,
+
+  childcare:
+    `node["amenity"="childcare"]; way["amenity"="childcare"];`,
+
+  playground:
+    `node["leisure"="playground"]; way["leisure"="playground"];`,
+
+  recreation:
+    `node["leisure"~"^(sports_centre|fitness_centre|swimming_pool|pitch)$"]; way["leisure"~"^(sports_centre|fitness_centre|swimming_pool|pitch)$"];`,
+
+  trail:
+    `node["highway"="trailhead"];`,
+
+  beach:
+    `node["natural"="beach"]; way["natural"="beach"];`,
+
+  golf:
+    `node["leisure"="golf_course"]; way["leisure"="golf_course"];`,
+
+  marina:
+    `node["leisure"="marina"]; way["leisure"="marina"];`,
+
+  ev_charging:
+    `node["amenity"="charging_station"];`,
 };
 
 // Map raw OSM tag values back to our category
 const TAG_TO_CATEGORY: Record<string, Category> = {
-  school: "school", kindergarten: "school",
-  supermarket: "grocery", convenience: "grocery", grocery: "grocery",
-  bus_stop: "transit", station: "transit",
-  park: "park", nature_reserve: "park",
-  restaurant: "restaurant", cafe: "restaurant", fast_food: "restaurant",
-  hospital: "medical", clinic: "medical", pharmacy: "medical", doctors: "medical",
+  school: "school",
+  kindergarten: "school",
+
+  supermarket: "grocery",
+  convenience: "grocery",
+  grocery: "grocery",
+
+  bus_stop: "transit",
+  station: "transit",
+
+  park: "park",
+  nature_reserve: "park",
+
+  restaurant: "restaurant",
+  cafe: "restaurant",
+  fast_food: "restaurant",
+
+  hospital: "medical",
+  clinic: "medical",
+  pharmacy: "medical",
+  doctors: "medical",
+
+  childcare: "childcare",
+  playground: "playground",
+
+  sports_centre: "recreation",
+  fitness_centre: "recreation",
+  swimming_pool: "recreation",
+  pitch: "recreation",
+
+  trailhead: "trail",
+  beach: "beach",
+  golf_course: "golf",
+  marina: "marina",
+  charging_station: "ev_charging",
 };
 
 // ---------------------------------------------------------------------------
@@ -123,18 +210,46 @@ out geom;`;
 
 async function overpassFetch(query: string): Promise<any> {
   console.log("  Query:", query.substring(0, 200));
-  const params = new URLSearchParams({ data: query });
-const res = await fetch(OVERPASS_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Accept": "application/json",
-      "User-Agent": "nuclear-neptune/1.0 (real estate data fetch)",
-    },
-    body: params.toString(),
+
+  const params = new URLSearchParams({
+    data: query,
   });
-  if (!res.ok) throw new Error(`Overpass error ${res.status}: ${await res.text()}`);
-  return res.json();
+
+  let lastError: Error | null = null;
+
+  for (const url of OVERPASS_URLS) {
+    try {
+      console.log(`  Trying ${url}`);
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          "User-Agent": "locus-real-estate/1.0",
+        },
+        body: params.toString(),
+      });
+
+      if (!res.ok) {
+        const body = await res.text();
+
+        throw new Error(
+          `Overpass error ${res.status}: ${body.slice(0, 500)}`
+        );
+      }
+
+      return await res.json();
+    } catch (error: any) {
+      lastError = error;
+
+      console.warn(
+        `  Overpass endpoint failed: ${error.message}`
+      );
+    }
+  }
+
+  throw lastError || new Error("All Overpass endpoints failed");
 }
 
 // ---------------------------------------------------------------------------
@@ -208,9 +323,14 @@ async function refreshArea(city: string, area: string, bbox: [number, number, nu
       if (!pos || !category) return null;
 
       // Determine the raw type tag value
-      const osmType =
-        el.tags?.amenity ?? el.tags?.shop ?? el.tags?.leisure ??
-        el.tags?.highway ?? el.tags?.railway ?? "";
+    const osmType =
+  el.tags?.amenity ??
+  el.tags?.shop ??
+  el.tags?.leisure ??
+  el.tags?.highway ??
+  el.tags?.railway ??
+  el.tags?.natural ??
+  "";
 
       return {
         city,
