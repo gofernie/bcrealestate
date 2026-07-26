@@ -665,6 +665,12 @@ let photoSwipeStartY = 0;
 let photoZoom = 1;
 let pinchStartDistance = 0;
 
+let photoPanX = 0;
+let photoPanY = 0;
+
+let panStartX = 0;
+let panStartY = 0;
+
 let activeCard = null;
 let totalIntentReactions = 0;
 let positiveIntentReactions = 0;
@@ -2637,10 +2643,13 @@ chipAdvanceTimer = setTimeout(() => {
        function showActivePhoto() {
   if (!sheetImage || !activePhotoUrls.length) return;
 
-  photoZoom = 1;
-  pinchStartDistance = 0;
+photoZoom = 1;
+pinchStartDistance = 0;
 
-  sheetImage.style.transform = "translate(0px, 0px) scale(1)";
+photoPanX = 0;
+photoPanY = 0;
+
+sheetImage.style.transform = "translate(0px, 0px) scale(1)";
   sheetImage.style.transformOrigin = "center center";
 
   sheetImage.src = activePhotoUrls[activePhotoIndex];
@@ -2660,9 +2669,10 @@ chipAdvanceTimer = setTimeout(() => {
   }
 }
 
-     sheetImage?.addEventListener("touchstart", (event) => {
+   sheetImage?.addEventListener("touchstart", (event) => {
   ensureLandscapeFullscreen();
 
+  // Two fingers = start pinch zoom
   if (
     sheet.classList.contains("is-landscape-gallery") &&
     event.touches.length === 2
@@ -2678,12 +2688,147 @@ chipAdvanceTimer = setTimeout(() => {
     return;
   }
 
+  // One finger = swipe start or pan start
   if (event.touches.length === 1) {
-    photoSwipeStartX = event.touches[0].screenX;
-    photoSwipeStartY = event.touches[0].screenY;
+    const touch = event.touches[0];
+
+    photoSwipeStartX = touch.screenX;
+    photoSwipeStartY = touch.screenY;
+
+    panStartX = touch.clientX;
+    panStartY = touch.clientY;
   }
 
   hidePhotoOverlayTemporarily();
+}, { passive: true });
+
+
+sheetImage?.addEventListener("touchmove", (event) => {
+  hidePhotoOverlayTemporarily();
+
+  if (!sheet.classList.contains("is-landscape-gallery")) {
+    return;
+  }
+
+  // Two fingers = pinch zoom
+  if (
+    event.touches.length === 2 &&
+    pinchStartDistance
+  ) {
+    event.preventDefault();
+
+    const a = event.touches[0];
+    const b = event.touches[1];
+
+    const currentDistance = Math.hypot(
+      b.clientX - a.clientX,
+      b.clientY - a.clientY
+    );
+
+    const scaleChange =
+      currentDistance / pinchStartDistance;
+
+    photoZoom = Math.max(
+      1,
+      Math.min(3, photoZoom * scaleChange)
+    );
+
+    if (photoZoom <= 1.02) {
+      photoZoom = 1;
+      photoPanX = 0;
+      photoPanY = 0;
+    }
+
+    sheetImage.style.transform =
+      `translate(${photoPanX}px, ${photoPanY}px) scale(${photoZoom})`;
+
+    pinchStartDistance = currentDistance;
+    return;
+  }
+
+  // One finger = pan when zoomed
+  if (
+    event.touches.length === 1 &&
+    photoZoom > 1.02
+  ) {
+    event.preventDefault();
+
+    const touch = event.touches[0];
+
+    const dx = touch.clientX - panStartX;
+    const dy = touch.clientY - panStartY;
+
+    photoPanX += dx;
+    photoPanY += dy;
+
+    const maxPanX =
+      (window.innerWidth * (photoZoom - 1)) / 2;
+
+    const maxPanY =
+      (window.innerHeight * (photoZoom - 1)) / 2;
+
+    photoPanX = Math.max(
+      -maxPanX,
+      Math.min(maxPanX, photoPanX)
+    );
+
+    photoPanY = Math.max(
+      -maxPanY,
+      Math.min(maxPanY, photoPanY)
+    );
+
+    sheetImage.style.transform =
+      `translate(${photoPanX}px, ${photoPanY}px) scale(${photoZoom})`;
+
+    panStartX = touch.clientX;
+    panStartY = touch.clientY;
+  }
+}, { passive: false });
+
+
+sheetImage?.addEventListener("touchend", (event) => {
+  if (event.touches.length < 2) {
+    pinchStartDistance = 0;
+  }
+
+  // Don't change photo while zoomed
+  if (photoZoom > 1.02) {
+    return;
+  }
+
+  const touch = event.changedTouches[0];
+  if (!touch) return;
+
+  const dx =
+    touch.screenX - photoSwipeStartX;
+
+  const dy =
+    touch.screenY - photoSwipeStartY;
+
+  if (
+    Math.abs(dx) < 45 ||
+    Math.abs(dx) < Math.abs(dy)
+  ) {
+    return;
+  }
+
+  if (
+    dx < 0 &&
+    activePhotoIndex < activePhotoUrls.length - 1
+  ) {
+    activePhotoIndex += 1;
+    showActivePhoto();
+    hidePhotoOverlayTemporarily();
+  }
+
+  if (
+    dx > 0 &&
+    activePhotoIndex > 0
+  ) {
+    activePhotoIndex -= 1;
+    showActivePhoto();
+    hidePhotoOverlayTemporarily();
+  }
 }, { passive: true });
 
 sheetImage?.addEventListener("touchmove", (event) => {
