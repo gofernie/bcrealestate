@@ -290,9 +290,27 @@ if (!likeTagsEl) {
 }
         const sheetContent = document.getElementById("sheet-content");
         const sheetSummary = document.getElementById("sheet-summary");
-        const sheetPhotoCount = document.getElementById("sheet-photo-count");
-        const photoPrevBtn = document.getElementById("photo-prev-btn");
-        const photoNextBtn = document.getElementById("photo-next-btn");
+const sheetPhotoCount = document.getElementById("sheet-photo-count");
+const photoPrevBtn = document.getElementById("photo-prev-btn");
+const photoNextBtn = document.getElementById("photo-next-btn");
+const sheetImageOverlay = document.getElementById("sheet-image-overlay");
+
+let photoOverlayTimer = null;
+
+function hidePhotoOverlayTemporarily() {
+  if (window.innerWidth > 768 || !sheetImageOverlay) return;
+
+  sheetImageOverlay.classList.add("is-hidden-while-browsing");
+
+  if (photoOverlayTimer) {
+    clearTimeout(photoOverlayTimer);
+  }
+
+  photoOverlayTimer = window.setTimeout(() => {
+    sheetImageOverlay.classList.remove("is-hidden-while-browsing");
+    photoOverlayTimer = null;
+  }, 2000);
+}
 
 function updateSheetScrollHint() {
   if (!sheetContent) return;
@@ -2215,31 +2233,33 @@ chipAdvanceTimer = setTimeout(() => {
   }, 2500);
 });
 
-        photoPrevBtn?.addEventListener("click", (event) => {
-          event.stopPropagation();
+       photoPrevBtn?.addEventListener("click", (event) => {
+  event.stopPropagation();
 
-          if (activePhotoIndex <= 0) return;
+  if (activePhotoIndex <= 0) return;
 
-          activePhotoIndex -= 1;
+  activePhotoIndex -= 1;
 
-          if (sheetImage) {
-            sheetImage.src = activePhotoUrls[activePhotoIndex];
+  if (sheetImage) {
+    sheetImage.src = activePhotoUrls[activePhotoIndex];
 
-            const nextPreload = activePhotoUrls[activePhotoIndex + 1];
+    const nextPreload = activePhotoUrls[activePhotoIndex + 1];
 
-            if (nextPreload) {
-              const img = new Image();
-              img.src = nextPreload;
-            }
-          }
+    if (nextPreload) {
+      const img = new Image();
+      img.src = nextPreload;
+    }
+  }
 
-          if (sheetPhotoCount) {
-            sheetPhotoCount.textContent = `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
-          }
+  if (sheetPhotoCount) {
+    sheetPhotoCount.textContent = `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
+  }
 
-          if (photoPrevBtn) photoPrevBtn.disabled = activePhotoIndex === 0;
-          if (photoNextBtn) photoNextBtn.disabled = activePhotoIndex >= activePhotoUrls.length - 1;
-        });
+  if (photoPrevBtn) photoPrevBtn.disabled = activePhotoIndex === 0;
+  if (photoNextBtn) photoNextBtn.disabled = activePhotoIndex >= activePhotoUrls.length - 1;
+
+  hidePhotoOverlayTemporarily();
+});
 
         function showActivePhoto() {
           if (!sheetImage || !activePhotoUrls.length) return;
@@ -2255,45 +2275,57 @@ chipAdvanceTimer = setTimeout(() => {
         }
 
         sheetImage?.addEventListener("touchstart", (event) => {
-          photoSwipeStartX = event.changedTouches[0].screenX;
-          photoSwipeStartY = event.changedTouches[0].screenY;
-        }, { passive: true });
+  photoSwipeStartX = event.changedTouches[0].screenX;
+  photoSwipeStartY = event.changedTouches[0].screenY;
 
-        sheetImage?.addEventListener("touchend", (event) => {
-          const dx = event.changedTouches[0].screenX - photoSwipeStartX;
-          const dy = event.changedTouches[0].screenY - photoSwipeStartY;
+  // Hide price/address/meta immediately when browsing photos.
+  hidePhotoOverlayTemporarily();
+}, { passive: true });
 
-          if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy)) return;
+sheetImage?.addEventListener("touchmove", () => {
+  // Keep restarting the 5-second timer while the buyer is interacting.
+  hidePhotoOverlayTemporarily();
+}, { passive: true });
 
-          if (dx < 0 && activePhotoIndex < activePhotoUrls.length - 1) {
-            activePhotoIndex += 1;
-            showActivePhoto();
-          }
+sheetImage?.addEventListener("touchend", (event) => {
+  const dx = event.changedTouches[0].screenX - photoSwipeStartX;
+  const dy = event.changedTouches[0].screenY - photoSwipeStartY;
 
-          if (dx > 0 && activePhotoIndex > 0) {
-            activePhotoIndex -= 1;
-            showActivePhoto();
-          }
-        }, { passive: true });
+  if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy)) return;
 
-        photoNextBtn?.addEventListener("click", (event) => {
-          event.stopPropagation();
+  if (dx < 0 && activePhotoIndex < activePhotoUrls.length - 1) {
+    activePhotoIndex += 1;
+    showActivePhoto();
+    hidePhotoOverlayTemporarily();
+  }
 
-          if (activePhotoIndex >= activePhotoUrls.length - 1) return;
+  if (dx > 0 && activePhotoIndex > 0) {
+    activePhotoIndex -= 1;
+    showActivePhoto();
+    hidePhotoOverlayTemporarily();
+  }
+}, { passive: true });
 
-          activePhotoIndex += 1;
+      photoNextBtn?.addEventListener("click", (event) => {
+  event.stopPropagation();
 
-          if (sheetImage) {
-            sheetImage.src = activePhotoUrls[activePhotoIndex];
-          }
+  if (activePhotoIndex >= activePhotoUrls.length - 1) return;
 
-          if (sheetPhotoCount) {
-            sheetPhotoCount.textContent = `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
-          }
+  activePhotoIndex += 1;
 
-          if (photoPrevBtn) photoPrevBtn.disabled = activePhotoIndex === 0;
-          if (photoNextBtn) photoNextBtn.disabled = activePhotoIndex >= activePhotoUrls.length - 1;
-        });
+  if (sheetImage) {
+    sheetImage.src = activePhotoUrls[activePhotoIndex];
+  }
+
+  if (sheetPhotoCount) {
+    sheetPhotoCount.textContent = `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
+  }
+
+  if (photoPrevBtn) photoPrevBtn.disabled = activePhotoIndex === 0;
+  if (photoNextBtn) photoNextBtn.disabled = activePhotoIndex >= activePhotoUrls.length - 1;
+
+  hidePhotoOverlayTemporarily();
+});
 
         let sheetSwipeStartX = 0;
         let sheetSwipeStartY = 0;

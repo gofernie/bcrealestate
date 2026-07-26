@@ -145,63 +145,98 @@ const getLng = (listing: any) =>
   );
 
 const normalizeType = (listing: any) => {
-  const raw = clean(
-  [
-    listing?.normalized_type,
-    listing?.property_type,
-    listing?.propertyType,
-    listing?.type,
-    listing?.class,
-    listing?.style,
-    listing?.details?.propertyType,
-    listing?.details?.style,
-    listing?.details?.type,
-    listing?.details?.propertySubType,
-    listing?.details?.buildingType,
-    listing?.raw?.propertyType,
-    listing?.raw?.type,
-    listing?.raw?.details?.propertyType,
-    listing?.raw?.details?.style,
-    listing?.raw?.details?.type,
-    listing?.raw?.details?.propertySubType,
-    listing?.raw?.details?.buildingType,
-    listing?.raw?.details?.sType,
-    listing?.raw?.s_type,
-    listing?.raw?.sType,
+  /*
+   * The MLS "style" field is the clearest signal of the
+   * physical form buyers care about.
+   *
+   * Examples from Nanaimo:
+   *   CondoProperty + Single Family + Apartment -> condo
+   *   CondoProperty + Single Family + House     -> house
+   *   CondoProperty + Single Family + Duplex    -> multi-family
+   */
+  const styleText = clean(
+    [
+      listing?.details?.style,
+      listing?.raw?.details?.style,
+      listing?.style,
+      listing?.raw?.style
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
 
-    listing?.description,
-    listing?.remarks,
-    listing?.publicRemarks,
-    listing?.public_remarks,
-    listing?.marketingRemarks,
-    listing?.marketing_remarks,
+  const propertyTypeText = clean(
+    [
+      listing?.details?.propertyType,
+      listing?.details?.propertySubType,
+      listing?.details?.buildingType,
 
-    listing?.details?.description,
-    listing?.details?.remarks,
-    listing?.details?.publicRemarks,
+      listing?.raw?.details?.propertyType,
+      listing?.raw?.details?.propertySubType,
+      listing?.raw?.details?.buildingType,
 
-    listing?.raw?.description,
-    listing?.raw?.remarks,
-    listing?.raw?.publicRemarks,
-    listing?.raw?.public_remarks,
-    listing?.raw?.marketingRemarks,
-    listing?.raw?.marketing_remarks,
+      listing?.propertyType,
+      listing?.property_type
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
 
-    listing?.raw?.details?.description,
-    listing?.raw?.details?.remarks,
-    listing?.raw?.details?.publicRemarks
-  ]
-    .filter(Boolean)
-    .join(" ")
-);
+  const classText = clean(
+    [
+      listing?.class,
+      listing?.raw?.class
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  const secondaryTypeText = clean(
+    [
+      listing?.type,
+      listing?.details?.type,
+      listing?.details?.sType,
+      listing?.raw?.type,
+      listing?.raw?.details?.type,
+      listing?.raw?.details?.sType,
+      listing?.raw?.s_type,
+      listing?.raw?.sType
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  const remarksText = clean(
+    [
+      listing?.description,
+      listing?.remarks,
+      listing?.publicRemarks,
+      listing?.public_remarks,
+      listing?.marketingRemarks,
+      listing?.marketing_remarks,
+
+      listing?.details?.description,
+      listing?.details?.remarks,
+      listing?.details?.publicRemarks,
+
+      listing?.raw?.description,
+      listing?.raw?.remarks,
+      listing?.raw?.publicRemarks,
+      listing?.raw?.public_remarks,
+      listing?.raw?.marketingRemarks,
+      listing?.raw?.marketing_remarks,
+
+      listing?.raw?.details?.description,
+      listing?.raw?.details?.remarks,
+      listing?.raw?.details?.publicRemarks
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
 
   const address = clean(
-    getAddress(listing) ||
-      listing?.address ||
-      listing?.fullAddress ||
-      listing?.address?.streetAddress ||
-      listing?.address?.full ||
-      listing?.raw?.address ||
+    getNormalizedAddress(listing) ||
+      getAddress(listing) ||
       ""
   );
 
@@ -214,10 +249,211 @@ const normalizeType = (listing: any) => {
     "cedar grove"
   ];
 
-  if (FORCE_HOUSE_STREETS.some((street) => address.includes(street))) {
+  if (
+    FORCE_HOUSE_STREETS.some((street) =>
+      address.includes(street)
+    )
+  ) {
     return "house";
   }
 
+  /*
+   * 1. STYLE FIRST
+   */
+  if (
+    styleText.includes("manufactured") ||
+    styleText.includes("mobile") ||
+    styleText.includes("modular") ||
+    styleText.includes("park model")
+  ) {
+    return "mobile";
+  }
+
+  if (
+    styleText.includes("townhouse") ||
+    styleText.includes("townhome") ||
+    styleText.includes("row house") ||
+    styleText.includes("row/townhouse") ||
+    styleText.includes("patio home")
+  ) {
+    return "townhouse";
+  }
+
+  if (styleText.includes("apartment")) {
+    return "condo";
+  }
+
+  if (
+    styleText.includes("duplex") ||
+    styleText.includes("triplex") ||
+    styleText.includes("fourplex") ||
+    styleText.includes("multi-family") ||
+    styleText.includes("multifamily") ||
+    styleText.includes("multi family")
+  ) {
+    return "multi-family";
+  }
+
+  if (
+    styleText.includes("house") ||
+    styleText.includes("detached") ||
+    styleText.includes("single family") ||
+    styleText.includes("single-family")
+  ) {
+    return "house";
+  }
+
+  /*
+   * 2. MORE SPECIFIC STRUCTURED PROPERTY FIELDS
+   */
+  if (
+    propertyTypeText.includes("commercial") ||
+    propertyTypeText.includes("office") ||
+    propertyTypeText.includes("retail") ||
+    propertyTypeText.includes("industrial") ||
+    propertyTypeText.includes("business")
+  ) {
+    return "commercial";
+  }
+
+  if (
+    propertyTypeText.includes("manufactured") ||
+    propertyTypeText.includes("mobile") ||
+    propertyTypeText.includes("modular") ||
+    propertyTypeText.includes("park model")
+  ) {
+    return "mobile";
+  }
+
+  if (
+    propertyTypeText.includes("townhouse") ||
+    propertyTypeText.includes("townhome") ||
+    propertyTypeText.includes("row house") ||
+    propertyTypeText.includes("row/townhouse")
+  ) {
+    return "townhouse";
+  }
+
+  if (
+    propertyTypeText.includes("apartment") ||
+    propertyTypeText.includes("condominium") ||
+    propertyTypeText.includes("condo")
+  ) {
+    return "condo";
+  }
+
+  if (
+    propertyTypeText.includes("duplex") ||
+    propertyTypeText.includes("triplex") ||
+    propertyTypeText.includes("fourplex") ||
+    propertyTypeText.includes("multi-family") ||
+    propertyTypeText.includes("multifamily") ||
+    propertyTypeText.includes("multi family")
+  ) {
+    return "multi-family";
+  }
+
+  if (
+    propertyTypeText.includes("detached") ||
+    propertyTypeText.includes("strata house") ||
+    propertyTypeText.includes("house") ||
+    propertyTypeText.includes("sfd")
+  ) {
+    return "house";
+  }
+
+  if (
+    propertyTypeText.includes("vacant land") ||
+    propertyTypeText.includes("bare land") ||
+    propertyTypeText.includes("building lot") ||
+    propertyTypeText === "land" ||
+    propertyTypeText.includes("acreage")
+  ) {
+    return "land";
+  }
+
+  /*
+   * Important:
+   * "Single Family" by itself is NOT enough to call a listing a house.
+   * In this feed, apartment condos can also have propertyType = Single Family.
+   */
+
+  /*
+   * 3. SECONDARY STRUCTURED FIELDS
+   */
+  if (
+    secondaryTypeText.includes("manufactured") ||
+    secondaryTypeText.includes("mobile")
+  ) {
+    return "mobile";
+  }
+
+  if (
+    secondaryTypeText.includes("townhouse") ||
+    secondaryTypeText.includes("townhome")
+  ) {
+    return "townhouse";
+  }
+
+  if (secondaryTypeText.includes("apartment")) {
+    return "condo";
+  }
+
+  if (
+    secondaryTypeText.includes("duplex") ||
+    secondaryTypeText.includes("triplex") ||
+    secondaryTypeText.includes("fourplex") ||
+    secondaryTypeText.includes("multi-family") ||
+    secondaryTypeText.includes("multifamily") ||
+    secondaryTypeText.includes("multi family")
+  ) {
+    return "multi-family";
+  }
+
+  if (
+    secondaryTypeText.includes("detached") ||
+    secondaryTypeText.includes("house")
+  ) {
+    return "house";
+  }
+
+  if (
+    secondaryTypeText.includes("vacant land") ||
+    secondaryTypeText.includes("bare land") ||
+    secondaryTypeText === "land"
+  ) {
+    return "land";
+  }
+
+  /*
+   * 4. MLS CLASS FALLBACK
+   */
+  if (
+    classText.includes("townhouse") ||
+    classText.includes("townhome")
+  ) {
+    return "townhouse";
+  }
+
+  if (classText.includes("condo")) {
+    return "condo";
+  }
+
+  if (
+    classText.includes("single family") ||
+    classText.includes("house") ||
+    classText.includes("residential")
+  ) {
+    return "house";
+  }
+
+  if (classText.includes("land")) {
+    return "land";
+  }
+
+  /*
+   * 5. BED/BATH FALLBACK
+   */
   const rawBeds =
     listing?.beds ??
     listing?.bedrooms ??
@@ -237,8 +473,6 @@ const normalizeType = (listing: any) => {
   const beds = Number(rawBeds);
   const baths = Number(rawBaths);
 
-  // A listing explicitly reported as 0 bed / 0 bath is land,
-  // even when the remarks mention an old mobile or modular structure.
   if (
     Number.isFinite(beds) &&
     Number.isFinite(baths) &&
@@ -248,99 +482,53 @@ const normalizeType = (listing: any) => {
     return "land";
   }
 
-  // Commercial stays excluded later
+  /*
+   * 6. REMARKS LAST
+   */
   if (
-    raw.includes("commercial") ||
-    raw.includes("office") ||
-    raw.includes("retail") ||
-    raw.includes("industrial") ||
-    raw.includes("business")
-  ) {
-    return "commercial";
-  }
-
-  // Strong land classifications must win when remarks mention
-  // an old mobile or modular structure that is being removed.
-  if (
-    raw.includes("vacant land") ||
-    raw.includes("land-focused") ||
-    raw.includes("piece of land") ||
-    raw.includes("acreage") ||
-    raw.includes("building lot") ||
-    raw.includes("bare land")
-  ) {
-    return "land";
-  }
-
-  // Mobile must still come before condo/house.
-  if (
-    raw.includes("mobile") ||
-    raw.includes("manufactured") ||
-    raw.includes("modular") ||
-    raw.includes("park model") ||
-    raw.includes("manu")
+    remarksText.includes("manufactured home") ||
+    remarksText.includes("mobile home") ||
+    remarksText.includes("park model")
   ) {
     return "mobile";
   }
 
   if (
-    raw.includes("land") ||
-    raw.includes("lot") ||
-    raw.includes("farm")
-  ) {
-    return "land";
-  }
-
-  if (
-    raw.includes("townhouse") ||
-    raw.includes("townhome") ||
-    raw.includes("row") ||
-    raw.includes("patio home") ||
-    raw.includes("rtwn")
+    remarksText.includes("townhouse") ||
+    remarksText.includes("townhome")
   ) {
     return "townhouse";
   }
 
   if (
-  (
-    raw.includes("apartment") ||
-    raw.includes("condo") ||
-    raw.includes("condominium") ||
-    raw.includes("apt")
-  )
-  &&
-  !(
-    raw.includes("house") ||
-    raw.includes("detached") ||
-    raw.includes("single family") ||
-    raw.includes("bare land") ||
-    raw.includes("strata house")
-  )
-) {
-  return "condo";
-}
-
-  if (
-    raw.includes("single family") ||
-    raw.includes("detached") ||
-    raw.includes("house") ||
-    raw.includes("residential") ||
-    raw.includes("sfd") ||
-    raw.includes("det")
+    remarksText.includes("single family home") ||
+    remarksText.includes("single-family home") ||
+    remarksText.includes("detached home") ||
+    remarksText.includes("detached residence")
   ) {
     return "house";
   }
 
   if (
-    raw.includes("multi-family") ||
-    raw.includes("multifamily") ||
-    raw.includes("multi family")
+    remarksText.includes("condominium unit") ||
+    remarksText.includes("condo unit") ||
+    remarksText.includes("apartment unit")
   ) {
-    return "multi-family";
+    return "condo";
+  }
+
+  if (
+    remarksText.includes("vacant land") ||
+    remarksText.includes("bare land") ||
+    remarksText.includes("building lot") ||
+    remarksText.includes("vacant lot")
+  ) {
+    return "land";
   }
 
   return "other";
 };
+
 const PARKSVILLE_MARKET_CITIES = new Set([
   "parksville",
   "nanoose bay",
