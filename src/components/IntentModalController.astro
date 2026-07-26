@@ -3,6 +3,150 @@ const { listings = [] } = Astro.props;
 ---
 <style is:global>
 @import "/src/styles/intent-modal.css";
+
+/*
+ * MOBILE LANDSCAPE PHOTO MODE
+ *
+ * Rotating a phone to landscape while a listing is open turns
+ * the existing modal into a dedicated image viewer.
+ *
+ * We reuse the existing image, swipe handlers and photo index.
+ */
+@media (orientation: landscape) {
+  #preview-sheet.is-landscape-gallery {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: none !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #000 !important;
+    z-index: 2147483000 !important;
+    transform: none !important;
+  }
+
+  #preview-sheet.is-landscape-gallery .panel__grab,
+  #preview-sheet.is-landscape-gallery .panel__progress-track,
+  #preview-sheet.is-landscape-gallery .panel__position,
+  #preview-sheet.is-landscape-gallery .panel__header-actions,
+  #preview-sheet.is-landscape-gallery .panel__image-overlay,
+  #preview-sheet.is-landscape-gallery .photo-nav,
+  #preview-sheet.is-landscape-gallery .panel__body,
+  #preview-sheet.is-landscape-gallery .panel__mini-map,
+  #preview-sheet.is-landscape-gallery .panel__osm-amenities,
+  #preview-sheet.is-landscape-gallery .panel__engage,
+  #preview-sheet.is-landscape-gallery .panel__footer,
+  #preview-sheet.is-landscape-gallery #sheet-highlight-chips {
+    display: none !important;
+  }
+
+  #preview-sheet.is-landscape-gallery .panel__progress-wrap {
+    position: static !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  #preview-sheet.is-landscape-gallery .panel__header {
+    position: static !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  #preview-sheet.is-landscape-gallery .panel__close {
+    display: grid !important;
+    place-items: center !important;
+    position: fixed !important;
+    top: max(12px, env(safe-area-inset-top)) !important;
+    right: max(14px, env(safe-area-inset-right)) !important;
+    width: 42px !important;
+    height: 42px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    background: rgba(0, 0, 0, 0.48) !important;
+    color: #fff !important;
+    font-size: 32px !important;
+    line-height: 1 !important;
+    z-index: 2147483646 !important;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  #preview-sheet.is-landscape-gallery .panel__view,
+  #preview-sheet.is-landscape-gallery .panel__content,
+  #preview-sheet.is-landscape-gallery .panel__image-stage {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background: #000 !important;
+  }
+
+  #preview-sheet.is-landscape-gallery .panel__content {
+    display: block !important;
+    overscroll-behavior: none;
+    touch-action: pan-y;
+  }
+
+  #preview-sheet.is-landscape-gallery .panel__image-stage {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  #preview-sheet.is-landscape-gallery .panel__image {
+    display: block !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    object-fit: contain !important;
+    object-position: center !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #000 !important;
+  }
+
+  #preview-sheet.is-landscape-gallery .panel__photo-count {
+    display: block !important;
+    position: fixed !important;
+    left: 50% !important;
+    bottom: max(12px, env(safe-area-inset-bottom)) !important;
+    transform: translateX(-50%) !important;
+    width: auto !important;
+    padding: 7px 12px !important;
+    margin: 0 !important;
+    border-radius: 999px !important;
+    background: rgba(0, 0, 0, 0.48) !important;
+    color: #fff !important;
+    font-size: 13px !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    z-index: 2147483645 !important;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  #sheet-overlay.is-landscape-gallery {
+    position: fixed !important;
+    inset: 0 !important;
+    background: #000 !important;
+    z-index: 2147482999 !important;
+  }
+}
 </style>
 <div class="overlay" id="sheet-overlay"></div>
 
@@ -297,6 +441,104 @@ const sheetImageOverlay = document.getElementById("sheet-image-overlay");
 
 let photoOverlayTimer = null;
 
+
+/* =========================================================
+   MOBILE LANDSCAPE GALLERY
+   ========================================================= */
+
+const landscapeMediaQuery = window.matchMedia("(orientation: landscape)");
+
+function isPhoneLikeDevice() {
+  const hasTouch =
+    navigator.maxTouchPoints > 0 ||
+    "ontouchstart" in window;
+
+  const coarsePointer =
+    window.matchMedia("(pointer: coarse)").matches;
+
+  const shortSide = Math.min(window.innerWidth, window.innerHeight);
+  const longSide = Math.max(window.innerWidth, window.innerHeight);
+
+  return (
+    hasTouch &&
+    coarsePointer &&
+    shortSide <= 600 &&
+    longSide <= 1000
+  );
+}
+
+function shouldUseLandscapeGallery() {
+  return (
+    sheet?.classList.contains("open") &&
+    landscapeMediaQuery.matches &&
+    isPhoneLikeDevice() &&
+    activePhotoUrls.length > 0
+  );
+}
+
+function updateLandscapeGalleryMode() {
+  if (!sheet || !overlay) return;
+
+  const shouldBeGallery = shouldUseLandscapeGallery();
+
+  sheet.classList.toggle(
+    "is-landscape-gallery",
+    shouldBeGallery
+  );
+
+  overlay.classList.toggle(
+    "is-landscape-gallery",
+    shouldBeGallery
+  );
+
+  document.body.classList.toggle(
+    "is-landscape-gallery-open",
+    shouldBeGallery
+  );
+
+  if (shouldBeGallery) {
+    if (sheetMiniMap) {
+      sheetMiniMap.hidden = true;
+      sheetMiniMap.style.display = "none";
+    }
+
+    if (sheetImageStage) {
+      sheetImageStage.classList.remove("is-hidden");
+      sheetImageStage.style.visibility = "visible";
+    }
+
+    if (sheetMapBtn) {
+      sheetMapBtn.textContent = "Map";
+    }
+
+    if (photoOverlayTimer) {
+      clearTimeout(photoOverlayTimer);
+      photoOverlayTimer = null;
+    }
+
+    sheetImageOverlay?.classList.remove(
+      "is-hidden-while-browsing"
+    );
+  }
+}
+
+landscapeMediaQuery.addEventListener?.(
+  "change",
+  updateLandscapeGalleryMode
+);
+
+window.addEventListener(
+  "orientationchange",
+  () => {
+    window.setTimeout(updateLandscapeGalleryMode, 120);
+  }
+);
+
+window.addEventListener(
+  "resize",
+  updateLandscapeGalleryMode
+);
+
 function hidePhotoOverlayTemporarily() {
   if (window.innerWidth > 768 || !sheetImageOverlay) return;
 
@@ -436,10 +678,14 @@ window.updateViewedBadges?.();
 sheetSummary?.classList.remove("open");
 sheetSummary?.setAttribute("hidden", "");
 
-          sheet.classList.add("open");
-          overlay.classList.add("open");
-          sheet.setAttribute("aria-hidden", "false");
-          document.body.style.overflow = "hidden";
+    sheet.classList.add("open");
+overlay.classList.add("open");
+sheet.setAttribute("aria-hidden", "false");
+document.body.style.overflow = "hidden";
+
+window.requestAnimationFrame(() => {
+  updateLandscapeGalleryMode();
+});
         }
    window.openSheet = openSheet;
 window.openSheet = openSheet;
@@ -464,10 +710,22 @@ window.openSheet = openSheet;
     return;
   }
 
-  sheet.classList.remove("open");
-  overlay.classList.remove("open");
-  sheet.setAttribute("aria-hidden", "true");
-  document.body.style.overflow = "";
+sheet.classList.remove(
+  "open",
+  "is-landscape-gallery"
+);
+
+overlay.classList.remove(
+  "open",
+  "is-landscape-gallery"
+);
+
+document.body.classList.remove(
+  "is-landscape-gallery-open"
+);
+
+sheet.setAttribute("aria-hidden", "true");
+document.body.style.overflow = "";
 }
 function preloadImages(urls = []) {
   urls
