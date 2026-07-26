@@ -146,6 +146,62 @@ const { listings = [] } = Astro.props;
     background: #000 !important;
     z-index: 2147482999 !important;
   }
+
+  /* HARD RESET anything from the portrait gallery */
+#preview-sheet.is-landscape-gallery .panel__image-stage,
+#preview-sheet.is-landscape-gallery .panel__image-stage::before,
+#preview-sheet.is-landscape-gallery .panel__image-stage::after,
+#preview-sheet.is-landscape-gallery .panel__view::before,
+#preview-sheet.is-landscape-gallery .panel__view::after,
+#preview-sheet.is-landscape-gallery .panel__content::before,
+#preview-sheet.is-landscape-gallery .panel__content::after {
+  border-radius: 0 !important;
+  clip-path: none !important;
+  mask: none !important;
+  -webkit-mask: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+#preview-sheet.is-landscape-gallery .panel__image-stage::before,
+#preview-sheet.is-landscape-gallery .panel__image-stage::after,
+#preview-sheet.is-landscape-gallery .panel__view::before,
+#preview-sheet.is-landscape-gallery .panel__view::after,
+#preview-sheet.is-landscape-gallery .panel__content::before,
+#preview-sheet.is-landscape-gallery .panel__content::after {
+  content: none !important;
+  display: none !important;
+}
+
+#preview-sheet.is-landscape-gallery #sheet-image {
+  position: fixed !important;
+  inset: 0 !important;
+
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+
+  max-width: none !important;
+  max-height: none !important;
+
+  object-fit: contain !important;
+  object-position: center center !important;
+
+  border: 0 !important;
+  border-radius: 0 !important;
+  clip-path: none !important;
+  mask: none !important;
+  -webkit-mask: none !important;
+
+  filter: none !important;
+  transform: none !important;
+
+  background: #000 !important;
+
+  z-index: 1 !important;
+}
 }
 </style>
 <div class="overlay" id="sheet-overlay"></div>
@@ -497,6 +553,21 @@ function updateLandscapeGalleryMode() {
   );
 
   if (shouldBeGallery) {
+        // Try genuine device fullscreen.
+    // Some mobile browsers allow this automatically;
+    // others require a recent user gesture.
+    const fullscreenTarget = document.documentElement;
+
+    if (
+      !document.fullscreenElement &&
+      fullscreenTarget.requestFullscreen
+    ) {
+      fullscreenTarget
+        .requestFullscreen({ navigationUI: "hide" })
+        .catch(() => {
+          // Browser may require another user gesture.
+        });
+    }
     if (sheetMiniMap) {
       sheetMiniMap.hidden = true;
       sheetMiniMap.style.display = "none";
@@ -516,9 +587,17 @@ function updateLandscapeGalleryMode() {
       photoOverlayTimer = null;
     }
 
-    sheetImageOverlay?.classList.remove(
+     sheetImageOverlay?.classList.remove(
       "is-hidden-while-browsing"
     );
+
+  } else {
+    if (
+      document.fullscreenElement &&
+      document.exitFullscreen
+    ) {
+      document.exitFullscreen().catch(() => {});
+    }
   }
 }
 
