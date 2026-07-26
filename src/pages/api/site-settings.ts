@@ -372,51 +372,21 @@ export const POST: APIRoute = async ({
         new Date().toISOString(),
     };
 
-    let agentId =
-      currentSite.agent_id || null;
+    const agentId =
+  currentSite.agent_id || null;
 
-    /*
-     * Only create an agent if a name has
-     * actually been supplied.
-     */
-    if (agentPayload.name) {
-      if (agentId) {
-        /*
-         * Existing linked agent:
-         * update identity.
-         */
-        const {
-          error: agentUpdateError,
-        } = await supabase
-          .from("agents")
-          .update(agentPayload)
-          .eq("id", agentId);
+if (agentId) {
+  const {
+    error: agentUpdateError,
+  } = await supabase
+    .from("agents")
+    .update(agentPayload)
+    .eq("id", agentId);
 
-        if (agentUpdateError) {
-          throw agentUpdateError;
-        }
-      } else {
-        /*
-         * No linked agent yet:
-         * create one.
-         */
-        const {
-          data: newAgent,
-          error: agentInsertError,
-        } = await supabase
-          .from("agents")
-          .insert(agentPayload)
-          .select("id")
-          .single();
-
-        if (agentInsertError) {
-          throw agentInsertError;
-        }
-
-        agentId =
-          newAgent?.id || null;
-      }
-    }
+  if (agentUpdateError) {
+    throw agentUpdateError;
+  }
+}
 
     /*
      * Update site settings and attach
