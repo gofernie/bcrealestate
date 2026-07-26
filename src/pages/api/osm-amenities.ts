@@ -2,12 +2,12 @@ import type { APIRoute } from "astro";
 import { createClient } from "@supabase/supabase-js";
 
 export const GET: APIRoute = async ({ url }) => {
-  const city = String(
+   const city = String(
     url.searchParams.get("city") || "nanaimo"
   )
     .toLowerCase()
     .trim()
-    .replace(/-/g, " ");
+    .replace(/\s+/g, "-");
 
   const lat = parseFloat(
     url.searchParams.get("lat") || ""
@@ -59,7 +59,7 @@ export const GET: APIRoute = async ({ url }) => {
     .select(
       "name, category, osm_type, lat, lng"
     )
-    .ilike("city", city);
+.eq("city", city);
 
   if (error) {
     return new Response(

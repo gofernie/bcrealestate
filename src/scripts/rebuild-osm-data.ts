@@ -72,11 +72,83 @@ whistler: {
   },
 
    duncan: {
+    areas: {
+      duncan: { bbox: [48.940, -123.900, 49.080, -123.750] },
+    },
+  },
+
+  "campbell-river": {
+    areas: {
+      "campbell-river": {
+        bbox: [49.900, -125.360, 50.100, -125.180],
+      },
+    },
+  },
+
+ colwood: {
   areas: {
-    duncan: { bbox: [48.940, -123.900, 49.080, -123.750] },
+    colwood: {
+      bbox: [48.400, -123.550, 48.480, -123.440],
+    },
+  },
+},
+
+comox: {
+  areas: {
+    comox: {
+      bbox: [49.64, -124.98, 49.74, -124.82],
+    },
+  },
+},
+
+"lake-cowichan": {
+  areas: {
+    "lake-cowichan": {
+      bbox: [48.78, -124.15, 49.00, -123.95],
+    },
+  },
+},
+
+youbou: {
+  areas: {
+    youbou: {
+      bbox: [48.84, -124.30, 48.94, -124.14],
+    },
+  },
+},
+
+crofton: {
+  areas: {
+    crofton: {
+      bbox: [48.82, -123.76, 48.91, -123.61],
+    },
+  },
+},
+
+"west-duncan": {
+  areas: {
+    "west-duncan": {
+      bbox: [48.72, -123.98, 48.84, -123.82],
+    },
+  },
+},
+ladysmith: {
+  areas: {
+    ladysmith: {
+      bbox: [48.90, -123.90, 49.05, -123.70],
+    },
+  },
+},
+
+"east-duncan": {
+  areas: {
+    "east-duncan": {
+      bbox: [48.73, -123.78, 48.82, -123.66],
+    },
   },
 },
 };
+
 
 // ---------------------------------------------------------------------------
 // OSM category definitions
