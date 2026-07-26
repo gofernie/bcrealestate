@@ -154,30 +154,31 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    /*
-     * Create agent identity using the SAME UUID
-     * as auth.users.
-     */
-    const {
-      error: agentError,
-    } = await supabase
-      .from("agents")
-      .insert({
-        id: authUserId,
-        name,
-        email,
-        phone: phone || null,
-        title: title || null,
-        brokerage:
-          brokerage || null,
-        domain,
-        updated_at:
-          new Date().toISOString(),
-      });
+   /*
+ * Auth creation already creates the agents row
+ * through our database trigger.
+ *
+ * Populate that existing profile with the
+ * onboarding details.
+ */
+const {
+  error: agentError,
+} = await supabase
+  .from("agents")
+  .update({
+    name,
+    email,
+    phone: phone || null,
+    title: title || null,
+    brokerage: brokerage || null,
+    domain,
+    updated_at: new Date().toISOString(),
+  })
+  .eq("id", authUserId);
 
-    if (agentError) {
-      throw agentError;
-    }
+if (agentError) {
+  throw agentError;
+}
 
     /*
      * Create the Locus site.
