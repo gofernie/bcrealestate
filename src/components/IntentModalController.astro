@@ -657,8 +657,11 @@ window.addEventListener("resize", updateSheetScrollHint);
 
         let activePhotoUrls = [];
         let activePhotoIndex = 0;
-        let photoSwipeStartX = 0;
-        let photoSwipeStartY = 0;
+       let photoSwipeStartX = 0;
+let photoSwipeStartY = 0;
+
+let photoZoom = 1;
+let pinchStartDistance = 0;
 
 let activeCard = null;
 let totalIntentReactions = 0;
@@ -2629,47 +2632,128 @@ chipAdvanceTimer = setTimeout(() => {
   hidePhotoOverlayTemporarily();
 });
 
-        function showActivePhoto() {
-          if (!sheetImage || !activePhotoUrls.length) return;
+       function showActivePhoto() {
+  if (!sheetImage || !activePhotoUrls.length) return;
 
-          sheetImage.src = activePhotoUrls[activePhotoIndex];
+  photoZoom = 1;
+  pinchStartDistance = 0;
 
-          if (sheetPhotoCount) {
-            sheetPhotoCount.textContent = `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
-          }
+  sheetImage.style.transform = "translate(0px, 0px) scale(1)";
+  sheetImage.style.transformOrigin = "center center";
 
-          if (photoPrevBtn) photoPrevBtn.disabled = activePhotoIndex === 0;
-          if (photoNextBtn) photoNextBtn.disabled = activePhotoIndex >= activePhotoUrls.length - 1;
-        }
+  sheetImage.src = activePhotoUrls[activePhotoIndex];
 
-      sheetImage?.addEventListener("touchstart", (event) => {
+  if (sheetPhotoCount) {
+    sheetPhotoCount.textContent =
+      `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
+  }
+
+  if (photoPrevBtn) {
+    photoPrevBtn.disabled = activePhotoIndex === 0;
+  }
+
+  if (photoNextBtn) {
+    photoNextBtn.disabled =
+      activePhotoIndex >= activePhotoUrls.length - 1;
+  }
+}
+
+     sheetImage?.addEventListener("touchstart", (event) => {
   ensureLandscapeFullscreen();
 
-  photoSwipeStartX = event.changedTouches[0].screenX;
-  photoSwipeStartY = event.changedTouches[0].screenY;
+  if (
+    sheet.classList.contains("is-landscape-gallery") &&
+    event.touches.length === 2
+  ) {
+    const a = event.touches[0];
+    const b = event.touches[1];
 
-  // Hide price/address/meta immediately when browsing photos.
+    pinchStartDistance = Math.hypot(
+      b.clientX - a.clientX,
+      b.clientY - a.clientY
+    );
+
+    return;
+  }
+
+  if (event.touches.length === 1) {
+    photoSwipeStartX = event.touches[0].screenX;
+    photoSwipeStartY = event.touches[0].screenY;
+  }
+
   hidePhotoOverlayTemporarily();
 }, { passive: true });
 
-sheetImage?.addEventListener("touchmove", () => {
-  // Keep restarting the 5-second timer while the buyer is interacting.
+
+sheetImage?.addEventListener("touchmove", (event) => {
   hidePhotoOverlayTemporarily();
+
+  if (
+    !sheet.classList.contains("is-landscape-gallery") ||
+    event.touches.length !== 2 ||
+    !pinchStartDistance
+  ) {
+    return;
+  }
+
+  const a = event.touches[0];
+  const b = event.touches[1];
+
+  const currentDistance = Math.hypot(
+    b.clientX - a.clientX,
+    b.clientY - a.clientY
+  );
+
+  const scaleChange = currentDistance / pinchStartDistance;
+
+  photoZoom = Math.max(
+    1,
+    Math.min(3, photoZoom * scaleChange)
+  );
+
+  sheetImage.style.transform =
+    `translate(0px, 0px) scale(${photoZoom})`;
+
+  pinchStartDistance = currentDistance;
 }, { passive: true });
+
 
 sheetImage?.addEventListener("touchend", (event) => {
-  const dx = event.changedTouches[0].screenX - photoSwipeStartX;
-  const dy = event.changedTouches[0].screenY - photoSwipeStartY;
+  if (event.touches.length < 2) {
+    pinchStartDistance = 0;
+  }
 
-  if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy)) return;
+  // Don't switch photos while zoomed.
+  if (photoZoom > 1.02) {
+    return;
+  }
 
-  if (dx < 0 && activePhotoIndex < activePhotoUrls.length - 1) {
+  const touch = event.changedTouches[0];
+  if (!touch) return;
+
+  const dx = touch.screenX - photoSwipeStartX;
+  const dy = touch.screenY - photoSwipeStartY;
+
+  if (
+    Math.abs(dx) < 45 ||
+    Math.abs(dx) < Math.abs(dy)
+  ) {
+    return;
+  }
+
+  if (
+    dx < 0 &&
+    activePhotoIndex < activePhotoUrls.length - 1
+  ) {
     activePhotoIndex += 1;
     showActivePhoto();
     hidePhotoOverlayTemporarily();
   }
 
-  if (dx > 0 && activePhotoIndex > 0) {
+  if (
+    dx > 0 &&
+    activePhotoIndex > 0
+  ) {
     activePhotoIndex -= 1;
     showActivePhoto();
     hidePhotoOverlayTemporarily();
