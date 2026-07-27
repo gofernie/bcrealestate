@@ -13,11 +13,11 @@ const { listings = [] } = Astro.props;
  * We reuse the existing image, swipe handlers and photo index.
  */
 @media (orientation: landscape) {
-  #preview-sheet.is-landscape-gallery {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100dvh !important;
+ #preview-sheet.is-landscape-gallery {
+  position: fixed !important;
+  inset: 0 !important;
+  width: var(--landscape-vw, 100vw) !important;
+  height: var(--landscape-vh, 100dvh) !important;
     max-width: none !important;
     max-height: none !important;
     border-radius: 0 !important;
@@ -63,14 +63,14 @@ const { listings = [] } = Astro.props;
   display: none !important;
 }
 
-  #preview-sheet.is-landscape-gallery .panel__view,
-  #preview-sheet.is-landscape-gallery .panel__content,
-  #preview-sheet.is-landscape-gallery .panel__image-stage {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100dvh !important;
-    min-height: 100dvh !important;
+#preview-sheet.is-landscape-gallery .panel__view,
+#preview-sheet.is-landscape-gallery .panel__content,
+#preview-sheet.is-landscape-gallery .panel__image-stage {
+  position: fixed !important;
+  inset: 0 !important;
+  width: var(--landscape-vw, 100vw) !important;
+  height: var(--landscape-vh, 100dvh) !important;
+  min-height: var(--landscape-vh, 100dvh) !important;
     max-height: none !important;
     margin: 0 !important;
     padding: 0 !important;
@@ -180,12 +180,11 @@ const { listings = [] } = Astro.props;
   position: fixed !important;
   inset: 0 !important;
 
-  width: 100vw !important;
-  height: 100vh !important;
-  height: 100dvh !important;
+  width: var(--landscape-vw, 100vw) !important;
+  height: var(--landscape-vh, 100dvh) !important;
 
-  max-width: none !important;
-  max-height: none !important;
+  max-width: var(--landscape-vw, 100vw) !important;
+  max-height: var(--landscape-vh, 100dvh) !important;
 
   object-fit: contain !important;
   object-position: center center !important;
@@ -535,7 +534,44 @@ function shouldUseLandscapeGallery() {
     activePhotoUrls.length > 0
   );
 }
+function syncLandscapeViewport() {
+  if (!sheet?.classList.contains("is-landscape-gallery")) return;
 
+  const viewport = window.visualViewport;
+
+  const width = Math.round(
+    viewport?.width || window.innerWidth
+  );
+
+  const height = Math.round(
+    viewport?.height || window.innerHeight
+  );
+
+  document.documentElement.style.setProperty(
+    "--landscape-vw",
+    `${width}px`
+  );
+
+  document.documentElement.style.setProperty(
+    "--landscape-vh",
+    `${height}px`
+  );
+
+  // Reset stale zoom/pan geometry after browser wake.
+  photoZoom = 1;
+  pinchStartDistance = 0;
+  photoPanX = 0;
+  photoPanY = 0;
+  panStartX = 0;
+  panStartY = 0;
+
+  if (sheetImage) {
+    sheetImage.style.transform =
+      "translate(0px, 0px) scale(1)";
+    sheetImage.style.transformOrigin =
+      "center center";
+  }
+}
 function ensureLandscapeFullscreen() {
   if (!shouldUseLandscapeGallery()) return;
   if (document.fullscreenElement) return;
@@ -593,6 +629,7 @@ function updateLandscapeGalleryMode() {
   );
 
   if (shouldBeGallery) {
+    syncLandscapeViewport();
         // Try genuine device fullscreen.
     // Some mobile browsers allow this automatically;
     // others require a recent user gesture.
@@ -663,19 +700,58 @@ window.addEventListener(
   }
 );
 
+function refreshLandscapeAfterBrowserChange() {
+  if (!sheet?.classList.contains("open")) return;
+
+  requestAnimationFrame(() => {
+    updateLandscapeGalleryMode();
+    syncLandscapeViewport();
+
+    requestAnimationFrame(() => {
+      syncLandscapeViewport();
+    });
+  });
+
+  // Chrome's address bar / visual viewport can settle
+  // after the first frame when returning to the page.
+  setTimeout(syncLandscapeViewport, 100);
+  setTimeout(syncLandscapeViewport, 300);
+}
+
 window.addEventListener(
   "resize",
-  updateLandscapeGalleryMode
+  refreshLandscapeAfterBrowserChange
 );
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") {
-    landscapeFullscreenNeedsRefresh = true;
 
-    setTimeout(() => {
-      updateLandscapeGalleryMode();
-    }, 100);
+window.visualViewport?.addEventListener(
+  "resize",
+  refreshLandscapeAfterBrowserChange
+);
+
+window.visualViewport?.addEventListener(
+  "scroll",
+  refreshLandscapeAfterBrowserChange
+);
+
+window.addEventListener(
+  "pageshow",
+  refreshLandscapeAfterBrowserChange
+);
+
+window.addEventListener(
+  "focus",
+  refreshLandscapeAfterBrowserChange
+);
+
+document.addEventListener(
+  "visibilitychange",
+  () => {
+    if (document.visibilityState === "visible") {
+      landscapeFullscreenNeedsRefresh = true;
+      refreshLandscapeAfterBrowserChange();
+    }
   }
-});
+);
 
 
 function hidePhotoOverlayTemporarily() {
