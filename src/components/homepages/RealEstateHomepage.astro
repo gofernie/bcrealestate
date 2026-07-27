@@ -3,6 +3,7 @@ import ListingCard from "../ListingCard.astro";
 import IntentModalController from "../IntentModalController.astro";
 import AreaMultiSelect from "../listings/AreaMultiSelect.astro";
 import SingleSelectDropdown from "../listings/SingleSelectDropdown.astro";
+import { createClient } from "@supabase/supabase-js";
 interface LocationCard {
   city?: string;
   area?: string;
@@ -97,6 +98,72 @@ const modalOnlyListings =
       !visibleListingIds.has(listingId)
     );
   });
+  const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const allListingIds = [
+  ...listings,
+  ...modalOnlyListings,
+]
+  .map((listing) =>
+    String(
+      listing?.id ||
+      listing?.mls_number ||
+      ""
+    )
+  )
+  .filter(Boolean);
+
+let floorplanRows: any[] = [];
+
+if (allListingIds.length > 0) {
+  const { data, error } = await supabase
+    .from("listing_floorplans")
+    .select(
+      "listing_id, image_number, image_url, confidence"
+    )
+    .in("listing_id", allListingIds);
+
+  if (error) {
+    console.error(
+      "Floorplan lookup failed:",
+      error
+    );
+  } else {
+    floorplanRows = data || [];
+  }
+}
+
+const floorplansByListingId =
+  floorplanRows.reduce(
+    (
+      result: Record<string, any[]>,
+      floorplan: any
+    ) => {
+      const listingId =
+        String(
+          floorplan.listing_id ||
+          ""
+        );
+
+      if (!listingId) {
+        return result;
+      }
+
+      if (!result[listingId]) {
+        result[listingId] = [];
+      }
+
+      result[listingId].push(
+        floorplan
+      );
+
+      return result;
+    },
+    {}
+  );
 const isCityMode =
   mode === "city";
 
@@ -862,10 +929,19 @@ if (
     listings.map(
       (listing, index) => (
         <div class="bc-filterable-listing">
-          <ListingCard
-            listing={listing}
-            priority={index < 4}
-          />
+         <ListingCard
+  listing={listing}
+  priority={index < 4}
+  floorplans={
+    floorplansByListingId[
+      String(
+        listing?.id ||
+        listing?.mls_number ||
+        ""
+      )
+    ] || []
+  }
+/>
         </div>
       )
     )
@@ -879,9 +955,18 @@ if (
   {
     modalOnlyListings.map(
       (listing) => (
-        <ListingCard
-          listing={listing}
-        />
+      <ListingCard
+  listing={listing}
+  floorplans={
+    floorplansByListingId[
+      String(
+        listing?.id ||
+        listing?.mls_number ||
+        ""
+      )
+    ] || []
+  }
+/>
       )
     )
   }

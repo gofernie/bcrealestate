@@ -220,11 +220,43 @@ const { listings = [] } = Astro.props;
     <div class="panel__header">
       <div class="panel__position" id="sheet-position">1 of 1</div>
 
-      <div class="panel__header-actions">
-        <button class="panel__map-btn" id="sheet-map-btn" type="button">Map</button>
-        <button class="panel__top-btn" id="sheet-prev-top-btn" type="button"><span aria-hidden="true">&larr;</span> <span class="btn-label-full">Previous</span></button>
-        <button class="panel__top-btn" id="sheet-next-top-btn" type="button"><span class="btn-label-full">Next</span> <span aria-hidden="true">&rarr;</span></button>
-      </div>
+     <div class="panel__header-actions">
+  <button
+  class="panel__map-btn"
+  id="sheet-floorplan-btn"
+  type="button"
+  hidden
+  style="display:none;"
+>
+  Floorplan
+</button>
+
+  <button
+    class="panel__map-btn"
+    id="sheet-map-btn"
+    type="button"
+  >
+    Map
+  </button>
+
+  <button
+    class="panel__top-btn"
+    id="sheet-prev-top-btn"
+    type="button"
+  >
+    <span aria-hidden="true">&larr;</span>
+    <span class="btn-label-full">Previous</span>
+  </button>
+
+  <button
+    class="panel__top-btn"
+    id="sheet-next-top-btn"
+    type="button"
+  >
+    <span class="btn-label-full">Next</span>
+    <span aria-hidden="true">&rarr;</span>
+  </button>
+</div>
 
       <button class="panel__close" id="sheet-close-btn" type="button" aria-label="Close">&times;</button>
     </div>
@@ -306,6 +338,7 @@ const { listings = [] } = Astro.props;
         const sheetProgressBar = document.getElementById("sheet-progress-bar");
         const closeBtn = document.getElementById("sheet-close-btn");
         const sheetMapBtn = document.getElementById("sheet-map-btn");
+        const sheetFloorplanBtn = document.getElementById("sheet-floorplan-btn");
 const sheetMiniMap = document.getElementById("sheet-mini-map");
 const sheetImageStage = document.querySelector(".panel__image-stage");
 
@@ -1237,6 +1270,37 @@ if (sheetImageStage) {
 
 if (sheetMapBtn) {
   sheetMapBtn.textContent = "Map";
+}
+let floorplanUrls = [];
+
+try {
+  floorplanUrls = JSON.parse(
+    card.dataset.floorplans || "[]"
+  );
+} catch {
+  floorplanUrls = [];
+}
+
+if (sheetFloorplanBtn) {
+  const hasFloorplan =
+    Array.isArray(floorplanUrls) &&
+    floorplanUrls.length > 0;
+
+  sheetFloorplanBtn.hidden = !hasFloorplan;
+
+  if (hasFloorplan) {
+    sheetFloorplanBtn.style.setProperty(
+      "display",
+      "inline-flex",
+      "important"
+    );
+  } else {
+    sheetFloorplanBtn.style.setProperty(
+      "display",
+      "none",
+      "important"
+    );
+  }
 }
 
 sheetContent.scrollTop = 0;
@@ -2739,7 +2803,67 @@ chipAdvanceTimer = setTimeout(() => {
     }, 1000);
   }, 2500);
 });
+sheetFloorplanBtn?.addEventListener("click", (event) => {
+  event.stopPropagation();
 
+  if (!activeCard) return;
+
+  let floorplanUrls = [];
+
+  try {
+    floorplanUrls = JSON.parse(
+      activeCard.dataset.floorplans || "[]"
+    );
+  } catch {
+    floorplanUrls = [];
+  }
+
+  if (!Array.isArray(floorplanUrls) || !floorplanUrls.length) {
+    return;
+  }
+
+  const normalizeForMatch = (url) =>
+    String(url || "")
+      .replace(/[?&]class=[^&]+/g, "")
+      .replace(/\?$/, "")
+      .trim();
+
+  const firstFloorplanUrl =
+    normalizeForMatch(floorplanUrls[0]);
+
+  const floorplanIndex =
+    activePhotoUrls.findIndex(
+      (url) =>
+        normalizeForMatch(url) === firstFloorplanUrl
+    );
+
+  if (floorplanIndex < 0) {
+    console.warn(
+      "Floorplan image not found in active photo list",
+      floorplanUrls[0]
+    );
+    return;
+  }
+
+  activePhotoIndex = floorplanIndex;
+
+  showActivePhoto();
+
+  hidePhotoOverlayTemporarily();
+
+  if (sheetMiniMap) {
+    sheetMiniMap.hidden = true;
+    sheetMiniMap.style.display = "none";
+  }
+
+  if (sheetImageStage) {
+    sheetImageStage.classList.remove("is-hidden");
+  }
+
+  if (sheetMapBtn) {
+    sheetMapBtn.textContent = "Map";
+  }
+});
        photoPrevBtn?.addEventListener("click", (event) => {
   event.stopPropagation();
 
