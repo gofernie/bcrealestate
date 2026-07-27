@@ -549,6 +549,29 @@ function ensureLandscapeFullscreen() {
   }
 }
 
+function restoreFullscreenAfterWake() {
+  if (!landscapeFullscreenNeedsRefresh) return;
+  if (!sheet?.classList.contains("open")) return;
+
+  if (document.fullscreenElement) {
+    landscapeFullscreenNeedsRefresh = false;
+    return;
+  }
+
+  const target = document.documentElement;
+
+  if (target.requestFullscreen) {
+    target
+      .requestFullscreen({ navigationUI: "hide" })
+      .then(() => {
+        landscapeFullscreenNeedsRefresh = false;
+      })
+      .catch(() => {
+        // Keep the flag true and try again on the next user gesture.
+      });
+  }
+}
+
 function updateLandscapeGalleryMode() {
   if (!sheet || !overlay) return;
 
@@ -655,14 +678,17 @@ document.addEventListener("visibilitychange", () => {
 });
 
 sheet?.addEventListener("touchstart", () => {
-  if (!sheet.classList.contains("is-landscape-gallery")) return;
+  if (!sheet?.classList.contains("open")) return;
 
+  // After sleep/wake, the first touch in the listing modal
+  // tries to restore fullscreen even while still in portrait.
+  restoreFullscreenAfterWake();
+
+  // Landscape fallback if fullscreen is still missing.
   if (
-    landscapeFullscreenNeedsRefresh ||
+    sheet.classList.contains("is-landscape-gallery") &&
     !document.fullscreenElement
   ) {
-    landscapeFullscreenNeedsRefresh = false;
-
     ensureLandscapeFullscreen();
   }
 }, { passive: true });
