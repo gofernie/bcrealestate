@@ -1,8 +1,16 @@
 import type { Config } from "@netlify/functions";
 import { refreshListingMarket } from "../../src/lib/listings/refreshListingMarket";
+import { createClient } from "@supabase/supabase-js";
 
+import {
+  processSavedSearches,
+} from "../../src/lib/savedSearches/processSavedSearches";
 const CRON_SECRET = process.env.CRON_SECRET;
-
+const supabase =
+  createClient(
+    process.env.PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 type RefreshRequest = {
   city?: string;
   boardId?: string;
@@ -116,7 +124,51 @@ export default async function handler(request: Request) {
   boardId: boardId || null,
   result
 });
+try {
+  const savedSearchResult =
+    await processSavedSearches(
+      supabase,
+      {
+        RESEND_API_KEY:
+          process.env.RESEND_API_KEY!,
 
+        TWILIO_ACCOUNT_SID:
+          process.env.TWILIO_ACCOUNT_SID!,
+
+        TWILIO_AUTH_TOKEN:
+          process.env.TWILIO_AUTH_TOKEN!,
+
+        TWILIO_FROM_NUMBER:
+          process.env.TWILIO_FROM_NUMBER!,
+
+        PUBLIC_SITE_URL:
+          process.env.PUBLIC_SITE_URL,
+      },
+      city
+    );
+
+  console.log(
+    "Saved searches processed after listing refresh",
+    {
+      city,
+      processed:
+        savedSearchResult.processed,
+      results:
+        savedSearchResult.results,
+    }
+  );
+} catch (savedSearchError) {
+  console.error(
+    "Saved search processing failed after listing refresh",
+    {
+      city,
+      error:
+        savedSearchError instanceof Error
+          ? savedSearchError.message
+          : savedSearchError,
+    }
+  );
+}
 if (city === "nanaimo") {
   try {
     const baseUrl = new URL(request.url).origin;
