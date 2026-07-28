@@ -333,7 +333,8 @@ const newMlsNumbers =
         ""
       )
     )
-    .filter(Boolean);
+    .filter(Boolean)
+    .slice(0, 20);
 
 if (newMlsNumbers.length > 1) {
   searchParams.set(
