@@ -211,16 +211,44 @@ Do NOT count:
 - room photographs
 - exterior photographs
 - aerial photographs
+- drone photographs
 - maps
 - neighbourhood maps
 - subdivision maps
 - site plans
+- survey plans
 - property boundary drawings
+- lot diagrams
+- parcel outlines
+- aerial images with highlighted property boundaries
+- aerial images with building footprints
+- aerial images with measurements, labels, or boundary lines
+- landscaping plans
 - artist impressions
 - architectural exterior renderings
 - feature sheets
 - advertisements
 - virtual staging
+
+IMPORTANT:
+
+A valid floorplan MUST primarily show the INTERNAL architectural
+layout of a building.
+
+A valid floorplan should visibly show multiple interior elements
+such as rooms, interior walls, door openings, stairs, hallways,
+labelled interior spaces, or room dimensions.
+
+Do NOT classify an image as a floorplan merely because it contains
+lines, measurements, outlines, labels, a building footprint,
+property boundaries, or a top-down view.
+
+If an image mainly shows the LOT, LAND, PARCEL, PROPERTY BOUNDARY,
+BUILDING LOCATION, or SURROUNDING NEIGHBOURHOOD, it is NOT a
+floorplan.
+
+When uncertain whether an image is an interior floorplan or an
+aerial/site/property plan, classify it as NOT a floorplan.
 
 Return ONLY valid JSON:
 

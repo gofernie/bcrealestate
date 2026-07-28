@@ -813,6 +813,25 @@ function updateSheetScrollHint() {
   sheetContent.classList.toggle("is-near-bottom", nearBottom);
 }
 
+function scrollSheetToTop() {
+  sheetContent?.scrollTo({
+    top: 0,
+    behavior: "smooth",
+  });
+
+  sheet?.scrollTo({
+    top: 0,
+    behavior: "smooth",
+  });
+
+  sheet
+    ?.querySelector(".panel__view")
+    ?.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+}
+
 sheetContent?.addEventListener("scroll", updateSheetScrollHint);
 window.addEventListener("resize", updateSheetScrollHint);
 
@@ -1130,9 +1149,7 @@ const addSize = (url) => {
             const targetSrc = activePhotoUrls[activePhotoIndex];
             sheetImage.alt = card.dataset.address || "";
 
-            if (sheetPhotoCount) {
-              sheetPhotoCount.textContent = `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
-            }
+           updatePhotoCounter();
 
             if (photoPrevBtn) photoPrevBtn.disabled = activePhotoIndex === 0;
             if (photoNextBtn) photoNextBtn.disabled = activePhotoIndex >= activePhotoUrls.length - 1;
@@ -1288,13 +1305,20 @@ if (sheetFloorplanBtn) {
 
   sheetFloorplanBtn.hidden = !hasFloorplan;
 
-  if (hasFloorplan) {
-    sheetFloorplanBtn.style.setProperty(
-      "display",
-      "inline-flex",
-      "important"
-    );
-  } else {
+if (hasFloorplan) {
+  const floorplanCount = floorplanUrls.length;
+
+  sheetFloorplanBtn.textContent =
+    floorplanCount > 1
+      ? `Floorplans · ${floorplanCount}`
+      : "Floorplan";
+
+  sheetFloorplanBtn.style.setProperty(
+    "display",
+    "inline-flex",
+    "important"
+  );
+} else {
     sheetFloorplanBtn.style.setProperty(
       "display",
       "none",
@@ -2555,7 +2579,7 @@ if (document.body.dataset.shortlistSendId && document.body.dataset.agentView ===
         closeBtn?.addEventListener("click", closeSheet);
 sheetMapBtn?.addEventListener("click", async () => {
   if (!activeCard || !sheetMiniMap) return;
-
+  scrollSheetToTop();
   sheetContent?.scrollTo({ top: 0, behavior: "instant" });
 sheet?.scrollTo({ top: 0, behavior: "instant" });
 
@@ -2808,6 +2832,8 @@ sheetFloorplanBtn?.addEventListener("click", (event) => {
 
   if (!activeCard) return;
 
+  scrollSheetToTop();
+
   let floorplanUrls = [];
 
   try {
@@ -2837,13 +2863,13 @@ sheetFloorplanBtn?.addEventListener("click", (event) => {
         normalizeForMatch(url) === firstFloorplanUrl
     );
 
-  if (floorplanIndex < 0) {
-    console.warn(
-      "Floorplan image not found in active photo list",
-      floorplanUrls[0]
-    );
-    return;
-  }
+if (floorplanIndex < 0) {
+  activePhotoUrls.push(floorplanUrls[0]);
+  floorplanIndex = activePhotoUrls.length - 1;
+}
+activePhotoIndex = floorplanIndex;
+
+showActivePhoto();
 
   activePhotoIndex = floorplanIndex;
 
@@ -2882,16 +2908,51 @@ sheetFloorplanBtn?.addEventListener("click", (event) => {
     }
   }
 
-  if (sheetPhotoCount) {
-    sheetPhotoCount.textContent = `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
-  }
+ updatePhotoCounter();
 
   if (photoPrevBtn) photoPrevBtn.disabled = activePhotoIndex === 0;
   if (photoNextBtn) photoNextBtn.disabled = activePhotoIndex >= activePhotoUrls.length - 1;
 
   hidePhotoOverlayTemporarily();
 });
+function updatePhotoCounter() {
+  if (!sheetPhotoCount) return;
+  const normalizeForMatch = (url) =>
+    String(url || "")
+      .replace(/[?&]class=[^&]+/g, "")
+      .replace(/\?$/, "")
+      .trim();
+  let floorplanUrls = [];
 
+  try {
+    floorplanUrls = JSON.parse(
+      activeCard?.dataset.floorplans || "[]"
+    );
+  } catch {
+    floorplanUrls = [];
+  }
+
+  const currentUrl =
+    activePhotoUrls[activePhotoIndex] || "";
+
+  const normalizedCurrent =
+    normalizeForMatch(currentUrl);
+
+  const floorplanIndex =
+    floorplanUrls.findIndex(
+      (url) =>
+        normalizeForMatch(url) ===
+        normalizedCurrent
+    );
+
+  if (floorplanIndex >= 0) {
+    sheetPhotoCount.textContent =
+      `Floorplan ${floorplanIndex + 1} of ${floorplanUrls.length}`;
+  } else {
+    sheetPhotoCount.textContent =
+      `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
+  }
+}
        function showActivePhoto() {
   if (!sheetImage || !activePhotoUrls.length) return;
 
@@ -2906,10 +2967,7 @@ sheetImage.style.transform = "translate(0px, 0px) scale(1)";
 
   sheetImage.src = activePhotoUrls[activePhotoIndex];
 
-  if (sheetPhotoCount) {
-    sheetPhotoCount.textContent =
-      `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
-  }
+ updatePhotoCounter();
 
   if (photoPrevBtn) {
     photoPrevBtn.disabled = activePhotoIndex === 0;
@@ -3171,9 +3229,7 @@ sheetImage?.addEventListener("touchend", (event) => {
     sheetImage.src = activePhotoUrls[activePhotoIndex];
   }
 
-  if (sheetPhotoCount) {
-    sheetPhotoCount.textContent = `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
-  }
+ updatePhotoCounter();
 
   if (photoPrevBtn) photoPrevBtn.disabled = activePhotoIndex === 0;
   if (photoNextBtn) photoNextBtn.disabled = activePhotoIndex >= activePhotoUrls.length - 1;
