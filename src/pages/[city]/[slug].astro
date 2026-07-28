@@ -1,7 +1,7 @@
 ---
 import { createClient } from "@supabase/supabase-js";
 import Layout from "../../layouts/Layout.astro";
-import ShortlistReviewModal from "../../components/ShortlistReviewModal.astro";
+
 import IntentModalController from "../../components/IntentModalController.astro";
 import SiteNav from "../../components/SiteNav.astro";
 import { getSite } from "../../lib/getSite";
@@ -781,6 +781,50 @@ if (defaultSort === "price-asc") {
 const { data: rawListings, error: listingsError } = await query.limit(listingLimit);
 
 let listings = rawListings || [];
+const listingIds = listings
+  .map((listing) =>
+    String(
+      listing?.id ||
+      listing?.mls_number ||
+      ""
+    )
+  )
+  .filter(Boolean);
+
+const floorplansByListing = new Map();
+
+if (listingIds.length > 0) {
+  const { data: floorplanRows = [], error: floorplanError } =
+    await supabase
+      .from("listing_floorplans")
+      .select("listing_id,image_url")
+      .in("listing_id", listingIds);
+
+  if (floorplanError) {
+    console.error(
+      "Could not load listing floorplans:",
+      floorplanError
+    );
+  } else {
+    for (const row of floorplanRows) {
+      const listingId =
+        String(row.listing_id || "");
+
+      if (!listingId || !row.image_url) continue;
+
+      if (!floorplansByListing.has(listingId)) {
+        floorplansByListing.set(
+          listingId,
+          []
+        );
+      }
+
+      floorplansByListing
+        .get(listingId)
+        .push(row.image_url);
+    }
+  }
+}
 console.log("AREA LISTING DEBUG BEFORE POLYGON", {
   city,
   slug,
@@ -4587,8 +4631,19 @@ Approximate driving times from{" "}
                 data-item-id={String(listing?.id || listing?.mls_number || index)}
                 data-card-id={String(listing?.id || listing?.mls_number || index)}
                 data-listing-id={String(listing?.id || listing?.mls_number || "")}
-                data-mls={String(listing?.mls_number || listing?.id || "")}
-                data-image={image}
+            data-mls={String(listing?.mls_number || listing?.id || "")}
+data-image={image}
+
+data-floorplans={JSON.stringify(
+  floorplansByListing.get(
+    String(
+      listing?.id ||
+      listing?.mls_number ||
+      ""
+    )
+  ) || []
+)}
+
 data-images={JSON.stringify(
   [
     ...(Array.isArray(listing?.images)
@@ -4768,7 +4823,7 @@ style="display:grid;grid-template-columns:1fr 1fr;gap:18px;"
 </div>
     </main>
 
-    <ShortlistReviewModal />
+  
 <IntentModalController loadMapScript={false} />
 
   <style is:global>
