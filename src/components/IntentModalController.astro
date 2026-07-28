@@ -206,6 +206,59 @@ const { listings = [] } = Astro.props;
   z-index: 1 !important;
 }
 }
+.panel__mini-map-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.panel__mini-map {
+  width: 100%;
+  transition:
+    height 260ms ease,
+    min-height 260ms ease;
+}
+
+.panel__map-expand-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 1000;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  min-height: 44px;
+  padding: 0 18px;
+
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 999px;
+
+  background: rgba(255, 255, 255, 0.96);
+  color: #222;
+
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.16);
+  cursor: pointer;
+
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.panel__map-expand-btn:active {
+  transform: translateX(-50%) scale(0.97);
+}
+
+@media (min-width: 769px) {
+  .panel__map-expand-btn {
+    display: none !important;
+  }
+}
 </style>
 <div class="overlay" id="sheet-overlay"></div>
 
@@ -280,7 +333,19 @@ const { listings = [] } = Astro.props;
         </div>
       </div>
 
-      <div id="sheet-mini-map" class="panel__mini-map" hidden></div>
+<div class="panel__mini-map-wrap" id="sheet-mini-map-wrap" hidden>
+  <div id="sheet-mini-map" class="panel__mini-map"></div>
+
+  <button
+    type="button"
+    class="panel__map-expand-btn"
+    id="sheet-map-expand-btn"
+    aria-expanded="false"
+  >
+    <span aria-hidden="true">↗</span>
+    <span>Expand map</span>
+  </button>
+</div>
 
       <div class="panel__body">
         <div class="panel__feedback" id="sheet-feedback"></div>
@@ -366,7 +431,13 @@ const sheetMapBtn = document.getElementById("sheet-map-btn");
 const sheetFloorplanBtn = document.getElementById("sheet-floorplan-btn");
 const sheetShareBtn = document.getElementById("sheet-share-btn");
 const sheetMiniMap = document.getElementById("sheet-mini-map");
+const sheetMiniMapWrap = document.getElementById("sheet-mini-map-wrap");
+const sheetMapExpandBtn = document.getElementById("sheet-map-expand-btn");
 const sheetImageStage = document.querySelector(".panel__image-stage");
+
+let mapBaseHeight = 0;
+let mapIsExpanded = false;
+let firstPhotoStageHeight = 0;
 
 let sheetMiniMapInstance = null;
 let sheetMiniMapMarker = null;
@@ -1166,9 +1237,11 @@ const addSize = (url) => {
             activePhotoUrls = [card.dataset.image || "https://placehold.co/800x600?text=Listing"];
           }
 
-      activePhotoIndex = card.dataset.openAtPhotoIndex
-            ? parseInt(card.dataset.openAtPhotoIndex)
-            : 0;
+firstPhotoStageHeight = 0;
+
+activePhotoIndex = card.dataset.openAtPhotoIndex
+  ? parseInt(card.dataset.openAtPhotoIndex)
+  : 0;
           console.log("openAtPhotoIndex", card.dataset.openAtPhotoIndex, "â†’", activePhotoIndex);
 
          function renderActivePhoto() {
@@ -1186,11 +1259,29 @@ const addSize = (url) => {
             sheetImage.style.opacity = "0";
 
             const loader = new Image();
-            loader.onload = () => {
-              sheetImage.src = targetSrc;
-              sheetImage.style.opacity = "1";
-              if (sheetImageStage) sheetImageStage.style.visibility = "visible";
-            };
+        loader.onload = () => {
+  sheetImage.src = targetSrc;
+  sheetImage.style.opacity = "1";
+
+  if (sheetImageStage) {
+    sheetImageStage.style.visibility = "visible";
+
+    // Capture the FIRST picture's displayed stage height.
+    // The map will always open at this exact height.
+    if (activePhotoIndex === 0 && firstPhotoStageHeight <= 50) {
+      requestAnimationFrame(() => {
+        const h =
+          sheetImageStage.offsetHeight ||
+          sheetImageStage.getBoundingClientRect().height;
+
+        if (h > 50) {
+          firstPhotoStageHeight = h;
+          cachedImageStageHeight = h;
+        }
+      });
+    }
+  }
+};
             loader.onerror = () => {
               sheetImage.src = targetSrc;
               sheetImage.style.opacity = "1";
@@ -1296,9 +1387,23 @@ if (sheetEngage) {
 if (card.classList.contains("refined-card")) {
   refinedBrowseCount += 1;
 }
-     if (sheetMiniMap) {
+
+if (sheetMiniMap) {
   sheetMiniMap.hidden = true;
   sheetMiniMap.style.display = "none";
+}
+
+if (sheetMiniMapWrap) {
+  sheetMiniMapWrap.hidden = true;
+  sheetMiniMapWrap.style.display = "none";
+}
+
+mapIsExpanded = false;
+
+if (sheetMapExpandBtn) {
+  sheetMapExpandBtn.setAttribute("aria-expanded", "false");
+  sheetMapExpandBtn.innerHTML =
+    '<span aria-hidden="true">↗</span><span>Expand map</span>';
 }
 
 if (sheetImageStage) {
@@ -1440,16 +1545,55 @@ const activeCats = Object.entries(catMeta).filter(([k]) => (cats[k]||[]).length)
               if (!miniMap) return;
 
              // show map
-const imgStageHeight = imageStage ? (imageStage.offsetHeight || imageStage.getBoundingClientRect().height) : 0;
-const mapH = cachedImageStageHeight > 50 ? cachedImageStageHeight : (imgStageHeight > 50 ? imgStageHeight : 480);
-              console.log("mapH", mapH, "cached", cachedImageStageHeight, "live", imgStageHeight);
-              if (imageStage) imageStage.classList.add("is-hidden");
-              miniMap.hidden = false;
-              miniMap.style.display = "block";
-              miniMap.style.height = mapH + "px";
-              miniMap.style.minHeight = mapH + "px";
-              miniMap.style.width = "100%";
-              if (mapBtn) mapBtn.textContent = "Pictures";
+// show map at exactly the same height as the listing images
+const imgStageHeight = imageStage
+  ? (imageStage.offsetHeight || imageStage.getBoundingClientRect().height)
+  : 0;
+
+const mapH =
+  firstPhotoStageHeight > 50
+    ? firstPhotoStageHeight
+    : cachedImageStageHeight > 50
+      ? cachedImageStageHeight
+      : (imgStageHeight > 50 ? imgStageHeight : 480);
+
+mapBaseHeight = mapH;
+mapIsExpanded = false;
+
+console.log(
+  "mapH",
+  mapH,
+  "cached",
+  cachedImageStageHeight,
+  "live",
+  imgStageHeight
+);
+
+if (imageStage) {
+  imageStage.classList.add("is-hidden");
+}
+
+if (sheetMiniMapWrap) {
+  sheetMiniMapWrap.hidden = false;
+  sheetMiniMapWrap.style.display = "block";
+}
+
+miniMap.hidden = false;
+miniMap.style.display = "block";
+miniMap.style.height = mapBaseHeight + "px";
+miniMap.style.minHeight = mapBaseHeight + "px";
+miniMap.style.width = "100%";
+
+if (sheetMapExpandBtn) {
+  sheetMapExpandBtn.hidden = false;
+  sheetMapExpandBtn.setAttribute("aria-expanded", "false");
+  sheetMapExpandBtn.innerHTML =
+    '<span aria-hidden="true">↗</span><span>Expand map</span>';
+}
+
+if (mapBtn) {
+  mapBtn.textContent = "Pictures";
+}
 
               // highlight active card
          osmEl.querySelectorAll(".panel__osm-card").forEach(c => c.classList.remove("osm-card-active"));
@@ -1464,11 +1608,16 @@ panel?.scrollTo({ top: 0, behavior: "smooth" });
 
 loadLeaflet().then(() => {
   const point = getCardLatLng(activeCard);
-  miniMap.innerHTML = "";
-  miniMap.style.height = mapH + "px";
-  miniMap.style.minHeight = mapH + "px";
-  miniMap.style.display = "block";
-  miniMap.hidden = false;
+miniMap.innerHTML = "";
+miniMap.style.height = mapBaseHeight + "px";
+miniMap.style.minHeight = mapBaseHeight + "px";
+miniMap.style.display = "block";
+miniMap.hidden = false;
+
+if (sheetMiniMapWrap) {
+  sheetMiniMapWrap.hidden = false;
+  sheetMiniMapWrap.style.display = "block";
+}
 
   if (sheetMiniMapInstance) {
     sheetMiniMapInstance.remove();
@@ -2696,13 +2845,26 @@ requestAnimationFrame(() => {
   const mapIsOpen = !sheetMiniMap.hidden;
 
   if (mapIsOpen) {
-    sheetMiniMap.hidden = true;
-    sheetMiniMap.style.display = "none";
-    sheetMiniMap.innerHTML = "";
+   sheetMiniMap.hidden = true;
+sheetMiniMap.style.display = "none";
+sheetMiniMap.innerHTML = "";
 
-    if (sheetImageStage) {
-      sheetImageStage.classList.remove("is-hidden");
-    }
+if (sheetMiniMapWrap) {
+  sheetMiniMapWrap.hidden = true;
+  sheetMiniMapWrap.style.display = "none";
+}
+
+mapIsExpanded = false;
+
+if (sheetMapExpandBtn) {
+  sheetMapExpandBtn.setAttribute("aria-expanded", "false");
+  sheetMapExpandBtn.innerHTML =
+    '<span aria-hidden="true">↗</span><span>Expand map</span>';
+}
+
+if (sheetImageStage) {
+  sheetImageStage.classList.remove("is-hidden");
+}
 
     if (sheetMapBtn) {
       sheetMapBtn.textContent = "Map";
@@ -2730,12 +2892,33 @@ requestAnimationFrame(() => {
     sheetImageStage.classList.add("is-hidden");
   }
 
-const mapBtnHeight = cachedImageStageHeight > 50 ? cachedImageStageHeight : (document.querySelector(".panel__image-stage")?.offsetHeight || 480);
+const mapBtnHeight =
+  firstPhotoStageHeight > 50
+    ? firstPhotoStageHeight
+    : cachedImageStageHeight > 50
+      ? cachedImageStageHeight
+      : (document.querySelector(".panel__image-stage")?.offsetHeight || 480);
+
+mapBaseHeight = mapBtnHeight;
+mapIsExpanded = false;
+
+if (sheetMiniMapWrap) {
+  sheetMiniMapWrap.hidden = false;
+  sheetMiniMapWrap.style.display = "block";
+}
+
 sheetMiniMap.hidden = false;
 sheetMiniMap.style.display = "block";
-sheetMiniMap.style.height = mapBtnHeight + "px";
-sheetMiniMap.style.minHeight = mapBtnHeight + "px";
+sheetMiniMap.style.height = mapBaseHeight + "px";
+sheetMiniMap.style.minHeight = mapBaseHeight + "px";
 sheetMiniMap.style.width = "100%";
+
+if (sheetMapExpandBtn) {
+  sheetMapExpandBtn.hidden = false;
+  sheetMapExpandBtn.setAttribute("aria-expanded", "false");
+  sheetMapExpandBtn.innerHTML =
+    '<span aria-hidden="true">↗</span><span>Expand map</span>';
+}
 
 if (sheetMapBtn) {
   sheetMapBtn.textContent = "Pictures";
@@ -2765,7 +2948,31 @@ try {
   sheetMiniMap.innerHTML = `<p style='padding:16px;color:#6b6560;font-size:12px;'>Map could not load: ${error?.message}</p>`;
 }
 });
+sheetMapExpandBtn?.addEventListener("click", () => {
+  if (!sheetMiniMap || !mapBaseHeight) return;
 
+  mapIsExpanded = !mapIsExpanded;
+
+  const nextHeight = mapIsExpanded
+    ? Math.min(mapBaseHeight * 2, window.innerHeight * 0.85)
+    : mapBaseHeight;
+
+  sheetMiniMap.style.height = `${nextHeight}px`;
+  sheetMiniMap.style.minHeight = `${nextHeight}px`;
+
+  sheetMapExpandBtn.setAttribute(
+    "aria-expanded",
+    String(mapIsExpanded)
+  );
+
+  sheetMapExpandBtn.innerHTML = mapIsExpanded
+    ? '<span aria-hidden="true">↙</span><span>Collapse map</span>'
+    : '<span aria-hidden="true">↗</span><span>Expand map</span>';
+
+  requestAnimationFrame(() => {
+    sheetMiniMapInstance?.invalidateSize();
+  });
+});
 
         overlay?.addEventListener("click", closeSheet);
         nextBtn?.addEventListener("click", goNext);
