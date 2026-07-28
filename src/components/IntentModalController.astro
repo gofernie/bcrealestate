@@ -3195,16 +3195,34 @@ sheetImage?.addEventListener("touchmove", (event) => {
   }
 }, { passive: false });
 
-
 sheetImage?.addEventListener("touchend", (event) => {
-  if (event.touches.length < 2) {
+  // Coming out of a two-finger pinch with one finger
+  // still touching: reset the pan anchor to that finger.
+  if (
+    photoZoom > 1.02 &&
+    event.touches.length === 1
+  ) {
     pinchStartDistance = 0;
-  }
 
-  // Don't change photo while zoomed
-  if (photoZoom > 1.02) {
+    const remainingTouch = event.touches[0];
+
+    panStartX = remainingTouch.clientX;
+    panStartY = remainingTouch.clientY;
+
     return;
   }
+
+  // Both fingers released after zooming.
+  // Keep the current zoom and pan exactly where they are.
+  if (
+    photoZoom > 1.02 &&
+    event.touches.length === 0
+  ) {
+    pinchStartDistance = 0;
+    return;
+  }
+
+  pinchStartDistance = 0;
 
   const touch = event.changedTouches[0];
   if (!touch) return;
@@ -3241,82 +3259,9 @@ sheetImage?.addEventListener("touchend", (event) => {
   }
 }, { passive: true });
 
-sheetImage?.addEventListener("touchmove", (event) => {
-  hidePhotoOverlayTemporarily();
-
-  if (
-    !sheet.classList.contains("is-landscape-gallery") ||
-    event.touches.length !== 2 ||
-    !pinchStartDistance
-  ) {
-    return;
-  }
-
-  event.preventDefault();
-
-  const a = event.touches[0];
-  const b = event.touches[1];
-
-  const currentDistance = Math.hypot(
-    b.clientX - a.clientX,
-    b.clientY - a.clientY
-  );
-
-  const scaleChange = currentDistance / pinchStartDistance;
-
-  photoZoom = Math.max(
-    1,
-    Math.min(3, photoZoom * scaleChange)
-  );
-
-  sheetImage.style.transform =
-    `translate(0px, 0px) scale(${photoZoom})`;
-
-  pinchStartDistance = currentDistance;
-}, { passive: false });
 
 
-sheetImage?.addEventListener("touchend", (event) => {
-  if (event.touches.length < 2) {
-    pinchStartDistance = 0;
-  }
 
-  // Don't switch photos while zoomed.
-  if (photoZoom > 1.02) {
-    return;
-  }
-
-  const touch = event.changedTouches[0];
-  if (!touch) return;
-
-  const dx = touch.screenX - photoSwipeStartX;
-  const dy = touch.screenY - photoSwipeStartY;
-
-  if (
-    Math.abs(dx) < 45 ||
-    Math.abs(dx) < Math.abs(dy)
-  ) {
-    return;
-  }
-
-  if (
-    dx < 0 &&
-    activePhotoIndex < activePhotoUrls.length - 1
-  ) {
-    activePhotoIndex += 1;
-    showActivePhoto();
-    hidePhotoOverlayTemporarily();
-  }
-
-  if (
-    dx > 0 &&
-    activePhotoIndex > 0
-  ) {
-    activePhotoIndex -= 1;
-    showActivePhoto();
-    hidePhotoOverlayTemporarily();
-  }
-}, { passive: true });
 
       photoNextBtn?.addEventListener("click", (event) => {
   event.stopPropagation();
