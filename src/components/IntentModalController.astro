@@ -875,6 +875,8 @@ let photoPanY = 0;
 let panStartX = 0;
 let panStartY = 0;
 
+let lastPhotoTapTime = 0;
+
 let landscapeFullscreenNeedsRefresh = false;
 
 let activeCard = null;
@@ -3212,17 +3214,21 @@ sheetImage?.addEventListener("touchend", (event) => {
     return;
   }
 
-  // Both fingers released after zooming.
-  // Keep the current zoom and pan exactly where they are.
-  if (
-    photoZoom > 1.02 &&
-    event.touches.length === 0
-  ) {
-    pinchStartDistance = 0;
-    return;
-  }
+  const wasPinching = pinchStartDistance > 0;
 
   pinchStartDistance = 0;
+
+  // Both fingers released after a pinch.
+  // Preserve the current zoom/pan and don't count
+  // the release as a tap.
+  if (
+    photoZoom > 1.02 &&
+    event.touches.length === 0 &&
+    wasPinching
+  ) {
+    lastPhotoTapTime = 0;
+    return;
+  }
 
   const touch = event.changedTouches[0];
   if (!touch) return;
@@ -3232,6 +3238,55 @@ sheetImage?.addEventListener("touchend", (event) => {
 
   const dy =
     touch.screenY - photoSwipeStartY;
+
+  const isTap =
+    Math.abs(dx) < 12 &&
+    Math.abs(dy) < 12;
+
+  // Double tap while zoomed = reset to 100%
+  if (
+    sheet.classList.contains("is-landscape-gallery") &&
+    photoZoom > 1.02 &&
+    isTap
+  ) {
+    const now = Date.now();
+
+    if (
+      lastPhotoTapTime &&
+      now - lastPhotoTapTime < 300
+    ) {
+      photoZoom = 1;
+
+      photoPanX = 0;
+      photoPanY = 0;
+
+      panStartX = 0;
+      panStartY = 0;
+
+      sheetImage.style.transform =
+        "translate(0px, 0px) scale(1)";
+
+      sheetImage.style.transformOrigin =
+        "center center";
+
+      lastPhotoTapTime = 0;
+
+      return;
+    }
+
+    lastPhotoTapTime = now;
+    return;
+  }
+
+  // Any non-tap breaks the double-tap sequence.
+  if (!isTap) {
+    lastPhotoTapTime = 0;
+  }
+
+  // Don't change photos while zoomed.
+  if (photoZoom > 1.02) {
+    return;
+  }
 
   if (
     Math.abs(dx) < 45 ||
