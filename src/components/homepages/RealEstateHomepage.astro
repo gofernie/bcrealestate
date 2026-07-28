@@ -758,6 +758,7 @@ if (
     },
   ]}
   style={`--bc-home-accent: ${accent};`}
+  data-site-id={site?.id || ""}
 >
   <section
   class="bc-hero"
@@ -989,6 +990,139 @@ toggles={[
         Clear filters
       </a>
     </div>
+  )
+}
+{
+  hasActiveFilters &&
+  totalMatchingCount > 0 && (
+    <section
+      class="bc-save-search"
+      data-save-search
+    >
+      <div class="bc-save-search__copy">
+        <p class="bc-save-search__eyebrow">
+          Keep this search
+        </p>
+
+        <h3>
+          Save this search
+        </h3>
+
+        <p>
+          Get notified when new homes
+          match what you're looking for.
+        </p>
+      </div>
+<div class="bc-save-search__actions">
+  <button
+    type="button"
+    class="bc-save-search__button"
+    data-save-search-open
+    aria-expanded="false"
+  >
+    Save search
+  </button>
+</div>
+
+<div
+  class="bc-save-search__panel"
+  data-save-search-panel
+  hidden
+>
+  <div class="bc-save-search__contact">
+    <label>
+      <span>Text me at</span>
+      <input
+        type="tel"
+        name="phone"
+        inputmode="tel"
+        autocomplete="tel"
+        placeholder="(250) 555-1234"
+      />
+    </label>
+
+    <span class="bc-save-search__or">
+      or
+    </span>
+
+    <label>
+      <span>Email to</span>
+      <input
+        type="email"
+        name="email"
+        autocomplete="email"
+        placeholder="you@example.com"
+      />
+    </label>
+  </div>
+<fieldset class="bc-save-search__channel">
+  <legend>
+    Send alerts by
+  </legend>
+
+  <label>
+    <input
+      type="radio"
+      name="channel"
+      value="sms"
+      checked
+    />
+    <span>Text</span>
+  </label>
+
+  <label>
+    <input
+      type="radio"
+      name="channel"
+      value="email"
+    />
+    <span>Email</span>
+  </label>
+</fieldset>
+  <fieldset class="bc-save-search__frequency">
+    <legend>
+      Send new matches
+    </legend>
+
+    <label>
+      <input
+        type="radio"
+        name="frequency"
+        value="update"
+      />
+      <span>
+        As soon as they appear
+        <small>
+          Up to 4 times a day
+        </small>
+      </span>
+    </label>
+
+    <label>
+      <input
+        type="radio"
+        name="frequency"
+        value="daily"
+        checked
+      />
+      <span>
+        Once a day
+        <small>
+          One daily roundup
+        </small>
+      </span>
+    </label>
+  </fieldset>
+
+  <button
+    type="button"
+    class="bc-save-search__submit"
+    data-save-search-submit
+  >
+    Save my search
+  </button>
+</div>
+    </section>
   )
 }
     <div
@@ -2420,7 +2554,207 @@ window.addEventListener(
         }
       );
     });
+document.addEventListener(
+  "click",
+  async (event) => {
+    const target = event.target;
 
+    if (!(target instanceof Element)) {
+      return;
+    }
+
+    const submitButton =
+      target.closest(
+        "[data-save-search-submit]"
+      );
+
+    if (
+      !(
+        submitButton instanceof
+        HTMLButtonElement
+      )
+    ) {
+      return;
+    }
+
+    const saveSearch =
+      submitButton.closest(
+        "[data-save-search]"
+      );
+
+    if (
+      !(saveSearch instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    const phoneInput =
+      saveSearch.querySelector(
+        'input[name="phone"]'
+      );
+
+    const emailInput =
+      saveSearch.querySelector(
+        'input[name="email"]'
+      );
+
+    const frequencyInput =
+      saveSearch.querySelector(
+        'input[name="frequency"]:checked'
+      );
+const channelInput =
+  saveSearch.querySelector(
+    'input[name="channel"]:checked'
+  );
+    const phone =
+      phoneInput instanceof HTMLInputElement
+        ? phoneInput.value.trim()
+        : "";
+
+    const email =
+      emailInput instanceof HTMLInputElement
+        ? emailInput.value.trim()
+        : "";
+
+    const frequency =
+      frequencyInput instanceof HTMLInputElement
+        ? frequencyInput.value
+        : "daily";
+        const channel =
+  channelInput instanceof HTMLInputElement
+    ? channelInput.value
+    : "sms";
+
+    if (!phone && !email) {
+      window.alert(
+        "Enter a phone number or email address."
+      );
+      return;
+    }
+
+    submitButton.disabled = true;
+    submitButton.textContent =
+      "Saving...";
+
+    try {
+      const searchParams =
+        new URLSearchParams(
+          window.location.search
+        );
+
+      searchParams.delete("page");
+
+      const filters = {};
+
+      searchParams.forEach(
+        (value, key) => {
+          if (key === "area") {
+            if (
+              !Array.isArray(
+                filters.area
+              )
+            ) {
+              filters.area = [];
+            }
+
+            filters.area.push(
+              value
+            );
+
+            return;
+          }
+
+          filters[key] = value;
+        }
+      );
+
+      const homepage =
+        document.querySelector(
+          ".bc-homepage"
+        );
+
+      const map =
+        document.querySelector(
+          "[data-home-listing-map]"
+        );
+
+      const siteId =
+        homepage?.getAttribute(
+          "data-site-id"
+        ) || null;
+
+      const city =
+        map?.getAttribute(
+          "data-city"
+        ) || "";
+
+      const response =
+        await fetch(
+          "/api/saved-searches",
+          {
+            method: "POST",
+            headers: {
+              "content-type":
+                "application/json",
+            },
+          body: JSON.stringify({
+  siteId,
+  city,
+  phone,
+  email,
+  channel,
+  frequency,
+  filters,
+}),
+          }
+        );
+
+      const result =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !result.ok
+      ) {
+        throw new Error(
+          result?.error ||
+            "Unable to save search."
+        );
+      }
+
+      saveSearch.innerHTML = `
+        <div class="bc-save-search__success">
+          <p class="bc-save-search__eyebrow">
+            Search saved
+          </p>
+
+          <h3>
+            You're all set.
+          </h3>
+
+          <p>
+            We'll send you new matches when they appear.
+          </p>
+        </div>
+      `;
+    } catch (error) {
+      console.error(
+        "Save search failed:",
+        error
+      );
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Unable to save search."
+      );
+
+      submitButton.disabled = false;
+      submitButton.textContent =
+        "Save my search";
+    }
+  }
+);
   document.addEventListener(
     "submit",
     (event) => {
@@ -3122,6 +3456,64 @@ window.addEventListener(
       );
     }
   );
+
+  document.addEventListener(
+  "click",
+  (event) => {
+    const target = event.target;
+
+    if (!(target instanceof Element)) {
+      return;
+    }
+
+    const openButton =
+      target.closest(
+        "[data-save-search-open]"
+      );
+
+    if (
+      !(
+        openButton instanceof
+        HTMLButtonElement
+      )
+    ) {
+      return;
+    }
+
+    const saveSearch =
+      openButton.closest(
+        "[data-save-search]"
+      );
+
+    const panel =
+      saveSearch?.querySelector(
+        "[data-save-search-panel]"
+      );
+
+    if (
+      !(
+        panel instanceof HTMLElement
+      )
+    ) {
+      return;
+    }
+
+    const opening =
+      panel.hidden;
+
+    panel.hidden = !opening;
+
+    openButton.setAttribute(
+      "aria-expanded",
+      String(opening)
+    );
+
+    openButton.textContent =
+      opening
+        ? "Close"
+        : "Save search";
+  }
+);
 </script>
 
 <style>
@@ -4113,6 +4505,89 @@ letter-spacing: -0.055em;
   position: relative;
   z-index: 1;
 }
+
+.bc-save-search {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 18px 0 26px;
+  padding: 20px 22px;
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--bc-home-accent) 20%,
+      var(--bc-line)
+    );
+  border-radius: 12px;
+  background:
+    color-mix(
+      in srgb,
+      var(--bc-home-accent) 5%,
+      white
+    );
+}
+
+.bc-save-search__copy {
+  min-width: 0;
+}
+
+.bc-save-search__eyebrow {
+  margin: 0 0 4px;
+  color: var(--bc-home-accent);
+  font-size: 0.66rem;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.bc-save-search h3 {
+  margin: 0;
+  font-family:
+    var(--f-display, Georgia, serif);
+  font-size: 1.35rem;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.bc-save-search__copy > p:last-child {
+  margin: 6px 0 0;
+  color: var(--bc-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.bc-save-search__button {
+  min-height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--bc-home-accent);
+  color: #fff;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 850;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.bc-save-search__button:hover {
+  filter: brightness(0.94);
+}
+
+@media (max-width: 600px) {
+  .bc-save-search {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 15px;
+    padding: 18px;
+  }
+
+  .bc-save-search__button {
+    width: 100%;
+  }
+}
+
 .bc-modal-listing-sources {
   position: fixed;
   top: 0;
@@ -4122,5 +4597,160 @@ letter-spacing: -0.055em;
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
+}
+
+.bc-save-search__panel {
+  grid-column: 1 / -1;
+  padding-top: 18px;
+  border-top: 1px solid var(--bc-line);
+}
+
+.bc-save-search__panel[hidden] {
+  display: none;
+}
+
+.bc-save-search:has(
+  .bc-save-search__panel:not([hidden])
+) {
+  display: grid;
+  grid-template-columns: 1fr auto;
+}
+
+.bc-save-search__contact {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+}
+
+.bc-save-search__contact label {
+  flex: 1;
+}
+
+.bc-save-search__contact label > span,
+.bc-save-search__frequency legend {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--bc-ink);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.bc-save-search__contact input {
+  width: 100%;
+  height: 46px;
+  padding: 0 13px;
+  border: 1px solid var(--bc-line);
+  border-radius: 8px;
+  outline: 0;
+  background: #fff;
+  color: var(--bc-ink);
+  font: inherit;
+}
+
+.bc-save-search__contact input:focus {
+  border-color: var(--bc-home-accent);
+}
+
+.bc-save-search__or {
+  padding-bottom: 14px;
+  color: var(--bc-muted);
+  font-size: 0.74rem;
+}
+
+.bc-save-search__frequency {
+  display: flex;
+  gap: 22px;
+  margin: 20px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.bc-save-search__frequency legend {
+  width: 100%;
+}
+
+.bc-save-search__frequency label {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.bc-save-search__frequency small {
+  display: block;
+  margin-top: 2px;
+  color: var(--bc-muted);
+  font-size: 0.68rem;
+  font-weight: 400;
+}
+
+.bc-save-search__submit {
+  min-height: 46px;
+  margin-top: 20px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--bc-home-accent);
+  color: #fff;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  .bc-save-search:has(
+    .bc-save-search__panel:not([hidden])
+  ) {
+    display: flex;
+  }
+
+  .bc-save-search__contact {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .bc-save-search__or {
+    padding: 0;
+    text-align: center;
+  }
+
+  .bc-save-search__frequency {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .bc-save-search__submit {
+    width: 100%;
+  }
+}
+
+.bc-save-search__channel {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 20px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.bc-save-search__channel legend {
+  margin-bottom: 8px;
+  color: var(--bc-ink);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.bc-save-search__channel label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.78rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.bc-save-search__channel input {
+  accent-color: var(--bc-home-accent);
 }
 </style>
