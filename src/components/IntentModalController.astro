@@ -232,18 +232,20 @@ const { listings = [] } = Astro.props;
 </button>
 
   <button
-    class="panel__map-btn"
-    id="sheet-map-btn"
-    type="button"
-  >
-    Map
-  </button>
+  class="panel__map-btn"
+  id="sheet-map-btn"
+  type="button"
+>
+  Map
+</button>
 
-  <button
-    class="panel__top-btn"
-    id="sheet-prev-top-btn"
-    type="button"
-  >
+
+
+<button
+  class="panel__top-btn"
+  id="sheet-prev-top-btn"
+  type="button"
+>
     <span aria-hidden="true">&larr;</span>
     <span class="btn-label-full">Previous</span>
   </button>
@@ -283,12 +285,35 @@ const { listings = [] } = Astro.props;
       <div class="panel__body">
         <div class="panel__feedback" id="sheet-feedback"></div>
 
-        <div class="panel__desc-wrap">
-          <p class="panel__desc" id="sheet-description"></p>
-          <button type="button" class="panel__desc-toggle" id="sheet-desc-toggle" hidden>Read more</button>
-        </div>
+    <div class="panel__desc-wrap">
+  <p class="panel__desc" id="sheet-description"></p>
+  <button type="button" class="panel__desc-toggle" id="sheet-desc-toggle" hidden>Read more</button>
 
-        <div class="decision-actions">
+<button
+  type="button"
+  class="panel__share-link"
+  id="sheet-share-btn"
+>
+  <svg
+    class="panel__share-icon"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <path
+      d="M12 16V3m0 0L7.5 7.5M12 3l4.5 4.5M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </svg>
+
+  <span>Share this listing</span>
+</button>
+</div>
+
+<div class="decision-actions">
           <button class="decision-btn decision-btn--love" type="button" id="decision-love-btn">
             <span aria-hidden="true">&#10084;&#65039;</span>
             <span>Love</span>
@@ -337,8 +362,9 @@ const { listings = [] } = Astro.props;
         const sheetPosition = document.getElementById("sheet-position");
         const sheetProgressBar = document.getElementById("sheet-progress-bar");
         const closeBtn = document.getElementById("sheet-close-btn");
-        const sheetMapBtn = document.getElementById("sheet-map-btn");
-        const sheetFloorplanBtn = document.getElementById("sheet-floorplan-btn");
+const sheetMapBtn = document.getElementById("sheet-map-btn");
+const sheetFloorplanBtn = document.getElementById("sheet-floorplan-btn");
+const sheetShareBtn = document.getElementById("sheet-share-btn");
 const sheetMiniMap = document.getElementById("sheet-mini-map");
 const sheetImageStage = document.querySelector(".panel__image-stage");
 
@@ -2577,7 +2603,81 @@ if (document.body.dataset.shortlistSendId && document.body.dataset.agentView ===
 });
 
         closeBtn?.addEventListener("click", closeSheet);
-sheetMapBtn?.addEventListener("click", async () => {
+sheetShareBtn?.addEventListener("click", async (event) => {
+  event.stopPropagation();
+
+  if (!activeCard) return;
+
+  const listingId =
+    activeCard.dataset.listingId ||
+    activeCard.dataset.itemId ||
+    "";
+
+  if (!listingId) {
+    console.warn("No listing ID available to share");
+    return;
+  }
+
+  const city =
+    activeCard.dataset.city ||
+    document.body.dataset.city ||
+    "nanaimo";
+
+  const type =
+    activeCard.dataset.type || "house";
+
+  const typePath =
+    type === "condo"
+      ? "condos"
+      : type === "townhouse"
+      ? "townhomes"
+      : type === "mobile"
+      ? "mobile-homes"
+      : type === "land"
+      ? "land"
+      : "homes";
+
+  const shareUrl =
+    `${window.location.origin}/${city}/${typePath}` +
+    `?listing_id=${encodeURIComponent(listingId)}`;
+
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title:
+          activeCard.dataset.address ||
+          "Property listing",
+
+        text:
+          activeCard.dataset.address
+            ? `Take a look at ${activeCard.dataset.address}`
+            : "Take a look at this property",
+
+        url: shareUrl,
+      });
+
+      return;
+    }
+
+    await navigator.clipboard.writeText(
+      shareUrl
+    );
+
+    sheetShareBtn.textContent = "Copied";
+
+    setTimeout(() => {
+      sheetShareBtn.textContent = "Share";
+    }, 1500);
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      console.error(
+        "Share failed:",
+        error
+      );
+    }
+  }
+});
+        sheetMapBtn?.addEventListener("click", async () => {
   if (!activeCard || !sheetMiniMap) return;
   scrollSheetToTop();
   sheetContent?.scrollTo({ top: 0, behavior: "instant" });
