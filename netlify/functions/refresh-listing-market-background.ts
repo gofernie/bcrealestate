@@ -111,13 +111,41 @@ export default async function handler(request: Request) {
       }
     });
 
-    console.log("Completed background listing refresh", {
-      city,
-      boardId: boardId || null,
-      result
-    });
+ console.log("Completed background listing refresh", {
+  city,
+  boardId: boardId || null,
+  result
+});
 
-    return json(result);
+if (city === "nanaimo") {
+  try {
+    const baseUrl = new URL(request.url).origin;
+
+    const scanResponse = await fetch(
+      `${baseUrl}/.netlify/functions/scan-floorplans-background?city=nanaimo&limit=50`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${CRON_SECRET}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    console.log("Floorplan scan dispatched", {
+      city,
+      status: scanResponse.status,
+      accepted: scanResponse.ok
+    });
+  } catch (scanError: any) {
+    console.error(
+      "Could not dispatch floorplan scan:",
+      scanError?.message || scanError
+    );
+  }
+}
+
+return json(result);
   } catch (error: any) {
     console.error("Background listing refresh failed", {
       city,

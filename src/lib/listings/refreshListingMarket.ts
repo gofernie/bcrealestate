@@ -354,7 +354,7 @@ export async function refreshListingMarket(
         );
         params.set(
           "include",
-          "details,address,images"
+          "details,address,images,rooms"
         );
         params.set("status", "A");
 
@@ -456,7 +456,161 @@ export async function refreshListingMarket(
       `Completed listing_rows rebuild for ${searchKey}.`
     );
 
-    const metadata = {
+        console.log(
+      `Saving room matrix data for ${searchKey}...`
+    );
+
+    const listingIds = allListings
+      .map((listing) =>
+        String(
+          listing?.mlsNumber ||
+          listing?.id ||
+          ""
+        )
+      )
+      .filter(Boolean);
+
+    for (let i = 0; i < listingIds.length; i += 200) {
+      const chunk = listingIds.slice(i, i + 200);
+
+      const { error: deleteRoomsError } =
+        await supabase
+          .from("listing_rooms")
+          .delete()
+          .in("listing_id", chunk);
+
+      if (deleteRoomsError) {
+        throw new Error(
+          `Could not clear old room data: ${deleteRoomsError.message}`
+        );
+      }
+    }
+
+    const roomRows = allListings.flatMap(
+      (listing: any) => {
+        const listingId = String(
+          listing?.mlsNumber ||
+          listing?.id ||
+          ""
+        );
+
+        if (
+          !listingId ||
+          !Array.isArray(listing?.rooms)
+        ) {
+          return [];
+        }
+
+        return listing.rooms
+          .filter(
+            (room: any) =>
+              room &&
+              room.description
+          )
+          .map((room: any) => ({
+            listing_id: listingId,
+            room_label: String(room.description || "").trim(),
+            room_type: String(room.description || "").trim().toLowerCase(),
+            level: room.level ? String(room.level).trim() : null,
+            length: room.length ? String(room.length).trim() : null,
+            width: room.width ? String(room.width).trim() : null,
+            features: room.features ? String(room.features) : null,
+            features2: room.features2 ? String(room.features2) : null,
+            features3: room.features3 ? String(room.features3) : null,
+          }));
+      }
+    );
+
+    if (roomRows.length > 0) {
+      for (
+        let i = 0;
+        i < roomRows.length;
+        i += 500
+      ) {
+        const chunk = roomRows.slice(i, i + 500);
+
+        const { error: roomInsertError } =
+          await supabase
+            .from("listing_rooms")
+            .insert(chunk);
+
+        if (roomInsertError) {
+          throw new Error(
+            `Could not save room data: ${roomInsertError.message}`
+          );
+        }
+      }
+    }
+
+    console.log(
+      `Saved ${roomRows.length} room records for ${searchKey}.`
+    );
+    const primaryOnMainIds = [
+      ...new Set(
+        roomRows
+          .filter((room: any) =>
+            (
+              room.room_label === "Primary Bedroom" ||
+              room.room_label === "Bedroom - Primary"
+            ) &&
+            (
+              room.level === "Main" ||
+              room.level === "Main level"
+            )
+          )
+          .map((room: any) =>
+            String(room.listing_id)
+          )
+      )
+    ];
+
+    const { error: clearPrimaryError } =
+      await supabase
+        .from("listing_rows")
+        .update({
+          primary_on_main: false
+        })
+        .eq(
+          "normalized_city",
+          searchKey
+        );
+
+    if (clearPrimaryError) {
+      throw new Error(
+        `Could not reset primary_on_main: ${clearPrimaryError.message}`
+      );
+    }
+
+    for (
+      let i = 0;
+      i < primaryOnMainIds.length;
+      i += 200
+    ) {
+      const chunk =
+        primaryOnMainIds.slice(
+          i,
+          i + 200
+        );
+
+      const { error: primaryUpdateError } =
+        await supabase
+          .from("listing_rows")
+          .update({
+            primary_on_main: true
+          })
+          .in("id", chunk);
+
+      if (primaryUpdateError) {
+        throw new Error(
+          `Could not set primary_on_main: ${primaryUpdateError.message}`
+        );
+      }
+    }
+
+    console.log(
+      `Marked ${primaryOnMainIds.length} listings as primary_on_main.`
+    );
+const metadata = {
       mode: "direct_rebuild",
       searchKey,
       citiesFetched: citiesToFetch,
@@ -566,3 +720,7 @@ export async function refreshListingMarket(
     throw error;
   }
 }
+
+
+
+

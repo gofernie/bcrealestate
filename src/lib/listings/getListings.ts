@@ -22,6 +22,9 @@ maxPrice?: number | null;
 minSqft?: number | null;
 maxSqft?: number | null;
 
+primaryOnMain?: boolean;
+bedsTogether?: boolean;
+
   sort?: ListingSort | string;
 
   page?: number;
@@ -211,6 +214,12 @@ const maxSqft =
     options.maxSqft
   );
 
+const primaryOnMain =
+  options.primaryOnMain === true;
+
+const bedsTogether =
+  options.bedsTogether === true;
+
   const sort =
     normalizeSort(options.sort);
 
@@ -314,6 +323,20 @@ if (maxSqft !== null) {
   query = query.lte(
     "sqft",
     maxSqft
+  );
+}
+
+if (primaryOnMain) {
+  query = query.eq(
+    "primary_on_main",
+    true
+  );
+}
+
+if (bedsTogether) {
+  query = query.eq(
+    "three_plus_beds_same_floor",
+    true
   );
 }
 

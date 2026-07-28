@@ -2,6 +2,7 @@ import "dotenv/config";
 
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
+import sharp from "sharp";
 
 const supabase = createClient(
   process.env.PUBLIC_SUPABASE_URL!,
@@ -62,65 +63,157 @@ function buildImages(listing: any): string[] {
 }
 
 function cleanJson(result: string) {
-  return result
+  const cleaned = result
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
-    .replace(/\s*```$/, "")
+    .replace(/\s*```.*$/s, "")
     .trim();
-}
 
+  const start = cleaned.indexOf("{");
+
+  if (start === -1) {
+    throw new Error("Claude response contained no JSON object");
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < cleaned.length; i++) {
+    const char = cleaned[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      if (inString) escaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (char === "{") depth++;
+
+    if (char === "}") {
+      depth--;
+
+      if (depth === 0) {
+        return cleaned.slice(start, i + 1);
+      }
+    }
+  }
+
+  throw new Error("Claude returned incomplete JSON");
+}
+async function makeCheapThumbnail(url: string) {
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(
+      `Image download failed ${response.status}: ${url}`
+    );
+  }
+
+  const source = Buffer.from(
+    await response.arrayBuffer()
+  );
+
+  const thumbnail = await sharp(source)
+    .resize({
+      width: 280,
+      height: 280,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .jpeg({
+      quality: 55,
+      mozjpeg: true,
+    })
+    .toBuffer();
+
+  return thumbnail.toString("base64");
+}
 async function detectFloorplans(images: string[]) {
   const content: any[] = [];
 
-  images.forEach((url, index) => {
-    content.push({
-      type: "text",
-      text: `Image ${index + 1}:`,
-    });
+  console.log(
+    `  Building ${images.length} cheap thumbnails...`
+  );
 
-    content.push({
-      type: "image",
-      source: {
-        type: "url",
-        url,
-      },
-    });
-  });
+  for (let index = 0; index < images.length; index++) {
+    try {
+      const base64 =
+        await makeCheapThumbnail(images[index]);
+
+      content.push({
+        type: "text",
+        text: `Image ${index + 1}:`,
+      });
+
+      content.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: "image/jpeg",
+          data: base64,
+        },
+      });
+    } catch (error: any) {
+      console.warn(
+        `  Could not thumbnail image ${index + 1}:`,
+        error?.message || error
+      );
+    }
+  }
+
+  if (!content.length) {
+    return [];
+  }
 
   content.push({
     type: "text",
     text: `
-Look through the real-estate listing images above.
+These are small thumbnails from a real-estate listing.
 
-Your ONLY job is to identify floorplan images.
+Identify which images are floorplans.
 
-A floorplan is an architectural overhead drawing or diagram showing
-the arrangement of interior rooms, walls, doors, stairs, dimensions,
-or labelled spaces.
+A floorplan is an overhead architectural drawing showing the
+arrangement of rooms, walls, doors, stairs, dimensions, or
+labelled interior spaces.
 
-Count as floorplans:
+The thumbnails may be too small to read room labels. That is OK.
+Use the visual structure of the image.
+
+Count:
 - traditional 2D floorplans
 - coloured floorplans
 - black-and-white floorplans
-- floorplans showing one level of a house
-- floorplans showing multiple levels
+- individual floor levels
+- multiple floor levels shown together
 
 Do NOT count:
-- interior photographs
+- room photographs
 - exterior photographs
 - aerial photographs
 - maps
 - neighbourhood maps
-- site/location maps
-- property boundary diagrams
+- subdivision maps
+- site plans
+- property boundary drawings
+- artist impressions
+- architectural exterior renderings
 - feature sheets
-- listing advertisements
+- advertisements
 - virtual staging
-- ordinary architectural renderings
 
-Return ONLY valid JSON.
-
-Use exactly:
+Return ONLY valid JSON:
 
 {
   "floorplans": [
@@ -131,7 +224,7 @@ Use exactly:
   ]
 }
 
-If there are no floorplans:
+If none:
 
 {
   "floorplans": []
@@ -140,8 +233,8 @@ If there are no floorplans:
   });
 
   const message = await anthropic.messages.create({
-    model: "claude-opus-5",
-    max_tokens: 500,
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 250,
 
     messages: [
       {
@@ -157,7 +250,9 @@ If there are no floorplans:
     .join("\n")
     .trim();
 
-  const parsed = JSON.parse(cleanJson(result));
+  const parsed = JSON.parse(
+    cleanJson(result)
+  );
 
   return Array.isArray(parsed.floorplans)
     ? parsed.floorplans
@@ -219,36 +314,75 @@ async function main() {
 const { data: listings, error } = await supabase
   .from("listing_rows")
   .select(
-    "id, address, image_url, images, normalized_city, status"
+    "id, address, image_url, images, normalized_city, status, listed_at"
   )
   .eq("normalized_city", "nanaimo")
   .eq("status", "A")
   .not("images", "is", null)
-  .order("id", { ascending: false })
-  .limit(LIMIT);
+  .not("listed_at", "is", null)
+  .gte(
+    "listed_at",
+    new Date(
+      Date.now() - 120 * 24 * 60 * 60 * 1000
+    ).toISOString()
+  )
+  .order("listed_at", { ascending: false })
+  .limit(Math.max(LIMIT * 10, 100));
 
-  if (error) {
-    throw new Error(
-      `Supabase error: ${error.message}`
-    );
-  }
+if (error) {
+  throw new Error(
+    `Supabase error: ${error.message}`
+  );
+}
 
-  if (!listings?.length) {
-    console.log("No listings found.");
-    return;
-  }
+if (!listings?.length) {
+  console.log("No listings found.");
+  return;
+}
+  const listingIds = listings.map((listing) =>
+  String(listing.id)
+);
 
-  for (
-    let i = 0;
-    i < listings.length;
-    i++
-  ) {
-    const listing = listings[i];
+const { data: scannedRows, error: scannedError } =
+  await supabase
+    .from("listing_floorplan_scans")
+    .select("listing_id")
+    .in("listing_id", listingIds);
+
+if (scannedError) {
+  throw new Error(
+    `Scan history fetch failed: ${scannedError.message}`
+  );
+}
+
+const scannedIds = new Set(
+  (scannedRows || []).map((row: any) =>
+    String(row.listing_id)
+  )
+);
+
+const unscannedListings = listings
+  .filter(
+    (listing) =>
+      !scannedIds.has(String(listing.id))
+  )
+  .slice(0, LIMIT);
+
+console.log(
+  `${unscannedListings.length} of ${listings.length} listings are new/unscanned.\n`
+);
+
+for (
+  let i = 0;
+  i < unscannedListings.length;
+  i++
+) {
+  const listing = unscannedListings[i];
     const images = buildImages(listing);
 
-    console.log(
-      `[${i + 1}/${listings.length}] MLS ${listing.id} — ${images.length} images`
-    );
+   console.log(
+  `[${i + 1}/${unscannedListings.length}] MLS ${listing.id} — ${images.length} images`
+);
 
     if (!images.length) {
       console.log("  - No images");
@@ -256,13 +390,29 @@ const { data: listings, error } = await supabase
     }
 
     try {
-      const floorplans =
-        await detectFloorplans(images);
+     const floorplans =
+  await detectFloorplans(images);
 
-      if (!floorplans.length) {
-        console.log("  - No floorplan");
-        continue;
-      }
+const { error: scanSaveError } = await supabase
+  .from("listing_floorplan_scans")
+  .upsert({
+    listing_id: String(listing.id),
+    image_count: images.length,
+    floorplan_count: floorplans.length,
+    model: "claude-haiku-4-5-20251001",
+    analyzed_at: new Date().toISOString(),
+  });
+
+if (scanSaveError) {
+  throw new Error(
+    `Scan history save failed: ${scanSaveError.message}`
+  );
+}
+
+if (!floorplans.length) {
+  console.log("  - No floorplan");
+  continue;
+}
 
       await saveFloorplans(
         listing.id,

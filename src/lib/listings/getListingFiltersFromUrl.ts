@@ -44,9 +44,15 @@ export function getListingFiltersFromUrl(
       params.get("minSqft")
     ),
 
-    maxSqft: optionalNumber(
+       maxSqft: optionalNumber(
       params.get("maxSqft")
     ),
+
+       primaryOnMain:
+      params.get("primaryOnMain") === "true",
+
+    bedsTogether:
+      params.get("bedsTogether") === "true",
 
     sort:
       (params.get("sort") ||
