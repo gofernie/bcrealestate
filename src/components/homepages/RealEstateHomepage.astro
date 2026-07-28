@@ -77,6 +77,35 @@ const {
   previousPageHref = null,
   nextPageHref = null,
 } = Astro.props;
+const newMatchIds =
+  new Set(
+    String(
+      Astro.url.searchParams.get(
+        "new"
+      ) || ""
+    )
+      .split(",")
+      .map((value) =>
+        value.trim()
+      )
+      .filter(Boolean)
+  );
+
+const newMatchListings =
+  mapListings.filter(
+    (listing) => {
+      const listingId =
+        String(
+          listing?.mls_number ||
+          listing?.id ||
+          ""
+        );
+
+      return newMatchIds.has(
+        listingId
+      );
+    }
+  );
 const visibleListingIds = new Set(
   listings
     .map((listing) =>
@@ -1204,6 +1233,73 @@ toggles={[
    {
       listings.length > 0 ? (
         <>
+        {
+  newMatchListings.length > 0 && (
+    <section
+      class="bc-new-matches"
+      id="new-matches"
+    >
+      <div class="bc-new-matches__heading">
+        <p class="bc-eyebrow">
+          Just added
+        </p>
+
+        <h2>
+          {newMatchListings.length} new{" "}
+          {
+            newMatchListings.length === 1
+              ? "match"
+              : "matches"
+          }
+        </h2>
+
+        <p>
+          These are the homes that triggered your alert.
+        </p>
+      </div>
+
+      <div class="bc-new-matches__grid">
+        {
+          newMatchListings.map(
+            (listing) => (
+              <div class="bc-new-match">
+                <span class="bc-new-match__badge">
+                  New match
+                </span>
+
+                <ListingCard
+                  listing={listing}
+                  floorplans={
+                    floorplansByListingId[
+                      String(
+                        listing?.id ||
+                        listing?.mls_number ||
+                        ""
+                      )
+                    ] || []
+                  }
+                  rooms={
+                    roomsByListingId[
+                      String(
+                        listing?.id ||
+                        listing?.mls_number ||
+                        ""
+                      )
+                    ] || []
+                  }
+                />
+              </div>
+            )
+          )
+        }
+      </div>
+
+      <div class="bc-new-matches__all">
+        All {formatCount(totalMatchingCount)} matches
+      </div>
+    </section>
+  )
+}
          
 
           <div
@@ -3787,6 +3883,91 @@ letter-spacing: -0.055em;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 24px;
   }
+
+  .bc-new-matches {
+  margin-bottom: 34px;
+  padding: 24px;
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--bc-home-accent) 28%,
+      var(--bc-line)
+    );
+  border-radius: 14px;
+  background:
+    color-mix(
+      in srgb,
+      var(--bc-home-accent) 5%,
+      white
+    );
+}
+
+.bc-new-matches__heading {
+  margin-bottom: 20px;
+}
+
+.bc-new-matches__heading h2 {
+  margin: 0;
+  font-family:
+    var(--f-display, Georgia, serif);
+  font-size: clamp(1.8rem, 3vw, 2.7rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+
+.bc-new-matches__heading > p:last-child {
+  margin: 8px 0 0;
+  color: var(--bc-muted);
+  font-size: 0.82rem;
+}
+
+.bc-new-matches__grid {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+  gap: 22px;
+}
+
+.bc-new-match {
+  position: relative;
+}
+
+.bc-new-match__badge {
+  position: absolute;
+  z-index: 5;
+  top: 12px;
+  left: 12px;
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: var(--bc-home-accent);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.bc-new-matches__all {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--bc-line);
+  color: var(--bc-muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+@media (max-width: 760px) {
+  .bc-new-matches {
+    padding: 18px;
+  }
+
+  .bc-new-matches__grid {
+    grid-template-columns: 1fr;
+  }
+}
 
   .bc-filterable-listing {
     min-width: 0;

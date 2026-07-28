@@ -6,6 +6,13 @@ import {
   createClient,
 } from "@supabase/supabase-js";
 
+import {
+  Resend,
+} from "resend";
+import twilio from "twilio";
+import {
+  baselineSavedSearch,
+} from "../../lib/savedSearches/baselineSavedSearch";
 export const prerender = false;
 
 const supabase =
@@ -16,6 +23,18 @@ const supabase =
       .SUPABASE_SERVICE_ROLE_KEY
   );
 
+const resend =
+  new Resend(
+    import.meta.env
+      .RESEND_API_KEY
+  );
+const twilioClient =
+  twilio(
+    import.meta.env
+      .TWILIO_ACCOUNT_SID,
+    import.meta.env
+      .TWILIO_AUTH_TOKEN
+  );
 export const POST: APIRoute =
   async ({ request }) => {
     try {
@@ -185,20 +204,177 @@ email: email || null,
           }
         );
       }
+      try {
+  const baselineResult =
+    await baselineSavedSearch(
+      supabase,
+      {
+        id: data.id,
+        city,
+        channel,
+        filters,
+      }
+    );
 
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          id: data.id,
-        }),
-        {
-          status: 200,
-          headers: {
-            "content-type":
-              "application/json",
-          },
-        }
-      );
+  console.log(
+    "Saved search baseline created:",
+    {
+      savedSearchId:
+        data.id,
+      count:
+        baselineResult.count,
+    }
+  );
+} catch (baselineError) {
+  console.error(
+    "Saved search baseline failed:",
+    baselineError
+  );
+}
+if (
+  channel === "email" &&
+  email
+) {
+  console.log(
+    "Attempting saved-search email:",
+    {
+      email,
+      channel,
+      frequency,
+      hasApiKey:
+        Boolean(
+          import.meta.env
+            .RESEND_API_KEY
+        ),
+    }
+  );
+
+  const emailResult =
+    await resend.emails.send({
+      from:
+        "Locus <onboarding@resend.dev>",
+
+      to: [email],
+
+      subject:
+        `Your ${city} home search is saved`,
+
+      html: `
+        <div
+          style="
+            font-family: Arial, sans-serif;
+            max-width: 560px;
+            margin: 0 auto;
+            color: #14201c;
+            line-height: 1.6;
+          "
+        >
+          <h2>
+            Your search is saved.
+          </h2>
+
+          <p>
+            We'll let you know when new homes
+            match your search.
+          </p>
+
+          <p>
+            ${
+              frequency === "daily"
+                ? "You'll receive one roundup each day when there are new matches."
+                : "We'll let you know as new matches appear throughout the day."
+            }
+          </p>
+        </div>
+      `,
+    });
+
+  console.log(
+    "Resend response:",
+    emailResult
+  );
+
+  if (emailResult.error) {
+    console.error(
+      "Saved search confirmation email failed:",
+      emailResult.error
+    );
+  }
+}
+
+if (
+  channel === "sms" &&
+  phone
+) {
+  console.log(
+    "Attempting saved-search SMS:",
+    {
+      phone,
+      channel,
+      frequency,
+      hasSid:
+        Boolean(
+          import.meta.env
+            .TWILIO_ACCOUNT_SID
+        ),
+      hasToken:
+        Boolean(
+          import.meta.env
+            .TWILIO_AUTH_TOKEN
+        ),
+      hasFromNumber:
+        Boolean(
+          import.meta.env
+            .TWILIO_FROM_NUMBER
+        ),
+    }
+  );
+
+  try {
+    const message =
+      await twilioClient
+        .messages
+        .create({
+          from:
+            import.meta.env
+              .TWILIO_FROM_NUMBER,
+
+          to: phone,
+
+          body:
+            frequency === "daily"
+              ? `Your ${city} home search is saved. We'll send one daily roundup when new matching homes appear.`
+              : `Your ${city} home search is saved. We'll text you as new matching homes appear throughout the day.`,
+        });
+
+    console.log(
+      "Twilio response:",
+      {
+        sid: message.sid,
+        status: message.status,
+      }
+    );
+  } catch (smsError) {
+    console.error(
+      "Saved search confirmation SMS failed:",
+      smsError
+    );
+  }
+}
+
+return new Response(
+  JSON.stringify({
+    ok: true,
+    id: data.id,
+  }),
+  {
+    status: 200,
+    headers: {
+      "content-type":
+        "application/json",
+    },
+  }
+);
     } catch (error) {
       console.error(
         "Saved search request failed:",
