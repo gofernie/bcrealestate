@@ -607,9 +607,206 @@ export async function refreshListingMarket(
       }
     }
 
-    console.log(
-      `Marked ${primaryOnMainIds.length} listings as primary_on_main.`
+ console.log(
+  `Marked ${primaryOnMainIds.length} listings as primary_on_main.`
+);
+
+/*
+ * Mark listings where AT LEAST 3 bedrooms
+ * occur on the same floor.
+ */
+const bedroomCountsByListing =
+  new Map<
+    string,
+    Map<string, number>
+  >();
+
+for (const room of roomRows) {
+  const roomLabel =
+    String(
+      room.room_label ||
+      room.room_type ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const level =
+    String(
+      room.level || ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const listingId =
+    String(
+      room.listing_id || ""
     );
+
+  const isBedroom =
+    roomLabel.includes("bedroom");
+
+  if (
+    !listingId ||
+    !level ||
+    !isBedroom
+  ) {
+    continue;
+  }
+
+  if (
+    !bedroomCountsByListing.has(
+      listingId
+    )
+  ) {
+    bedroomCountsByListing.set(
+      listingId,
+      new Map()
+    );
+  }
+
+  const levelCounts =
+    bedroomCountsByListing.get(
+      listingId
+    )!;
+
+  levelCounts.set(
+    level,
+    (levelCounts.get(level) || 0) +
+      1
+  );
+}
+
+const threePlusBedsSameFloorIds =
+  [
+    ...bedroomCountsByListing.entries(),
+  ]
+    .filter(
+      ([, levelCounts]) =>
+        [...levelCounts.values()].some(
+          (count) => count >= 3
+        )
+    )
+    .map(
+      ([listingId]) =>
+        listingId
+    );
+const fourPlusBedsSameFloorIds =
+  [
+    ...bedroomCountsByListing.entries(),
+  ]
+    .filter(
+      ([, levelCounts]) =>
+        [...levelCounts.values()].some(
+          (count) => count >= 4
+        )
+    )
+    .map(
+      ([listingId]) =>
+        listingId
+    );
+const {
+  error: clearBedsTogetherError,
+} = await supabase
+  .from("listing_rows")
+  .update({
+    three_plus_beds_same_floor:
+      false
+  })
+  .eq(
+    "normalized_city",
+    searchKey
+  );
+
+if (clearBedsTogetherError) {
+  throw new Error(
+    `Could not reset three_plus_beds_same_floor: ${clearBedsTogetherError.message}`
+  );
+}
+
+for (
+  let i = 0;
+  i <
+  threePlusBedsSameFloorIds.length;
+  i += 200
+) {
+  const chunk =
+    threePlusBedsSameFloorIds.slice(
+      i,
+      i + 200
+    );
+
+  const {
+    error: bedsTogetherUpdateError,
+  } = await supabase
+    .from("listing_rows")
+    .update({
+      three_plus_beds_same_floor:
+        true
+    })
+    .in("id", chunk);
+
+  if (bedsTogetherUpdateError) {
+    throw new Error(
+      `Could not set three_plus_beds_same_floor: ${bedsTogetherUpdateError.message}`
+    );
+  }
+}
+const {
+  error: clearFourBedsTogetherError,
+} = await supabase
+  .from("listing_rows")
+  .update({
+    four_plus_beds_same_floor:
+      false
+  })
+  .eq(
+    "normalized_city",
+    searchKey
+  );
+
+if (clearFourBedsTogetherError) {
+  throw new Error(
+    `Could not reset four_plus_beds_same_floor: ${clearFourBedsTogetherError.message}`
+  );
+}
+
+for (
+  let i = 0;
+  i <
+  fourPlusBedsSameFloorIds.length;
+  i += 200
+) {
+  const chunk =
+    fourPlusBedsSameFloorIds.slice(
+      i,
+      i + 200
+    );
+
+  const {
+    error: fourBedsTogetherUpdateError,
+  } = await supabase
+    .from("listing_rows")
+    .update({
+      four_plus_beds_same_floor:
+        true
+    })
+    .in("id", chunk);
+
+  if (fourBedsTogetherUpdateError) {
+    throw new Error(
+      `Could not set four_plus_beds_same_floor: ${fourBedsTogetherUpdateError.message}`
+    );
+  }
+}
+
+console.log(
+  `Marked ${fourPlusBedsSameFloorIds.length} listings as having at least 4 bedrooms on the same floor.`
+);
+console.log(
+  `Marked ${threePlusBedsSameFloorIds.length} listings as having at least 3 bedrooms on the same floor.`
+);
+
 const metadata = {
       mode: "direct_rebuild",
       searchKey,

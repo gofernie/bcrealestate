@@ -19,8 +19,9 @@ export interface ListingFilters {
   minSqft?: number | null;
   maxSqft?: number | null;
 
-  primaryOnMain?: boolean;
-  bedsTogether?: boolean;
+primaryOnMain?: boolean;
+bedsTogether?: boolean;
+fourBedsTogether?: boolean;
 
   sort?: ListingSort;
 

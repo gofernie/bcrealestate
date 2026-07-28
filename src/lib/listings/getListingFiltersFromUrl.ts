@@ -1,24 +1,42 @@
 import type { ListingFilters } from "./types";
 
-function optionalNumber(value: string | null): number | null {
+function optionalNumber(
+  value: string | null
+): number | null {
   if (!value) {
     return null;
   }
 
   const parsed = Number(value);
 
-  return Number.isFinite(parsed) ? parsed : null;
+  return Number.isFinite(parsed)
+    ? parsed
+    : null;
+}
+
+function optionalBoolean(
+  value: string | null
+): boolean {
+  return (
+    value === "1" ||
+    value === "true"
+  );
 }
 
 export function getListingFiltersFromUrl(
   url: URL
 ): ListingFilters {
-  const params = url.searchParams;
+  const params =
+    url.searchParams;
 
   return {
-    city: params.get("city") || undefined,
+    city:
+      params.get("city") ||
+      undefined,
 
-    type: params.get("type") || undefined,
+    type:
+      params.get("type") ||
+      undefined,
 
     areas: params
       .getAll("area")
@@ -44,24 +62,40 @@ export function getListingFiltersFromUrl(
       params.get("minSqft")
     ),
 
-       maxSqft: optionalNumber(
+    maxSqft: optionalNumber(
       params.get("maxSqft")
     ),
 
-       primaryOnMain:
-      params.get("primaryOnMain") === "true",
+    primaryOnMain:
+      optionalBoolean(
+        params.get(
+          "primaryOnMain"
+        )
+      ),
 
     bedsTogether:
-      params.get("bedsTogether") === "true",
-
+  optionalBoolean(
+    params.get(
+      "bedsTogether"
+    )
+  ),
+fourBedsTogether:
+  optionalBoolean(
+    params.get(
+      "fourBedsTogether"
+    )
+  ),
     sort:
-      (params.get("sort") ||
-        "newest") as ListingFilters["sort"],
+      (
+        params.get("sort") ||
+        "newest"
+      ) as ListingFilters["sort"],
 
     page: Math.max(
       1,
       Number(
-        params.get("page") || 1
+        params.get("page") ||
+          1
       )
     ),
 

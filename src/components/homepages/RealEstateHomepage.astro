@@ -18,8 +18,12 @@ interface Filters {
   type?: string;
   areas?: string[];
 
-  beds?: number | null;
-  baths?: number | null;
+beds?: number | null;
+baths?: number | null;
+
+primaryOnMain?: boolean;
+bedsTogether?: boolean;
+fourBedsTogether?: boolean;
 
   minPrice?: number | null;
   maxPrice?: number | null;
@@ -117,6 +121,7 @@ const allListingIds = [
   .filter(Boolean);
 
 let floorplanRows: any[] = [];
+let roomRows: any[] = [];
 
 if (allListingIds.length > 0) {
   const { data, error } = await supabase
@@ -133,6 +138,29 @@ if (allListingIds.length > 0) {
     );
   } else {
     floorplanRows = data || [];
+  }
+
+  const {
+    data: loadedRoomRows,
+    error: roomError,
+  } = await supabase
+    .from("listing_rooms")
+    .select(
+      "listing_id, room_label, level, length, width"
+    )
+    .in(
+      "listing_id",
+      allListingIds
+    );
+
+  if (roomError) {
+    console.error(
+      "Room matrix lookup failed:",
+      roomError
+    );
+  } else {
+    roomRows =
+      loadedRoomRows || [];
   }
 }
 
@@ -159,6 +187,48 @@ const floorplansByListingId =
       result[listingId].push(
         floorplan
       );
+
+      return result;
+    },
+    {}
+  );
+  const roomsByListingId =
+  roomRows.reduce(
+    (
+      result: Record<
+        string,
+        any[]
+      >,
+      room: any
+    ) => {
+      const listingId =
+        String(
+          room.listing_id ||
+          ""
+        );
+
+      if (!listingId) {
+        return result;
+      }
+
+      if (!result[listingId]) {
+        result[listingId] = [];
+      }
+
+      result[listingId].push({
+        label:
+          room.room_label ||
+          "",
+        level:
+          room.level ||
+          "",
+        length:
+          room.length ||
+          "",
+        width:
+          room.width ||
+          "",
+      });
 
       return result;
     },
@@ -234,8 +304,11 @@ const hasActiveFilters =
     filters.type ||
     selectedAreas.length ||
     filters.beds !== null &&
-      filters.beds !== undefined ||
-    filters.baths !== null &&
+  filters.beds !== undefined ||
+filters.primaryOnMain === true ||
+filters.bedsTogether === true ||
+filters.fourBedsTogether === true ||
+filters.baths !== null &&
       filters.baths !== undefined ||
     filters.minPrice !== null &&
       filters.minPrice !== undefined ||
@@ -419,6 +492,37 @@ const bedOptions = [
   },
 ];
 
+const bedsFilterLabel = (() => {
+  const parts: string[] = [];
+
+  if (
+    filters.beds !== null &&
+    filters.beds !== undefined
+  ) {
+    parts.push(
+      `${filters.beds}+ beds`
+    );
+  }
+
+  if (filters.primaryOnMain) {
+    parts.push(
+      "Primary on main"
+    );
+  }
+
+  if (filters.bedsTogether) {
+    parts.push(
+      "3+ beds together"
+    );
+  }
+if (filters.fourBedsTogether) {
+  parts.push(
+    "4+ same floor"
+  );
+}
+  return parts.join(" · ");
+})();
+
 const priceOptions = [
   {
     value: "500000",
@@ -542,7 +646,25 @@ const buildPageHref = (
     String(filters.beds)
   );
 }
+if (filters.primaryOnMain) {
+  params.set(
+    "primaryOnMain",
+    "true"
+  );
+}
 
+if (filters.bedsTogether) {
+  params.set(
+    "bedsTogether",
+    "true"
+  );
+}
+if (filters.fourBedsTogether) {
+  params.set(
+    "fourBedsTogether",
+    "true"
+  );
+}
 if (
   filters.baths !== null &&
   filters.baths !== undefined
@@ -681,6 +803,7 @@ if (
       action={formAction}
       data-async-search-form
     >
+   
     {
   filters.baths !== null &&
   filters.baths !== undefined && (
@@ -724,29 +847,29 @@ if (
     />
   )
 }
-           {
-        !isCityMode && (
-          <SingleSelectDropdown
-            label="Market"
-            name="city"
-            icon="location"
-            defaultLabel="All markets"
-            options={marketOptions}
-            value={filters.city}
-          />
-        )
-      }
+         {
+  !isCityMode && (
+    <SingleSelectDropdown
+      label="Market"
+      name="city"
+      icon="location"
+      defaultLabel="All markets"
+      options={marketOptions}
+      value={filters.city}
+    />
+  )
+}
 
-      <SingleSelectDropdown
-        label="Property type"
-        name="type"
-        icon="home"
-        defaultLabel="Any type"
-        options={propertyTypeOptions}
-        value={filters.type}
-      />
+<SingleSelectDropdown
+  label="Property type"
+  name="type"
+  icon="home"
+  defaultLabel="Any type"
+  options={propertyTypeOptions}
+  value={filters.type}
+/>
 
-   {
+{
   isCityMode && (
     <AreaMultiSelect
       locationCards={locationCards}
@@ -755,15 +878,44 @@ if (
   )
 }
 
-      <SingleSelectDropdown
-        label="Beds"
-        name="beds"
-        icon="beds"
-        defaultLabel="Any beds"
-        options={bedOptions}
-        value={filters.beds}
-      />
-
+<SingleSelectDropdown
+  label="Beds"
+  name="beds"
+  icon="beds"
+  defaultLabel="Any beds"
+  options={bedOptions}
+  value={filters.beds}
+  summary={
+    bedsFilterLabel ||
+    undefined
+  }
+toggles={[
+  {
+    name: "primaryOnMain",
+    label:
+      "Primary bedroom on main",
+    checked:
+      filters.primaryOnMain ===
+      true,
+  },
+  {
+    name: "bedsTogether",
+    label:
+      "3+ beds on one floor",
+    checked:
+      filters.bedsTogether ===
+      true,
+  },
+  {
+    name: "fourBedsTogether",
+    label:
+      "4+ beds on one floor",
+    checked:
+      filters.fourBedsTogether ===
+      true,
+  },
+]}
+/>
       <SingleSelectDropdown
         label="Price"
         name="maxPrice"
@@ -929,11 +1081,20 @@ if (
     listings.map(
       (listing, index) => (
         <div class="bc-filterable-listing">
-         <ListingCard
+        <ListingCard
   listing={listing}
   priority={index < 4}
   floorplans={
     floorplansByListingId[
+      String(
+        listing?.id ||
+        listing?.mls_number ||
+        ""
+      )
+    ] || []
+  }
+  rooms={
+    roomsByListingId[
       String(
         listing?.id ||
         listing?.mls_number ||
@@ -955,10 +1116,19 @@ if (
   {
     modalOnlyListings.map(
       (listing) => (
-      <ListingCard
+    <ListingCard
   listing={listing}
   floorplans={
     floorplansByListingId[
+      String(
+        listing?.id ||
+        listing?.mls_number ||
+        ""
+      )
+    ] || []
+  }
+  rooms={
+    roomsByListingId[
       String(
         listing?.id ||
         listing?.mls_number ||
@@ -1498,7 +1668,130 @@ if (
     document.querySelector(
       RESULTS_SELECTOR
     );
+const positionSingleMenu = (
+  group: Element
+) => {
+  const trigger =
+    group.querySelector(
+      "[data-single-trigger]"
+    );
 
+  const menu =
+    group.querySelector(
+      "[data-single-menu]"
+    );
+
+  if (
+    !(trigger instanceof HTMLElement) ||
+    !(menu instanceof HTMLElement)
+  ) {
+    return;
+  }
+
+  const wasHidden =
+    menu.hidden;
+
+  if (wasHidden) {
+    menu.hidden = false;
+    menu.style.visibility =
+      "hidden";
+  }
+
+  group.classList.remove(
+    "single-filter--open-up"
+  );
+
+  const triggerRect =
+    trigger.getBoundingClientRect();
+
+  const menuHeight =
+    menu.scrollHeight;
+
+  const spaceBelow =
+    window.innerHeight -
+    triggerRect.bottom;
+
+  const spaceAbove =
+    triggerRect.top;
+
+  const shouldOpenUp =
+    spaceBelow <
+      menuHeight + 12 &&
+    spaceAbove > spaceBelow;
+
+  group.classList.toggle(
+    "single-filter--open-up",
+    shouldOpenUp
+  );
+
+   if (wasHidden) {
+    menu.hidden = true;
+    menu.style.visibility = "";
+  }
+};
+
+const positionAreaMenu = (
+  group: Element
+) => {
+  const trigger =
+    group.querySelector(
+      "[data-area-trigger]"
+    );
+
+  const menu =
+    group.querySelector(
+      "[data-area-menu]"
+    );
+
+  if (
+    !(trigger instanceof HTMLElement) ||
+    !(menu instanceof HTMLElement)
+  ) {
+    return;
+  }
+
+  const wasHidden =
+    menu.hidden;
+
+  if (wasHidden) {
+    menu.hidden = false;
+    menu.style.visibility =
+      "hidden";
+  }
+
+  // Reset to normal downward position
+  menu.style.top = "";
+  menu.style.bottom = "";
+
+  const triggerRect =
+    trigger.getBoundingClientRect();
+
+  const menuHeight =
+    menu.scrollHeight;
+
+  const spaceBelow =
+    window.innerHeight -
+    triggerRect.bottom;
+
+  const spaceAbove =
+    triggerRect.top;
+
+  const shouldOpenUp =
+    spaceBelow <
+      menuHeight + 12 &&
+    spaceAbove > spaceBelow;
+
+  if (shouldOpenUp) {
+    menu.style.top = "auto";
+    menu.style.bottom =
+      "calc(100% + 6px)";
+  }
+
+  if (wasHidden) {
+    menu.hidden = true;
+    menu.style.visibility = "";
+  }
+};
   const closeAllSearchMenus = (
     except: Element | null = null
   ) => {
@@ -1815,18 +2108,20 @@ setHomepageView(
           );
 
           if (willOpen) {
-            group.setAttribute(
-              "data-open",
-              "true"
-            );
+  positionSingleMenu(group);
 
-            trigger.setAttribute(
-              "aria-expanded",
-              "true"
-            );
+  group.setAttribute(
+    "data-open",
+    "true"
+  );
 
-            menu.hidden = false;
-          }
+  trigger.setAttribute(
+    "aria-expanded",
+    "true"
+  );
+
+  menu.hidden = false;
+}
         }
       );
 
@@ -1910,8 +2205,61 @@ setHomepageView(
           );
         }
       );
-    });
+            const toggles =
+        group.querySelectorAll(
+          "[data-single-toggle]"
+        );
 
+      toggles.forEach(
+        (toggle) => {
+          toggle.addEventListener(
+            "change",
+            () => {
+              submitSearchForm();
+            }
+          );
+        }
+      );
+    });
+const repositionOpenMenus =
+  () => {
+    document
+      .querySelectorAll(
+        '[data-single-select][data-open="true"]'
+      )
+      .forEach(
+        (group) => {
+          positionSingleMenu(
+            group
+          );
+        }
+      );
+
+    document
+      .querySelectorAll(
+        '[data-area-multi-select][data-open="true"]'
+      )
+      .forEach(
+        (group) => {
+          positionAreaMenu(
+            group
+          );
+        }
+      );
+  };
+
+window.addEventListener(
+  "scroll",
+  repositionOpenMenus,
+  {
+    passive: true,
+  }
+);
+
+window.addEventListener(
+  "resize",
+  repositionOpenMenus
+);
   document
     .querySelectorAll(
       "[data-area-multi-select]"
@@ -2008,19 +2356,21 @@ setHomepageView(
               : null
           );
 
-          if (willOpen) {
-            group.setAttribute(
-              "data-open",
-              "true"
-            );
+        if (willOpen) {
+  positionAreaMenu(group);
 
-            trigger.setAttribute(
-              "aria-expanded",
-              "true"
-            );
+  group.setAttribute(
+    "data-open",
+    "true"
+  );
 
-            menu.hidden = false;
-          }
+  trigger.setAttribute(
+    "aria-expanded",
+    "true"
+  );
+
+  menu.hidden = false;
+}
         }
       );
 

@@ -392,6 +392,11 @@ const { listings = [] } = Astro.props;
             <span>Nope</span>
           </button>
         </div>
+        <div
+  class="panel__rooms"
+  id="sheet-rooms"
+  hidden
+></div>
       </div>
 
       <div id="sheet-osm-amenities" class="panel__osm-amenities" hidden></div>
@@ -430,6 +435,8 @@ const { listings = [] } = Astro.props;
 const sheetMapBtn = document.getElementById("sheet-map-btn");
 const sheetFloorplanBtn = document.getElementById("sheet-floorplan-btn");
 const sheetShareBtn = document.getElementById("sheet-share-btn");
+const sheetRooms =
+  document.getElementById("sheet-rooms");
 const sheetMiniMap = document.getElementById("sheet-mini-map");
 const sheetMiniMapWrap = document.getElementById("sheet-mini-map-wrap");
 const sheetMapExpandBtn = document.getElementById("sheet-map-expand-btn");
@@ -1320,9 +1327,16 @@ if (sheetAddress) sheetAddress.textContent = card.dataset.address || "Address";
     .join(" &bull; ");
 }
 
-      if (sheetDescription) {
+   if (sheetDescription) {
   sheetDescription.textContent = card.dataset.description || "";
-  sheetDescription.classList.add("is-collapsed");
+
+  const isMobile =
+    window.matchMedia("(max-width: 768px)").matches;
+
+  sheetDescription.classList.toggle(
+    "is-collapsed",
+    isMobile
+  );
 }
 
 const chips = getHighlightChips(card.dataset.description || "");
@@ -1339,13 +1353,155 @@ chipsEl.innerHTML = chips.map(label =>
 chipsEl.hidden = chips.length === 0;
 
 const descToggle = document.getElementById("sheet-desc-toggle");
-if (descToggle) {
+
+if (descToggle && sheetDescription) {
+  const isMobile =
+    window.matchMedia("(max-width: 768px)").matches;
+
   descToggle.hidden = false;
-  descToggle.textContent = "Read more";
+  descToggle.textContent =
+    isMobile ? "Read more" : "Show less";
+
   descToggle.onclick = () => {
-    const collapsed = sheetDescription.classList.toggle("is-collapsed");
-    descToggle.textContent = collapsed ? "Read more" : "Show less";
+    const collapsed =
+      sheetDescription.classList.toggle("is-collapsed");
+
+    descToggle.textContent =
+      collapsed ? "Read more" : "Show less";
   };
+}
+
+if (sheetRooms) {
+  let rooms = [];
+
+  try {
+    rooms = JSON.parse(
+      card.dataset.rooms || "[]"
+    );
+  } catch {
+    rooms = [];
+  }
+
+  const validRooms = rooms.filter(
+    (room) =>
+      room &&
+      room.label &&
+      (
+        room.level ||
+        room.length ||
+        room.width
+      )
+  );
+
+  if (!validRooms.length) {
+    sheetRooms.hidden = true;
+    sheetRooms.innerHTML = "";
+  } else {
+    const byLevel = new Map();
+
+    for (const room of validRooms) {
+      const level =
+        String(room.level || "Other").trim();
+
+      if (!byLevel.has(level)) {
+        byLevel.set(level, []);
+      }
+
+      byLevel.get(level).push(room);
+    }
+
+    const allRoomRows = Array.from(byLevel.entries()).flatMap(
+  ([level, levelRooms]) =>
+    levelRooms.map((room) => ({
+      level,
+      ...room,
+    }))
+);
+
+const initialVisibleCount = 5;
+
+function renderRooms(expanded = false) {
+  const visibleRooms = expanded
+    ? allRoomRows
+    : allRoomRows.slice(0, initialVisibleCount);
+
+  const visibleByLevel = new Map();
+
+  for (const room of visibleRooms) {
+    if (!visibleByLevel.has(room.level)) {
+      visibleByLevel.set(room.level, []);
+    }
+
+    visibleByLevel.get(room.level).push(room);
+  }
+
+  const rowsHtml = Array.from(visibleByLevel.entries())
+    .map(([level, levelRooms]) => `
+      <div class="panel__room-level">
+        <div class="panel__room-level-title">
+          ${level}
+        </div>
+
+        ${levelRooms.map((room) => {
+          const size =
+            room.length && room.width
+              ? `${room.length} × ${room.width}`
+              : room.length || room.width || "";
+
+          return `
+            <div class="panel__room-row">
+              <span class="panel__room-name">
+                ${room.label}
+              </span>
+
+              ${
+                size
+                  ? `<span class="panel__room-size">${size}</span>`
+                  : ""
+              }
+            </div>
+          `;
+        }).join("")}
+      </div>
+    `)
+    .join("");
+
+  sheetRooms.innerHTML = `
+    <div class="panel__rooms-title">
+      Rooms
+    </div>
+
+    ${rowsHtml}
+
+    ${
+      allRoomRows.length > initialVisibleCount
+        ? `
+          <button
+            type="button"
+            class="panel__rooms-toggle"
+            id="sheet-rooms-toggle"
+          >
+            ${
+              expanded
+                ? "Show fewer"
+                : `Show all ${allRoomRows.length} rooms`
+            }
+          </button>
+        `
+        : ""
+    }
+  `;
+
+  document
+    .getElementById("sheet-rooms-toggle")
+    ?.addEventListener("click", () => {
+      renderRooms(!expanded);
+    });
+}
+
+renderRooms(false);
+sheetRooms.hidden = false;
+  }
 }
 
           if (sheetPosition) {
@@ -2656,9 +2812,25 @@ if (index >= cards.length - 1) {
   return;
 }
 
-        activeCard = cards[index + 1];
+       activeCard = cards[index + 1];
 renderCard(activeCard);
-sheet.scrollTop = 0;
+
+sheetContent?.scrollTo({
+  top: 0,
+  behavior: "instant",
+});
+
+sheet
+  ?.querySelector(".panel__view")
+  ?.scrollTo({
+    top: 0,
+    behavior: "instant",
+  });
+
+sheet?.scrollTo({
+  top: 0,
+  behavior: "instant",
+});
 
 requestAnimationFrame(() => {
   updateLandscapeGalleryMode();
@@ -2671,9 +2843,25 @@ requestAnimationFrame(() => {
 
           if (index <= 0) return;
 
-         activeCard = cards[index - 1];
+       activeCard = cards[index - 1];
 renderCard(activeCard);
-sheet.scrollTop = 0;
+
+sheetContent?.scrollTo({
+  top: 0,
+  behavior: "instant",
+});
+
+sheet
+  ?.querySelector(".panel__view")
+  ?.scrollTo({
+    top: 0,
+    behavior: "instant",
+  });
+
+sheet?.scrollTo({
+  top: 0,
+  behavior: "instant",
+});
 
 requestAnimationFrame(() => {
   updateLandscapeGalleryMode();

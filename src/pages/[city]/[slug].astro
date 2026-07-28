@@ -865,6 +865,43 @@ if (listingIds.length > 0) {
     }
   }
 }
+const roomsByListing = new Map();
+
+if (listingIds.length > 0) {
+  const { data: roomRows = [], error: roomError } =
+    await supabase
+      .from("listing_rooms")
+      .select("listing_id,room_label,level,length,width")
+      .in("listing_id", listingIds);
+
+  if (roomError) {
+    console.error(
+      "Could not load listing rooms:",
+      roomError
+    );
+  } else {
+    for (const row of roomRows) {
+      const listingId =
+        String(row.listing_id || "");
+
+      if (!listingId) continue;
+
+      if (!roomsByListing.has(listingId)) {
+        roomsByListing.set(
+          listingId,
+          []
+        );
+      }
+
+      roomsByListing.get(listingId).push({
+        label: row.room_label || "",
+        level: row.level || "",
+        length: row.length || "",
+        width: row.width || "",
+      });
+    }
+  }
+}
 console.log("AREA LISTING DEBUG BEFORE POLYGON", {
   city,
   slug,
@@ -4784,7 +4821,15 @@ data-floorplans={JSON.stringify(
     )
   ) || []
 )}
-
+data-rooms={JSON.stringify(
+  roomsByListing.get(
+    String(
+      listing?.id ||
+      listing?.mls_number ||
+      ""
+    )
+  ) || []
+)}
 data-images={JSON.stringify(
   [
     ...(Array.isArray(listing?.images)

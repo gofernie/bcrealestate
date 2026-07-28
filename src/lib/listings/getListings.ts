@@ -24,6 +24,7 @@ maxSqft?: number | null;
 
 primaryOnMain?: boolean;
 bedsTogether?: boolean;
+fourBedsTogether?: boolean;
 
   sort?: ListingSort | string;
 
@@ -219,6 +220,8 @@ const primaryOnMain =
 
 const bedsTogether =
   options.bedsTogether === true;
+  const fourBedsTogether =
+  options.fourBedsTogether === true;
 
   const sort =
     normalizeSort(options.sort);
@@ -339,7 +342,12 @@ if (bedsTogether) {
     true
   );
 }
-
+if (fourBedsTogether) {
+  query = query.eq(
+    "four_plus_beds_same_floor",
+    true
+  );
+}
     if (sort === "price-low") {
       query = query
         .order("price", {
@@ -498,16 +506,30 @@ if (paginate) {
       );
     }
 
-    if (maxSqft !== null) {
-      query = query.lte(
-        "sqft",
-        maxSqft
-      );
-    }
+   if (maxSqft !== null) {
+  query = query.lte(
+    "sqft",
+    maxSqft
+  );
+}
 
-    if (
-      sort === "price-low"
-    ) {
+if (primaryOnMain) {
+  query = query.eq(
+    "primary_on_main",
+    true
+  );
+}
+
+if (bedsTogether) {
+  query = query.eq(
+    "three_plus_beds_same_floor",
+    true
+  );
+}
+
+if (
+  sort === "price-low"
+) {
       query = query
         .order("price", {
           ascending: true,
@@ -547,7 +569,9 @@ if (paginate) {
           ascending: false,
           nullsFirst: false,
         });
-    }
+      }
+
+  
 
     const batchResult =
       await query.range(
