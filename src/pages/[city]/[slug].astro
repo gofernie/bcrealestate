@@ -45,7 +45,47 @@ const siteHostname =
     : requestHostname;
 
 const site = await getSite(siteHostname, city);
+const sharedListingId =
+  String(
+    Astro.url.searchParams.get("listing_id") || ""
+  ).trim();
 
+let sharedListing = null;
+
+if (sharedListingId) {
+  const {
+    data,
+    error: sharedListingError,
+  } = await supabase
+    .from("listing_rows")
+    .select(`
+      id,
+      mls_number,
+      address,
+      price,
+      beds,
+      baths,
+      sqft,
+      normalized_city,
+      normalized_type,
+      image_url,
+      images
+    `)
+    .or(
+      `id.eq.${sharedListingId},mls_number.eq.${sharedListingId}`
+    )
+    .eq("status", "A")
+    .maybeSingle();
+
+  if (sharedListingError) {
+    console.error(
+      "Could not load shared listing metadata:",
+      sharedListingError
+    );
+  }
+
+  sharedListing = data || null;
+}
 const isMobileHomeSite =
   site?.template === "mobile-homes" ||
   siteHostname === "nanaimomobiles.com";
@@ -1369,14 +1409,115 @@ if (isMobile55) {
   heroIntro =
     `Browse age-restricted 55+ mobile home communities in ${titleCaseCity}. Compare current MLS® listings, pricing, pad fees, park rules, and available homes designed for active adult living.`;
 }
+const sharedListingAddress =
+  String(sharedListing?.address || "").trim();
 
+const sharedListingImageRaw =
+  sharedListing?.image_url ||
+  sharedListing?.images?.[0]?.highRes ||
+  sharedListing?.images?.[0]?.mediumRes ||
+  sharedListing?.images?.[0]?.lowRes ||
+  sharedListing?.images?.[0]?.url ||
+  sharedListing?.images?.[0] ||
+  "";
+
+const sharedListingImage =
+  normalizeImageUrl(sharedListingImageRaw);
+
+const socialTitle =
+  sharedListing
+    ? `${sharedListingAddress} | ${titleCaseCity} Real Estate`
+    : page.seo_title ||
+      page.hero_heading;
+
+const socialDescription =
+  sharedListing
+    ? [
+        sharedListing.beds
+          ? `${sharedListing.beds} bed`
+          : "",
+        sharedListing.baths
+          ? `${sharedListing.baths} bath`
+          : "",
+        sharedListing.sqft
+          ? `${Number(
+              sharedListing.sqft
+            ).toLocaleString()} sq ft`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
+
+const socialUrl =
+  sharedListing
+    ? `${Astro.url.origin}${Astro.url.pathname}?listing_id=${encodeURIComponent(
+        sharedListingId
+      )}`
+    : `${Astro.url.origin}${Astro.url.pathname}`;
 ---
 
 <Layout
-  title={page.seo_title || page.hero_heading}
+  title={socialTitle}
   accentColor={accentColor}
   city={city}
 >
+  <Fragment slot="head">
+    <meta
+      property="og:title"
+      content={socialTitle}
+    />
+
+    {
+      socialDescription && (
+        <meta
+          property="og:description"
+          content={socialDescription}
+        />
+      )
+    }
+
+    {
+      sharedListingImage && (
+        <>
+          <meta
+            property="og:image"
+            content={sharedListingImage}
+          />
+
+          <meta
+            property="og:image:secure_url"
+            content={sharedListingImage}
+          />
+
+          <meta
+            name="twitter:image"
+            content={sharedListingImage}
+          />
+        </>
+      )
+    }
+
+    <meta
+      property="og:url"
+      content={socialUrl}
+    />
+
+    <meta
+      property="og:type"
+      content="website"
+    />
+
+    <meta
+      name="twitter:card"
+      content="summary_large_image"
+    />
+
+    <meta
+      name="twitter:title"
+      content={socialTitle}
+    />
+  </Fragment>
 
 {isMobileAreaPage ? (
   <MobileHomeAreaPage
