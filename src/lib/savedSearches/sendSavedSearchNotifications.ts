@@ -336,7 +336,7 @@ const newMlsNumbers =
     .filter(Boolean)
     .slice(0, 20);
 
-if (newMlsNumbers.length > 1) {
+if (newMlsNumbers.length > 0) {
   searchParams.set(
     "new",
     newMlsNumbers.join(",")
@@ -355,17 +355,9 @@ const searchUrl =
       }`
     : "";
 
-const listingUrl =
-  siteUrl &&
-  firstListing?.mls_number
-    ? `${siteUrl}/${savedSearch.city}/homes?listing_id=${encodeURIComponent(
-        firstListing.mls_number
-      )}`
-    : "";
-
 const body =
   count === 1
-    ? `1 new ${cityLabel} home matches your search${firstPrice ? ` at ${firstPrice}` : ""}.${listingUrl ? ` ${listingUrl}` : ""}`
+    ? `1 new ${cityLabel} home matches your search${firstPrice ? ` at ${firstPrice}` : ""}.${searchUrl ? ` ${searchUrl}` : ""}`
     : `${count} new ${cityLabel} homes match your search.${searchUrl ? ` ${searchUrl}` : ""}`;
 
     await twilioClient
