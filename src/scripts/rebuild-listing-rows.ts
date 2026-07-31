@@ -1156,14 +1156,26 @@ const normalizeImages = (listing: any) => {
   const images: string[] = [];
 
   for (const candidate of candidates) {
-    if (Array.isArray(candidate)) {
-      for (const item of candidate) {
-        const url =
-          typeof item === "string"
-            ? item
-            : item?.url || item?.src || item?.href || item?.large || item?.medium;
+    if (!Array.isArray(candidate)) {
+      continue;
+    }
 
-        if (url) images.push(String(url));
+    for (const item of candidate) {
+      const url =
+        typeof item === "string"
+          ? item
+          : item?.url ||
+            item?.highRes ||
+            item?.mediumRes ||
+            item?.lowRes ||
+            item?.src ||
+            item?.href ||
+            item?.large ||
+            item?.medium ||
+            item?.small;
+
+      if (url) {
+        images.push(String(url));
       }
     }
   }
@@ -1175,9 +1187,31 @@ const normalizeImages = (listing: any) => {
     listing?.image ||
     listing?.raw?.image_url;
 
-  if (single) images.unshift(String(single));
+  if (typeof single === "string" && single) {
+    images.unshift(single);
+  } else if (
+    single &&
+    typeof single === "object"
+  ) {
+    const singleUrl =
+      single?.url ||
+      single?.highRes ||
+      single?.mediumRes ||
+      single?.lowRes ||
+      single?.src;
 
-  return [...new Set(images.filter(Boolean))];
+    if (singleUrl) {
+      images.unshift(
+        String(singleUrl)
+      );
+    }
+  }
+
+  return [
+    ...new Set(
+      images.filter(Boolean)
+    )
+  ];
 };
 
 const getSqft = (listing: any) => {
