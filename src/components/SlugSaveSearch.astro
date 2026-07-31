@@ -1,0 +1,648 @@
+﻿---
+interface Props {
+  siteId?: string | null;
+  city: string;
+  area?: string;
+  propertyType?: string;
+  minPrice?: number | string | null;
+  maxPrice?: number | string | null;
+  waterfrontType?: string;
+  requiresWaterfront?: boolean;
+  requiresOceanView?: boolean;
+}
+
+const {
+  siteId = null,
+  city,
+  area = "",
+  propertyType = "",
+  minPrice = "",
+  maxPrice = "",
+  waterfrontType = "",
+  requiresWaterfront = false,
+  requiresOceanView = false,
+} = Astro.props;
+
+const normalizedArea = String(area || "")
+  .toLowerCase()
+  .trim()
+  .replace(/\s+/g, "-");
+---
+
+<section
+  class="slug-save-search"
+  data-slug-save-search
+  data-site-id={siteId || ""}
+  data-city={city}
+  data-default-area={normalizedArea}
+  data-default-type={propertyType}
+  data-default-min-price={String(minPrice || "")}
+  data-default-max-price={String(maxPrice || "")}
+  data-waterfront-type={waterfrontType}
+  data-requires-waterfront={
+    requiresWaterfront ? "true" : "false"
+  }
+  data-requires-ocean-view={
+    requiresOceanView ? "true" : "false"
+  }
+>
+  <div class="slug-save-search__copy">
+    <p class="slug-save-search__eyebrow">
+      Keep this search
+    </p>
+
+    <h3>Save this search</h3>
+
+    <p>
+      Get notified when new homes match what
+      you’re looking for.
+    </p>
+  </div>
+
+  <div class="slug-save-search__actions">
+    <button
+      type="button"
+      class="slug-save-search__open"
+      data-slug-save-open
+      aria-expanded="false"
+    >
+      Save search
+    </button>
+  </div>
+
+  <div
+    class="slug-save-search__panel"
+    data-slug-save-panel
+    hidden
+  >
+    <div class="slug-save-search__contact">
+      <label>
+        <span>Text me at</span>
+        <input
+          type="tel"
+          name="phone"
+          inputmode="tel"
+          autocomplete="tel"
+          placeholder="(250) 555-1234"
+        />
+      </label>
+
+      <span class="slug-save-search__or">or</span>
+
+      <label>
+        <span>Email to</span>
+        <input
+          type="email"
+          name="email"
+          autocomplete="email"
+          placeholder="you@example.com"
+        />
+      </label>
+    </div>
+
+    <fieldset class="slug-save-search__channel">
+      <legend>Send alerts by</legend>
+
+      <label>
+        <input
+          type="radio"
+          name="channel"
+          value="sms"
+          checked
+        />
+        <span>Text</span>
+      </label>
+
+      <label>
+        <input
+          type="radio"
+          name="channel"
+          value="email"
+        />
+        <span>Email</span>
+      </label>
+    </fieldset>
+
+    <fieldset class="slug-save-search__frequency">
+      <legend>Send new matches</legend>
+
+      <label>
+        <input
+          type="radio"
+          name="frequency"
+          value="update"
+        />
+
+        <span>
+          As soon as they appear
+          <small>Up to 4 times a day</small>
+        </span>
+      </label>
+
+      <label>
+        <input
+          type="radio"
+          name="frequency"
+          value="daily"
+          checked
+        />
+
+        <span>
+          Once a day
+          <small>One daily roundup</small>
+        </span>
+      </label>
+    </fieldset>
+
+    <button
+      type="button"
+      class="slug-save-search__submit"
+      data-slug-save-submit
+    >
+      Save my search
+    </button>
+  </div>
+</section>
+
+<script is:inline>
+  function initializeSlugSaveSearch(root) {
+    if (
+      !(root instanceof HTMLElement) ||
+      root.dataset.initialized === "true"
+    ) {
+      return;
+    }
+
+    root.dataset.initialized = "true";
+
+    const openButton =
+      root.querySelector("[data-slug-save-open]");
+
+    const panel =
+      root.querySelector("[data-slug-save-panel]");
+
+    const submitButton =
+      root.querySelector("[data-slug-save-submit]");
+
+    if (
+      !(openButton instanceof HTMLButtonElement) ||
+      !(panel instanceof HTMLElement) ||
+      !(submitButton instanceof HTMLButtonElement)
+    ) {
+      return;
+    }
+
+    openButton.addEventListener("click", () => {
+      const opening = panel.hidden;
+
+      panel.hidden = !opening;
+
+      openButton.setAttribute(
+        "aria-expanded",
+        String(opening)
+      );
+
+      openButton.textContent =
+        opening ? "Close" : "Save search";
+    });
+
+    submitButton.addEventListener(
+      "click",
+      async () => {
+        const phoneInput =
+          root.querySelector('input[name="phone"]');
+
+        const emailInput =
+          root.querySelector('input[name="email"]');
+
+        const channelInput =
+          root.querySelector(
+            'input[name="channel"]:checked'
+          );
+
+        const frequencyInput =
+          root.querySelector(
+            'input[name="frequency"]:checked'
+          );
+
+        const phone =
+          phoneInput instanceof HTMLInputElement
+            ? phoneInput.value.trim()
+            : "";
+
+        const email =
+          emailInput instanceof HTMLInputElement
+            ? emailInput.value.trim().toLowerCase()
+            : "";
+
+        const channel =
+          channelInput instanceof HTMLInputElement
+            ? channelInput.value
+            : "sms";
+
+        const frequency =
+          frequencyInput instanceof HTMLInputElement
+            ? frequencyInput.value
+            : "daily";
+
+        if (channel === "sms" && !phone) {
+          window.alert(
+            "Enter a phone number for text alerts."
+          );
+          return;
+        }
+
+        if (channel === "email" && !email) {
+          window.alert(
+            "Enter an email address for email alerts."
+          );
+          return;
+        }
+
+        submitButton.disabled = true;
+        submitButton.textContent = "Saving...";
+
+        try {
+          const filters = {};
+
+          const defaultArea =
+            String(root.dataset.defaultArea || "");
+
+          const defaultType =
+            String(root.dataset.defaultType || "");
+
+          const defaultMinPrice =
+            String(
+              root.dataset.defaultMinPrice || ""
+            );
+
+          const defaultMaxPrice =
+            String(
+              root.dataset.defaultMaxPrice || ""
+            );
+
+          if (defaultArea) {
+            filters.area = [defaultArea];
+          }
+
+          if (defaultType) {
+            filters.type = defaultType;
+          }
+
+          if (defaultMinPrice) {
+            filters.minPrice = defaultMinPrice;
+          }
+
+          if (defaultMaxPrice) {
+            filters.maxPrice = defaultMaxPrice;
+          }
+
+          const areaSelect =
+            document.querySelector(
+              ".area-filter-select"
+            );
+
+          const typeSelect =
+            document.querySelector(
+              ".type-filter-select"
+            );
+
+          const bedsSelect =
+            document.querySelector(
+              ".beds-filter-select"
+            );
+
+          const priceSelect =
+            document.querySelector(
+              ".price-filter-select"
+            );
+
+          if (
+            areaSelect instanceof HTMLSelectElement &&
+            areaSelect.value &&
+            areaSelect.value !== "all" &&
+            !areaSelect.value.startsWith("/")
+          ) {
+            filters.area = [
+              areaSelect.value.toLowerCase().trim()
+            ];
+          }
+
+          if (
+            typeSelect instanceof HTMLSelectElement &&
+            typeSelect.value &&
+            typeSelect.value !== "all"
+          ) {
+            filters.type =
+              typeSelect.value.toLowerCase().trim();
+          }
+
+          if (
+            bedsSelect instanceof HTMLSelectElement &&
+            bedsSelect.value &&
+            bedsSelect.value !== "all"
+          ) {
+            const beds =
+              bedsSelect.value.match(/\d+/)?.[0];
+
+            if (beds) {
+              filters.beds = beds;
+            }
+          }
+
+          if (
+            priceSelect instanceof HTMLSelectElement &&
+            priceSelect.value &&
+            priceSelect.value !== "all"
+          ) {
+            const value =
+              priceSelect.value.toLowerCase();
+
+            const numbers =
+              value.match(/\d+/g) || [];
+
+            if (
+              value.includes("under") ||
+              value.includes("max") ||
+              value.includes("up-to")
+            ) {
+              if (numbers[0]) {
+                filters.maxPrice = numbers[0];
+              }
+            } else if (
+              value.includes("over") ||
+              value.includes("min") ||
+              value.includes("plus")
+            ) {
+              if (numbers[0]) {
+                filters.minPrice = numbers[0];
+              }
+            } else if (numbers.length >= 2) {
+              filters.minPrice = numbers[0];
+              filters.maxPrice = numbers[1];
+            } else if (numbers.length === 1) {
+              filters.maxPrice = numbers[0];
+            }
+          }
+
+          const waterfrontType =
+            String(
+              root.dataset.waterfrontType || ""
+            );
+
+          if (waterfrontType) {
+            filters.waterfrontType =
+              waterfrontType;
+          }
+
+          if (
+            root.dataset.requiresWaterfront ===
+            "true"
+          ) {
+            filters.waterfront = true;
+          }
+
+          if (
+            root.dataset.requiresOceanView ===
+            "true"
+          ) {
+            filters.oceanView = true;
+          }
+
+          const response = await fetch(
+            "/api/saved-searches",
+            {
+              method: "POST",
+              headers: {
+                "content-type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                siteId:
+                  root.dataset.siteId || null,
+                city:
+                  root.dataset.city || "",
+                phone,
+                email,
+                channel,
+                frequency,
+                filters,
+              }),
+            }
+          );
+
+          const result =
+            await response.json();
+
+          if (!response.ok || !result.ok) {
+            throw new Error(
+              result?.error ||
+                "Unable to save search."
+            );
+          }
+
+          root.innerHTML = `
+            <div class="slug-save-search__success">
+              <p class="slug-save-search__eyebrow">
+                Search saved
+              </p>
+
+              <h3>You're all set.</h3>
+
+              <p>
+                We'll send you new matches when they appear.
+              </p>
+            </div>
+          `;
+        } catch (error) {
+          console.error(
+            "Slug saved search failed:",
+            error
+          );
+
+          window.alert(
+            error instanceof Error
+              ? error.message
+              : "Unable to save search."
+          );
+
+          submitButton.disabled = false;
+          submitButton.textContent =
+            "Save my search";
+        }
+      }
+    );
+  }
+
+  document
+    .querySelectorAll("[data-slug-save-search]")
+    .forEach(initializeSlugSaveSearch);
+</script>
+
+<style>
+  .slug-save-search {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    margin: 18px 0 26px;
+    padding: 20px 22px;
+    border: 1px solid
+      color-mix(
+        in srgb,
+        var(--accent) 20%,
+        var(--line)
+      );
+    border-radius: 12px;
+    background:
+      color-mix(
+        in srgb,
+        var(--accent) 5%,
+        white
+      );
+  }
+
+  .slug-save-search__eyebrow {
+    margin: 0 0 4px;
+    color: var(--accent);
+    font-size: 0.66rem;
+    font-weight: 850;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+  }
+
+  .slug-save-search h3 {
+    margin: 0;
+    font-family: var(--serif, Georgia, serif);
+    font-size: 1.35rem;
+    font-weight: 500;
+  }
+
+  .slug-save-search__copy > p:last-child,
+  .slug-save-search__success > p:last-child {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+
+  .slug-save-search__open,
+  .slug-save-search__submit {
+    min-height: 44px;
+    padding: 0 20px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--accent);
+    color: white;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 850;
+    cursor: pointer;
+  }
+
+  .slug-save-search__panel {
+    grid-column: 1 / -1;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+
+  .slug-save-search__panel[hidden] {
+    display: none;
+  }
+
+  .slug-save-search:has(
+    .slug-save-search__panel:not([hidden])
+  ) {
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+
+  .slug-save-search__contact {
+    display: flex;
+    align-items: end;
+    gap: 12px;
+  }
+
+  .slug-save-search__contact label {
+    flex: 1;
+  }
+
+  .slug-save-search__contact label > span,
+  .slug-save-search fieldset legend {
+    display: block;
+    margin-bottom: 7px;
+    color: var(--ink);
+    font-size: 0.74rem;
+    font-weight: 800;
+  }
+
+  .slug-save-search__contact input {
+    width: 100%;
+    height: 46px;
+    padding: 0 13px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: white;
+    font: inherit;
+  }
+
+  .slug-save-search__or {
+    padding-bottom: 14px;
+    color: var(--muted);
+    font-size: 0.74rem;
+  }
+
+  .slug-save-search fieldset {
+    display: flex;
+    gap: 22px;
+    margin: 20px 0 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .slug-save-search fieldset label {
+    display: flex;
+    align-items: start;
+    gap: 8px;
+    cursor: pointer;
+  }
+
+  .slug-save-search small {
+    display: block;
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 0.68rem;
+  }
+
+  .slug-save-search__submit {
+    min-height: 46px;
+    margin-top: 20px;
+  }
+
+  @media (max-width: 600px) {
+    .slug-save-search,
+    .slug-save-search:has(
+      .slug-save-search__panel:not([hidden])
+    ) {
+      align-items: stretch;
+      flex-direction: column;
+      gap: 15px;
+      padding: 18px;
+    }
+
+    .slug-save-search__open,
+    .slug-save-search__submit {
+      width: 100%;
+    }
+
+    .slug-save-search__contact,
+    .slug-save-search__frequency {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .slug-save-search__or {
+      padding: 0;
+      text-align: center;
+    }
+  }
+</style>
