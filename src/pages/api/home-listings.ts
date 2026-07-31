@@ -140,18 +140,28 @@ const shapeListing = (listing: any) => {
     listing.raw?.details?.squareFeet ||
     "";
 
-  return {
-    id: String(listing.id || listing.mls_number || ""),
-    mls: getMls(listing),
-    price: getPriceText(listing),
-    rawPrice: Number(listing.price || 0),
-    listedAt: listing.listed_at || listing.created_at || "",
-    address: getAddress(listing),
-    image: getImage(listing),
-    images: getImages(listing),
-    beds,
-    baths,
-    sqft,
+ return {
+  id: String(listing.id || listing.mls_number || ""),
+  mls_number: getMls(listing),
+  mls: getMls(listing),
+
+  price: getPriceText(listing),
+  rawPrice: Number(listing.price || 0),
+
+  listedAt:
+    listing.listed_at ||
+    listing.created_at ||
+    "",
+
+  address: getAddress(listing),
+
+  image_url: getImage(listing),
+  image: getImage(listing),
+  images: getImages(listing),
+
+  beds,
+  baths,
+  sqft,
     description:
       listing.description ||
       listing.publicRemarks ||
