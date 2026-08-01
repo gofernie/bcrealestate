@@ -65,11 +65,24 @@ export const POST: APIRoute =
           .trim()
           .toLowerCase();
 
-      const frequency =
+          const frequency =
         body?.frequency ===
         "update"
           ? "update"
           : "daily";
+
+      const searchName =
+        String(
+          body?.name || ""
+        )
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 80) ||
+        `${city
+          .replace(/-/g, " ")
+          .replace(/\b\w/g, (character) =>
+            character.toUpperCase()
+          )} Home Search`;
 
       const filters =
         body?.filters &&
@@ -170,11 +183,12 @@ if (
         .from(
           "saved_searches"
         )
-        .insert({
+              .insert({
           site_id: siteId,
           city,
-         phone: phone || null,
-email: email || null,
+          name: searchName,
+          phone: phone || null,
+          email: email || null,
           channel,
           frequency,
           filters,
@@ -256,8 +270,8 @@ if (
 
       to: [email],
 
-      subject:
-        `Your ${city} home search is saved`,
+           subject:
+        `${searchName} is now active`,
 
       html: `
         <div
@@ -270,18 +284,18 @@ if (
           "
         >
           <h2>
-            Your search is saved.
+            🏡 You're all set!
           </h2>
 
           <p>
-            We'll let you know when new homes
-            match your search.
+            We'll email you as soon as a new home
+            matches <strong>${searchName}</strong>.
           </p>
 
-          <p>
+          <p style="color:#66736d;">
             ${
               frequency === "daily"
-                ? "You'll receive one roundup each day when there are new matches."
+                ? "You'll receive one daily roundup when there are new matches."
                 : "We'll let you know as new matches appear throughout the day."
             }
           </p>
@@ -342,9 +356,7 @@ if (
           to: phone,
 
           body:
-            frequency === "daily"
-              ? `Your ${city} home search is saved. We'll send one daily roundup when new matching homes appear.`
-              : `Your ${city} home search is saved. We'll text you as new matching homes appear throughout the day.`,
+            `🏡 You're all set!\n\nWe'll text you as soon as a new home matches ${searchName}.`,
         });
 
     console.log(
@@ -366,6 +378,7 @@ return new Response(
   JSON.stringify({
     ok: true,
     id: data.id,
+    name: searchName,
   }),
   {
     status: 200,

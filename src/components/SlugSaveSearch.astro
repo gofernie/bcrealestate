@@ -32,6 +32,7 @@ const normalizedArea = String(area || "")
 <section
   class="slug-save-search"
   data-slug-save-search
+  hidden
   data-site-id={siteId || ""}
   data-city={city}
   data-default-area={normalizedArea}
@@ -75,6 +76,18 @@ const normalizedArea = String(area || "")
     data-slug-save-panel
     hidden
   >
+    <label class="slug-save-search__name">
+      <span>Name this search</span>
+
+      <input
+        type="text"
+        name="searchName"
+        maxlength="80"
+        autocomplete="off"
+        placeholder="North Nanaimo Condos"
+      />
+    </label>
+
     <div class="slug-save-search__contact">
       <label>
         <span>Text me at</span>
@@ -175,6 +188,181 @@ const normalizedArea = String(area || "")
 
     root.dataset.initialized = "true";
 
+    const meaningfulFilterSelector = [
+      ".area-filter-select",
+      ".type-filter-select",
+      ".beds-filter-select",
+      ".price-filter-select",
+      "[name='area']",
+      "[name='areas']",
+      "[name='type']",
+      "[name='propertyType']",
+      "[name='property_type']",
+      "[name='beds']",
+      "[name='baths']",
+      "[name='minPrice']",
+      "[name='min_price']",
+      "[name='maxPrice']",
+      "[name='max_price']",
+      "[name='minSqft']",
+      "[name='min_sqft']",
+      "[name='maxSqft']",
+      "[name='max_sqft']",
+      "[name='primaryOnMain']",
+      "[name='primary_on_main']",
+      "[name='bedsTogether']",
+      "[name='beds_together']",
+      "[name='threePlusBedsSameFloor']",
+      "[name='three_plus_beds_same_floor']",
+      "[name='fourBedsTogether']",
+      "[name='four_beds_together']",
+      "[name='fourPlusBedsSameFloor']",
+      "[name='four_plus_beds_same_floor']",
+      "[name='waterfrontType']",
+      "[name='waterfront_type']",
+      "[name='requiresWaterfront']",
+      "[name='requires_waterfront']",
+      "[name='requiresOceanView']",
+      "[name='requires_ocean_view']",
+    ].join(",");
+
+     const buildSearchName = () => {
+      const city =
+        String(root.dataset.city || "")
+          .trim()
+          .replace(/\b\w/g, (char) =>
+            char.toUpperCase()
+          );
+
+      const defaultArea =
+        String(root.dataset.defaultArea || "")
+          .replace(/-/g, " ")
+          .trim()
+          .replace(/\b\w/g, (char) =>
+            char.toUpperCase()
+          );
+
+      const areaSelect =
+        document.querySelector(
+          ".area-filter-select"
+        );
+
+      const typeSelect =
+        document.querySelector(
+          ".type-filter-select"
+        );
+
+      const bedsSelect =
+        document.querySelector(
+          ".beds-filter-select"
+        );
+
+      const priceSelect =
+        document.querySelector(
+          ".price-filter-select"
+        );
+
+      const area =
+        areaSelect instanceof HTMLSelectElement &&
+        areaSelect.value &&
+        areaSelect.value !== "all" &&
+        !areaSelect.value.startsWith("/")
+          ? areaSelect.options[
+              areaSelect.selectedIndex
+            ]?.text?.trim()
+          : defaultArea;
+
+      const rawType =
+        typeSelect instanceof HTMLSelectElement &&
+        typeSelect.value &&
+        typeSelect.value !== "all"
+          ? typeSelect.options[
+              typeSelect.selectedIndex
+            ]?.text?.trim()
+          : String(
+              root.dataset.defaultType || ""
+            ).trim();
+
+      const typeMap = {
+        house: "Homes",
+        home: "Homes",
+        condo: "Condos",
+        townhouse: "Townhomes",
+        mobile: "Mobile Homes",
+        land: "Land",
+      };
+
+      const type =
+        typeMap[
+          rawType.toLowerCase()
+        ] ||
+        rawType ||
+        "Homes";
+
+      const parts = [
+        area || city,
+        type,
+      ].filter(Boolean);
+
+      if (
+        bedsSelect instanceof HTMLSelectElement &&
+        bedsSelect.value &&
+        bedsSelect.value !== "all"
+      ) {
+        const beds =
+          bedsSelect.value.match(/\d+/)?.[0];
+
+        if (beds) {
+          parts.push(`${beds}+ Beds`);
+        }
+      }
+
+      if (
+        priceSelect instanceof HTMLSelectElement &&
+        priceSelect.value &&
+        priceSelect.value !== "all"
+      ) {
+        const priceLabel =
+          priceSelect.options[
+            priceSelect.selectedIndex
+          ]?.text?.trim();
+
+        if (priceLabel) {
+          parts.push(priceLabel);
+        }
+      }
+
+      return parts.join(" · ");
+    };
+
+    const revealSaveSearch = () => {
+      root.hidden = false;
+
+      const nameInput =
+        root.querySelector(
+          'input[name="searchName"]'
+        );
+
+      if (
+        nameInput instanceof HTMLInputElement &&
+        !nameInput.value.trim()
+      ) {
+        nameInput.value =
+          buildSearchName();
+      }
+    };
+
+    document.addEventListener("change", (event) => {
+      const control = event.target;
+
+      if (
+        control instanceof Element &&
+        control.matches(meaningfulFilterSelector)
+      ) {
+        revealSaveSearch();
+      }
+    });
+
     const openButton =
       root.querySelector("[data-slug-save-open]");
 
@@ -209,6 +397,11 @@ const normalizedArea = String(area || "")
     submitButton.addEventListener(
       "click",
       async () => {
+             const nameInput =
+          root.querySelector(
+            'input[name="searchName"]'
+          );
+
         const phoneInput =
           root.querySelector('input[name="phone"]');
 
@@ -224,6 +417,11 @@ const normalizedArea = String(area || "")
           root.querySelector(
             'input[name="frequency"]:checked'
           );
+
+          const searchName =
+          nameInput instanceof HTMLInputElement
+            ? nameInput.value.trim()
+            : "";
 
         const phone =
           phoneInput instanceof HTMLInputElement
@@ -425,7 +623,10 @@ const normalizedArea = String(area || "")
                 phone,
                 email,
                 channel,
-                frequency,
+                                frequency,
+                name:
+                  searchName ||
+                  buildSearchName(),
                 filters,
               }),
             }
@@ -441,19 +642,24 @@ const normalizedArea = String(area || "")
             );
           }
 
-          root.innerHTML = `
-            <div class="slug-save-search__success">
-              <p class="slug-save-search__eyebrow">
-                Search saved
-              </p>
+        const savedSearchName =
+  searchName || buildSearchName();
 
-              <h3>You're all set.</h3>
+root.innerHTML = `
+  <div class="slug-save-search__success">
+    <p class="slug-save-search__eyebrow">
+      Search saved
+    </p>
 
-              <p>
-                We'll send you new matches when they appear.
-              </p>
-            </div>
-          `;
+    <h3>🏡 You're all set!</h3>
+
+    <p>
+      We'll ${
+        channel === "sms" ? "text" : "email"
+      } you as soon as a new home matches <strong>${savedSearchName}</strong>.
+    </p>
+  </div>
+`;
         } catch (error) {
           console.error(
             "Slug saved search failed:",
@@ -480,6 +686,10 @@ const normalizedArea = String(area || "")
 </script>
 
 <style>
+  .slug-save-search[hidden] {
+    display: none;
+  }
+
   .slug-save-search {
     display: flex;
     align-items: center;
@@ -554,6 +764,29 @@ const normalizedArea = String(area || "")
   ) {
     display: grid;
     grid-template-columns: 1fr auto;
+  }
+
+  .slug-save-search__name {
+    display: block;
+    margin-bottom: 18px;
+  }
+
+  .slug-save-search__name > span {
+    display: block;
+    margin-bottom: 7px;
+    color: var(--ink);
+    font-size: 0.74rem;
+    font-weight: 800;
+  }
+
+  .slug-save-search__name input {
+    width: 100%;
+    height: 46px;
+    padding: 0 13px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: white;
+    font: inherit;
   }
 
   .slug-save-search__contact {
