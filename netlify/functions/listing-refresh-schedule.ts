@@ -1,209 +1,520 @@
-import type { Config } from "@netlify/functions";
-import { createClient } from "@supabase/supabase-js";
+import type {
+  Config,
+} from "@netlify/functions";
 
-const supabase = createClient(
-  process.env.PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import {
+  createClient,
+} from "@supabase/supabase-js";
 
-const PUBLIC_SITE_URL = process.env.PUBLIC_SITE_URL;
-const CRON_SECRET = process.env.CRON_SECRET;
-
-const DISPATCH_DELAY_MS = 250;
-const MARKETS_PER_RUN = 4;
-
-const sleep = (milliseconds: number) =>
-  new Promise<void>((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-
-export default async function handler() {
-  if (!PUBLIC_SITE_URL) {
-    throw new Error("Missing PUBLIC_SITE_URL");
-  }
-
-  if (!CRON_SECRET) {
-    throw new Error("Missing CRON_SECRET");
-  }
-
-    const staleRunningCutoff =
-    new Date(
-      Date.now() - 60 * 60 * 1000
-    ).toISOString();
-
-  console.log(
-    "Listing refresh stale cutoff",
-    {
-      staleRunningCutoff
-    }
+const supabase =
+  createClient(
+    process.env
+      .PUBLIC_SUPABASE_URL!,
+    process.env
+      .SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const { data: markets, error } = await supabase
-    .from("listing_markets")
-    .select(
-      "city, refresh_priority, last_success_at, last_refresh_status, last_refresh_at"
-    )
-    .eq("enabled", true)
-    .or(
-      [
-        "last_refresh_status.neq.running",
-        "last_refresh_status.is.null",
-        `last_refresh_at.lt.${staleRunningCutoff}`
-      ].join(",")
-    )
-    .order("last_success_at", {
-      ascending: true,
-      nullsFirst: true
-    })
-    .order("refresh_priority", {
-      ascending: true
-    })
-    .limit(MARKETS_PER_RUN);
+const PUBLIC_SITE_URL =
+  process.env.PUBLIC_SITE_URL;
 
-  if (error) {
-    throw new Error(
-      `Could not load listing markets: ${error.message}`
-    );
-  }
+const CRON_SECRET =
+  process.env.CRON_SECRET;
 
-  if (!markets?.length) {
-    console.log("No enabled listing markets found.");
+/**
+ * A refresh run should normally finish well before
+ * the next six-hour cron invocation.
+ *
+ * This prevents a permanently stuck run from blocking
+ * all future refreshes.
+ */
+const STALE_RUN_MS =
+  5 * 60 * 60 * 1000;
 
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        dispatched: 0,
-        failed: 0,
-        results: []
-      }),
-      {
-        status: 200,
-        headers: {
-          "content-type":
-            "application/json; charset=utf-8",
-          "cache-control": "no-store"
-        }
-      }
-    );
-  }
-
-  const baseUrl = PUBLIC_SITE_URL.replace(/\/$/, "");
-
-  const results: Array<{
-    city: string;
-    dispatched: boolean;
-    status?: number;
-    error?: string;
-  }> = [];
-
-  console.log(
-    `Preparing to dispatch ${markets.length} listing markets`
-  );
-
-  for (
-    let index = 0;
-    index < markets.length;
-    index += 1
-  ) {
-    const market = markets[index];
-
-    const city = String(
-      market.city || ""
-    ).trim();
-
-    if (!city) {
-      continue;
-    }
-
-    try {
-      console.log(
-        `Dispatching listing refresh ${index + 1}/${markets.length}: ${city}`
-      );
-
-      const response = await fetch(
-        `${baseUrl}/.netlify/functions/refresh-listing-market-background?city=${encodeURIComponent(
-          city
-        )}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${CRON_SECRET}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            city
-          })
-        }
-      );
-
-      results.push({
-        city,
-        dispatched: response.ok,
-        status: response.status
-      });
-
-      console.log("Listing refresh dispatched", {
-        city,
-        status: response.status,
-        accepted: response.ok
-      });
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Unknown dispatch error";
-
-      console.error(
-        `Could not dispatch listing refresh for ${city}:`,
-        message
-      );
-
-      results.push({
-        city,
-        dispatched: false,
-        error: message
-      });
-    }
-
-    const hasAnotherMarket =
-      index < markets.length - 1;
-
-    if (hasAnotherMarket) {
-      console.log(
-        `Waiting ${DISPATCH_DELAY_MS}ms before next market...`
-      );
-
-      await sleep(DISPATCH_DELAY_MS);
-    }
-  }
-
-  console.log(
-    "Listing refresh dispatch results:",
-    results
-  );
-
+function json(
+  body: unknown,
+  status = 200
+) {
   return new Response(
-    JSON.stringify({
-      ok: true,
-      dispatched: results.filter(
-        (result) => result.dispatched
-      ).length,
-      failed: results.filter(
-        (result) => !result.dispatched
-      ).length,
-      results
-    }),
+    JSON.stringify(body),
     {
-      status: 200,
+      status,
       headers: {
         "content-type":
           "application/json; charset=utf-8",
-        "cache-control": "no-store"
-      }
+
+        "cache-control":
+          "no-store",
+      },
     }
   );
 }
 
+export default async function handler() {
+  if (!PUBLIC_SITE_URL) {
+    throw new Error(
+      "Missing PUBLIC_SITE_URL"
+    );
+  }
+
+  if (!CRON_SECRET) {
+    throw new Error(
+      "Missing CRON_SECRET"
+    );
+  }
+
+  const now =
+    new Date();
+
+  const staleRunCutoff =
+    new Date(
+      now.getTime() -
+        STALE_RUN_MS
+    ).toISOString();
+
+  /*
+   * Release any refresh run that became permanently
+   * stuck more than five hours ago.
+   */
+  const {
+    error: staleRunError,
+  } = await supabase
+    .from(
+      "listing_refresh_runs"
+    )
+    .update({
+      status: "failed",
+      completed_at:
+        now.toISOString(),
+
+      error:
+        "Refresh run exceeded the stale-run cutoff.",
+    })
+    .eq(
+      "status",
+      "running"
+    )
+    .lt(
+      "started_at",
+      staleRunCutoff
+    );
+
+  if (staleRunError) {
+    throw new Error(
+      `Could not release stale refresh runs: ${staleRunError.message}`
+    );
+  }
+
+  /*
+   * Do not start another chain while a healthy chain
+   * is already running.
+   */
+  const {
+    data: existingRun,
+    error: existingRunError,
+  } = await supabase
+    .from(
+      "listing_refresh_runs"
+    )
+    .select(
+      "id, started_at"
+    )
+    .eq(
+      "status",
+      "running"
+    )
+    .gte(
+      "started_at",
+      staleRunCutoff
+    )
+    .order(
+      "started_at",
+      {
+        ascending: false,
+      }
+    )
+    .limit(1)
+    .maybeSingle();
+
+  if (existingRunError) {
+    throw new Error(
+      `Could not check active refresh runs: ${existingRunError.message}`
+    );
+  }
+
+  if (existingRun) {
+    console.log(
+      "A listing refresh run is already active.",
+      existingRun
+    );
+
+    return json({
+      ok: true,
+      skipped: true,
+      reason:
+        "A listing refresh run is already active.",
+      runId:
+        existingRun.id,
+      startedAt:
+        existingRun.started_at,
+    });
+  }
+
+  /*
+   * Oldest markets go first.
+   */
+  const {
+    data: markets,
+    error: marketsError,
+  } = await supabase
+    .from(
+      "listing_markets"
+    )
+    .select(
+      `
+        city,
+        refresh_priority,
+        last_success_at
+      `
+    )
+    .eq(
+      "enabled",
+      true
+    )
+    .order(
+      "last_success_at",
+      {
+        ascending: true,
+        nullsFirst: true,
+      }
+    )
+    .order(
+      "refresh_priority",
+      {
+        ascending: true,
+      }
+    );
+
+  if (marketsError) {
+    throw new Error(
+      `Could not load listing markets: ${marketsError.message}`
+    );
+  }
+
+  const validMarkets =
+    (markets || [])
+      .map((market) => ({
+        city:
+          String(
+            market.city || ""
+          )
+            .trim()
+            .toLowerCase(),
+      }))
+      .filter(
+        (market) =>
+          Boolean(market.city)
+      );
+
+  if (
+    validMarkets.length === 0
+  ) {
+    console.log(
+      "No enabled listing markets found."
+    );
+
+    return json({
+      ok: true,
+      dispatched: 0,
+      markets: 0,
+    });
+  }
+
+  /*
+   * Create one parent run.
+   */
+  const {
+    data: run,
+    error: runError,
+  } = await supabase
+    .from(
+      "listing_refresh_runs"
+    )
+    .insert({
+      status: "running",
+      started_at:
+        now.toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (
+    runError ||
+    !run
+  ) {
+    throw new Error(
+      `Could not create listing refresh run: ${
+        runError?.message ||
+        "No run returned"
+      }`
+    );
+  }
+
+  const queueRows =
+    validMarkets.map(
+      (market, index) => ({
+        run_id:
+          run.id,
+
+        city:
+          market.city,
+
+        position:
+          index + 1,
+
+        status:
+          "pending",
+      })
+    );
+
+  const {
+    data: insertedQueue,
+    error: queueError,
+  } = await supabase
+    .from(
+      "listing_refresh_run_markets"
+    )
+    .insert(queueRows)
+    .select(
+      `
+        id,
+        city,
+        position,
+        status
+      `
+    )
+    .order(
+      "position",
+      {
+        ascending: true,
+      }
+    );
+
+  if (
+    queueError ||
+    !insertedQueue?.length
+  ) {
+    await supabase
+      .from(
+        "listing_refresh_runs"
+      )
+      .update({
+        status: "failed",
+        completed_at:
+          new Date()
+            .toISOString(),
+
+        error:
+          queueError?.message ||
+          "Could not create market queue.",
+      })
+      .eq(
+        "id",
+        run.id
+      );
+
+    throw new Error(
+      `Could not create listing refresh queue: ${
+        queueError?.message ||
+        "No queue rows returned"
+      }`
+    );
+  }
+
+  const firstMarket =
+    insertedQueue[0];
+
+  /*
+   * Claim the first queue row before dispatching it.
+   */
+  const {
+    data: claimedMarket,
+    error: claimError,
+  } = await supabase
+    .from(
+      "listing_refresh_run_markets"
+    )
+    .update({
+      status:
+        "dispatched",
+    })
+    .eq(
+      "id",
+      firstMarket.id
+    )
+    .eq(
+      "status",
+      "pending"
+    )
+    .select(
+      `
+        id,
+        city,
+        position
+      `
+    )
+    .maybeSingle();
+
+  if (
+    claimError ||
+    !claimedMarket
+  ) {
+    await supabase
+      .from(
+        "listing_refresh_runs"
+      )
+      .update({
+        status: "failed",
+        completed_at:
+          new Date()
+            .toISOString(),
+
+        error:
+          claimError?.message ||
+          "Could not claim first market.",
+      })
+      .eq(
+        "id",
+        run.id
+      );
+
+    throw new Error(
+      `Could not claim first listing market: ${
+        claimError?.message ||
+        "Market was not pending"
+      }`
+    );
+  }
+
+  const baseUrl =
+    PUBLIC_SITE_URL.replace(
+      /\/$/,
+      ""
+    );
+
+  try {
+    const response =
+      await fetch(
+        `${baseUrl}/.netlify/functions/refresh-listing-market-background`,
+        {
+          method: "POST",
+
+          headers: {
+            Authorization:
+              `Bearer ${CRON_SECRET}`,
+
+            "Content-Type":
+              "application/json",
+          },
+
+          body:
+            JSON.stringify({
+              city:
+                claimedMarket.city,
+
+              runId:
+                run.id,
+
+              queueItemId:
+                claimedMarket.id,
+            }),
+        }
+      );
+
+    if (!response.ok) {
+      const responseText =
+        await response.text();
+
+      throw new Error(
+        `Background function returned ${response.status}: ${responseText}`
+      );
+    }
+
+    console.log(
+      "Listing refresh chain started",
+      {
+        runId:
+          run.id,
+
+        totalMarkets:
+          insertedQueue.length,
+
+        firstMarket:
+          claimedMarket.city,
+      }
+    );
+
+    return json({
+      ok: true,
+      runId:
+        run.id,
+
+      markets:
+        insertedQueue.length,
+
+      firstMarket:
+        claimedMarket.city,
+
+      dispatched: 1,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unknown dispatch error";
+
+    await supabase
+      .from(
+        "listing_refresh_run_markets"
+      )
+      .update({
+        status: "failed",
+
+        completed_at:
+          new Date()
+            .toISOString(),
+
+        error:
+          message,
+      })
+      .eq(
+        "id",
+        claimedMarket.id
+      );
+
+    await supabase
+      .from(
+        "listing_refresh_runs"
+      )
+      .update({
+        status: "failed",
+
+        completed_at:
+          new Date()
+            .toISOString(),
+
+        error:
+          message,
+      })
+      .eq(
+        "id",
+        run.id
+      );
+
+    throw error;
+  }
+}
+
 export const config: Config = {
-  schedule: "15 1,7,13,19 * * *"
+  schedule:
+    "15 1,7,13,19 * * *",
 };

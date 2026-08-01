@@ -1,66 +1,417 @@
-import type { Config } from "@netlify/functions";
-import { refreshListingMarket } from "../../src/lib/listings/refreshListingMarket";
-import { createClient } from "@supabase/supabase-js";
+import type {
+  Config,
+} from "@netlify/functions";
+
+import {
+  createClient,
+} from "@supabase/supabase-js";
+
+import {
+  refreshListingMarket,
+} from "../../src/lib/listings/refreshListingMarket";
 
 import {
   processSavedSearches,
 } from "../../src/lib/savedSearches/processSavedSearches";
-const CRON_SECRET = process.env.CRON_SECRET;
+
+const CRON_SECRET =
+  process.env.CRON_SECRET;
+
 const supabase =
   createClient(
-    process.env.PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env
+      .PUBLIC_SUPABASE_URL!,
+    process.env
+      .SUPABASE_SERVICE_ROLE_KEY!
   );
+
 type RefreshRequest = {
   city?: string;
   boardId?: string;
+
+  runId?: string;
+  queueItemId?: string;
 };
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store"
+function json(
+  body: unknown,
+  status = 200
+) {
+  return new Response(
+    JSON.stringify(body),
+    {
+      status,
+      headers: {
+        "content-type":
+          "application/json; charset=utf-8",
+
+        "cache-control":
+          "no-store",
+      },
     }
-  });
+  );
 }
 
-export default async function handler(request: Request) {
+async function completeRun(
+  runId: string
+) {
+  const {
+    count: failedCount,
+    error: failedCountError,
+  } = await supabase
+    .from(
+      "listing_refresh_run_markets"
+    )
+    .select(
+      "id",
+      {
+        count: "exact",
+        head: true,
+      }
+    )
+    .eq(
+      "run_id",
+      runId
+    )
+    .eq(
+      "status",
+      "failed"
+    );
+
+  if (failedCountError) {
+    console.error(
+      "Could not count failed refresh markets",
+      {
+        runId,
+        error:
+          failedCountError.message,
+      }
+    );
+  }
+
+  const failures =
+    failedCount || 0;
+
+  const {
+    error: completeError,
+  } = await supabase
+    .from(
+      "listing_refresh_runs"
+    )
+    .update({
+      status:
+        failures > 0
+          ? "failed"
+          : "completed",
+
+      completed_at:
+        new Date()
+          .toISOString(),
+
+      error:
+        failures > 0
+          ? `${failures} market refreshes failed.`
+          : null,
+    })
+    .eq(
+      "id",
+      runId
+    )
+    .eq(
+      "status",
+      "running"
+    );
+
+  if (completeError) {
+    throw new Error(
+      `Could not complete refresh run: ${completeError.message}`
+    );
+  }
+
+  console.log(
+    "Listing refresh run finished",
+    {
+      runId,
+      failures,
+    }
+  );
+}
+
+async function dispatchNextMarket(
+  request: Request,
+  runId: string
+): Promise<void> {
+  /*
+   * Find the next pending market.
+   */
+  const {
+    data: nextPending,
+    error: pendingError,
+  } = await supabase
+    .from(
+      "listing_refresh_run_markets"
+    )
+    .select(
+      `
+        id,
+        city,
+        position
+      `
+    )
+    .eq(
+      "run_id",
+      runId
+    )
+    .eq(
+      "status",
+      "pending"
+    )
+    .order(
+      "position",
+      {
+        ascending: true,
+      }
+    )
+    .limit(1)
+    .maybeSingle();
+
+  if (pendingError) {
+    throw new Error(
+      `Could not find next refresh market: ${pendingError.message}`
+    );
+  }
+
+  /*
+   * No pending market means the chain has finished.
+   */
+  if (!nextPending) {
+    await completeRun(
+      runId
+    );
+
+    return;
+  }
+
+  /*
+   * Claim it before dispatching. The status condition
+   * protects against duplicate workers dispatching the
+   * same queue item.
+   */
+  const {
+    data: claimedMarket,
+    error: claimError,
+  } = await supabase
+    .from(
+      "listing_refresh_run_markets"
+    )
+    .update({
+      status:
+        "dispatched",
+    })
+    .eq(
+      "id",
+      nextPending.id
+    )
+    .eq(
+      "run_id",
+      runId
+    )
+    .eq(
+      "status",
+      "pending"
+    )
+    .select(
+      `
+        id,
+        city,
+        position
+      `
+    )
+    .maybeSingle();
+
+  if (claimError) {
+    throw new Error(
+      `Could not claim next refresh market: ${claimError.message}`
+    );
+  }
+
+  /*
+   * Another worker may have claimed it first.
+   */
+  if (!claimedMarket) {
+    console.log(
+      "Next refresh market was already claimed",
+      {
+        runId,
+        queueItemId:
+          nextPending.id,
+      }
+    );
+
+    return;
+  }
+
+  const baseUrl =
+    new URL(
+      request.url
+    ).origin;
+
+  try {
+    const response =
+      await fetch(
+        `${baseUrl}/.netlify/functions/refresh-listing-market-background`,
+        {
+          method: "POST",
+
+          headers: {
+            Authorization:
+              `Bearer ${CRON_SECRET}`,
+
+            "Content-Type":
+              "application/json",
+          },
+
+          body:
+            JSON.stringify({
+              city:
+                claimedMarket.city,
+
+              runId,
+
+              queueItemId:
+                claimedMarket.id,
+            }),
+        }
+      );
+
+    if (!response.ok) {
+      const responseText =
+        await response.text();
+
+      throw new Error(
+        `Background dispatch returned ${response.status}: ${responseText}`
+      );
+    }
+
+    console.log(
+      "Next listing market dispatched",
+      {
+        runId,
+
+        city:
+          claimedMarket.city,
+
+        position:
+          claimedMarket.position,
+
+        status:
+          response.status,
+      }
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unknown dispatch error";
+
+    console.error(
+      "Could not dispatch next listing market",
+      {
+        runId,
+
+        city:
+          claimedMarket.city,
+
+        error:
+          message,
+      }
+    );
+
+    /*
+     * Record this market as failed, then continue to the
+     * following market instead of killing the whole chain.
+     */
+    await supabase
+      .from(
+        "listing_refresh_run_markets"
+      )
+      .update({
+        status:
+          "failed",
+
+        completed_at:
+          new Date()
+            .toISOString(),
+
+        error:
+          message,
+      })
+      .eq(
+        "id",
+        claimedMarket.id
+      );
+
+    await dispatchNextMarket(
+      request,
+      runId
+    );
+  }
+}
+
+export default async function handler(
+  request: Request
+) {
   if (!CRON_SECRET) {
-    console.error("Missing CRON_SECRET");
+    console.error(
+      "Missing CRON_SECRET"
+    );
 
     return json(
       {
         ok: false,
-        error: "Missing CRON_SECRET"
+        error:
+          "Missing CRON_SECRET",
       },
       500
     );
   }
 
   const authorization =
-    request.headers.get("authorization");
+    request.headers.get(
+      "authorization"
+    );
 
-  if (authorization !== `Bearer ${CRON_SECRET}`) {
+  if (
+    authorization !==
+    `Bearer ${CRON_SECRET}`
+  ) {
     return json(
       {
         ok: false,
-        error: "Unauthorized"
+        error:
+          "Unauthorized",
       },
       401
     );
   }
 
-  const requestUrl = new URL(request.url);
+  const requestUrl =
+    new URL(
+      request.url
+    );
 
-  let body: RefreshRequest = {};
+  let body:
+    RefreshRequest = {};
 
   try {
-    const rawBody = await request.text();
+    const rawBody =
+      await request.text();
 
     if (rawBody) {
-      body = JSON.parse(rawBody);
+      body =
+        JSON.parse(
+          rawBody
+        );
     }
   } catch (error) {
     console.warn(
@@ -69,160 +420,506 @@ export default async function handler(request: Request) {
     );
   }
 
-  const city = String(
-    requestUrl.searchParams.get("city") ||
-      body.city ||
-      ""
-  )
-    .trim()
-    .toLowerCase();
+  const city =
+    String(
+      requestUrl.searchParams.get(
+        "city"
+      ) ||
+        body.city ||
+        ""
+    )
+      .trim()
+      .toLowerCase();
 
-  const boardId = String(
-    requestUrl.searchParams.get("boardId") ||
-      body.boardId ||
-      ""
-  ).trim();
+  const boardId =
+    String(
+      requestUrl.searchParams.get(
+        "boardId"
+      ) ||
+        body.boardId ||
+        ""
+    ).trim();
+
+  const runId =
+    String(
+      requestUrl.searchParams.get(
+        "runId"
+      ) ||
+        body.runId ||
+        ""
+    ).trim();
+
+  const queueItemId =
+    String(
+      requestUrl.searchParams.get(
+        "queueItemId"
+      ) ||
+        body.queueItemId ||
+        ""
+    ).trim();
 
   if (!city) {
     return json(
       {
         ok: false,
-        error: "Missing city"
+        error:
+          "Missing city",
       },
       400
     );
   }
 
-  console.log("Starting background listing refresh", {
-    city,
-    boardId: boardId || null
-  });
+  /*
+   * Queue-based requests must atomically transition from
+   * dispatched to running.
+   *
+   * A duplicate Netlify invocation will not rerun the market.
+   */
+  if (
+    runId &&
+    queueItemId
+  ) {
+    const {
+      data: claimedQueueItem,
+      error: queueClaimError,
+    } = await supabase
+      .from(
+        "listing_refresh_run_markets"
+      )
+      .update({
+        status:
+          "running",
 
-  try {
-    const result = await refreshListingMarket({
-      city,
-      boardId,
-      trigger: "scheduled-background",
+        started_at:
+          new Date()
+            .toISOString(),
 
-      env: {
-        PUBLIC_SUPABASE_URL:
-          process.env.PUBLIC_SUPABASE_URL,
+        error:
+          null,
+      })
+      .eq(
+        "id",
+        queueItemId
+      )
+      .eq(
+        "run_id",
+        runId
+      )
+      .eq(
+        "city",
+        city
+      )
+      .eq(
+        "status",
+        "dispatched"
+      )
+      .select(
+        "id, status"
+      )
+      .maybeSingle();
 
-        SUPABASE_SERVICE_ROLE_KEY:
-          process.env.SUPABASE_SERVICE_ROLE_KEY,
+    if (queueClaimError) {
+      return json(
+        {
+          ok: false,
+          error:
+            queueClaimError.message,
+        },
+        500
+      );
+    }
 
-        REPLIERS_API_KEY:
-          process.env.REPLIERS_API_KEY,
+    if (!claimedQueueItem) {
+      console.log(
+        "Duplicate or previously claimed refresh ignored",
+        {
+          runId,
+          queueItemId,
+          city,
+        }
+      );
 
-        REPLIERS_BASE_URL:
-          process.env.REPLIERS_BASE_URL
-      }
-    });
-
- console.log("Completed background listing refresh", {
-  city,
-  boardId: boardId || null,
-  result
-});
-try {
-  const savedSearchResult =
-    await processSavedSearches(
-      supabase,
-      {
-        RESEND_API_KEY:
-          process.env.RESEND_API_KEY!,
-
-        TWILIO_ACCOUNT_SID:
-          process.env.TWILIO_ACCOUNT_SID!,
-
-        TWILIO_AUTH_TOKEN:
-          process.env.TWILIO_AUTH_TOKEN!,
-
-        TWILIO_FROM_NUMBER:
-          process.env.TWILIO_FROM_NUMBER!,
-
-        PUBLIC_SITE_URL:
-          process.env.PUBLIC_SITE_URL,
-      },
-      city
-    );
+      return json(
+        {
+          ok: true,
+          ignored: true,
+          reason:
+            "Queue item was already claimed or completed.",
+          runId,
+          queueItemId,
+          city,
+        },
+        202
+      );
+    }
+  }
 
   console.log(
-    "Saved searches processed after listing refresh",
+    "Starting background listing refresh",
     {
       city,
-      processed:
-        savedSearchResult.processed,
-      results:
-        savedSearchResult.results,
-    }
-  );
-} catch (savedSearchError) {
-  console.error(
-    "Saved search processing failed after listing refresh",
-    {
-      city,
-      error:
-        savedSearchError instanceof Error
-          ? savedSearchError.message
-          : savedSearchError,
-    }
-  );
-}
-if (city === "nanaimo") {
-  try {
-    const baseUrl = new URL(request.url).origin;
 
-    const scanResponse = await fetch(
-      `${baseUrl}/.netlify/functions/scan-floorplans-background?city=nanaimo&limit=50`,
+      boardId:
+        boardId || null,
+
+      runId:
+        runId || null,
+
+      queueItemId:
+        queueItemId || null,
+    }
+  );
+
+  try {
+    const result =
+      await refreshListingMarket({
+        city,
+        boardId,
+
+        trigger:
+          "scheduled-background",
+
+        env: {
+          PUBLIC_SUPABASE_URL:
+            process.env
+              .PUBLIC_SUPABASE_URL,
+
+          SUPABASE_SERVICE_ROLE_KEY:
+            process.env
+              .SUPABASE_SERVICE_ROLE_KEY,
+
+          REPLIERS_API_KEY:
+            process.env
+              .REPLIERS_API_KEY,
+
+          REPLIERS_BASE_URL:
+            process.env
+              .REPLIERS_BASE_URL,
+        },
+      });
+
+    console.log(
+      "Completed background listing refresh",
       {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${CRON_SECRET}`,
-          "Content-Type": "application/json"
-        }
+        city,
+
+        boardId:
+          boardId || null,
+
+        runId:
+          runId || null,
+
+        result,
       }
     );
 
-    console.log("Floorplan scan dispatched", {
-      city,
-      status: scanResponse.status,
-      accepted: scanResponse.ok
-    });
-  } catch (scanError: any) {
-    console.error(
-      "Could not dispatch floorplan scan:",
-      scanError?.message || scanError
-    );
-  }
-}
+    try {
+      const savedSearchResult =
+        await processSavedSearches(
+          supabase,
+          {
+            RESEND_API_KEY:
+              process.env
+                .RESEND_API_KEY!,
 
-return json(result);
-  } catch (error: any) {
-    console.error("Background listing refresh failed", {
-      city,
-      boardId: boardId || null,
-      message: error?.message,
-      status: error?.status,
-      details: error?.details,
-      stack: error?.stack
-    });
+            TWILIO_ACCOUNT_SID:
+              process.env
+                .TWILIO_ACCOUNT_SID!,
+
+            TWILIO_AUTH_TOKEN:
+              process.env
+                .TWILIO_AUTH_TOKEN!,
+
+            TWILIO_FROM_NUMBER:
+              process.env
+                .TWILIO_FROM_NUMBER!,
+
+            PUBLIC_SITE_URL:
+              process.env
+                .PUBLIC_SITE_URL,
+          },
+          city
+        );
+
+      console.log(
+        "Saved searches processed after listing refresh",
+        {
+          city,
+
+          processed:
+            savedSearchResult.processed,
+
+          results:
+            savedSearchResult.results,
+        }
+      );
+    } catch (
+      savedSearchError
+    ) {
+      console.error(
+        "Saved search processing failed after listing refresh",
+        {
+          city,
+
+          error:
+            savedSearchError instanceof
+            Error
+              ? savedSearchError.message
+              : savedSearchError,
+        }
+      );
+    }
+
+    if (
+      city ===
+      "nanaimo"
+    ) {
+      try {
+        const baseUrl =
+          new URL(
+            request.url
+          ).origin;
+
+        const scanResponse =
+          await fetch(
+            `${baseUrl}/.netlify/functions/scan-floorplans-background?city=nanaimo&limit=50`,
+            {
+              method: "POST",
+
+              headers: {
+                Authorization:
+                  `Bearer ${CRON_SECRET}`,
+
+                "Content-Type":
+                  "application/json",
+              },
+            }
+          );
+
+        console.log(
+          "Floorplan scan dispatched",
+          {
+            city,
+
+            status:
+              scanResponse.status,
+
+            accepted:
+              scanResponse.ok,
+          }
+        );
+      } catch (
+        scanError
+      ) {
+        console.error(
+          "Could not dispatch floorplan scan:",
+          scanError instanceof
+          Error
+            ? scanError.message
+            : scanError
+        );
+      }
+    }
+
+    /*
+     * Mark this market complete before starting the next.
+     */
+    if (
+      runId &&
+      queueItemId
+    ) {
+      const {
+        error: queueCompleteError,
+      } = await supabase
+        .from(
+          "listing_refresh_run_markets"
+        )
+        .update({
+          status:
+            "completed",
+
+          completed_at:
+            new Date()
+              .toISOString(),
+
+          error:
+            null,
+        })
+        .eq(
+          "id",
+          queueItemId
+        )
+        .eq(
+          "run_id",
+          runId
+        );
+
+      if (queueCompleteError) {
+        throw new Error(
+          `Could not complete queue item: ${queueCompleteError.message}`
+        );
+      }
+
+      await dispatchNextMarket(
+        request,
+        runId
+      );
+    }
+
+    return json(result);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unknown listing refresh error";
+
+    const status =
+      typeof (
+        error as {
+          status?: unknown;
+        }
+      )?.status ===
+      "number"
+        ? (
+            error as {
+              status: number;
+            }
+          ).status
+        : 500;
+
+    const details =
+      (
+        error as {
+          details?: unknown;
+        }
+      )?.details ||
+      null;
+
+    console.error(
+      "Background listing refresh failed",
+      {
+        city,
+
+        boardId:
+          boardId || null,
+
+        runId:
+          runId || null,
+
+        queueItemId:
+          queueItemId || null,
+
+        message,
+
+        status,
+
+        details,
+
+        stack:
+          error instanceof Error
+            ? error.stack
+            : null,
+      }
+    );
+
+    /*
+     * A failed market does not stop later markets.
+     */
+    if (
+      runId &&
+      queueItemId
+    ) {
+      try {
+        await supabase
+          .from(
+            "listing_refresh_run_markets"
+          )
+          .update({
+            status:
+              "failed",
+
+            completed_at:
+              new Date()
+                .toISOString(),
+
+            error:
+              message,
+          })
+          .eq(
+            "id",
+            queueItemId
+          )
+          .eq(
+            "run_id",
+            runId
+          );
+
+        await dispatchNextMarket(
+          request,
+          runId
+        );
+      } catch (
+        continuationError
+      ) {
+        const continuationMessage =
+          continuationError instanceof
+          Error
+            ? continuationError.message
+            : "Unknown continuation error";
+
+        console.error(
+          "Could not continue listing refresh chain",
+          {
+            runId,
+            city,
+            error:
+              continuationMessage,
+          }
+        );
+
+        await supabase
+          .from(
+            "listing_refresh_runs"
+          )
+          .update({
+            status:
+              "failed",
+
+            completed_at:
+              new Date()
+                .toISOString(),
+
+            error:
+              `Chain continuation failed after ${city}: ${continuationMessage}`,
+          })
+          .eq(
+            "id",
+            runId
+          );
+      }
+    }
 
     return json(
       {
         ok: false,
         city,
-        boardId: boardId || null,
+
+        boardId:
+          boardId || null,
+
+        runId:
+          runId || null,
+
         error:
-          error?.message ||
-          "Unknown listing refresh error",
-        details: error?.details || null
+          message,
+
+        details,
       },
-      error?.status || 500
+      status
     );
   }
 }
 
 export const config: Config = {
-  background: true
+  background: true,
 };
