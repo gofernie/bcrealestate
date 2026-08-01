@@ -48,7 +48,11 @@ const types = isMobileHomeSite
         "townhouse",
         "land",
       ];
-
+console.log(
+  "NAV TYPES:",
+  suppliedTypes,
+  site?.nav_property_types
+);
 const city =
   String(
     incomingCity
@@ -160,9 +164,16 @@ const TYPE_PAGE_MAP: Record<
 > = {
   house: "homes",
   home: "homes",
+
   condo: "condos",
+
   townhouse: "townhomes",
   townhome: "townhomes",
+
+  mobile: "mobile-homes",
+  "mobile home": "mobile-homes",
+  "mobile homes": "mobile-homes",
+
   land: "land",
 };
 
@@ -246,16 +257,16 @@ const typeLinks: NavItem[] =
           return null;
         }
 
-        const labels: Record<
-          string,
-          string
-        > = {
-          homes: "Homes",
-          condos: "Condos",
-          townhomes:
-            "Townhomes",
-          land: "Land",
-        };
+    const labels: Record<
+  string,
+  string
+> = {
+  homes: "Homes",
+  condos: "Condos",
+  townhomes: "Townhomes",
+  "mobile-homes": "Mobile Homes",
+  land: "Land",
+};
 
         return {
           label:
@@ -274,8 +285,70 @@ const typeLinks: NavItem[] =
       Boolean
     ) as NavItem[];
 
+const corePageSlugs = new Set([
+  "homes",
+  "condos",
+  "townhomes",
+  "mobile-homes",
+  "land",
+]);
+
+const corePageLabels = new Set([
+  "homes",
+  "homes for sale",
+  "condos",
+  "condos for sale",
+  "townhomes",
+  "townhouses",
+  "townhomes for sale",
+  "mobile homes",
+  "mobile homes for sale",
+  "land",
+  "land for sale",
+]);
+
+function isCorePageDuplicate(
+  page: any
+) {
+  const slug = String(
+    page?.slug || ""
+  )
+    .toLowerCase()
+    .trim();
+
+  const label = String(
+    page?.nav_label ||
+      page?.card_title ||
+      page?.hero_heading ||
+      page?.seo_heading ||
+      ""
+  )
+    .toLowerCase()
+    .trim();
+
+  const slugWithoutCity =
+    slug.replace(
+      new RegExp(
+        `^${slugify(city)}-`
+      ),
+      ""
+    );
+
+  return (
+    corePageSlugs.has(slug) ||
+    corePageSlugs.has(
+      slugWithoutCity
+    ) ||
+    corePageLabels.has(label)
+  );
+}
+
 const intentLinks: NavItem[] =
   intentPages
+    .filter(
+      (page: any) =>
+        !isCorePageDuplicate(page)
+    )
     .slice(0, 6)
     .map((page: any) => {
       const label =
@@ -587,15 +660,15 @@ const finalNavLinks: NavItem[] =
       none !important;
   }
 
-  .site-nav__links {
-    display:
-      flex !important;
-    align-items: center;
-    gap: 8px;
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    scrollbar-width: none;
-  }
+.site-nav__links {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: visible;
+  flex-wrap: nowrap;
+}
 
   .site-nav__links::-webkit-scrollbar {
     display: none;
@@ -603,7 +676,7 @@ const finalNavLinks: NavItem[] =
 
   .site-nav__links a,
   .site-subnav__inner a {
-    padding: 9px 14px;
+    padding: 9px 10px;
     border-radius: 6px;
     color: var(--muted);
     font-family:

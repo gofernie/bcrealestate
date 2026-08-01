@@ -1,4 +1,4 @@
----
+﻿---
 import AdminSidebar from "../../components/AdminSidebar.astro";
 import { createClient } from "@supabase/supabase-js";
 import { getSite } from "../../lib/getSite";
@@ -10,20 +10,27 @@ const supabase = createClient(
 );
 const selectedCity = String(
   Astro.url.searchParams.get("city") || ""
-).toLowerCase();
+)
+  .toLowerCase()
+  .trim()
+  .replace(/-/g, " ")
+  .replace(/\s+/g, " ");
 
+const selectedCitySlug = selectedCity.replace(/\s+/g, "-");
+const selectedSiteId = String(
+  Astro.url.searchParams.get("site_id") || ""
+).trim();
 const hostname = Astro.url.hostname
   .replace(/^www\./, "")
   .toLowerCase();
 
 let site = null;
 
-if (selectedCity) {
+if (selectedSiteId) {
   const { data: selectedSite, error: selectedSiteError } = await supabase
     .from("sites")
     .select("*")
-    .eq("domain", hostname)
-    .eq("city", selectedCity)
+    .eq("id", selectedSiteId)
     .maybeSingle();
 
   if (selectedSiteError) {
@@ -32,7 +39,7 @@ if (selectedCity) {
 
   site = selectedSite;
 } else {
-  site = await getSite(hostname);
+  site = await getSite(hostname, selectedCity || undefined);
 }
 
 const formData =
@@ -52,7 +59,115 @@ return Astro.redirect(`/admin/intent-pages?city=${String(formData.get("city") ||
 const activeType = String(Astro.url.searchParams.get("type") || "");
 const activeKind = String(Astro.url.searchParams.get("kind") || "");
 const activeStatus = String(Astro.url.searchParams.get("status") || "");
+const selectedCityLabel = titleCase(selectedCity);
+const visibleCoreTypes =
+  Array.isArray(site?.nav_property_types)
+    ? site.nav_property_types.map((value: unknown) =>
+        String(value).toLowerCase()
+      )
+    : [
+        "house",
+        "condo",
+        "townhouse",
+        "mobile",
+        "land",
+      ];
+const corePages = selectedCity
+  ? [
+      {
+        label: "City homepage",
+        href: `/${selectedCitySlug}`,
+        description: `${selectedCityLabel} real estate homepage`,
+        propertyType: "",
+        slug: "",
+        customizable: false,
+        isVisible: true,
+      },
+      {
+        label: "Areas",
+        href: `/${selectedCitySlug}/areas`,
+        description: "Neighbourhood and area directory",
+        propertyType: "",
+        slug: "areas",
+        customizable: false,
+        isVisible: true,
+      },
+      {
+        label: "Homes",
+        href: `/${selectedCitySlug}/homes`,
+        description: "Automatic house listing page",
+        propertyType: "house",
+        slug: "homes",
+        customizable: true,
+        isVisible: visibleCoreTypes.includes("house"),
+      },
+      {
+        label: "Condos",
+        href: `/${selectedCitySlug}/condos`,
+        description: "Automatic condo listing page",
+        propertyType: "condo",
+        slug: "condos",
+        customizable: true,
+        isVisible: visibleCoreTypes.includes("condo"),
+      },
+      {
+        label: "Townhomes",
+        href: `/${selectedCitySlug}/townhomes`,
+        description: "Automatic townhouse listing page",
+        propertyType: "townhouse",
+        slug: "townhomes",
+        customizable: true,
+        isVisible: visibleCoreTypes.includes("townhouse"),
+      },
+      {
+        label: "Mobile homes",
+        href: `/${selectedCitySlug}/mobile-homes`,
+        description: "Automatic mobile-home listing page",
+        propertyType: "mobile",
+        slug: "mobile-homes",
+        customizable: true,
+        isVisible: visibleCoreTypes.includes("mobile"),
+      },
+      {
+        label: "Land",
+        href: `/${selectedCitySlug}/land`,
+        description: "Automatic land listing page",
+        propertyType: "land",
+        slug: "land",
+        customizable: true,
+        isVisible: visibleCoreTypes.includes("land"),
+      },
+    ]
+  : [];
+function adminPagesHref(params: {
+  siteId?: string;
+  city?: string;
+  type?: string;
+  kind?: string;
+  status?: string;
+} = {}) {
+  const search = new URLSearchParams();
 
+  const siteId = params.siteId ?? selectedSiteId;
+  const city = params.city ?? selectedCity;
+
+  if (siteId) search.set("site_id", siteId);
+if (city) {
+  search.set(
+    "city",
+    String(city)
+      .trim()
+      .replace(/\s+/g, "-")
+  );
+}
+  if (params.type) search.set("type", params.type);
+  if (params.kind) search.set("kind", params.kind);
+  if (params.status) search.set("status", params.status);
+
+  const query = search.toString();
+
+  return `/admin/intent-pages${query ? `?${query}` : ""}`;
+}
 let pagesQuery = supabase
   .from("intent_pages")
   .select(`
@@ -120,7 +235,7 @@ function publicHref(page: any) {
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Intent & Category Pages</title>
+  <title>Site Pages</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style is:global>
       @media (min-width: 769px) { .mobile-topbar, .drawer-overlay { display: none !important; } }
@@ -162,7 +277,7 @@ function publicHref(page: any) {
         min-width: 0;
       }
 
-      /* ── Page header ── */
+      /* â”€â”€ Page header â”€â”€ */
       .topbar {
         display: flex;
         align-items: flex-end;
@@ -194,7 +309,7 @@ function publicHref(page: any) {
         flex-shrink: 0;
       }
 
-      /* ── Buttons ── */
+      /* â”€â”€ Buttons â”€â”€ */
       .btn {
         display: inline-flex;
         align-items: center;
@@ -234,7 +349,7 @@ function publicHref(page: any) {
 
       .btn--danger:hover { background: #fff6f6; }
 
-      /* ── Filter pills ── */
+      /* â”€â”€ Filter pills â”€â”€ */
       .filters {
         display: flex;
         flex-wrap: wrap;
@@ -266,14 +381,174 @@ function publicHref(page: any) {
         border-color: var(--ink);
       }
 
-   /* ── Grid ── */
+      /* Core automatic pages */
+
+      .core-page-nav-toggle {
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  background: var(--ink);
+  color: #fff;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.core-page-nav-toggle.is-hidden {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.core-page-nav-toggle:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+      .core-pages-panel {
+        margin: 0 0 22px;
+        padding: 20px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--surface);
+      }
+
+      .core-pages-heading {
+        margin-bottom: 16px;
+      }
+
+      .core-pages-heading h2 {
+        margin: 2px 0 4px;
+        font-family: var(--font-body);
+        font-size: 1.1rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+
+      .core-pages-heading p {
+        max-width: 680px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+
+      .core-pages-kicker {
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .core-pages-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 9px;
+      }
+
+      .core-page-card {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 13px 14px;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        background: var(--bg);
+        color: var(--ink);
+        text-decoration: none;
+      }
+
+      .core-page-card:hover {
+        border-color: var(--border-strong);
+        background: var(--surface);
+      }
+
+      .core-page-copy {
+        min-width: 0;
+        display: grid;
+        gap: 2px;
+      }
+
+      .core-page-card strong {
+        font-size: 0.88rem;
+      }
+
+      .core-page-copy span {
+        overflow: hidden;
+        color: var(--muted);
+        font-size: 0.76rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .core-page-actions {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 7px;
+      }
+
+      .core-page-open,
+      .core-page-customize {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 28px;
+        padding: 4px 9px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--ink);
+        font-size: 0.7rem;
+        font-weight: 700;
+        line-height: 1;
+        text-decoration: none;
+      }
+
+      .core-page-open:hover {
+        border-color: var(--border-strong);
+      }
+
+      .core-page-customize {
+        border-color: var(--ink);
+        background: var(--ink);
+        color: #fff;
+      }
+
+      .core-page-customize:hover {
+        background: #333;
+        border-color: #333;
+      }
+
+      .core-page-badge {
+        flex: 0 0 auto;
+        padding: 4px 7px;
+        border-radius: 999px;
+        background: rgba(24, 22, 20, 0.08);
+        color: var(--muted);
+        font-size: 0.67rem;
+        font-weight: 700;
+      }
+
+      @media (max-width: 720px) {
+        .core-pages-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+   /* â”€â”€ Grid â”€â”€ */
       .grid {
         display: grid;
         grid-template-columns: 1fr;
         gap: 10px;
       }
 
-      /* ── Page card ── */
+      /* â”€â”€ Page card â”€â”€ */
      .page-card {
         display: flex;
         flex-direction: column;
@@ -305,7 +580,7 @@ function publicHref(page: any) {
         margin-top: 6px;
       }
 
-      /* ── Tags ── */
+      /* â”€â”€ Tags â”€â”€ */
       .tags {
         display: flex;
         flex-wrap: wrap;
@@ -345,7 +620,7 @@ function publicHref(page: any) {
         color: var(--muted);
       }
 
-      /* ── Card actions ── */
+      /* â”€â”€ Card actions â”€â”€ */
       .card-actions {
         display: flex;
         align-items: center;
@@ -356,7 +631,7 @@ function publicHref(page: any) {
         margin-top: auto;
       }
 
-      /* ── Empty / error ── */
+      /* â”€â”€ Empty / error â”€â”€ */
       .empty {
         padding: 24px;
         border-radius: var(--radius);
@@ -470,11 +745,15 @@ function publicHref(page: any) {
 
   <div class="topbar">
         <div>
-          <h1>Intent & category pages</h1>
-          <p class="intro">
-            Manage all generated buyer-discovery pages. Category pages start broad;
-            intent pages start with feature filters.
-          </p>
+      <h1>
+  {site?.site_name || site?.domain || "Site pages"}
+</h1>
+
+<p class="intro">
+  {selectedCityLabel
+    ? `${selectedCityLabel} site pages · ${site?.domain || "site not selected"}`
+    : "Manage the pages available on this site."}
+</p>
         </div>
 
        <div class="actions">
@@ -493,21 +772,166 @@ function publicHref(page: any) {
         <a class={`filter-pill ${selectedCity === "parksville" ? "active" : ""}`} href="/admin/intent-pages?city=parksville">Parksville</a>
       </div>
 
-<div class="filters">
-        <a class={`filter-pill ${!activeType && !activeKind && !activeStatus ? "active" : ""}`} href={`/admin/intent-pages${selectedCity ? `?city=${selectedCity}` : ""}`}>All</a>
+{
+  selectedCity && (
+    <section class="core-pages-panel">
+      <div class="core-pages-heading">
+        <span class="core-pages-kicker">
+          {selectedCityLabel}
+        </span>
 
-        <a class={`filter-pill ${activeKind === "category" ? "active" : ""}`} href="/admin/intent-pages?kind=category">Category</a>
-        <a class={`filter-pill ${activeKind === "intent" ? "active" : ""}`} href="/admin/intent-pages?kind=intent">Intent</a>
+    <p>
+  Essential listing and location pages created automatically for this site.
+</p>
 
-        <a class={`filter-pill ${activeStatus === "published" ? "active" : ""}`} href="/admin/intent-pages?status=published">Published</a>
-        <a class={`filter-pill ${activeStatus === "draft" ? "active" : ""}`} href="/admin/intent-pages?status=draft">Draft</a>
-
-        <a class={`filter-pill ${activeType === "house" ? "active" : ""}`} href="/admin/intent-pages?type=house">House</a>
-        <a class={`filter-pill ${activeType === "condo" ? "active" : ""}`} href="/admin/intent-pages?type=condo">Condo</a>
-        <a class={`filter-pill ${activeType === "townhouse" ? "active" : ""}`} href="/admin/intent-pages?type=townhouse">Townhouse</a>
-<a class={`filter-pill ${activeType === "mobile" ? "active" : ""}`} href="/admin/intent-pages?type=mobile">Mobile</a>
-        <a class={`filter-pill ${activeStatus === "nav" ? "active" : ""}`} href="/admin/intent-pages?status=nav">In Nav</a>
+        <p>
+          These listing pages are created automatically and do not appear
+          as custom intent-page records.
+        </p>
       </div>
+
+      <div class="core-pages-grid">
+        {
+          corePages.map((corePage) => (
+            <div class="core-page-card">
+              <div class="core-page-copy">
+                <strong>{corePage.label}</strong>
+                <span>{corePage.description}</span>
+              </div>
+
+              <div class="core-page-actions">
+                <span class="core-page-badge">
+                  Automatic
+                </span>
+
+                <a
+                  class="core-page-open"
+                  href={corePage.href}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open
+                </a>
+
+                {
+  corePage.customizable && (
+    <button
+      type="button"
+      class:list={[
+        "core-page-nav-toggle",
+        {
+          "is-visible": corePage.isVisible,
+          "is-hidden": !corePage.isVisible,
+        },
+      ]}
+      data-core-nav-toggle
+      data-site-id={selectedSiteId}
+      data-property-type={corePage.propertyType}
+      data-visible={String(corePage.isVisible)}
+    >
+      {corePage.isVisible
+        ? "Remove from nav"
+        : "Add to nav"}
+    </button>
+  )
+}
+              </div>
+            </div>
+          ))
+        }
+      </div>
+    </section>
+  )
+}
+
+<section class="featured-pages-panel">
+  <div class="featured-pages-heading">
+    <span class="featured-pages-kicker">
+      Optional
+    </span>
+
+    <h2>Featured pages</h2>
+
+    <p>
+      Add useful niche and lifestyle pages to this site with one click.
+    </p>
+  </div>
+</section>
+
+<div class="filters">
+<div class="filters">
+  <a
+    class={`filter-pill ${
+      !activeType && !activeKind && !activeStatus ? "active" : ""
+    }`}
+    href={adminPagesHref()}
+  >
+    All
+  </a>
+
+  <a
+    class={`filter-pill ${activeKind === "category" ? "active" : ""}`}
+    href={adminPagesHref({ kind: "category" })}
+  >
+    Category
+  </a>
+
+  <a
+    class={`filter-pill ${activeKind === "intent" ? "active" : ""}`}
+    href={adminPagesHref({ kind: "intent" })}
+  >
+    Intent
+  </a>
+
+  <a
+    class={`filter-pill ${activeStatus === "published" ? "active" : ""}`}
+    href={adminPagesHref({ status: "published" })}
+  >
+    Published
+  </a>
+
+  <a
+    class={`filter-pill ${activeStatus === "draft" ? "active" : ""}`}
+    href={adminPagesHref({ status: "draft" })}
+  >
+    Draft
+  </a>
+
+  <a
+    class={`filter-pill ${activeType === "house" ? "active" : ""}`}
+    href={adminPagesHref({ type: "house" })}
+  >
+    House
+  </a>
+
+  <a
+    class={`filter-pill ${activeType === "condo" ? "active" : ""}`}
+    href={adminPagesHref({ type: "condo" })}
+  >
+    Condo
+  </a>
+
+  <a
+    class={`filter-pill ${activeType === "townhouse" ? "active" : ""}`}
+    href={adminPagesHref({ type: "townhouse" })}
+  >
+    Townhouse
+  </a>
+
+  <a
+    class={`filter-pill ${activeType === "mobile" ? "active" : ""}`}
+    href={adminPagesHref({ type: "mobile" })}
+  >
+    Mobile
+  </a>
+
+  <a
+    class={`filter-pill ${activeStatus === "nav" ? "active" : ""}`}
+    href={adminPagesHref({ status: "nav" })}
+  >
+    In Nav
+  </a>
+</div>
 
       {error && <p class="error">{error.message}</p>}
 
@@ -545,7 +969,7 @@ function publicHref(page: any) {
             class="nav-remove-btn"
             data-remove-id={page.id}
             title="Remove from nav"
-          >✕</button>
+          >âœ•</button>
         </div>
       ))}
   </div>
@@ -635,7 +1059,7 @@ function publicHref(page: any) {
     btn.addEventListener("click", async () => {
       const id = btn.getAttribute("data-remove-id");
       if (!id) return;
-      btn.textContent = "…";
+      btn.textContent = "â€¦";
       const res = await fetch("/api/admin/save-nav-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -644,7 +1068,7 @@ function publicHref(page: any) {
       if (res.ok) {
         btn.closest(".nav-sort-item")?.remove();
       } else {
-        btn.textContent = "✕";
+        btn.textContent = "âœ•";
       }
     });
   });
@@ -702,6 +1126,95 @@ function publicHref(page: any) {
       saveBtn.textContent = "Save Nav Order";
     }, 1200);
   });
+  document
+  .querySelectorAll("[data-core-nav-toggle]")
+  .forEach((button) => {
+    button.addEventListener("click", async () => {
+      const siteId =
+        button.getAttribute("data-site-id") || "";
+
+      const propertyType =
+        button.getAttribute("data-property-type") || "";
+
+      if (!siteId || !propertyType) {
+        return;
+      }
+
+      button.disabled = true;
+
+      const originalText = button.textContent;
+      button.textContent = "Saving...";
+
+      try {
+        const response = await fetch(
+          "/api/admin/toggle-core-nav",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              site_id: siteId,
+              property_type: propertyType,
+            }),
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            result?.error || "Could not update navigation"
+          );
+        }
+
+        const visible = Boolean(result.visible);
+
+        button.setAttribute(
+          "data-visible",
+          String(visible)
+        );
+
+        button.classList.toggle(
+          "is-visible",
+          visible
+        );
+
+        button.classList.toggle(
+          "is-hidden",
+          !visible
+        );
+
+        button.textContent = visible
+          ? "Remove from nav"
+          : "Add to nav";
+      } catch (error) {
+        console.error(error);
+
+        button.textContent =
+          error instanceof Error
+            ? error.message
+            : "Save failed";
+
+        setTimeout(() => {
+          button.textContent = originalText;
+        }, 1600);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
 </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+

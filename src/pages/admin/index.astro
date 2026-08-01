@@ -1,0 +1,767 @@
+﻿---
+import { createClient } from "@supabase/supabase-js";
+import AdminSidebar from "../../components/AdminSidebar.astro";
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const { data: sites = [], error: sitesError } = await supabase
+  .from("sites")
+  .select("id, domain, city, site_name, accent_color")
+  .order("domain");
+
+const tools = [
+  {
+    title: "Pages",
+    description: "Create and edit area, property type, and niche landing pages.",
+    href: "/admin/intent-pages",
+    group: "Content",
+  },
+  {
+    title: "Area boundaries",
+    description: "Edit neighbourhood boundaries, maps, and area information.",
+    href: "/admin/area-boundaries",
+    group: "Content",
+  },
+  {
+    title: "Market intelligence",
+    description: "Review market statistics, trends, and local data.",
+    href: "/admin/market-intelligence",
+    group: "Content",
+  },
+  {
+    title: "Destinations",
+    description: "Manage destination and location content.",
+    href: "/admin/destinations",
+    group: "Content",
+  },
+  {
+    title: "Leads",
+    description: "Review people who have contacted or registered through a site.",
+    href: "/admin/leads",
+    group: "People",
+  },
+  {
+    title: "Buyers",
+    description: "View buyers, their activity, and saved information.",
+    href: "/admin/buyers",
+    group: "People",
+  },
+  {
+    title: "Intent sessions",
+    description: "See what buyers viewed, liked, skipped, and returned to.",
+    href: "/admin/intent-sessions",
+    group: "People",
+  },
+  {
+    title: "Create shortlist",
+    description: "Build and share a curated collection of listings.",
+    href: "/admin/create-shortlist",
+    group: "People",
+  },
+  {
+    title: "Agents",
+    description: "Manage agents and their Locus sites.",
+    href: "/admin/agents",
+    group: "Platform",
+  },
+  {
+    title: "All sites",
+    description: "Open the original site-management screen.",
+    href: "/admin/sites",
+    group: "Platform",
+  },
+  {
+    title: "Agent page",
+    description: "Edit agent-facing profile and page information.",
+    href: "/admin/agent-page",
+    group: "Platform",
+  },
+  {
+    title: "Signature",
+    description: "Manage email signature content.",
+    href: "/admin/signature",
+    group: "Platform",
+  },
+];
+
+const toolGroups = ["Content", "People", "Platform"];
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Admin Control Centre</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <style is:global>
+      .mobile-topbar,
+      .drawer-overlay {
+        display: none;
+      }
+
+      @media (max-width: 768px) {
+        .mobile-topbar {
+          display: flex !important;
+        }
+      }
+    </style>
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+
+  <body>
+    <div class="page">
+      <AdminSidebar active="sites" />
+
+      <main class="main">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Locus administration</p>
+            <h1>Control centre</h1>
+            <p class="intro">
+              Choose the site or city you want to work on, then jump directly
+              to its settings or content tools.
+            </p>
+          </div>
+
+          <a class="manage-sites-link" href="/admin/sites">
+            Manage all sites
+          </a>
+        </header>
+
+        <section class="search-panel">
+          <label for="admin-search">Find a site or city</label>
+
+          <div class="search-row">
+            <input
+              id="admin-search"
+              type="search"
+              placeholder="Try Nanaimo, Parksville or bc.realestate"
+              autocomplete="off"
+            />
+
+            <button id="clear-search" type="button" hidden>
+              Clear
+            </button>
+          </div>
+
+          <p id="search-status" class="search-status" aria-live="polite"></p>
+        </section>
+
+        {sitesError ? (
+          <div class="notice notice-error">
+            Sites could not be loaded. Check the Supabase response and server
+            logs.
+          </div>
+        ) : (
+          <section class="section" aria-labelledby="sites-heading">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Start here</p>
+                <h2 id="sites-heading">Sites and markets</h2>
+              </div>
+
+              <span class="count">
+                {sites.length} {sites.length === 1 ? "site" : "sites"}
+              </span>
+            </div>
+
+            <div id="sites-grid" class="sites-grid">
+              {sites.map((site) => {
+                const siteName =
+                  String(site.site_name || site.domain || "Untitled site");
+
+                const domain = String(site.domain || "");
+                const city = String(site.city || "");
+                const searchableText =
+                  `${siteName} ${domain} ${city}`.toLowerCase();
+
+                return (
+                  <article
+                    class="site-card"
+                    data-site-card
+                    data-search={searchableText}
+                  >
+                    <div
+                      class="site-accent"
+                      style={`background:${site.accent_color || "#2f6f73"}`}
+                    ></div>
+
+                    <div class="site-card-main">
+                      <div class="site-card-heading">
+                        <div>
+                          <p class="site-city">
+                            {city || "No primary city selected"}
+                          </p>
+
+                          <h3>{siteName}</h3>
+
+                          {domain && <p class="site-domain">{domain}</p>}
+                        </div>
+
+                        <span
+                          class="colour-dot"
+                          style={`background:${site.accent_color || "#2f6f73"}`}
+                          aria-hidden="true"
+                        ></span>
+                      </div>
+
+                      <div class="site-actions">
+                        <a
+                          class="primary-action"
+                          href={`/admin/sites/${site.id}/settings`}
+                        >
+                          Open site
+                        </a>
+
+                        <a
+                          class="secondary-action"
+href={`/admin/sites/${site.id}/pages`}
+                        >
+                          Pages
+                        </a>
+
+                        <a
+                          class="secondary-action"
+                          href={`/admin/leads?site_id=${site.id}`}
+                        >
+                          Leads
+                        </a>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            <div id="no-results" class="no-results" hidden>
+              <h3>No matching site</h3>
+              <p>Try searching by site name, domain, or city.</p>
+            </div>
+          </section>
+        )}
+
+        <section class="section tools-section" aria-labelledby="tools-heading">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Everything else</p>
+              <h2 id="tools-heading">Admin tools</h2>
+            </div>
+          </div>
+
+          <div class="tool-groups">
+            {toolGroups.map((group) => (
+              <section class="tool-group">
+                <h3>{group}</h3>
+
+                <div class="tools-grid">
+                  {tools
+                    .filter((tool) => tool.group === group)
+                    .map((tool) => (
+                      <a class="tool-card" href={tool.href}>
+                        <span class="tool-title">{tool.title}</span>
+                        <span class="tool-description">
+                          {tool.description}
+                        </span>
+                        <span class="tool-arrow" aria-hidden="true">→</span>
+                      </a>
+                    ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const searchInput =
+        document.querySelector<HTMLInputElement>("#admin-search");
+
+      const clearButton =
+        document.querySelector<HTMLButtonElement>("#clear-search");
+
+      const status =
+        document.querySelector<HTMLElement>("#search-status");
+
+      const noResults =
+        document.querySelector<HTMLElement>("#no-results");
+
+      const cards = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-site-card]")
+      );
+
+      function updateSearch() {
+        const query = String(searchInput?.value || "")
+          .trim()
+          .toLowerCase();
+
+        let visibleCount = 0;
+
+        cards.forEach((card) => {
+          const searchableText = String(card.dataset.search || "");
+          const matches = !query || searchableText.includes(query);
+
+          card.hidden = !matches;
+
+          if (matches) {
+            visibleCount += 1;
+          }
+        });
+
+        if (clearButton) {
+          clearButton.hidden = !query;
+        }
+
+        if (noResults) {
+          noResults.hidden = visibleCount !== 0;
+        }
+
+        if (status) {
+          status.textContent = query
+            ? `${visibleCount} ${
+                visibleCount === 1 ? "site" : "sites"
+              } found`
+            : "";
+        }
+      }
+
+      searchInput?.addEventListener("input", updateSearch);
+
+      clearButton?.addEventListener("click", () => {
+        if (!searchInput) {
+          return;
+        }
+
+        searchInput.value = "";
+        updateSearch();
+        searchInput.focus();
+      });
+    </script>
+
+    <style>
+      :global(:root) {
+        --bg: #f7f4ef;
+        --surface: #ffffff;
+        --surface-soft: #fbfaf7;
+        --ink: #181614;
+        --muted: #6c6862;
+        --line: #e3ddd2;
+        --accent: #2f6f73;
+        --font-body: "DM Sans", system-ui, sans-serif;
+        --font-display: "Instrument Serif", Georgia, serif;
+      }
+
+      :global(*) {
+        box-sizing: border-box;
+      }
+
+      :global(body) {
+        margin: 0;
+        font-family: var(--font-body);
+        background: var(--bg);
+        color: var(--ink);
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+      .page {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+      }
+
+      .main {
+        width: 100%;
+        min-width: 0;
+        padding: 48px 48px 80px;
+      }
+
+      .page-header,
+      .section,
+      .search-panel {
+        width: 100%;
+        max-width: 1180px;
+        margin-right: auto;
+      }
+
+      .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 28px;
+        margin-bottom: 28px;
+      }
+
+      .eyebrow,
+      .section-kicker {
+        margin: 0 0 7px;
+        color: var(--accent);
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2.2rem, 5vw, 3.8rem);
+        font-weight: 700;
+        line-height: 0.96;
+        letter-spacing: -0.055em;
+      }
+
+      .intro {
+        max-width: 680px;
+        margin: 15px 0 0;
+        color: var(--muted);
+        font-size: 1rem;
+      }
+
+      .manage-sites-link {
+        flex: 0 0 auto;
+        padding: 11px 15px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        color: var(--ink);
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      .manage-sites-link:hover {
+        border-color: #c8c0b5;
+      }
+
+      .search-panel {
+        margin-bottom: 44px;
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--surface);
+        box-shadow: 0 12px 35px rgba(33, 27, 21, 0.045);
+      }
+
+      .search-panel label {
+        display: block;
+        margin-bottom: 9px;
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+
+      .search-row {
+        display: flex;
+        gap: 10px;
+      }
+
+      .search-row input {
+        width: 100%;
+        min-width: 0;
+        height: 48px;
+        padding: 0 15px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface-soft);
+        color: var(--ink);
+        font: inherit;
+        outline: none;
+      }
+
+      .search-row input:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(47, 111, 115, 0.12);
+      }
+
+      .search-row button {
+        padding: 0 16px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        color: var(--ink);
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .search-status {
+        min-height: 20px;
+        margin: 8px 0 -4px;
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .section {
+        margin-bottom: 54px;
+      }
+
+      .section-heading {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 20px;
+        margin-bottom: 18px;
+      }
+
+      .section-heading h2 {
+        margin: 0;
+        font-size: 1.55rem;
+        line-height: 1.1;
+        letter-spacing: -0.035em;
+      }
+
+      .count {
+        color: var(--muted);
+        font-size: 0.84rem;
+        font-weight: 600;
+      }
+
+      .sites-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .site-card {
+        position: relative;
+        min-width: 0;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: var(--surface);
+        box-shadow: 0 12px 34px rgba(33, 27, 21, 0.045);
+      }
+
+      .site-card[hidden] {
+        display: none;
+      }
+
+      .site-accent {
+        height: 6px;
+      }
+
+      .site-card-main {
+        padding: 21px;
+      }
+
+      .site-card-heading {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 18px;
+      }
+
+      .site-city {
+        margin: 0 0 5px;
+        color: var(--accent);
+        font-size: 0.74rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .site-card h3 {
+        margin: 0;
+        font-size: 1.2rem;
+        line-height: 1.2;
+        letter-spacing: -0.025em;
+      }
+
+      .site-domain {
+        margin: 5px 0 0;
+        overflow-wrap: anywhere;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .colour-dot {
+        width: 13px;
+        height: 13px;
+        margin-top: 4px;
+        border: 2px solid #fff;
+        border-radius: 999px;
+        box-shadow: 0 0 0 1px var(--line);
+        flex: 0 0 auto;
+      }
+
+      .site-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 22px;
+      }
+
+      .site-actions a {
+        min-height: 39px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 13px;
+        border-radius: 10px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      .primary-action {
+        border: 1px solid var(--ink);
+        background: var(--ink);
+        color: #fff;
+      }
+
+      .secondary-action {
+        border: 1px solid var(--line);
+        background: var(--surface-soft);
+        color: var(--ink);
+      }
+
+      .site-actions a:hover {
+        transform: translateY(-1px);
+      }
+
+      .no-results {
+        padding: 40px 20px;
+        border: 1px dashed #cdc5ba;
+        border-radius: 18px;
+        text-align: center;
+      }
+
+      .no-results h3 {
+        margin: 0 0 5px;
+      }
+
+      .no-results p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .notice {
+        max-width: 1180px;
+        margin-bottom: 30px;
+        padding: 15px 17px;
+        border-radius: 12px;
+      }
+
+      .notice-error {
+        border: 1px solid #d9aaa3;
+        background: #fff3f1;
+        color: #762f25;
+      }
+
+      .tool-groups {
+        display: grid;
+        gap: 28px;
+      }
+
+      .tool-group > h3 {
+        margin: 0 0 11px;
+        color: var(--muted);
+        font-size: 0.78rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .tools-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .tool-card {
+        position: relative;
+        min-height: 132px;
+        display: flex;
+        flex-direction: column;
+        padding: 18px 46px 18px 18px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--surface);
+        color: var(--ink);
+        text-decoration: none;
+      }
+
+      .tool-card:hover {
+        border-color: #c7beb2;
+        transform: translateY(-1px);
+      }
+
+      .tool-title {
+        margin-bottom: 7px;
+        font-weight: 700;
+      }
+
+      .tool-description {
+        color: var(--muted);
+        font-size: 0.83rem;
+        line-height: 1.45;
+      }
+
+      .tool-arrow {
+        position: absolute;
+        top: 17px;
+        right: 18px;
+        color: var(--accent);
+        font-size: 1.05rem;
+        font-weight: 700;
+      }
+
+      @media (max-width: 1040px) {
+        .sites-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .tools-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 860px) {
+        .page {
+          display: block;
+        }
+
+        .main {
+          padding: 30px 18px 56px;
+        }
+      }
+
+      @media (max-width: 620px) {
+        .page-header {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .manage-sites-link {
+          width: 100%;
+          text-align: center;
+        }
+
+        .search-row {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .search-row button {
+          min-height: 44px;
+        }
+
+        .tools-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .site-actions a {
+          flex: 1 1 auto;
+        }
+      }
+    </style>
+  </body>
+</html>
+
+
+
+

@@ -12,24 +12,69 @@ const hostname = Astro.url.hostname
   .replace(/^www\./, "")
   .toLowerCase();
 
+const querySiteId = String(
+  Astro.url.searchParams.get("site_id") || ""
+).trim();
+
+const queryCity = String(
+  Astro.url.searchParams.get("city") || ""
+)
+  .trim()
+  .toLowerCase()
+  .replace(/-/g, " ")
+  .replace(/\s+/g, " ");
+
+const queryPropertyType = String(
+  Astro.url.searchParams.get("property_type") || ""
+)
+  .trim()
+  .toLowerCase();
+
+const querySlug = String(
+  Astro.url.searchParams.get("slug") || ""
+)
+  .trim()
+  .toLowerCase();
+
 const requestedCity =
   Astro.request.method === "POST"
-    ? String((await Astro.request.clone().formData()).get("city") || "")
+    ? String(
+        (await Astro.request.clone().formData()).get("city") || ""
+      )
         .trim()
         .toLowerCase()
-    : "";
+        .replace(/-/g, " ")
+        .replace(/\s+/g, " ")
+    : queryCity;
+
+const requestedSiteId =
+  Astro.request.method === "POST"
+    ? String(
+        (await Astro.request.clone().formData()).get("site_id") || ""
+      ).trim()
+    : querySiteId;
 
 let site = null;
 
-if (requestedCity) {
-  const { data } = await supabase
+if (requestedSiteId) {
+  const { data, error } = await supabase
     .from("sites")
     .select("*")
-    .eq("domain", hostname)
-    .eq("city", requestedCity)
+    .eq("id", requestedSiteId)
     .maybeSingle();
 
+  if (error) {
+    console.error("New intent page site lookup error:", error);
+  }
+
   site = data;
+}
+
+if (!site && requestedCity) {
+  site = await getSite(
+    hostname,
+    requestedCity
+  );
 }
 
 if (!site) {
@@ -748,14 +793,27 @@ textarea:focus {
         <div class="grid-2">
           <div>
             <label>Property type</label>
-            <select name="property_type" id="typeSelect">
-              <option value="">Any</option>
-              <option value="house">House</option>
-              <option value="condo">Condo</option>
-              <option value="townhouse">Townhouse</option>
-              <option value="mobile">Mobile</option>
-              <option value="land">Land</option>
-            </select>
+          <select name="property_type" id="typeSelect">
+  <option value="" selected={!queryPropertyType}>Any</option>
+  <option value="house" selected={queryPropertyType === "house"}>
+    House
+  </option>
+  <option value="condo" selected={queryPropertyType === "condo"}>
+    Condo
+  </option>
+  <option
+    value="townhouse"
+    selected={queryPropertyType === "townhouse"}
+  >
+    Townhouse
+  </option>
+  <option value="mobile" selected={queryPropertyType === "mobile"}>
+    Mobile
+  </option>
+  <option value="land" selected={queryPropertyType === "land"}>
+    Land
+  </option>
+</select>
           </div>
 
           <div>
@@ -790,6 +848,7 @@ textarea:focus {
 <input
   name="slug_override"
   id="slugOverrideInput"
+  value={querySlug}
 />
 
   <label>H1 Heading</label>

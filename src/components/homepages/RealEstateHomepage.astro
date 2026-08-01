@@ -1055,6 +1055,18 @@ toggles={[
   data-save-search-panel
   hidden
 >
+  <label class="bc-save-search__name">
+    <span>Name this search</span>
+
+    <input
+      type="text"
+      name="searchName"
+      maxlength="80"
+      autocomplete="off"
+      placeholder="North Nanaimo Condos"
+    />
+  </label>
+
   <div class="bc-save-search__contact">
     <label>
       <span>Text me at</span>
@@ -2650,6 +2662,11 @@ document.addEventListener(
       return;
     }
 
+      const nameInput =
+      saveSearch.querySelector(
+        'input[name="searchName"]'
+      );
+
     const phoneInput =
       saveSearch.querySelector(
         'input[name="phone"]'
@@ -2660,10 +2677,126 @@ document.addEventListener(
         'input[name="email"]'
       );
 
-    const frequencyInput =
+       const frequencyInput =
       saveSearch.querySelector(
         'input[name="frequency"]:checked'
       );
+
+    const buildHomepageSearchName = () => {
+      const searchParams =
+        new URLSearchParams(
+          window.location.search
+        );
+
+      const homepage =
+        document.querySelector(
+          ".bc-homepage"
+        );
+
+      const map =
+        document.querySelector(
+          "[data-home-listing-map]"
+        );
+
+      const city =
+        String(
+          map?.getAttribute(
+            "data-city"
+          ) || ""
+        )
+          .replace(/-/g, " ")
+          .replace(/\b\w/g, (character) =>
+            character.toUpperCase()
+          );
+
+      const areas =
+        searchParams
+          .getAll("area")
+          .map((value) =>
+            value
+              .replace(/-/g, " ")
+              .replace(/\b\w/g, (character) =>
+                character.toUpperCase()
+              )
+          )
+          .filter(Boolean);
+
+      const rawType =
+        searchParams.get("type") ||
+        searchParams.get("propertyType") ||
+        searchParams.get("property_type") ||
+        "";
+
+      const typeLabels = {
+        house: "Homes",
+        home: "Homes",
+        homes: "Homes",
+        condo: "Condos",
+        condos: "Condos",
+        townhouse: "Townhomes",
+        townhome: "Townhomes",
+        mobile: "Mobile Homes",
+        land: "Land",
+      };
+
+      const type =
+        typeLabels[
+          rawType.toLowerCase()
+        ] ||
+        (rawType
+          ? rawType
+              .replace(/-/g, " ")
+              .replace(/\b\w/g, (character) =>
+                character.toUpperCase()
+              )
+          : "Homes");
+
+      const parts = [
+        areas.length === 1
+          ? areas[0]
+          : city,
+        type,
+      ].filter(Boolean);
+
+      const beds =
+        searchParams.get("beds");
+
+      if (beds) {
+        parts.push(`${beds}+ Beds`);
+      }
+
+      const maxPrice =
+        searchParams.get("maxPrice") ||
+        searchParams.get("max_price");
+
+      const minPrice =
+        searchParams.get("minPrice") ||
+        searchParams.get("min_price");
+
+      if (maxPrice) {
+        parts.push(
+          `Under $${Number(
+            maxPrice
+          ).toLocaleString()}`
+        );
+      } else if (minPrice) {
+        parts.push(
+          `$${Number(
+            minPrice
+          ).toLocaleString()}+`
+        );
+      }
+
+      return parts.join(" · ");
+    };
+
+    const searchName =
+      nameInput instanceof HTMLInputElement
+        ? (
+            nameInput.value.trim() ||
+            buildHomepageSearchName()
+          )
+        : buildHomepageSearchName();
 const channelInput =
   saveSearch.querySelector(
     'input[name="channel"]:checked'
@@ -2759,9 +2892,10 @@ const channelInput =
               "content-type":
                 "application/json",
             },
-          body: JSON.stringify({
+         body: JSON.stringify({
   siteId,
   city,
+  name: searchName,
   phone,
   email,
   channel,
@@ -2784,18 +2918,23 @@ const channelInput =
         );
       }
 
-      saveSearch.innerHTML = `
+          saveSearch.innerHTML = `
         <div class="bc-save-search__success">
           <p class="bc-save-search__eyebrow">
             Search saved
           </p>
 
           <h3>
-            You're all set.
+            🏡 You're all set!
           </h3>
 
           <p>
-            We'll send you new matches when they appear.
+            We'll ${
+              channel === "sms"
+                ? "text"
+                : "email"
+            } you as soon as a new home matches
+            <strong>${searchName}</strong>.
           </p>
         </div>
       `;
@@ -3564,6 +3703,84 @@ window.addEventListener(
       panel.hidden;
 
     panel.hidden = !opening;
+
+    if (opening) {
+      const nameInput =
+        saveSearch?.querySelector(
+          'input[name="searchName"]'
+        );
+
+      if (
+        nameInput instanceof HTMLInputElement &&
+        !nameInput.value.trim()
+      ) {
+        const searchParams =
+          new URLSearchParams(
+            window.location.search
+          );
+
+        const map =
+          document.querySelector(
+            "[data-home-listing-map]"
+          );
+
+        const city =
+          String(
+            map?.getAttribute(
+              "data-city"
+            ) || ""
+          )
+            .replace(/-/g, " ")
+            .replace(/\b\w/g, (character) =>
+              character.toUpperCase()
+            );
+
+        const areas =
+          searchParams
+            .getAll("area")
+            .map((value) =>
+              value
+                .replace(/-/g, " ")
+                .replace(/\b\w/g, (character) =>
+                  character.toUpperCase()
+                )
+            )
+            .filter(Boolean);
+
+        const rawType =
+          searchParams.get("type") ||
+          "";
+
+        const typeLabels = {
+          house: "Homes",
+          condo: "Condos",
+          townhouse: "Townhomes",
+          mobile: "Mobile Homes",
+          land: "Land",
+        };
+
+        const type =
+          typeLabels[
+            rawType.toLowerCase()
+          ] ||
+          (rawType
+            ? rawType
+                .replace(/-/g, " ")
+                .replace(/\b\w/g, (character) =>
+                  character.toUpperCase()
+                )
+            : "Homes");
+
+        nameInput.value = [
+          areas.length === 1
+            ? areas[0]
+            : city,
+          type,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+      }
+    }
 
     openButton.setAttribute(
       "aria-expanded",
@@ -4762,7 +4979,29 @@ letter-spacing: -0.055em;
   display: grid;
   grid-template-columns: 1fr auto;
 }
+.bc-save-search__name {
+  display: block;
+  margin-bottom: 18px;
+}
 
+.bc-save-search__name > span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--bc-ink);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.bc-save-search__name input {
+  width: 100%;
+  height: 46px;
+  padding: 0 13px;
+  border: 1px solid var(--bc-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--bc-ink);
+  font: inherit;
+}
 .bc-save-search__contact {
   display: flex;
   align-items: end;
