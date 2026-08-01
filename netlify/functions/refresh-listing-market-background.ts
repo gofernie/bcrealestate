@@ -52,312 +52,53 @@ function json(
   );
 }
 
-async function completeRun(
-  runId: string
-) {
-  const {
-    count: failedCount,
-    error: failedCountError,
-  } = await supabase
-    .from(
-      "listing_refresh_run_markets"
-    )
-    .select(
-      "id",
-      {
-        count: "exact",
-        head: true,
-      }
-    )
-    .eq(
-      "run_id",
-      runId
-    )
-    .eq(
-      "status",
-      "failed"
-    );
-
-  if (failedCountError) {
-    console.error(
-      "Could not count failed refresh markets",
-      {
-        runId,
-        error:
-          failedCountError.message,
-      }
-    );
-  }
-
-  const failures =
-    failedCount || 0;
-
-  const {
-    error: completeError,
-  } = await supabase
-    .from(
-      "listing_refresh_runs"
-    )
-    .update({
-      status:
-        failures > 0
-          ? "failed"
-          : "completed",
-
-      completed_at:
-        new Date()
-          .toISOString(),
-
-      error:
-        failures > 0
-          ? `${failures} market refreshes failed.`
-          : null,
-    })
-    .eq(
-      "id",
-      runId
-    )
-    .eq(
-      "status",
-      "running"
-    );
-
-  if (completeError) {
-    throw new Error(
-      `Could not complete refresh run: ${completeError.message}`
-    );
-  }
-
-  console.log(
-    "Listing refresh run finished",
-    {
-      runId,
-      failures,
-    }
-  );
-}
 
 async function dispatchNextMarket(
   request: Request,
   runId: string
 ): Promise<void> {
-  /*
-   * Find the next pending market.
-   */
-  const {
-    data: nextPending,
-    error: pendingError,
-  } = await supabase
-    .from(
-      "listing_refresh_run_markets"
-    )
-    .select(
-      `
-        id,
-        city,
-        position
-      `
-    )
-    .eq(
-      "run_id",
-      runId
-    )
-    .eq(
-      "status",
-      "pending"
-    )
-    .order(
-      "position",
-      {
-        ascending: true,
-      }
-    )
-    .limit(1)
-    .maybeSingle();
-
-  if (pendingError) {
-    throw new Error(
-      `Could not find next refresh market: ${pendingError.message}`
-    );
-  }
-
-  /*
-   * No pending market means the chain has finished.
-   */
-  if (!nextPending) {
-    await completeRun(
-      runId
-    );
-
-    return;
-  }
-
-  /*
-   * Claim it before dispatching. The status condition
-   * protects against duplicate workers dispatching the
-   * same queue item.
-   */
-  const {
-    data: claimedMarket,
-    error: claimError,
-  } = await supabase
-    .from(
-      "listing_refresh_run_markets"
-    )
-    .update({
-      status:
-        "dispatched",
-    })
-    .eq(
-      "id",
-      nextPending.id
-    )
-    .eq(
-      "run_id",
-      runId
-    )
-    .eq(
-      "status",
-      "pending"
-    )
-    .select(
-      `
-        id,
-        city,
-        position
-      `
-    )
-    .maybeSingle();
-
-  if (claimError) {
-    throw new Error(
-      `Could not claim next refresh market: ${claimError.message}`
-    );
-  }
-
-  /*
-   * Another worker may have claimed it first.
-   */
-  if (!claimedMarket) {
-    console.log(
-      "Next refresh market was already claimed",
-      {
-        runId,
-        queueItemId:
-          nextPending.id,
-      }
-    );
-
-    return;
-  }
-
   const baseUrl =
-    new URL(
-      request.url
-    ).origin;
+    new URL(request.url).origin;
 
-  try {
-    const response =
-      await fetch(
-        `${baseUrl}/.netlify/functions/refresh-listing-market-background`,
-        {
-          method: "POST",
-
-          headers: {
-            Authorization:
-              `Bearer ${CRON_SECRET}`,
-
-            "Content-Type":
-              "application/json",
-          },
-
-          body:
-            JSON.stringify({
-              city:
-                claimedMarket.city,
-
-              runId,
-
-              queueItemId:
-                claimedMarket.id,
-            }),
-        }
-      );
-
-    if (!response.ok) {
-      const responseText =
-        await response.text();
-
-      throw new Error(
-        `Background dispatch returned ${response.status}: ${responseText}`
-      );
-    }
-
-    console.log(
-      "Next listing market dispatched",
+  const response =
+    await fetch(
+      `${baseUrl}/.netlify/functions/dispatch-next-listing-market`,
       {
-        runId,
+        method: "POST",
 
-        city:
-          claimedMarket.city,
+        headers: {
+          Authorization:
+            `Bearer ${CRON_SECRET}`,
 
-        position:
-          claimedMarket.position,
+          "Content-Type":
+            "application/json",
+        },
 
-        status:
-          response.status,
-      }
-    );
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Unknown dispatch error";
-
-    console.error(
-      "Could not dispatch next listing market",
-      {
-        runId,
-
-        city:
-          claimedMarket.city,
-
-        error:
-          message,
+        body:
+          JSON.stringify({
+            runId,
+          }),
       }
     );
 
-    /*
-     * Record this market as failed, then continue to the
-     * following market instead of killing the whole chain.
-     */
-    await supabase
-      .from(
-        "listing_refresh_run_markets"
-      )
-      .update({
-        status:
-          "failed",
+  if (!response.ok) {
+    const responseText =
+      await response.text();
 
-        completed_at:
-          new Date()
-            .toISOString(),
-
-        error:
-          message,
-      })
-      .eq(
-        "id",
-        claimedMarket.id
-      );
-
-    await dispatchNextMarket(
-      request,
-      runId
+    throw new Error(
+      `Next-market dispatcher returned ${response.status}: ${responseText}`
     );
   }
-}
 
+  console.log(
+    "Next-market dispatcher accepted",
+    {
+      runId,
+      status:
+        response.status,
+    }
+  );
+}
 export default async function handler(
   request: Request
 ) {
