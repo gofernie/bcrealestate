@@ -1838,7 +1838,6 @@ const cleanupCity = String(
   .trim()
   .toLowerCase();
 
-console.log(`Marking existing ${cleanupCity} rows inactive before rebuild...`);
 if (!cleanupCity) {
   throw new Error(
     "Could not determine cleanup city. Rebuild stopped before changing listing_rows."
@@ -1850,20 +1849,18 @@ if (uniqueRows.length === 0) {
     `No normalized rows were created for ${cleanupCity}. Existing listings were not changed.`
   );
 }
-const { error: preCleanError } = await supabase
-  .from("listing_rows")
-  .update({ status: "inactive" })
-  .eq("normalized_city", cleanupCity)
-  .eq("status", "A");
 
-if (preCleanError) {
-  console.error("Pre-clean failed:", preCleanError);
-} else {
-  console.log("Existing active rows marked inactive.");
-}
+console.log(
+  `Upserting complete active inventory for ${cleanupCity} before deactivating missing listings...`
+);
 
 for (let i = 0; i < uniqueRows.length; i += BATCH) {
-  const batch = uniqueRows.slice(i, i + BATCH);
+  const batch = uniqueRows
+  .slice(i, i + BATCH)
+  .map((row) => ({
+    ...row,
+    status: "A",
+  }));
 
  const { error: upsertError } = await supabase
   .from("listing_rows")
@@ -1882,7 +1879,21 @@ console.log(
 }
 
 console.log("Done.");
+const activeIds = uniqueRows.map((row) => row.id);
 
+const { error: cleanupError } = await supabase
+  .from("listing_rows")
+  .update({ status: "inactive" })
+  .eq("normalized_city", cleanupCity)
+  .eq("status", "A")
+  .not("id", "in", `(${activeIds.join(",")})`);
+
+if (cleanupError) {
+  console.error(
+    "Post-cleanup failed:",
+    cleanupError
+  );
+}
 return {
   ok: true,
   city: cleanupCity,

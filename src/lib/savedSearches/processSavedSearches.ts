@@ -78,6 +78,33 @@ const {
        * "daily" searches leave them
        * pending for the roundup job.
        */
+
+      if (
+  savedSearch.frequency === "update" &&
+  discovery.discovered > 25
+) {
+  console.error(
+    "Saved search discovery spike blocked",
+    {
+      id: savedSearch.id,
+      city: savedSearch.city,
+      matched: discovery.matched,
+      discovered: discovery.discovered,
+    }
+  );
+
+  results.push({
+    id: savedSearch.id,
+    city: savedSearch.city,
+    frequency: savedSearch.frequency,
+    matched: discovery.matched,
+    discovered: discovery.discovered,
+    sent: 0,
+    blocked: true,
+  });
+
+  continue;
+}
       if (
         savedSearch.frequency ===
           "update" &&
