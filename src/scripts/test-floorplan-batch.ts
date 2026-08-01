@@ -19,6 +19,10 @@ if (!process.env.ANTHROPIC_API_KEY) {
 
 const LIMIT = Number(process.argv[2] || 10);
 
+const CITY = String(process.argv[3] || "nanaimo")
+  .trim()
+  .toLowerCase();
+
 function normalizeImageUrl(value: any): string {
   if (!value) return "";
 
@@ -308,7 +312,7 @@ async function saveFloorplans(
 
 async function main() {
   console.log(
-    `Loading ${LIMIT} Nanaimo listings with images...\n`
+  `Loading ${LIMIT} ${CITY} listings with images...\n`
   );
 
 const { data: listings, error } = await supabase
@@ -316,16 +320,11 @@ const { data: listings, error } = await supabase
   .select(
     "id, address, image_url, images, normalized_city, status, listed_at"
   )
-  .eq("normalized_city", "nanaimo")
+ .eq("normalized_city", CITY)
   .eq("status", "A")
   .not("images", "is", null)
   .not("listed_at", "is", null)
-  .gte(
-    "listed_at",
-    new Date(
-      Date.now() - 120 * 24 * 60 * 60 * 1000
-    ).toISOString()
-  )
+
   .order("listed_at", { ascending: false })
   .limit(Math.max(LIMIT * 10, 100));
 

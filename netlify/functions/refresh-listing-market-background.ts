@@ -19,18 +19,13 @@ const CRON_SECRET =
 
 const supabase =
   createClient(
-    process.env
-      .PUBLIC_SUPABASE_URL!,
-    process.env
-      .SUPABASE_SERVICE_ROLE_KEY!
+    process.env.PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
 type RefreshRequest = {
   city?: string;
   boardId?: string;
-
-  runId?: string;
-  queueItemId?: string;
 };
 
 function json(
@@ -52,53 +47,6 @@ function json(
   );
 }
 
-
-async function dispatchNextMarket(
-  request: Request,
-  runId: string
-): Promise<void> {
-  const baseUrl =
-    new URL(request.url).origin;
-
-  const response =
-    await fetch(
-      `${baseUrl}/.netlify/functions/dispatch-next-listing-market`,
-      {
-        method: "POST",
-
-        headers: {
-          Authorization:
-            `Bearer ${CRON_SECRET}`,
-
-          "Content-Type":
-            "application/json",
-        },
-
-        body:
-          JSON.stringify({
-            runId,
-          }),
-      }
-    );
-
-  if (!response.ok) {
-    const responseText =
-      await response.text();
-
-    throw new Error(
-      `Next-market dispatcher returned ${response.status}: ${responseText}`
-    );
-  }
-
-  console.log(
-    "Next-market dispatcher accepted",
-    {
-      runId,
-      status:
-        response.status,
-    }
-  );
-}
 export default async function handler(
   request: Request
 ) {
@@ -181,24 +129,6 @@ export default async function handler(
         ""
     ).trim();
 
-  const runId =
-    String(
-      requestUrl.searchParams.get(
-        "runId"
-      ) ||
-        body.runId ||
-        ""
-    ).trim();
-
-  const queueItemId =
-    String(
-      requestUrl.searchParams.get(
-        "queueItemId"
-      ) ||
-        body.queueItemId ||
-        ""
-    ).trim();
-
   if (!city) {
     return json(
       {
@@ -210,91 +140,6 @@ export default async function handler(
     );
   }
 
-  /*
-   * Queue-based requests must atomically transition from
-   * dispatched to running.
-   *
-   * A duplicate Netlify invocation will not rerun the market.
-   */
-  if (
-    runId &&
-    queueItemId
-  ) {
-    const {
-      data: claimedQueueItem,
-      error: queueClaimError,
-    } = await supabase
-      .from(
-        "listing_refresh_run_markets"
-      )
-      .update({
-        status:
-          "running",
-
-        started_at:
-          new Date()
-            .toISOString(),
-
-        error:
-          null,
-      })
-      .eq(
-        "id",
-        queueItemId
-      )
-      .eq(
-        "run_id",
-        runId
-      )
-      .eq(
-        "city",
-        city
-      )
-      .eq(
-        "status",
-        "dispatched"
-      )
-      .select(
-        "id, status"
-      )
-      .maybeSingle();
-
-    if (queueClaimError) {
-      return json(
-        {
-          ok: false,
-          error:
-            queueClaimError.message,
-        },
-        500
-      );
-    }
-
-    if (!claimedQueueItem) {
-      console.log(
-        "Duplicate or previously claimed refresh ignored",
-        {
-          runId,
-          queueItemId,
-          city,
-        }
-      );
-
-      return json(
-        {
-          ok: true,
-          ignored: true,
-          reason:
-            "Queue item was already claimed or completed.",
-          runId,
-          queueItemId,
-          city,
-        },
-        202
-      );
-    }
-  }
-
   console.log(
     "Starting background listing refresh",
     {
@@ -302,12 +147,6 @@ export default async function handler(
 
       boardId:
         boardId || null,
-
-      runId:
-        runId || null,
-
-      queueItemId:
-        queueItemId || null,
     }
   );
 
@@ -346,9 +185,6 @@ export default async function handler(
 
         boardId:
           boardId || null,
-
-        runId:
-          runId || null,
 
         result,
       }
@@ -462,51 +298,6 @@ export default async function handler(
       }
     }
 
-    /*
-     * Mark this market complete before starting the next.
-     */
-    if (
-      runId &&
-      queueItemId
-    ) {
-      const {
-        error: queueCompleteError,
-      } = await supabase
-        .from(
-          "listing_refresh_run_markets"
-        )
-        .update({
-          status:
-            "completed",
-
-          completed_at:
-            new Date()
-              .toISOString(),
-
-          error:
-            null,
-        })
-        .eq(
-          "id",
-          queueItemId
-        )
-        .eq(
-          "run_id",
-          runId
-        );
-
-      if (queueCompleteError) {
-        throw new Error(
-          `Could not complete queue item: ${queueCompleteError.message}`
-        );
-      }
-
-      await dispatchNextMarket(
-        request,
-        runId
-      );
-    }
-
     return json(result);
   } catch (error) {
     const message =
@@ -544,12 +335,6 @@ export default async function handler(
         boardId:
           boardId || null,
 
-        runId:
-          runId || null,
-
-        queueItemId:
-          queueItemId || null,
-
         message,
 
         status,
@@ -563,83 +348,6 @@ export default async function handler(
       }
     );
 
-    /*
-     * A failed market does not stop later markets.
-     */
-    if (
-      runId &&
-      queueItemId
-    ) {
-      try {
-        await supabase
-          .from(
-            "listing_refresh_run_markets"
-          )
-          .update({
-            status:
-              "failed",
-
-            completed_at:
-              new Date()
-                .toISOString(),
-
-            error:
-              message,
-          })
-          .eq(
-            "id",
-            queueItemId
-          )
-          .eq(
-            "run_id",
-            runId
-          );
-
-        await dispatchNextMarket(
-          request,
-          runId
-        );
-      } catch (
-        continuationError
-      ) {
-        const continuationMessage =
-          continuationError instanceof
-          Error
-            ? continuationError.message
-            : "Unknown continuation error";
-
-        console.error(
-          "Could not continue listing refresh chain",
-          {
-            runId,
-            city,
-            error:
-              continuationMessage,
-          }
-        );
-
-        await supabase
-          .from(
-            "listing_refresh_runs"
-          )
-          .update({
-            status:
-              "failed",
-
-            completed_at:
-              new Date()
-                .toISOString(),
-
-            error:
-              `Chain continuation failed after ${city}: ${continuationMessage}`,
-          })
-          .eq(
-            "id",
-            runId
-          );
-      }
-    }
-
     return json(
       {
         ok: false,
@@ -647,9 +355,6 @@ export default async function handler(
 
         boardId:
           boardId || null,
-
-        runId:
-          runId || null,
 
         error:
           message,
