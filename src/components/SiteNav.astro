@@ -277,16 +277,17 @@ const typeLinks: NavItem[] =
           return null;
         }
 
-    const labels: Record<
-  string,
-  string
-> = {
-  homes: "Homes",
-  condos: "Condos",
-  townhomes: "Townhomes",
-  "mobile-homes": "Mobile Homes",
-  land: "Land",
-};
+        const labels: Record<
+          string,
+          string
+        > = {
+          homes: "Homes",
+          condos: "Condos",
+          townhomes: "Townhomes",
+          "mobile-homes":
+            "Mobile Homes",
+          land: "Land",
+        };
 
         return {
           label:
@@ -304,6 +305,31 @@ const typeLinks: NavItem[] =
     .filter(
       Boolean
     ) as NavItem[];
+
+const CORE_NAV_ORDER: Record<
+  string,
+  number
+> = {
+  Homes: 0,
+  Condos: 1,
+  Townhomes: 2,
+  "Mobile Homes": 3,
+  Land: 4,
+};
+
+typeLinks.sort(
+  (a, b) =>
+    (
+      CORE_NAV_ORDER[
+        a.label
+      ] ?? 999
+    ) -
+    (
+      CORE_NAV_ORDER[
+        b.label
+      ] ?? 999
+    )
+);
 
 const corePageSlugs = new Set([
   "homes",
@@ -464,9 +490,9 @@ const finalNavLinks: NavItem[] =
       aria-expanded="false"
       aria-controls="site-nav-links"
     >
-      <span aria-hidden="true">
-        &equiv;
-      </span>
+   <span aria-hidden="true">
+  ☰
+</span>
     </button>
 
     <div
@@ -558,7 +584,10 @@ const finalNavLinks: NavItem[] =
     </div>
   </div>
 </nav>
-
+<div
+  class="site-nav__backdrop"
+  aria-hidden="true"
+></div>
 {
   !isProvinceNav &&
   showAreaNav &&
@@ -602,20 +631,98 @@ const finalNavLinks: NavItem[] =
       ".site-nav__links"
     );
 
+  const navBackdrop =
+    document.querySelector(
+      ".site-nav__backdrop"
+    );
+
+  const navIcon =
+    navToggle?.querySelector(
+      "span"
+    );
+
+  const closeMenu = () => {
+    navLinks?.classList.remove(
+      "open"
+    );
+
+    navBackdrop?.classList.remove(
+      "open"
+    );
+
+    navToggle?.setAttribute(
+      "aria-expanded",
+      "false"
+    );
+
+    document.body.classList.remove(
+      "site-nav-open"
+    );
+
+    if (navIcon) {
+      navIcon.textContent = "☰";
+    }
+  };
+
+  const openMenu = () => {
+    navLinks?.classList.add(
+      "open"
+    );
+
+    navBackdrop?.classList.add(
+      "open"
+    );
+
+    navToggle?.setAttribute(
+      "aria-expanded",
+      "true"
+    );
+
+    document.body.classList.add(
+      "site-nav-open"
+    );
+
+    if (navIcon) {
+      navIcon.textContent = "×";
+    }
+  };
+
   navToggle?.addEventListener(
     "click",
     () => {
       const isOpen =
-        navLinks?.classList.toggle(
+        navLinks?.classList.contains(
           "open"
         );
 
-      navToggle.setAttribute(
-        "aria-expanded",
-        isOpen
-          ? "true"
-          : "false"
+      if (isOpen) {
+        closeMenu();
+      } else {
+        openMenu();
+      }
+    }
+  );
+
+  navBackdrop?.addEventListener(
+    "click",
+    closeMenu
+  );
+
+  navLinks
+    ?.querySelectorAll("a")
+    .forEach((link) => {
+      link.addEventListener(
+        "click",
+        closeMenu
       );
+    });
+
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key === "Escape") {
+        closeMenu();
+      }
     }
   );
 </script>
@@ -737,10 +844,15 @@ const finalNavLinks: NavItem[] =
     padding: 6px 0;
     flex-wrap: wrap;
   }
-
+.site-nav__backdrop {
+  display: none;
+}
   @media (
     max-width: 760px
   ) {
+    .site-nav {
+  z-index: 140;
+}
     .site-nav__inner,
     .site-subnav__inner {
       width: calc(
@@ -761,62 +873,164 @@ const finalNavLinks: NavItem[] =
       gap: 14px;
     }
 
-    .site-nav__toggle {
-      display:
-        inline-flex !important;
-      width: 42px;
-      height: 38px;
-      align-items: center;
-      justify-content: center;
-      margin-left: auto;
-      border:
-        1px solid
-        var(--line-warm);
-      border-radius: 6px;
-      background:
-        var(--surface);
-      color: var(--ink);
-      cursor: pointer;
-      font-size: 1.2rem;
-    }
+  .site-nav__toggle {
+  position: relative;
+  z-index: 130;
 
-    .site-nav__links {
-      display:
-        none !important;
-    }
+  display:
+    inline-flex !important;
+  width: 42px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  border:
+    1px solid
+    var(--line-warm);
+  border-radius: 6px;
+  background:
+    var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 1.2rem;
+}
 
-    .site-nav__links.open {
-      position: absolute;
-      top: 58px;
-      right: 0;
-      left: 0;
-      display:
-        grid !important;
-      gap: 8px;
-      padding: 12px;
-      border:
-        1px solid
-        var(--line-warm);
-      border-radius: 12px;
-      background: #fff;
-      box-shadow:
-        0 18px 50px
-        rgba(
-          0,
-          0,
-          0,
-          0.12
-        );
-    }
+ .site-nav__links {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 120;
 
-    .site-nav__links.open a {
-      padding: 12px 14px;
-      border:
-        1px solid
-        var(--line-warm);
-      background:
-        var(--surface);
-    }
+  display: flex !important;
+
+  width: min(
+    86vw,
+    360px
+  );
+  max-width: 360px;
+
+  height: 100dvh;
+
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+
+  gap: 6px;
+
+  padding:
+    84px 18px 24px;
+
+  overflow-y: auto;
+
+  background: #fff;
+
+  box-shadow:
+    0 0 40px
+    rgba(
+      0,
+      0,
+      0,
+      0.18
+    );
+
+  transform:
+    translateX(-100%);
+
+  visibility: hidden;
+  pointer-events: none;
+
+  transition:
+    transform .22s ease,
+    visibility 0s linear .22s;
+}
+
+ 
+
+.site-nav__links.open {
+  transform:
+    translateX(0);
+
+  visibility: visible;
+  pointer-events: auto;
+
+  transition:
+    transform .22s ease;
+}
+
+.site-nav__links.open a {
+  display: flex;
+
+  width: 100%;
+  min-height: 50px;
+
+  box-sizing: border-box;
+
+  align-items: center;
+
+  padding:
+    13px 15px;
+
+  border: 0;
+  border-radius: 9px;
+
+  background:
+    transparent;
+
+  color:
+    var(--ink);
+
+  font-size: 1rem;
+  font-weight: 700;
+
+  text-align: left;
+}
+
+.site-nav__links.open a:hover {
+  background:
+    var(--accent-soft);
+
+  color:
+    var(--accent);
+}
+
+.site-nav__links.open a.active {
+  background:
+    var(--accent);
+
+  color: #fff;
+}
+
+.site-nav__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+
+  display: block;
+
+  background:
+    rgba(
+      0,
+      0,
+      0,
+      0.38
+    );
+
+  opacity: 0;
+  pointer-events: none;
+
+  transition:
+    opacity 220ms ease;
+}
+
+.site-nav__backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+:global(body.site-nav-open) {
+  overflow: hidden;
+}
 
     .site-subnav__inner {
       overflow-x: auto;
