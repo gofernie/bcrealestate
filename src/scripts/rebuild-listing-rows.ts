@@ -1144,39 +1144,111 @@ return "unknown";
 };
 
 const normalizeImages = (listing: any) => {
+  const imageInsights = [
+    ...(Array.isArray(listing?.imageInsights?.images)
+      ? listing.imageInsights.images
+      : []),
+
+    ...(Array.isArray(listing?.raw?.imageInsights?.images)
+      ? listing.raw.imageInsights.images
+      : []),
+  ];
+
+  const getImageKey = (value: any) => {
+    const raw = String(value || "")
+      .split("?")[0]
+      .trim()
+      .toLowerCase();
+
+    return raw.split("/").pop() || raw;
+  };
+
+  const insightByImage = new Map<string, any>();
+
+  for (const insight of imageInsights) {
+    const insightImage =
+      insight?.image ||
+      insight?.url ||
+      insight?.highRes ||
+      insight?.mediumRes ||
+      insight?.lowRes ||
+      "";
+
+    const key = getImageKey(insightImage);
+
+    if (!key) continue;
+
+    insightByImage.set(key, insight?.classification || null);
+  }
+
   const candidates = [
     listing?.images,
     listing?.photo_urls,
     listing?.photos,
     listing?.imageUrls,
     listing?.raw?.images,
-    listing?.raw?.photos
+    listing?.raw?.photos,
   ];
 
-  const images: string[] = [];
+  const images: any[] = [];
+  const seen = new Set<string>();
+
+  const addImage = (item: any) => {
+    const url =
+      typeof item === "string"
+        ? item
+        : item?.highRes ||
+          item?.mediumRes ||
+          item?.lowRes ||
+          item?.url ||
+          item?.image ||
+          item?.src ||
+          item?.href ||
+          item?.large ||
+          item?.medium ||
+          item?.small ||
+          "";
+
+    if (!url) return;
+
+    const stringUrl = String(url).trim();
+    const key = getImageKey(stringUrl);
+
+    if (!key || seen.has(key)) return;
+
+    seen.add(key);
+
+    const classification =
+      typeof item === "object" && item
+        ? item.classification ||
+          insightByImage.get(key) ||
+          null
+        : insightByImage.get(key) || null;
+
+    images.push({
+      url: stringUrl,
+      ...(classification
+        ? {
+            classification: {
+              imageOf: String(
+                classification.imageOf || ""
+              ).trim(),
+
+              prediction:
+                Number(
+                  classification.prediction
+                ) || 0,
+            },
+          }
+        : {}),
+    });
+  };
 
   for (const candidate of candidates) {
-    if (!Array.isArray(candidate)) {
-      continue;
-    }
+    if (!Array.isArray(candidate)) continue;
 
     for (const item of candidate) {
-      const url =
-        typeof item === "string"
-          ? item
-          : item?.url ||
-            item?.highRes ||
-            item?.mediumRes ||
-            item?.lowRes ||
-            item?.src ||
-            item?.href ||
-            item?.large ||
-            item?.medium ||
-            item?.small;
-
-      if (url) {
-        images.push(String(url));
-      }
+      addImage(item);
     }
   }
 
@@ -1187,31 +1259,34 @@ const normalizeImages = (listing: any) => {
     listing?.image ||
     listing?.raw?.image_url;
 
-  if (typeof single === "string" && single) {
-    images.unshift(single);
-  } else if (
-    single &&
-    typeof single === "object"
-  ) {
-    const singleUrl =
-      single?.url ||
-      single?.highRes ||
-      single?.mediumRes ||
-      single?.lowRes ||
-      single?.src;
+  if (single) {
+    const before = images.length;
 
-    if (singleUrl) {
-      images.unshift(
-        String(singleUrl)
-      );
+    addImage(single);
+
+    if (images.length > before) {
+      const added = images.pop();
+
+      if (added) {
+        images.unshift(added);
+      }
     }
   }
 
-  return [
-    ...new Set(
-      images.filter(Boolean)
-    )
-  ];
+  /*
+   * Some Repliers responses may include imageInsights even when the
+   * ordinary image collection is absent. Retain those as a fallback.
+   */
+  if (!images.length) {
+    for (const insight of imageInsights) {
+      addImage({
+        url: insight?.image || insight?.url || "",
+        classification: insight?.classification,
+      });
+    }
+  }
+
+  return images;
 };
 
 const getSqft = (listing: any) => {
@@ -1620,10 +1695,47 @@ if (rowAddress.includes("4474 wellington rd")) {
   normalized_area = "north nanaimo";
 }
 }
-      const images = normalizeImages(listing).map((url) => {
-  const cleaned = url.startsWith("/") ? url : `/${url.replace(/^https?:\/\/[^/]+/, "")}`;
-  return `https://cdn.repliers.io${cleaned}`;
-});
+     const images = normalizeImages(listing).map((image: any) => {
+  const rawUrl =
+    typeof image === "string"
+      ? image
+      : image?.url ||
+        image?.highRes ||
+        image?.mediumRes ||
+        image?.lowRes ||
+        "";
+
+  if (!rawUrl) return null;
+
+  const normalizedUrl =
+    rawUrl.startsWith("http://") ||
+    rawUrl.startsWith("https://")
+      ? rawUrl
+      : `https://cdn.repliers.io${
+          rawUrl.startsWith("/")
+            ? rawUrl
+            : `/${rawUrl}`
+        }`;
+
+  return {
+    url: normalizedUrl,
+
+    ...(image?.classification
+      ? {
+          classification: {
+            imageOf: String(
+              image.classification.imageOf || ""
+            ).trim(),
+
+            prediction:
+              Number(
+                image.classification.prediction
+              ) || 0,
+          },
+        }
+      : {}),
+  };
+}).filter(Boolean);
 
       const freshLat = getLat(listing);
       const freshLng = getLng(listing);
@@ -1643,10 +1755,18 @@ const finalImages =
     ? images
     : fallbackImages?.images || [];
 
+const firstFinalImage =
+  finalImages[0];
+
 const finalImageUrl =
-  finalImages[0] ||
-  fallbackImages?.image_url ||
-  null;
+  typeof firstFinalImage === "string"
+    ? firstFinalImage
+    : firstFinalImage?.url ||
+      firstFinalImage?.highRes ||
+      firstFinalImage?.mediumRes ||
+      firstFinalImage?.lowRes ||
+      fallbackImages?.image_url ||
+      null;
 
      rowMap.set(id, {
   id,

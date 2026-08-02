@@ -58,7 +58,7 @@ export const GET: APIRoute = async () => {
         pageNum: String(pageNum),
         resultsPerPage: String(resultsPerPage),
         hasImages: "true",
-        include: "details,address,images"
+       include: "details,address,images,imageInsights"
       });
 
       console.log("REFRESH REPLIERS:", query.toString());
@@ -75,39 +75,63 @@ export const GET: APIRoute = async () => {
         throw new Error(`Repliers error ${res.status}: ${text}`);
       }
 
-      const json = await res.json();
-      const listings = json?.listings || [];
+     const json = await res.json();
 
-      if (!listings.length) {
-        keepGoing = false;
-        break;
-      }
+console.log(
+  "FIRST LISTING KEYS",
+  Object.keys(json?.listings?.[0] || {})
+);
 
-      const rows = listings
-        .map((listing: any) => {
-          const id = getListingId(listing);
-          if (!id) return null;
+console.log(
+  "FIRST IMAGE",
+  JSON.stringify(
+    json?.listings?.[0]?.images?.[0] ?? null,
+    null,
+    2
+  )
+);
 
-          return {
-            id,
-            city: listing.address?.city || city,
-            area: listing.address?.area || null,
-            class: listing.class || null,
-            type:
-              listing.details?.propertySubType ||
-              listing.propertySubType ||
-              listing.details?.propertyType ||
-              listing.propertyType ||
-              listing.type ||
-              null,
-            price: listing.listPrice || null,
-            beds: getBeds(listing),
-            baths: getBaths(listing),
-            raw: listing,
-            updated_at: new Date().toISOString()
-          };
-        })
-        .filter(Boolean);
+const listings = json?.listings || [];
+
+if (!listings.length) {
+  keepGoing = false;
+  break;
+}
+
+const mappedRows = listings
+  .map((listing: any) => {
+    const id = getListingId(listing);
+    if (!id) return null;
+
+    return {
+      id,
+      city: listing.address?.city || city,
+      area: listing.address?.area || null,
+      class: listing.class || null,
+      type:
+        listing.details?.propertySubType ||
+        listing.propertySubType ||
+        listing.details?.propertyType ||
+        listing.propertyType ||
+        listing.type ||
+        null,
+      price: listing.listPrice || null,
+      beds: getBeds(listing),
+      baths: getBaths(listing),
+      raw: listing,
+      updated_at: new Date().toISOString()
+    };
+  })
+  .filter(Boolean);
+
+const rows = [
+  ...new Map(
+    mappedRows.map((row: any) => [
+      String(row.id),
+      row
+    ])
+  ).values()
+];
 
       if (rows.length) {
         const { error } = await supabase
