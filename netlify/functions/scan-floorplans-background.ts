@@ -57,7 +57,7 @@ const limit = Math.max(
     Number.isFinite(requestedLimit)
       ? requestedLimit
       : 50,
-    50
+    1000
   )
 );
 
