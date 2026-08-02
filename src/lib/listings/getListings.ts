@@ -26,6 +26,10 @@ primaryOnMain?: boolean;
 bedsTogether?: boolean;
 fourBedsTogether?: boolean;
 
+hasFloorplan?: boolean;
+hasUpdatedKitchen?: boolean;
+hasDetachedShop?: boolean;
+
   sort?: ListingSort | string;
 
   page?: number;
@@ -220,8 +224,18 @@ const primaryOnMain =
 
 const bedsTogether =
   options.bedsTogether === true;
-  const fourBedsTogether =
+
+const fourBedsTogether =
   options.fourBedsTogether === true;
+
+const hasFloorplan =
+  options.hasFloorplan === true;
+
+const hasUpdatedKitchen =
+  options.hasUpdatedKitchen === true;
+
+const hasDetachedShop =
+  options.hasDetachedShop === true;
 
   const sort =
     normalizeSort(options.sort);
@@ -348,6 +362,28 @@ if (fourBedsTogether) {
     true
   );
 }
+
+if (hasFloorplan) {
+  query = query.eq(
+    "has_floorplan",
+    true
+  );
+}
+
+if (hasUpdatedKitchen) {
+  query = query.eq(
+    "has_updated_kitchen",
+    true
+  );
+}
+
+if (hasDetachedShop) {
+  query = query.eq(
+    "has_detached_shop",
+    true
+  );
+}
+
     if (sort === "price-low") {
       query = query
         .order("price", {
@@ -523,6 +559,34 @@ if (primaryOnMain) {
 if (bedsTogether) {
   query = query.eq(
     "three_plus_beds_same_floor",
+    true
+  );
+}
+
+if (fourBedsTogether) {
+  query = query.eq(
+    "four_plus_beds_same_floor",
+    true
+  );
+}
+
+if (hasFloorplan) {
+  query = query.eq(
+    "has_floorplan",
+    true
+  );
+}
+
+if (hasUpdatedKitchen) {
+  query = query.eq(
+    "has_updated_kitchen",
+    true
+  );
+}
+
+if (hasDetachedShop) {
+  query = query.eq(
+    "has_detached_shop",
     true
   );
 }

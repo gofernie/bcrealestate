@@ -85,6 +85,28 @@ fourBedsTogether:
       "fourBedsTogether"
     )
   ),
+
+hasFloorplan:
+  optionalBoolean(
+    params.get(
+      "hasFloorplan"
+    )
+  ),
+
+hasUpdatedKitchen:
+  optionalBoolean(
+    params.get(
+      "hasUpdatedKitchen"
+    )
+  ),
+
+hasDetachedShop:
+  optionalBoolean(
+    params.get(
+      "hasDetachedShop"
+    )
+  ),
+
     sort:
       (
         params.get("sort") ||

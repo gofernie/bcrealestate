@@ -23,6 +23,10 @@ primaryOnMain?: boolean;
 bedsTogether?: boolean;
 fourBedsTogether?: boolean;
 
+hasFloorplan?: boolean;
+hasUpdatedKitchen?: boolean;
+hasDetachedShop?: boolean;
+
   sort?: ListingSort;
 
   page?: number;

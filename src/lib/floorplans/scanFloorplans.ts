@@ -140,7 +140,7 @@ async function makeCheapThumbnail(
   return thumbnail.toString("base64");
 }
 
-async function detectFloorplans(
+async function detectImageFeatures(
   anthropic: Anthropic,
   images: string[]
 ) {
@@ -191,7 +191,13 @@ async function detectFloorplans(
     text: `
 These are small thumbnails from a real-estate listing.
 
-Identify which images are floorplans.
+Identify:
+
+1. Images that are floorplans.
+2. Images that clearly show a detached shop.
+3. Images that clearly show an updated kitchen.
+
+FLOORPLAN
 
 A floorplan is an overhead architectural drawing showing the
 arrangement of rooms, walls, doors, stairs, dimensions, or
@@ -230,8 +236,6 @@ Do NOT count:
 - advertisements
 - virtual staging
 
-IMPORTANT:
-
 A valid floorplan MUST primarily show the INTERNAL architectural
 layout of a building.
 
@@ -248,7 +252,58 @@ BUILDING LOCATION, or SURROUNDING NEIGHBOURHOOD, it is NOT a
 floorplan.
 
 When uncertain whether an image is an interior floorplan or an
-aerial/site/property plan, classify it as NOT a floorplan.
+aerial, site, or property plan, classify it as NOT a floorplan.
+
+DETACHED SHOP
+
+A detached shop is a substantial accessory building that is
+separate from the main house and appears intended for use as a:
+- workshop
+- mechanic shop
+- large work garage
+- fabrication or hobby building
+- substantial detached garage with shop-like use
+
+Count it only when the image provides reasonable visual evidence
+that the building is detached from the main house.
+
+Do NOT count:
+- attached garages
+- carports
+- ordinary garden sheds
+- small storage sheds
+- barns unless they clearly function as a workshop
+- interior garage photos where detachment cannot be determined
+- neighbouring buildings
+- the main house
+- detached guest houses without obvious shop or garage use
+
+When uncertain, do NOT classify it as a detached shop.
+
+UPDATED KITCHEN
+
+An updated kitchen is a real kitchen photograph that appears
+meaningfully renovated or modernized.
+
+Strong evidence may include several of:
+- modern flat-panel or shaker-style cabinetry
+- stone, quartz, or similarly modern countertops
+- a contemporary backsplash
+- modern integrated or stainless appliances
+- updated lighting
+- a large modern island
+- coordinated contemporary finishes
+- a recently renovated overall appearance
+
+Do NOT count:
+- merely clean kitchens
+- older kitchens with only stainless appliances
+- kitchens where the age or condition is unclear
+- virtual staging or renderings
+- photographs that do not primarily show the kitchen
+- partially renovated kitchens with mostly dated finishes
+
+When uncertain, do NOT classify it as an updated kitchen.
 
 Return ONLY valid JSON:
 
@@ -258,13 +313,27 @@ Return ONLY valid JSON:
       "image_number": 12,
       "confidence": 0.98
     }
+  ],
+  "detached_shops": [
+    {
+      "image_number": 21,
+      "confidence": 0.94
+    }
+  ],
+  "updated_kitchens": [
+    {
+      "image_number": 7,
+      "confidence": 0.96
+    }
   ]
 }
 
-If none:
+If none are found:
 
 {
-  "floorplans": []
+  "floorplans": [],
+  "detached_shops": [],
+  "updated_kitchens": []
 }
 `.trim(),
   });
@@ -272,7 +341,7 @@ If none:
   const message =
     await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 250,
+      max_tokens: 450,
 
       messages: [
         {
@@ -298,11 +367,25 @@ If none:
     cleanJson(result)
   );
 
-  return Array.isArray(
-    parsed.floorplans
-  )
-    ? parsed.floorplans
-    : [];
+  return {
+    floorplans: Array.isArray(
+      parsed.floorplans
+    )
+      ? parsed.floorplans
+      : [],
+
+    detachedShops: Array.isArray(
+      parsed.detached_shops
+    )
+      ? parsed.detached_shops
+      : [],
+
+    updatedKitchens: Array.isArray(
+      parsed.updated_kitchens
+    )
+      ? parsed.updated_kitchens
+      : [],
+  };
 }
 
 export async function scanNewFloorplans({
@@ -441,6 +524,8 @@ export async function scanNewFloorplans({
 
   let scanned = 0;
   let floorplansFound = 0;
+  let detachedShopsFound = 0;
+  let updatedKitchensFound = 0;
   const failures: any[] = [];
 
   for (
@@ -458,10 +543,29 @@ export async function scanNewFloorplans({
         `Scanning MLS ${listing.id} — ${images.length} images`
       );
 
-      const floorplans =
-        await detectFloorplans(
-          anthropic,
-          images
+      const {
+        floorplans,
+        detachedShops,
+        updatedKitchens,
+      } = await detectImageFeatures(
+        anthropic,
+        images
+      );
+
+      const confidentDetachedShops =
+        detachedShops.filter(
+          (shop: any) =>
+            Number(shop?.confidence || 0) >= 0.9 &&
+            Number(shop?.image_number || 0) >= 1 &&
+            Number(shop?.image_number || 0) <= images.length
+        );
+
+      const confidentUpdatedKitchens =
+        updatedKitchens.filter(
+          (kitchen: any) =>
+            Number(kitchen?.confidence || 0) >= 0.9 &&
+            Number(kitchen?.image_number || 0) >= 1 &&
+            Number(kitchen?.image_number || 0) <= images.length
         );
 
       const {
@@ -498,8 +602,6 @@ export async function scanNewFloorplans({
         console.log(
           `MLS ${listing.id}: no floorplan`
         );
-
-        continue;
       }
 
       const rows =
@@ -574,6 +676,257 @@ export async function scanNewFloorplans({
           `MLS ${listing.id}: saved ${rows.length} floorplan(s)`
         );
       }
+
+      if (confidentDetachedShops.length) {
+        const shopByUrl =
+          new Map<string, number>();
+
+        for (const shop of confidentDetachedShops) {
+          const imageNumber =
+            Number(shop.image_number);
+
+          const imageUrl =
+            images[imageNumber - 1];
+
+          if (!imageUrl) continue;
+
+          shopByUrl.set(
+            normalizeImageUrl(imageUrl),
+            Number(shop.confidence)
+          );
+        }
+
+        const existingImages =
+          Array.isArray(listing.images)
+            ? listing.images
+            : [];
+
+        const updatedImages =
+          existingImages.map(
+            (image: any) => {
+              const normalizedUrl =
+                normalizeImageUrl(image);
+
+              const confidence =
+                shopByUrl.get(
+                  normalizedUrl
+                );
+
+              const base =
+                typeof image === "string"
+                  ? {
+                      url:
+                        normalizedUrl,
+                    }
+                  : {
+                      ...image,
+                      url:
+                        image?.url ||
+                        normalizedUrl,
+                    };
+
+              if (!confidence) {
+                return base;
+              }
+
+              return {
+                ...base,
+
+                classification: {
+                  imageOf:
+                    "Detached Shop",
+
+                  prediction:
+                    confidence,
+                },
+              };
+            }
+          );
+
+        const matchedCount =
+          updatedImages.filter(
+            (image: any) =>
+              image?.classification
+                ?.imageOf ===
+              "Detached Shop"
+          ).length;
+
+        if (matchedCount) {
+          const {
+            error:
+              detachedShopSaveError,
+          } = await supabase
+            .from("listing_rows")
+            .update({
+              images:
+                updatedImages,
+            })
+            .eq(
+              "id",
+              String(listing.id)
+            );
+
+          if (
+            detachedShopSaveError
+          ) {
+            throw new Error(
+              `Detached shop save failed: ${detachedShopSaveError.message}`
+            );
+          }
+
+          detachedShopsFound +=
+            matchedCount;
+
+          console.log(
+            `MLS ${listing.id}: saved ${matchedCount} detached shop image(s)`
+          );
+        }
+      }
+
+      if (confidentUpdatedKitchens.length) {
+        const kitchenByUrl =
+          new Map<string, number>();
+
+        for (const kitchen of confidentUpdatedKitchens) {
+          const imageNumber =
+            Number(kitchen.image_number);
+
+          const imageUrl =
+            images[imageNumber - 1];
+
+          if (!imageUrl) continue;
+
+          kitchenByUrl.set(
+            normalizeImageUrl(imageUrl),
+            Number(kitchen.confidence)
+          );
+        }
+
+        const { data: latestRow, error: latestRowError } =
+          await supabase
+            .from("listing_rows")
+            .select("images")
+            .eq("id", String(listing.id))
+            .single();
+
+        if (latestRowError) {
+          throw new Error(
+            `Latest listing images fetch failed: ${latestRowError.message}`
+          );
+        }
+
+        const existingImages =
+          Array.isArray(latestRow?.images)
+            ? latestRow.images
+            : [];
+
+        const updatedImages =
+          existingImages.map(
+            (image: any) => {
+              const normalizedUrl =
+                normalizeImageUrl(image);
+
+              const confidence =
+                kitchenByUrl.get(
+                  normalizedUrl
+                );
+
+              const base =
+                typeof image === "string"
+                  ? {
+                      url:
+                        normalizedUrl,
+                    }
+                  : {
+                      ...image,
+                      url:
+                        image?.url ||
+                        normalizedUrl,
+                    };
+
+              if (!confidence) {
+                return base;
+              }
+
+              return {
+                ...base,
+
+                classification: {
+                  imageOf:
+                    "Updated Kitchen",
+
+                  prediction:
+                    confidence,
+                },
+              };
+            }
+          );
+
+        const matchedCount =
+          updatedImages.filter(
+            (image: any) =>
+              image?.classification
+                ?.imageOf ===
+              "Updated Kitchen"
+          ).length;
+
+        if (matchedCount) {
+          const {
+            error:
+              updatedKitchenSaveError,
+          } = await supabase
+            .from("listing_rows")
+            .update({
+              images:
+                updatedImages,
+            })
+            .eq(
+              "id",
+              String(listing.id)
+            );
+
+          if (
+            updatedKitchenSaveError
+          ) {
+            throw new Error(
+              `Updated kitchen save failed: ${updatedKitchenSaveError.message}`
+            );
+          }
+
+          updatedKitchensFound +=
+            matchedCount;
+
+          console.log(
+            `MLS ${listing.id}: saved ${matchedCount} updated kitchen image(s)`
+          );
+        }
+      }
+
+      const {
+        error: featureFlagError,
+      } = await supabase
+        .from("listing_rows")
+        .update({
+          has_floorplan:
+            rows.length > 0,
+
+          has_updated_kitchen:
+            confidentUpdatedKitchens.length > 0,
+
+          has_detached_shop:
+            confidentDetachedShops.length > 0,
+        })
+        .eq(
+          "id",
+          String(listing.id)
+        );
+
+      if (featureFlagError) {
+        throw new Error(
+          `Feature flag update failed: ${featureFlagError.message}`
+        );
+      }
+
     } catch (error: any) {
       console.error(
         `Floorplan scan failed for MLS ${listing.id}:`,
@@ -596,6 +949,8 @@ export async function scanNewFloorplans({
     city,
     scanned,
     floorplansFound,
+    detachedShopsFound,
+    updatedKitchensFound,
     failures,
   };
 }
