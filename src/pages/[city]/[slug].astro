@@ -1,4 +1,4 @@
----
+﻿---
 import { createClient } from "@supabase/supabase-js";
 import Layout from "../../layouts/Layout.astro";
 import SlugSaveSearch from "../../components/SlugSaveSearch.astro";
@@ -208,13 +208,13 @@ if (!page) {
         `${cityLabel} ${typePage.label} for Sale`,
 
       meta_description:
-        `Browse ${typePage.label.toLowerCase()} for sale in ${cityLabel}. Compare active MLS� listings, prices, features and locations.`,
+        `Browse ${typePage.label.toLowerCase()} for sale in ${cityLabel}. Compare active MLS| listings, prices, features and locations.`,
 
       seo_heading:
         `${cityLabel} ${typePage.label}`,
 
       seo_intro:
-        `Explore ${cityLabel} ${typePage.label.toLowerCase()} currently available on the MLS�. Compare listings, pricing, features and locations while monitoring new opportunities as they come to market.`,
+        `Explore ${cityLabel} ${typePage.label.toLowerCase()} currently available on the MLS|. Compare listings, pricing, features and locations while monitoring new opportunities as they come to market.`,
 
       seo_body: "",
       seo_long: "",
@@ -411,7 +411,7 @@ page = {
 
 const titleCaseCity = city.charAt(0).toUpperCase() + city.slice(1).toLowerCase();
 const areaName = page.area
-  ? page.area.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" | ")
+  ? page.area.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
   : null;
 
 const { data: census } = pageKind === "area" ? await supabase
@@ -526,7 +526,7 @@ function generateAreaCopy(listings: any[], census: any, osm: typeof osmSummary, 
 
   let about = `${area} has ${listings.length} active listing${listings.length !== 1 ? "s" : ""}`;
   if (minPrice && maxPrice) about += ` ranging from ${fmt(minPrice)} to ${fmt(maxPrice)}`;
-  if (dominantTypes.length) about += `, predominantly ${dominantTypes.join(" | ")}`;
+  if (dominantTypes.length) about += `, predominantly ${dominantTypes.join(" ")}`;
   about += ".";
 
   if (census?.pct_owned) about += ` With ${census.pct_owned}% owner-occupied households`;
@@ -539,8 +539,8 @@ function generateAreaCopy(listings: any[], census: any, osm: typeof osmSummary, 
   if (osm.schools > 0) osmParts.push(`${osm.schools} school${osm.schools !== 1 ? "s" : ""}`);
   if (osm.parks > 0) osmParts.push(`${osm.parks} park${osm.parks !== 1 ? "s" : ""}`);
   if (osm.transit > 0) osmParts.push(`${osm.transit} transit stop${osm.transit !== 1 ? "s" : ""}`);
-  if (osmParts.length) market += ` Within 2km you'll find ${osmParts.join(" | ")}.`;
-  market += " Inventory and pricing can shift quickly � check back regularly for new listings.";
+  if (osmParts.length) market += ` Within 2km you'll find ${osmParts.join(" ")}.`;
+  market += " Inventory and pricing can shift quickly | check back regularly for new listings.";
 
   return { about, market };
 }
@@ -674,7 +674,17 @@ if (site?.id) {
 const { data: areaIntentPages = [] } = await areaIntentQuery
   .order("area", { ascending: true });
 const hasPolygonSearch = Boolean(page.polygon_geojson?.coordinates?.[0]?.length);
+const searchParams = Astro.url.searchParams;
 
+const filterArea = String(searchParams.get("area") || "").trim().toLowerCase();
+const filterBeds = Number(searchParams.get("beds") || 0);
+const filterPrice = String(searchParams.get("price") || "").trim();
+const filterSort = String(searchParams.get("sort") || "").trim();
+const hasActiveSearchFilters =
+  !!filterArea ||
+  filterBeds > 0 ||
+  !!filterPrice ||
+  (filterSort !== "" && filterSort !== "newest");
 let query = supabase
   .from("listing_rows")
   .select("*")
@@ -734,7 +744,35 @@ if (effectivePropertyType) {
     effectivePropertyType
   );
 }
+if (filterArea) {
+  query = query.eq("normalized_area", filterArea);
+}
 
+if (filterBeds > 0) {
+  query = query.gte("beds", filterBeds);
+}
+
+switch (filterPrice) {
+  case "under-450":
+    query = query.lt("price", 450000);
+    break;
+
+  case "450-650":
+    query = query.gte("price", 450000).lt("price", 650000);
+    break;
+
+  case "650-850":
+    query = query.gte("price", 650000).lt("price", 850000);
+    break;
+
+  case "850-1100":
+    query = query.gte("price", 850000).lt("price", 1100000);
+    break;
+
+  case "1100-plus":
+    query = query.gte("price", 1100000);
+    break;
+}
 if (pageKind === "intent") {
 
   if (page.price_min) {
@@ -804,7 +842,10 @@ console.log("INTENT QUERY DEBUG", {
 
 const listingLimit = 1000;
 
-const defaultSort = page.default_sort || "newest";
+const defaultSort =
+  filterSort ||
+  page.default_sort ||
+  "newest";
 
 if (defaultSort === "price-asc") {
   query = query.order("price", { ascending: true });
@@ -1160,7 +1201,7 @@ function formatAddress(value: any): string {
   }
   if (typeof obj !== "object" || Array.isArray(obj)) return "";
   return [obj.streetNumber, obj.streetName || obj.streetAddress, obj.streetSuffix, obj.unitNumber ? `#${obj.unitNumber}` : ""]
-    .filter(Boolean).join(" | ").trim();
+    .filter(Boolean).join(" ").trim();
 }
 
 function normalizeImageUrl(url: any) {
@@ -1381,7 +1422,7 @@ function titleCase(value = "") {
     .split(" ")
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" | ");
+    .join(" ");
 }
 
 function buildSeoFallback(page: any) {
@@ -1404,9 +1445,9 @@ function buildSeoFallback(page: any) {
   return {
     heading,
 
-    intro: `Explore ${heading.toLowerCase()} currently available on the MLS�. Compare listings, pricing, lot sizes, and property features while monitoring new opportunities as they come to market.`,
+    intro: `Explore ${heading.toLowerCase()} currently available on the MLS|. Compare listings, pricing, lot sizes, and property features while monitoring new opportunities as they come to market.`,
 
-    body: `Listings on this page update directly from MLS� data and are filtered specifically for buyers searching for ${heading.toLowerCase()}. Inventory, pricing, and availability can change quickly throughout the year.`,
+    body: `Listings on this page update directly from MLS| data and are filtered specifically for buyers searching for ${heading.toLowerCase()}. Inventory, pricing, and availability can change quickly throughout the year.`,
 
     long: `${heading} appeal to buyers looking for a specific lifestyle, location, or property characteristic. Whether you're comparing value, outdoor space, views, waterfront access, or long-term investment potential, this search helps surface active opportunities currently available in the market.
 
@@ -1450,7 +1491,7 @@ if (isMobile55) {
   heroHeading = `55+ Mobile Home Communities in ${titleCaseCity}`;
 
   heroIntro =
-    `Browse age-restricted 55+ mobile home communities in ${titleCaseCity}. Compare current MLS� listings, pricing, pad fees, park rules, and available homes designed for active adult living.`;
+    `Browse age-restricted 55+ mobile home communities in ${titleCaseCity}. Compare current MLS| listings, pricing, pad fees, park rules, and available homes designed for active adult living.`;
 }
 const sharedListingAddress =
   String(sharedListing?.address || "").trim();
@@ -1489,7 +1530,7 @@ const socialDescription =
           : "",
       ]
         .filter(Boolean)
-        .join(" | ")
+        .join(" ")
     : "";
 
 const socialUrl =
@@ -1506,6 +1547,16 @@ const socialUrl =
   city={city}
 >
   <Fragment slot="head">
+    <meta
+      name="description"
+      content={
+        page.meta_description ||
+        page.seo_intro ||
+        page.intro_copy ||
+        ""
+      }
+    />
+
     <meta
       property="og:title"
       content={socialTitle}
@@ -1573,23 +1624,7 @@ const socialUrl =
   />
 ) : (
   <>
- <meta
-  name="description"
-  content={
-    page.meta_description ||
-    page.seo_intro ||
-    page.intro_copy ||
-    ""
-  }
-  slot="head"
-/>
-
-
-
-
-
-
-  <style>
+<style>
    :root {
         --surface-soft: color-mix(in srgb, var(--surface) 92%, var(--accent-soft));
         --ink-soft: #3d3935;
@@ -3492,6 +3527,39 @@ color: var(--accent) !important;
     display: none !important;
   }
 }
+
+/* MOBILE EXPLORE CALLOUT */
+@media (max-width:600px){
+
+  .explore-callout{
+    display:grid !important;
+    grid-template-columns:48px 1fr !important;
+    grid-template-areas:
+      "icon copy"
+      "cta  cta" !important;
+    gap:14px !important;
+    align-items:start !important;
+  }
+
+  .explore-callout-icon{
+    grid-area:icon !important;
+  }
+
+  .explore-callout-copy{
+    grid-area:copy !important;
+  }
+
+  .explore-callout-arrow,
+  .explore-open-link{
+    grid-area:cta !important;
+    justify-self:center !important;
+    display:inline-flex !important;
+    width:auto !important;
+    margin-top:6px !important;
+    padding:10px 16px !important;
+  }
+
+}
 </style>
 
 <style is:global>
@@ -4516,7 +4584,7 @@ grid-template-columns: 30px minmax(0, 1fr);
 }
 
 /* =========================================================
-   AREA SNAPSHOT � CLEAN FACT CARDS
+   AREA SNAPSHOT | CLEAN FACT CARDS
    ========================================================= */
 
 .area-facts-grid {
@@ -6056,18 +6124,19 @@ grid-template-columns: 30px minmax(0, 1fr);
 .amenity-row {
   position: relative;
   display: grid !important;
-  grid-template-columns: 32px minmax(0, 1fr) 16px;
+  grid-template-columns: 26px minmax(0, 1fr) 12px;
   grid-template-rows: auto auto;
-  column-gap: 12px !important;
-  row-gap: 2px !important;
+  column-gap: 10px !important;
+  row-gap: 1px !important;
   align-items: center;
-  padding: 13px 16px !important;
+  min-height: 64px;
+  padding: 10px 14px !important;
   border-top: 1px solid rgba(28, 25, 23, 0.07) !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
   cursor: pointer;
   background: #fff;
-  transition:
-    background 140ms ease,
-    padding-left 140ms ease;
+  transition: background 140ms ease;
 }
 
 /* Remove any old broken marker styling */
@@ -6075,8 +6144,8 @@ grid-template-columns: 30px minmax(0, 1fr);
   content: "";
   grid-column: 1;
   grid-row: 1 / span 2;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   display: block;
   background-color: #2368b4;
 
@@ -6132,7 +6201,6 @@ grid-template-columns: 30px minmax(0, 1fr);
 
 .amenity-row:hover {
   background: rgba(35, 104, 180, 0.045) !important;
-  padding-left: 19px !important;
 }
 
 .amenity-row:hover::after {
@@ -6169,6 +6237,408 @@ grid-template-columns: 30px minmax(0, 1fr);
   }
 }
 
+/* MOBILE EXPLORE CALLOUT */
+@media (max-width: 600px) {
+  .explore-callout {
+    display: grid !important;
+    grid-template-columns: 48px minmax(0, 1fr) !important;
+    gap: 12px 14px !important;
+    align-items: start !important;
+    padding: 18px !important;
+  }
+
+  .explore-callout-icon {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    width: 48px !important;
+    height: 48px !important;
+    margin: 0 !important;
+  }
+
+  .explore-callout-copy,
+  .explore-callout-content,
+  .explore-callout__copy,
+  .explore-callout__content {
+    grid-column: 2 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .explore-callout h3 {
+    margin: 2px 0 5px !important;
+    font-size: 1.08rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .explore-callout p {
+    margin: 0 !important;
+    max-width: none !important;
+    font-size: 0.92rem !important;
+    line-height: 1.45 !important;
+  }
+
+  .explore-callout a,
+  .explore-callout button,
+  .explore-callout-button,
+  .explore-callout__button {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 2px 0 0 !important;
+    padding: 11px 14px !important;
+    justify-content: center !important;
+    text-align: center !important;
+    white-space: nowrap !important;
+  }
+}
+
+/* MOBILE EXPLORE CALLOUT — BUTTON UNDER COPY */
+@media (max-width: 600px) {
+  .explore-callout {
+    display: grid !important;
+    grid-template-columns: 48px minmax(0, 1fr) !important;
+    grid-template-rows: auto auto !important;
+    column-gap: 14px !important;
+    row-gap: 12px !important;
+    align-items: start !important;
+    padding: 18px !important;
+  }
+
+  .explore-callout-icon {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    width: 48px !important;
+    height: 48px !important;
+    margin: 0 !important;
+  }
+
+  .explore-callout-copy,
+  .explore-callout-content,
+  .explore-callout__copy,
+  .explore-callout__content {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .explore-callout h3 {
+    margin: 2px 0 5px !important;
+    font-size: 1.08rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .explore-callout p {
+    margin: 0 !important;
+    max-width: none !important;
+    font-size: 0.92rem !important;
+    line-height: 1.45 !important;
+  }
+
+  .explore-callout a,
+  .explore-callout button,
+  .explore-callout-button,
+  .explore-callout__button {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+    justify-self: start !important;
+    width: auto !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 10px 14px !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+  }
+}
+
+/* FINAL MOBILE EXPLORE CALLOUT FIX */
+@media (max-width: 600px) {
+  .explore-callout {
+    display: grid !important;
+    grid-template-columns: 48px minmax(0, 1fr) !important;
+    grid-template-areas:
+      "icon copy"
+      ". button" !important;
+    column-gap: 14px !important;
+    row-gap: 12px !important;
+    align-items: start !important;
+    padding: 18px !important;
+  }
+
+  .explore-callout-icon {
+    grid-area: icon !important;
+    width: 48px !important;
+    height: 48px !important;
+    margin: 0 !important;
+  }
+
+  .explore-callout-copy,
+  .explore-callout-content,
+  .explore-callout__copy,
+  .explore-callout__content {
+    grid-area: copy !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .explore-callout a,
+  .explore-callout button,
+  .explore-callout-button,
+  .explore-callout__button {
+    grid-area: button !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    justify-self: start !important;
+    width: auto !important;
+    min-width: 145px !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 10px 16px !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+}
+
+/* MOBILE EXPLORE CALLOUT — BUTTON ON ITS OWN ROW */
+@media (max-width: 600px) {
+  .explore-callout {
+    display: grid !important;
+    grid-template-columns: 48px minmax(0, 1fr) !important;
+    grid-template-areas:
+      "icon copy"
+      "button button" !important;
+    column-gap: 14px !important;
+    row-gap: 14px !important;
+    align-items: start !important;
+    padding: 18px !important;
+  }
+
+  .explore-callout-icon {
+    grid-area: icon !important;
+    width: 48px !important;
+    height: 48px !important;
+    margin: 0 !important;
+  }
+
+  .explore-callout-copy,
+  .explore-callout-content,
+  .explore-callout__copy,
+  .explore-callout__content {
+    grid-area: copy !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .explore-callout h3 {
+    margin: 2px 0 5px !important;
+    font-size: 1.08rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .explore-callout p {
+    margin: 0 !important;
+    max-width: none !important;
+    font-size: 0.92rem !important;
+    line-height: 1.45 !important;
+  }
+
+  .explore-callout a,
+  .explore-callout button,
+  .explore-callout-button,
+  .explore-callout__button {
+    grid-area: button !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 11px 16px !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+}
+
+/* MOBILE EXPLORE CALLOUT — BUTTON ON ITS OWN ROW */
+@media (max-width: 600px) {
+  .explore-callout {
+    display: grid !important;
+    grid-template-columns: 48px minmax(0, 1fr) !important;
+    grid-template-areas:
+      "icon copy"
+      "button button" !important;
+    column-gap: 14px !important;
+    row-gap: 14px !important;
+    align-items: start !important;
+    padding: 18px !important;
+  }
+
+  .explore-callout-icon {
+    grid-area: icon !important;
+    width: 48px !important;
+    height: 48px !important;
+    margin: 0 !important;
+  }
+
+  .explore-callout-copy,
+  .explore-callout-content,
+  .explore-callout__copy,
+  .explore-callout__content {
+    grid-area: copy !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .explore-callout h3 {
+    margin: 2px 0 5px !important;
+    font-size: 1.08rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .explore-callout p {
+    margin: 0 !important;
+    max-width: none !important;
+    font-size: 0.92rem !important;
+    line-height: 1.45 !important;
+  }
+
+  .explore-callout a,
+  .explore-callout button,
+  .explore-callout-button,
+  .explore-callout__button {
+    grid-area: button !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 11px 16px !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+}
+
+/* MOBILE EXPLORE CALLOUT */
+@media (max-width:600px){
+
+  .explore-callout{
+    display:grid !important;
+    grid-template-columns:48px 1fr !important;
+    grid-template-areas:
+      "icon copy"
+      "cta  cta" !important;
+    gap:14px !important;
+    align-items:start !important;
+  }
+
+  .explore-callout-icon{
+    grid-area:icon !important;
+  }
+
+  .explore-callout-copy{
+    grid-area:copy !important;
+  }
+
+  .explore-callout-arrow,
+  .explore-open-link{
+    grid-area:cta !important;
+    justify-self:center !important;
+    display:inline-flex !important;
+    width:auto !important;
+    margin-top:6px !important;
+    padding:10px 16px !important;
+  }
+
+}
+
+/* LISTING META SEPARATORS */
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  color: #5f5a54;
+}
+
+.meta .sep {
+  padding: 0 4px;
+  color: #b7b0a8;
+}
+
+/* FINAL LISTING META POLISH */
+.meta {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  color: #625d57 !important;
+  font-weight: 450 !important;
+  line-height: 1.4 !important;
+}
+
+.meta .sep {
+  display: inline-block !important;
+  padding: 0 7px !important;
+  color: #c8c1ba !important;
+  font-weight: 300 !important;
+}
+
+/* FINAL LIST / MAP TOGGLE */
+.intent-controls .view-toggle {
+  display: inline-flex !important;
+  align-items: stretch !important;
+  width: auto !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 2px !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(35, 104, 180, 0.22) !important;
+  border-radius: 6px !important;
+  background: #fff !important;
+}
+
+.intent-controls .view-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 56px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 13px !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 4px !important;
+  background: transparent !important;
+  color: var(--ink) !important;
+  font: inherit !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+}
+
+.intent-controls .view-btn + .view-btn {
+  margin-left: 2px !important;
+}
+
+.intent-controls .view-btn.active {
+  background: var(--accent) !important;
+  color: #fff !important;
+  box-shadow: 0 1px 3px rgba(18, 58, 90, 0.16) !important;
+}
+
+.intent-controls .view-btn:not(.active):hover {
+  background: color-mix(in srgb, var(--accent) 7%, white) !important;
+}
 </style>
 
 <div
@@ -6285,7 +6755,7 @@ grid-template-columns: 30px minmax(0, 1fr);
           <strong>
             {typePageMedianPrice
               ? formatPrice(typePageMedianPrice)
-              : "�"}
+              : "|"}
           </strong>
           <span>Median price</span>
           <small>Current area inventory</small>
@@ -6392,7 +6862,7 @@ grid-template-columns: 30px minmax(0, 1fr);
             <div>
               <strong>{listingCount}</strong>
               <span>{typePageLabel} for sale</span>
-              <small>Active on the MLS�</small>
+              <small>Active on the MLS|</small>
             </div>
           </article>
 
@@ -6412,7 +6882,7 @@ grid-template-columns: 30px minmax(0, 1fr);
               <strong>
                 {typePageMedianPrice
                   ? formatPrice(typePageMedianPrice)
-                  : "�"}
+                  : "|"}
               </strong>
               <span>Median price</span>
               <small>Current listings</small>
@@ -6512,7 +6982,7 @@ grid-template-columns: 30px minmax(0, 1fr);
 
   <p>
     {templateCards[0]?.copy ||
-      "Confirm the park�s minimum-age rules and whether they apply to every resident or only one member of the household."}
+      "Confirm the park|s minimum-age rules and whether they apply to every resident or only one member of the household."}
   </p>
 </div>
       </article>
@@ -6764,7 +7234,7 @@ const areaSharePct = cityActiveCount
       if (mobileCt) typeList.push(`${mobileCt} mobile home${mobileCt !== 1 ? "s" : ""}`);
       if (landCt) typeList.push(`${landCt} lot${landCt !== 1 ? "s" : ""}`);
       const typeStr = typeList.length > 1
-        ? `${typeList[0]}, with ${typeList.slice(1).join(" | ")}`
+        ? `${typeList[0]}, with ${typeList.slice(1).join(" ")}`
         : typeList[0] || "";
 
       const censusParts: string[] = [];
@@ -6772,8 +7242,8 @@ const areaSharePct = cityActiveCount
       if (censusData?.pct_owned) censusParts.push(`${censusData.pct_owned}% owner-occupied homes`);
       if (censusData?.pop_change_pct) censusParts.push(`${censusData.pop_change_pct > 0 ? "+" : ""}${censusData.pop_change_pct}% population growth between 2016-2021`);
 
-      const sentence1 = `${titleCase(page.area || city)} has ${listings.length} active listing${listings.length !== 1 ? "s" : ""}${medianPrice ? ` with a median price of ${fmt(medianPrice)}` : ""}${typeStr ? ` � mostly ${typeStr}` : ""}.`;
-      const sentence2 = censusParts.length ? ` The area has ${censusParts.join(" | ")}.` : "";
+      const sentence1 = `${titleCase(page.area || city)} has ${listings.length} active listing${listings.length !== 1 ? "s" : ""}${medianPrice ? ` with a median price of ${fmt(medianPrice)}` : ""}${typeStr ? ` | mostly ${typeStr}` : ""}.`;
+      const sentence2 = censusParts.length ? ` The area has ${censusParts.join(" ")}.` : "";
 
 return (
   <div style="margin-bottom:24px;">
@@ -6918,7 +7388,7 @@ return (
             : "",
         ]
           .filter(Boolean)
-          .join(" | ")}
+          .join(" ")}
       </div>
     </div>
   </div>
@@ -7318,12 +7788,23 @@ Approximate driving times from{" "}
   id="dynamic-results-heading"
   style="margin:0;font-family:var(--serif);font-size:clamp(1.2rem,2vw,1.6rem);font-weight:500;letter-spacing:-0.02em;"
 >
-  {[
-    titleCase(city),
-    page.area ? titleCase(page.area) : "",
-    normalizedPropertyType ? titleCase(normalizedPropertyType === "house" ? "Homes" : `${normalizedPropertyType}s`) : "Homes",
-    page.price_max ? `Under ${formatPrice(page.price_max)}` : "",
-  ].filter(Boolean).join(" | ")}
+  {pageKind === "intent"
+  ? `${listingCount} ${page.hero_heading || `${titleCase(city)} Homes`}`
+  : [
+      titleCase(city),
+      page.area ? titleCase(page.area) : "",
+      normalizedPropertyType
+        ? titleCase(
+            normalizedPropertyType === "house"
+              ? "Homes"
+              : `${normalizedPropertyType}s`
+          )
+        : "Homes",
+      page.price_max
+        ? `Under ${formatPrice(page.price_max)}`
+        : "",
+    ].filter(Boolean).join(" ")
+}
 </h2>
 </div>
 
@@ -7360,8 +7841,8 @@ Approximate driving times from{" "}
 </div>
 
 <section class="intent-controls" style="margin-bottom:20px;"> <div class="view-toggle">
-    <button type="button" class="view-btn active" id="list-view-btn">? List</button>
-    <button type="button" class="view-btn" id="map-view-btn">? Map</button>
+    <button type="button" class="view-btn active" id="list-view-btn">List</button>
+    <button type="button" class="view-btn" id="map-view-btn">Map</button>
   </div>
 
   <select class="area-filter-select" aria-label="Filter by area">
@@ -7420,7 +7901,7 @@ Approximate driving times from{" "}
 )}
 
     {
-  listings.length > 0 && (
+  hasActiveSearchFilters && (
     <SlugSaveSearch
       siteId={site?.id}
       city={city}
@@ -7514,7 +7995,7 @@ data-images={JSON.stringify(
 data-raw-price={String(listing?.price || 0)}
 data-listed-at={String(listing?.listed_at || listing?.created_at || "")}
                 data-address={formatAddress(listing.address)}
-                data-meta={`${listing.beds || "-"} bed � ${listing.baths || "-"} bath`}
+                data-meta={`${listing.beds || "-"} bed | ${listing.baths || "-"} bath`}
                 data-beds={String(listing?.beds || "-")}
                 data-baths={String(listing?.baths || "-")}
                 data-sqft={String(listing?.sqft || "")}
@@ -7548,9 +8029,9 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
     {city.charAt(0).toUpperCase() + city.slice(1)}, BC
   </div>
   <div class="meta">
-    {listing.beds || "-"} bd � {listing.baths || "-"} ba
+    {listing.beds || "-"} bd | {listing.baths || "-"} ba
     {listing.sqft
-      ? ` � ${Number(listing.sqft).toLocaleString()} sq ft`
+      ? ` | ${Number(listing.sqft).toLocaleString()} sq ft`
       : ""}
   </div>
 </div>
@@ -7712,7 +8193,7 @@ function scheduleLeafletLoad() {
   loadLeaflet();
 }
 
-scheduleLeafletLoad();
+// Leaflet is loaded only when an interactive map is requested.
 
 function waitForLeaflet(callback) {
   if (window.L) {
@@ -7909,12 +8390,139 @@ if (L.Browser.mobile) {
   });
 }
 
+function prepareTypeHeroMap() {
+  const heroMapEl =
+    document.getElementById("type-hero-map");
+
+  if (
+    !heroMapEl ||
+    heroMapEl.dataset.mapReady === "true" ||
+    heroMapEl.dataset.mapDeferred === "true"
+  ) {
+    return;
+  }
+
+  heroMapEl.dataset.mapDeferred = "true";
+
+  heroMapEl.innerHTML = `
+    <div style="
+      position:absolute;
+      inset:0;
+      display:grid;
+      place-items:center;
+      overflow:hidden;
+      background:#e8f0f3;
+    ">
+      <img
+        src="/images/maps/nanaimo-static-map.png"
+        alt=""
+        width="900"
+        height="560"
+        loading="eager"
+        decoding="async"
+        aria-hidden="true"
+        style="
+          position:absolute;
+          inset:0;
+          width:100%;
+          height:100%;
+          object-fit:cover;
+          opacity:.68;
+        "
+      />
+
+      <div style="
+        position:relative;
+        z-index:1;
+        width:min(290px,calc(100% - 36px));
+        padding:20px;
+        border:1px solid rgba(23,32,51,.12);
+        border-radius:12px;
+        background:rgba(255,255,255,.92);
+        box-shadow:0 12px 34px rgba(23,32,51,.12);
+        text-align:center;
+        backdrop-filter:blur(8px);
+      ">
+        <p style="
+          margin:0 0 5px;
+          color:var(--accent);
+          font-size:.66rem;
+          font-weight:850;
+          letter-spacing:.12em;
+          text-transform:uppercase;
+        ">
+          Explore the listings
+        </p>
+
+        <strong style="
+          display:block;
+          margin-bottom:12px;
+          color:#172033;
+          font-family:Georgia,'Times New Roman',serif;
+          font-size:1.2rem;
+          font-weight:500;
+          line-height:1.2;
+        ">
+          View homes on the map
+        </strong>
+
+        <button
+          type="button"
+          data-load-type-hero-map
+          style="
+            min-height:42px;
+            padding:0 18px;
+            border:0;
+            border-radius:7px;
+            background:var(--accent);
+            color:#fff;
+            font:inherit;
+            font-size:.78rem;
+            font-weight:800;
+            cursor:pointer;
+          "
+        >
+          Open interactive map
+        </button>
+
+        <small style="
+          display:block;
+          margin-top:9px;
+          color:#6b7280;
+          font-size:.58rem;
+          line-height:1.2;
+        ">
+          Map © OpenStreetMap contributors
+        </small>
+      </div>
+    </div>
+  `;
+
+  const loadButton =
+    heroMapEl.querySelector(
+      "[data-load-type-hero-map]"
+    );
+
+  loadButton?.addEventListener(
+    "click",
+    () => {
+      heroMapEl.innerHTML = "";
+      heroMapEl.dataset.mapDeferred = "false";
+
+      initTypeHeroMap();
+    },
+    { once: true }
+  );
+}
+
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initTypeHeroMap, {
-    once: true,
-  });
+  document.addEventListener(
+    "DOMContentLoaded",
+    prepareTypeHeroMap,
+    { once: true }
+  );
 } else {
-  initTypeHeroMap();
+  prepareTypeHeroMap();
 }
 
 // --- State ---
@@ -8001,7 +8609,7 @@ function buildListingPopup(card) {
       <div style="padding:10px 12px 12px;">
         <strong style="font-size:0.95rem;display:block;margin-bottom:2px;">${card.dataset.price || ""}</strong>
         <span style="font-size:0.8rem;color:#6b6560;display:block;margin-bottom:2px;">${card.dataset.address || ""}</span>
-        <span style="font-size:0.76rem;color:#9c9590;display:block;">${card.dataset.beds || "-"} bd � ${card.dataset.baths || "-"} ba</span>
+        <span style="font-size:0.76rem;color:#9c9590;display:block;">${card.dataset.beds || "-"} bd | ${card.dataset.baths || "-"} ba</span>
         <div style="font-size:0.76rem;font-weight:700;color:${accentColor};margin-top:6px;">View listing ?</div>
       </div>
     </div>`;
@@ -8058,10 +8666,10 @@ function initLeafletMap(mode = "all") {
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
-        attribution: "� OpenStreetMap",
+        attribution: "| OpenStreetMap",
       }).addTo(leafletMap);
 
-      L.control.attribution({ prefix: false }).addAttribution('� <a href="https://openstreetmap.org">OSM</a>').addTo(leafletMap);
+      L.control.attribution({ prefix: false }).addAttribution('| <a href="https://openstreetmap.org">OSM</a>').addTo(leafletMap);
     }
 
     // Clear existing markers
@@ -8308,7 +8916,7 @@ const amenityList =
         <strong>${item.name}</strong>
         <span>${Number(item.distKm || 0).toFixed(1)} km away</span>
       </div>`)
-    .join(" | ") || `<div style="padding:14px 18px;color:#9c9590;font-size:0.88rem;">No named ${label.toLowerCase()} found nearby.</div>`;
+    .join("") || `<div style="padding:14px 18px;color:#9c9590;font-size:0.88rem;">No named ${label.toLowerCase()} found nearby.</div>`;
 
   amenityList.querySelectorAll(".amenity-row").forEach((row) => {
     row.addEventListener("mouseenter", () => {
@@ -8445,11 +9053,8 @@ mapViewBtn?.addEventListener("click", () => {
   requestAnimationFrame(() => initLeafletMap());
 });
 
-// Auto-init for area pages
-if (document.querySelector(".area-intelligence") && intentMapEl) {
-  intentMapEl.hidden = false;
-  waitForLeaflet(() => initLeafletMap());
-}
+// Map now initializes only when the user opens Map view.
+// This avoids downloading Leaflet and map tiles during initial page load.
 
 // Show more listings
 let visibleListingCount = 12;
@@ -8540,7 +9145,39 @@ const priceSelect = document.querySelector(".price-filter-select");
 const typeSelect = document.querySelector(".type-filter-select");
 const sortSelect = document.querySelector(".sort-filter-select");
 const bedsSelect = document.querySelector(".beds-filter-select");
-  let activePriceFilter = "all";
+const initialParams = new URLSearchParams(window.location.search);
+
+if (areaSelect && initialParams.get("area")) {
+  areaSelect.value = initialParams.get("area");
+}
+
+if (priceSelect && initialParams.get("price")) {
+  priceSelect.value = initialParams.get("price");
+}
+
+if (bedsSelect && initialParams.get("beds")) {
+  bedsSelect.value = initialParams.get("beds");
+}
+
+if (sortSelect && initialParams.get("sort")) {
+  sortSelect.value = initialParams.get("sort");
+}
+const savedFilterScrollY = Number(
+  sessionStorage.getItem("listingFilterScrollY") || "0"
+);
+
+if (savedFilterScrollY > 0) {
+  sessionStorage.removeItem("listingFilterScrollY");
+
+  requestAnimationFrame(() => {
+    window.scrollTo({
+      top: savedFilterScrollY,
+      behavior: "auto",
+    });
+  });
+}
+
+let activePriceFilter = "all";
 
 function jsTitleCase(value = "") {
   return String(value)
@@ -8548,7 +9185,7 @@ function jsTitleCase(value = "") {
     .split(" ")
     .filter(Boolean)
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" | ");
+    .join(" ");
 }
 
   function getCardPrice(card) {
@@ -8683,10 +9320,10 @@ function updateResultsHeading(filters) {
     typeLabel,
     areaLabel,
     priceLabel,
-  ].filter(Boolean).join(" | ");
+  ].filter(Boolean).join(" ");
 }
 
-function applyFilters() {
+function submitFilters() {
   const filters = getCurrentFilters();
   const cards = Array.from(document.querySelectorAll(".original-card"));
   const filteredCards = getFilteredCards();
@@ -8743,10 +9380,38 @@ if (sort === "sqft-desc") return Number(b.dataset.sqft || 0) - Number(a.dataset.
 
     applyFilters();
   }
-areaSelect?.addEventListener("change", () => {
-  applyFilters();
-});
-priceSelect?.addEventListener("change", applyFilters);
+function updateSearchFromFilters() {
+  const params = new URLSearchParams(window.location.search);
+  const filters = getCurrentFilters();
+
+  const setOrDelete = (key, value) => {
+    if (!value || value === "all") {
+      params.delete(key);
+    } else {
+      params.set(key, value);
+    }
+  };
+
+  setOrDelete("area", filters.area);
+  setOrDelete("beds", filters.beds);
+  setOrDelete("price", filters.price);
+
+  if (sortSelect?.value && sortSelect.value !== "newest") {
+    params.set("sort", sortSelect.value);
+  } else {
+    params.delete("sort");
+  }
+
+sessionStorage.setItem(
+  "listingFilterScrollY",
+  String(window.scrollY)
+);
+
+window.location.search = params.toString();
+}
+
+areaSelect?.addEventListener("change", updateSearchFromFilters);
+priceSelect?.addEventListener("change", updateSearchFromFilters);
 
 typeSelect?.addEventListener("change", () => {
   const selectedType = typeSelect.value;
@@ -8780,8 +9445,8 @@ if (targetSlug) {
   applyFilters();
 });
 
-sortSelect?.addEventListener("change", applySort);
-bedsSelect?.addEventListener("change", applyFilters);
+sortSelect?.addEventListener("change", updateSearchFromFilters);
+bedsSelect?.addEventListener("change", updateSearchFromFilters);
 
 document.querySelectorAll(".property-type-pill").forEach((button) => {
   button.addEventListener("click", () => {
@@ -9013,7 +9678,7 @@ function fmtAddr(v) {
     try { o = JSON.parse(t); } catch { return ""; }
   }
   if (typeof o !== "object" || Array.isArray(o)) return "";
-  return [o.streetNumber, o.streetName || o.streetAddress, o.streetSuffix, o.unitNumber ? `#${o.unitNumber}` : ""].filter(Boolean).join(" | ").trim();
+  return [o.streetNumber, o.streetName || o.streetAddress, o.streetSuffix, o.unitNumber ? `#${o.unitNumber}` : ""].filter(Boolean).join(" ").trim();
 }
 const normalizePhotoUrl = (url) => {
           const value = String(url || "").trim();
@@ -9078,7 +9743,7 @@ const refinedCity = String(refinedCityRaw)
   .split(" ")
   .filter(Boolean)
   .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-  .join(" | ");
+  .join(" ");
 
         return `
           <article
@@ -9093,7 +9758,7 @@ class="card refined-card" style="border-radius:6px;overflow:hidden;transition:tr
             data-raw-price="${String(listing.price || listing.raw_price || listing.price_text || "").replace(/[^0-9]/g, "")}"
 data-sort-index="${index}"
 data-listed-at="${listing.listed_at || listing.created_at || listing.updated_at || ""}"
-data-address="${fmtAddr(listing.address)}"            data-meta="${listing.beds || "-"} bed � ${listing.baths || "-"} bath"
+data-address="${fmtAddr(listing.address)}"            data-meta="${listing.beds || "-"} bed | ${listing.baths || "-"} bath"
             data-beds="${listing.beds || "-"}"
             data-baths="${listing.baths || "-"}"
             data-sqft="${listing.sqft || ""}"
@@ -9124,7 +9789,7 @@ style="position:absolute;top:16px;right:14px;display:inline-flex;align-items:cen
               <div class="card-city">${refinedCity}, BC</div>
 
          <div class="meta">
-                ${listing.beds || "-"} bd � ${listing.baths || "-"} ba${listing.sqft ? ` � ${Number(listing.sqft).toLocaleString()} sq ft` : ""}
+                ${listing.beds || "-"} bd | ${listing.baths || "-"} ba${listing.sqft ? ` | ${Number(listing.sqft).toLocaleString()} sq ft` : ""}
               </div>
             </div>
           </article>
@@ -9156,7 +9821,7 @@ container.innerHTML = uniqueChips
   </button>
 `;
       })
-      .join(" | ");
+      .join(" ");
   });
 
   document.querySelectorAll(".refine-chip").forEach((chip) => {
@@ -9517,7 +10182,7 @@ city: document.querySelector("[data-city]")?.dataset.city,
     if (moreListings.length) {
       grid.insertAdjacentHTML(
         "beforeend",
-moreListings.map((listing, index) => createRefinedListingCard(listing, index)).join(" | ")      );
+moreListings.map((listing, index) => createRefinedListingCard(listing, index)).join(" ")      );
 updateViewedBadges();
     }
 
@@ -9653,7 +10318,7 @@ window.resetRefine = function () {
         if (resultsBar) {
           if (selectedLabels.length) {
             resultsBar.textContent =
-              `Preferences saved: ${selectedLabels.join(" | ")}`;
+              `Preferences saved: ${selectedLabels.join(" ")}`;
           } else {
             resultsBar.textContent =
               `Select preferences to help improve future matches.`;
@@ -9858,6 +10523,39 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   </>
 )}
 </Layout>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
