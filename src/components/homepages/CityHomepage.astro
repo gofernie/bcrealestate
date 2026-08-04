@@ -627,16 +627,104 @@ const navIntentPages =
     site?.id
   );
 
+const previewMlsNumber =
+  String(
+    Astro.url.searchParams
+      .get("new") || ""
+  )
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)[0] || "";
+
+let previewListing: any = null;
+
+if (previewMlsNumber) {
+  const {
+    data,
+    error: previewListingError,
+  } = await supabase
+    .from("listing_rows")
+    .select(`
+      mls_number,
+      address,
+      price,
+      beds,
+      baths,
+      image_url,
+      normalized_city
+    `)
+    .eq(
+      "normalized_city",
+      databaseCity
+    )
+    .eq(
+      "mls_number",
+      previewMlsNumber
+    )
+    .limit(1)
+    .maybeSingle();
+
+  if (previewListingError) {
+    console.error(
+      "Unable to load SMS preview listing:",
+      previewListingError
+    );
+  }
+
+  previewListing = data;
+}
+
+const previewPrice =
+  previewListing?.price
+    ? `$${Number(
+        previewListing.price
+      ).toLocaleString()}`
+    : "";
+
 const pageTitle =
-  `${cityLabel} Real Estate | Homes for Sale`;
+  previewListing
+    ? `${previewListing.address} | ${cityLabel} Real Estate`
+    : `${cityLabel} Real Estate | Homes for Sale`;
 
 const pageDescription =
-  `Explore homes, condos, townhomes, mobile homes, land, and neighbourhoods across ${cityLabel}, British Columbia.`;
+  previewListing
+    ? [
+        previewPrice,
+        previewListing.beds
+          ? `${previewListing.beds} beds`
+          : "",
+        previewListing.baths
+          ? `${previewListing.baths} baths`
+          : "",
+        `${cityLabel}, British Columbia`,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : `Explore homes, condos, townhomes, mobile homes, land, and neighbourhoods across ${cityLabel}, British Columbia.`;
+
+const rawPageOgImage =
+  String(
+    previewListing?.image_url ||
+    heroImageUrl ||
+    ""
+  ).trim();
+
+const pageOgImage =
+  rawPageOgImage &&
+  !/^https?:\/\//i.test(
+    rawPageOgImage
+  )
+    ? new URL(
+        rawPageOgImage,
+        Astro.url.origin
+      ).toString()
+    : rawPageOgImage;
 ---
 
 <Layout
   title={pageTitle}
   description={pageDescription}
+  ogImage={pageOgImage}
   accentColor={accentColor}
   city={city}
 >
@@ -698,3 +786,4 @@ const pageDescription =
     }
   />
 </Layout>
+
