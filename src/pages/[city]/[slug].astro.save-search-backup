@@ -680,11 +680,6 @@ const filterArea = String(searchParams.get("area") || "").trim().toLowerCase();
 const filterBeds = Number(searchParams.get("beds") || 0);
 const filterPrice = String(searchParams.get("price") || "").trim();
 const filterSort = String(searchParams.get("sort") || "").trim();
-const hasActiveSearchFilters =
-  !!filterArea ||
-  filterBeds > 0 ||
-  !!filterPrice ||
-  (filterSort !== "" && filterSort !== "newest");
 let query = supabase
   .from("listing_rows")
   .select("*")
@@ -1548,16 +1543,6 @@ const socialUrl =
 >
   <Fragment slot="head">
     <meta
-      name="description"
-      content={
-        page.meta_description ||
-        page.seo_intro ||
-        page.intro_copy ||
-        ""
-      }
-    />
-
-    <meta
       property="og:title"
       content={socialTitle}
     />
@@ -1624,7 +1609,23 @@ const socialUrl =
   />
 ) : (
   <>
-<style>
+ <meta
+  name="description"
+  content={
+    page.meta_description ||
+    page.seo_intro ||
+    page.intro_copy ||
+    ""
+  }
+  slot="head"
+/>
+
+
+
+
+
+
+  <style>
    :root {
         --surface-soft: color-mix(in srgb, var(--surface) 92%, var(--accent-soft));
         --ink-soft: #3d3935;
@@ -7788,23 +7789,12 @@ Approximate driving times from{" "}
   id="dynamic-results-heading"
   style="margin:0;font-family:var(--serif);font-size:clamp(1.2rem,2vw,1.6rem);font-weight:500;letter-spacing:-0.02em;"
 >
-  {pageKind === "intent"
-  ? `${listingCount} ${page.hero_heading || `${titleCase(city)} Homes`}`
-  : [
-      titleCase(city),
-      page.area ? titleCase(page.area) : "",
-      normalizedPropertyType
-        ? titleCase(
-            normalizedPropertyType === "house"
-              ? "Homes"
-              : `${normalizedPropertyType}s`
-          )
-        : "Homes",
-      page.price_max
-        ? `Under ${formatPrice(page.price_max)}`
-        : "",
-    ].filter(Boolean).join(" ")
-}
+  {[
+    titleCase(city),
+    page.area ? titleCase(page.area) : "",
+    normalizedPropertyType ? titleCase(normalizedPropertyType === "house" ? "Homes" : `${normalizedPropertyType}s`) : "Homes",
+    page.price_max ? `Under ${formatPrice(page.price_max)}` : "",
+  ].filter(Boolean).join(" ")}
 </h2>
 </div>
 
@@ -7901,7 +7891,7 @@ Approximate driving times from{" "}
 )}
 
     {
-  hasActiveSearchFilters && (
+  listings.length > 0 && (
     <SlugSaveSearch
       siteId={site?.id}
       city={city}
@@ -8193,7 +8183,7 @@ function scheduleLeafletLoad() {
   loadLeaflet();
 }
 
-// Leaflet is loaded only when an interactive map is requested.
+scheduleLeafletLoad();
 
 function waitForLeaflet(callback) {
   if (window.L) {
@@ -8390,139 +8380,12 @@ if (L.Browser.mobile) {
   });
 }
 
-function prepareTypeHeroMap() {
-  const heroMapEl =
-    document.getElementById("type-hero-map");
-
-  if (
-    !heroMapEl ||
-    heroMapEl.dataset.mapReady === "true" ||
-    heroMapEl.dataset.mapDeferred === "true"
-  ) {
-    return;
-  }
-
-  heroMapEl.dataset.mapDeferred = "true";
-
-  heroMapEl.innerHTML = `
-    <div style="
-      position:absolute;
-      inset:0;
-      display:grid;
-      place-items:center;
-      overflow:hidden;
-      background:#e8f0f3;
-    ">
-      <img
-        src="/images/maps/nanaimo-static-map.png"
-        alt=""
-        width="900"
-        height="560"
-        loading="eager"
-        decoding="async"
-        aria-hidden="true"
-        style="
-          position:absolute;
-          inset:0;
-          width:100%;
-          height:100%;
-          object-fit:cover;
-          opacity:.68;
-        "
-      />
-
-      <div style="
-        position:relative;
-        z-index:1;
-        width:min(290px,calc(100% - 36px));
-        padding:20px;
-        border:1px solid rgba(23,32,51,.12);
-        border-radius:12px;
-        background:rgba(255,255,255,.92);
-        box-shadow:0 12px 34px rgba(23,32,51,.12);
-        text-align:center;
-        backdrop-filter:blur(8px);
-      ">
-        <p style="
-          margin:0 0 5px;
-          color:var(--accent);
-          font-size:.66rem;
-          font-weight:850;
-          letter-spacing:.12em;
-          text-transform:uppercase;
-        ">
-          Explore the listings
-        </p>
-
-        <strong style="
-          display:block;
-          margin-bottom:12px;
-          color:#172033;
-          font-family:Georgia,'Times New Roman',serif;
-          font-size:1.2rem;
-          font-weight:500;
-          line-height:1.2;
-        ">
-          View homes on the map
-        </strong>
-
-        <button
-          type="button"
-          data-load-type-hero-map
-          style="
-            min-height:42px;
-            padding:0 18px;
-            border:0;
-            border-radius:7px;
-            background:var(--accent);
-            color:#fff;
-            font:inherit;
-            font-size:.78rem;
-            font-weight:800;
-            cursor:pointer;
-          "
-        >
-          Open interactive map
-        </button>
-
-        <small style="
-          display:block;
-          margin-top:9px;
-          color:#6b7280;
-          font-size:.58rem;
-          line-height:1.2;
-        ">
-          Map © OpenStreetMap contributors
-        </small>
-      </div>
-    </div>
-  `;
-
-  const loadButton =
-    heroMapEl.querySelector(
-      "[data-load-type-hero-map]"
-    );
-
-  loadButton?.addEventListener(
-    "click",
-    () => {
-      heroMapEl.innerHTML = "";
-      heroMapEl.dataset.mapDeferred = "false";
-
-      initTypeHeroMap();
-    },
-    { once: true }
-  );
-}
-
 if (document.readyState === "loading") {
-  document.addEventListener(
-    "DOMContentLoaded",
-    prepareTypeHeroMap,
-    { once: true }
-  );
+  document.addEventListener("DOMContentLoaded", initTypeHeroMap, {
+    once: true,
+  });
 } else {
-  prepareTypeHeroMap();
+  initTypeHeroMap();
 }
 
 // --- State ---
@@ -9053,8 +8916,11 @@ mapViewBtn?.addEventListener("click", () => {
   requestAnimationFrame(() => initLeafletMap());
 });
 
-// Map now initializes only when the user opens Map view.
-// This avoids downloading Leaflet and map tiles during initial page load.
+// Auto-init for area pages
+if (document.querySelector(".area-intelligence") && intentMapEl) {
+  intentMapEl.hidden = false;
+  waitForLeaflet(() => initLeafletMap());
+}
 
 // Show more listings
 let visibleListingCount = 12;
@@ -10523,20 +10389,6 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   </>
 )}
 </Layout>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

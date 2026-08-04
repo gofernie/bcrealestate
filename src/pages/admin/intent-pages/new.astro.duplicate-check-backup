@@ -1,4 +1,4 @@
-﻿---
+---
 import { createClient } from "@supabase/supabase-js";
 import AdminSidebar from "../../../components/AdminSidebar.astro";
 import { getSite } from "../../../lib/getSite";
@@ -252,26 +252,15 @@ const metaDescription = [
         ]
           .filter(Boolean)
           .join(" ");
-const { data: existingPage, error: existingPageError } = await supabase
+const { data: existingPage } = await supabase
   .from("intent_pages")
-  .select("id, city, slug, site_id, hero_heading")
-  .eq("city", city)
+  .select("id, city, slug, site_id")
   .eq("slug", slug)
+  .eq("site_id", site?.id)
   .maybeSingle();
 
-if (existingPageError) {
-  message =
-    `Could not check for an existing page: ${existingPageError.message}`;
-} else if (existingPage) {
-  const existingTitle =
-    existingPage.hero_heading ||
-    `${existingPage.city} ${existingPage.slug}`;
-
-  message =
-    `${existingTitle} already exists.||` +
-    `/${existingPage.city}/${existingPage.slug}||` +
-    `/admin/intent-pages/${existingPage.id}/edit`;
-} else {
+if (existingPage) {
+message = `A page with this URL already exists.||/${existingPage.city}/${existingPage.slug}||/admin/intent-pages/${existingPage.id}/edit`;} else {
   const { data: page, error } = await supabase
     .from("intent_pages")
   .insert({
@@ -290,25 +279,10 @@ default_sort: defaultSort,
 is_published: true,
   lifestyle_angle: pageType,
   page_template: template || "standard",
-polygon_geojson:
-  pageType === "polygon"
-    ? polygonGeojson
-    : null,
-
-polygon_center_lat:
-  pageType === "polygon"
-    ? polygonCenterLat
-    : null,
-
-polygon_center_lng:
-  pageType === "polygon"
-    ? polygonCenterLng
-    : null,
-
-polygon_bounds:
-  pageType === "polygon"
-    ? polygonBounds
-    : null,
+polygon_geojson: polygonGeojson,
+polygon_center_lat: polygonCenterLat,
+polygon_center_lng: polygonCenterLng,
+polygon_bounds: polygonBounds,
 
 requires_waterfront:
   pageType === "intent" &&
@@ -1352,6 +1326,3 @@ form?.addEventListener("submit", (e) => {
   </div>
 </body>
 </html>
-
-
-
