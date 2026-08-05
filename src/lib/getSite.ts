@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+﻿import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   import.meta.env.PUBLIC_SUPABASE_URL,
@@ -108,9 +108,15 @@ export async function getSite(
   const host = normalizeHost(hostname);
   const cleanCity = normalizeValue(city);
 
-  const isLocal =
-    host === "localhost" ||
-    host === "127.0.0.1";
+ const isLocal =
+  host === "localhost" ||
+  host === "127.0.0.1";
+
+const isNetlifyHost =
+  host.endsWith(".netlify.app");
+
+const useBcRealEstateFallback =
+  isLocal || isNetlifyHost;
 
   /*
    * Local development behaves like bc.realestate.
@@ -118,7 +124,7 @@ export async function getSite(
    * This prevents localhost/Nanaimo from selecting
    * another Nanaimo site such as nanaimomobiles.com.
    */
-  if (isLocal) {
+if (useBcRealEstateFallback) {
     const {
       data: localSite,
       error: localError,
@@ -145,7 +151,7 @@ export async function getSite(
   /*
    * 1. Exact custom-domain and city match.
    */
-  if (cleanCity && !isLocal) {
+  if (cleanCity && !useBcRealEstateFallback) {
     const {
       data: exactSite,
       error: exactError,
@@ -204,7 +210,7 @@ export async function getSite(
   /*
    * 3. Custom-domain-only match.
    */
-  if (!isLocal) {
+  if (!useBcRealEstateFallback) {
     const {
       data: domainSite,
       error: domainError,
