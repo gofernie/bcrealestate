@@ -867,7 +867,16 @@ if (defaultSort === "price-asc") {
   query = query.order("listed_at", { ascending: false });
 }
 
-const { data: rawListings, error: listingsError } = await query.limit(listingLimit);
+const listingQueryStartedAt = performance.now();
+
+const { data: rawListings, error: listingsError } =
+  await query.limit(listingLimit);
+
+console.log(
+  `[LISTING QUERY TIMING] ${city}/${slug}: ${
+    (performance.now() - listingQueryStartedAt).toFixed(1)
+  }ms | rows=${rawListings?.length || 0}`
+);
 
 let listings = rawListings || [];
 const listingIds = listings
@@ -1009,6 +1018,7 @@ function pointInPolygon(point: [number, number], geojson: any) {
 
 if (hasPolygonSearch) {
   const beforePolygon = listings.length;
+  const polygonFilterStartedAt = performance.now();
 
   listings = listings.filter((listing) => {
     const lat = Number(listing.lat);
@@ -1023,6 +1033,12 @@ if (hasPolygonSearch) {
       page.polygon_geojson
     );
   });
+
+  console.log(
+    `[POLYGON TIMING] ${city}/${slug}: ${
+      (performance.now() - polygonFilterStartedAt).toFixed(1)
+    }ms | before=${beforePolygon} | after=${listings.length}`
+  );
 
   console.log("AREA LISTING DEBUG AFTER POLYGON", {
     city,
@@ -10948,6 +10964,10 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   }
 </style>
 </Layout>
+
+
+
+
 
 
 
