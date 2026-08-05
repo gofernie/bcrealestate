@@ -455,7 +455,7 @@ if (pageKind === "area" && page.polygon_geojson) {
   }
 }
 
-// Fetch OSM amenities server-side for copy generation
+// Fetch OSM amenities directly from Supabase while other page work continues.
 let osmSummary = {
   schools: 0,
   parks: 0,
@@ -463,7 +463,6 @@ let osmSummary = {
   grocery: 0,
   restaurants: 0,
   medical: 0,
-
   childcare: 0,
   playgrounds: 0,
   recreation: 0,
@@ -474,43 +473,181 @@ let osmSummary = {
   evCharging: 0,
 };
 
-if (osmLat && osmLng) {
-  try {
-    const osmStartedAt = performance.now();
+const osmSummaryPromise: Promise<typeof osmSummary> =
+  osmLat && osmLng
+    ? (async () => {
+        const osmStartedAt = performance.now();
 
-    const osmRes = await fetch(
-      `${Astro.url.origin}/api/osm-amenities?city=${encodeURIComponent(city)}&lat=${osmLat}&lng=${osmLng}&radius=10&limit=200&maxDistKm=4`
-    );
-    const osmData = await osmRes.json();
+        try {
+          const radiusKm = 4;
+          const latitudeDelta = radiusKm / 111;
 
-    console.log(
-      `[OSM TIMING] ${city}/${slug}: ${
-        (performance.now() - osmStartedAt).toFixed(1)
-      }ms`
-    );
-    const cats = osmData.categories || {};
-   osmSummary = {
-  schools: (cats.school || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-  parks: (cats.park || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-  transit: (cats.transit || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-  grocery: (cats.grocery || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-  restaurants: (cats.restaurant || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-  medical: (cats.medical || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
+          const longitudeDelta =
+            radiusKm /
+            (
+              111 *
+              Math.max(
+                Math.cos(
+                  (Number(osmLat) * Math.PI) / 180
+                ),
+                0.1
+              )
+            );
 
-  childcare: (cats.childcare || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-  playgrounds: (cats.playground || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-  recreation: (cats.recreation || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-  trails: (cats.trail || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-  beaches: (cats.beach || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-  golf: (cats.golf || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-  marinas: (cats.marina || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-  evCharging: (cats.ev_charging || []).filter((i: any) => Number(i.distKm || 0) <= 2).length,
-};
-  } catch (e) {
-    // silently fail
-  }
-}
+          const normalizedOsmCity = String(city)
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, "-");
 
+          const {
+            data: amenityRows = [],
+            error: amenityError,
+          } = await supabase
+            .from("osm_amenities")
+            .select("category,lat,lng")
+            .eq("city", normalizedOsmCity)
+            .gte("lat", Number(osmLat) - latitudeDelta)
+            .lte("lat", Number(osmLat) + latitudeDelta)
+            .gte("lng", Number(osmLng) - longitudeDelta)
+            .lte("lng", Number(osmLng) + longitudeDelta);
+
+          if (amenityError) {
+            throw amenityError;
+          }
+
+          const haversineKm = (
+            lat1: number,
+            lng1: number,
+            lat2: number,
+            lng2: number
+          ) => {
+            const earthRadiusKm = 6371;
+            const dLat = ((lat2 - lat1) * Math.PI) / 180;
+            const dLng = ((lng2 - lng1) * Math.PI) / 180;
+
+            const value =
+              Math.sin(dLat / 2) ** 2 +
+              Math.cos((lat1 * Math.PI) / 180) *
+                Math.cos((lat2 * Math.PI) / 180) *
+                Math.sin(dLng / 2) ** 2;
+
+            return (
+              earthRadiusKm *
+              2 *
+              Math.atan2(
+                Math.sqrt(value),
+                Math.sqrt(1 - value)
+              )
+            );
+          };
+
+          const counts = {
+            schools: 0,
+            parks: 0,
+            transit: 0,
+            grocery: 0,
+            restaurants: 0,
+            medical: 0,
+            childcare: 0,
+            playgrounds: 0,
+            recreation: 0,
+            trails: 0,
+            beaches: 0,
+            golf: 0,
+            marinas: 0,
+            evCharging: 0,
+          };
+
+          for (const row of amenityRows || []) {
+            const rowLat = Number(row.lat);
+            const rowLng = Number(row.lng);
+
+            if (
+              !Number.isFinite(rowLat) ||
+              !Number.isFinite(rowLng)
+            ) {
+              continue;
+            }
+
+            const distanceKm = haversineKm(
+              Number(osmLat),
+              Number(osmLng),
+              rowLat,
+              rowLng
+            );
+
+            if (distanceKm > 2) continue;
+
+            const category = String(
+              row.category || ""
+            ).toLowerCase();
+
+            if (category.includes("school")) {
+              counts.schools++;
+            } else if (
+              category.includes("grocery") ||
+              category.includes("shop")
+            ) {
+              counts.grocery++;
+            } else if (
+              category.includes("restaurant") ||
+              category.includes("cafe") ||
+              category.includes("coffee")
+            ) {
+              counts.restaurants++;
+            } else if (category.includes("park")) {
+              counts.parks++;
+            } else if (
+              category.includes("medical") ||
+              category.includes("doctor") ||
+              category.includes("clinic") ||
+              category.includes("pharmacy")
+            ) {
+              counts.medical++;
+            } else if (
+              category.includes("transit") ||
+              category.includes("bus")
+            ) {
+              counts.transit++;
+            } else if (category.includes("childcare")) {
+              counts.childcare++;
+            } else if (category.includes("playground")) {
+              counts.playgrounds++;
+            } else if (category.includes("recreation")) {
+              counts.recreation++;
+            } else if (category.includes("trail")) {
+              counts.trails++;
+            } else if (category.includes("beach")) {
+              counts.beaches++;
+            } else if (category.includes("golf")) {
+              counts.golf++;
+            } else if (category.includes("marina")) {
+              counts.marinas++;
+            } else if (
+              category.includes("ev_charging") ||
+              category.includes("charging")
+            ) {
+              counts.evCharging++;
+            }
+          }
+
+          console.log(
+            `[OSM DIRECT TIMING] ${city}/${slug}: ${
+              (performance.now() - osmStartedAt).toFixed(1)
+            }ms | candidates=${amenityRows?.length || 0}`
+          );
+
+          return counts;
+        } catch (error) {
+          console.error(
+            `[OSM DIRECT TIMING] ${city}/${slug}: failed`,
+            error
+          );
+
+          return osmSummary;
+        }
+      })()
+    : Promise.resolve(osmSummary);
 // Auto-generate neighbourhood copy from live data
 function generateAreaCopy(listings: any[], census: any, osm: typeof osmSummary, areaName: string, cityName: string) {
   const prices = listings.map((l) => Number(l.price || 0)).filter((p) => p > 0);
@@ -1261,6 +1398,8 @@ function marketActivityLabel(index: any) {
   if (value >= 0.25) return "?? Slower";
   return "? Quiet";
 }
+
+osmSummary = await osmSummaryPromise;
 
 const generatedCopy = pageKind === "area"
   ? generateAreaCopy(listings, censusData, osmSummary, page.area || "", city)
@@ -11124,6 +11263,8 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   }
 </style>
 </Layout>
+
+
 
 
 
