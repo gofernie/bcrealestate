@@ -6701,20 +6701,7 @@ grid-template-columns: 30px minmax(0, 1fr);
               slug
             )}`}
           >
-            <svg
-  viewBox="0 0 24 24"
-  width="16"
-  height="16"
-  aria-hidden="true"
-  fill="none"
-  stroke="currentColor"
-  stroke-width="2"
-  stroke-linecap="round"
-  stroke-linejoin="round"
->
-  <circle cx="12" cy="12" r="9" />
-  <path d="m15.5 8.5-2.2 4.8-4.8 2.2 2.2-4.8 4.8-2.2Z" />
-</svg>
+            <span>?</span>
             Open Explorer
           </a>
         </div>
@@ -6724,8 +6711,7 @@ grid-template-columns: 30px minmax(0, 1fr);
         <div
           id="type-hero-map"
           class="type-map-card__canvas"
-          data-area-hero-image={page.hero_image_url || ""}
-          aria-label={`${titleCase(page.area || slug)} neighbourhood preview`}
+          aria-label={`${titleCase(page.area || slug)} map preview`}
         ></div>
       </div>
     </section>
@@ -6844,20 +6830,7 @@ grid-template-columns: 30px minmax(0, 1fr);
               </a>
 
               <a class="type-button type-button--secondary" href={typePageExploreHref}>
-                <svg
-  viewBox="0 0 24 24"
-  width="16"
-  height="16"
-  aria-hidden="true"
-  fill="none"
-  stroke="currentColor"
-  stroke-width="2"
-  stroke-linecap="round"
-  stroke-linejoin="round"
->
-  <circle cx="12" cy="12" r="9" />
-  <path d="m15.5 8.5-2.2 4.8-4.8 2.2 2.2-4.8 4.8-2.2Z" />
-</svg>
+                <span>?</span>
                 Open Explorer
               </a>
             </div>
@@ -7944,7 +7917,7 @@ Approximate driving times from{" "}
 }
 
 <section class="grid">
-     {listings.map((listing, index) => {
+     {listings.slice(0, 12).map((listing, index) => {
           const firstImage =
             listing?.image_url ||
             listing?.images?.[0]?.url ||
@@ -7976,7 +7949,7 @@ Approximate driving times from{" "}
   </aside>
 )}
               <article
-class={`card original-card${index >= 16 ? " listing-load-hidden" : ""}`}
+  class="card original-card"
 
                 data-item-id={String(listing?.id || listing?.mls_number || index)}
                 data-card-id={String(listing?.id || listing?.mls_number || index)}
@@ -8075,60 +8048,14 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
    </section>
       <div id="refined-results-anchor"></div>
       <section id="refined-results" class="refined-results"></section>
-    <style is:inline>
-  .listing-load-hidden {
-    display: none !important;
-  }
-</style>
-
-{listings.length > 16 && (
-  <button
-    type="button"
-    id="show-more-listings-btn"
-    class="cta-button"
-    style="margin-top:24px;"
-  >
-    Show more listings
-  </button>
-)}
-
-<script is:inline>
-  (() => {
-    const button = document.getElementById("show-more-listings-btn");
-
-    if (!button) return;
-
-    const batchSize = 16;
-
-    button.addEventListener("click", () => {
-      const hiddenCards = Array.from(
-        document.querySelectorAll(
-          ".grid .original-card.listing-load-hidden"
-        )
-      );
-
-      hiddenCards
-        .slice(0, batchSize)
-        .forEach((card) => {
-          card.classList.remove("listing-load-hidden");
-        });
-
-      const remaining = document.querySelectorAll(
-        ".grid .original-card.listing-load-hidden"
-      ).length;
-
-      if (remaining === 0) {
-        button.hidden = true;
-        return;
-      }
-
-      button.textContent =
-        remaining <= batchSize
-          ? `Show remaining ${remaining} listings`
-          : "Show 16 more listings";
-    });
-  })();
-</script>
+      <button
+  type="button"
+  id="show-more-listings-btn"
+  class="cta-button"
+  style="margin-top:24px;"
+>
+  Show more listings
+</button>
 <RelatedIntentCards city={city} pages={relatedIntentPages} />
 {pageKind === "area" && listings.length > 0 && (
   <section style="margin-top:40px;">
@@ -8476,134 +8403,6 @@ function prepareTypeHeroMap() {
   }
 
   heroMapEl.dataset.mapDeferred = "true";
-
-  const isAreaNeighbourhoodPage =
-    Boolean(document.querySelector(".area-intelligence"));
-
-  if (isAreaNeighbourhoodPage) {
-    const listingImages = Array.from(
-      document.querySelectorAll(
-        ".original-card .card-image-wrap img"
-      )
-    )
-      .map((image) => image.getAttribute("src"))
-      .filter(Boolean)
-      .slice(0, 3);
-
-    const savedNeighbourhoodImage =
-      heroMapEl.dataset.areaHeroImage?.trim() || "";
-
-    const fallbackImage =
-      listingImages[0] ||
-      "/images/maps/nanaimo-static-map.png";
-
-    // The saved area image sells the neighbourhood.
-    // Listing images are supporting accents only.
-    const imageOne =
-      savedNeighbourhoodImage ||
-      fallbackImage;
-
-    const imageTwo =
-      listingImages[0] ||
-      imageOne;
-
-    const imageThree =
-      listingImages[1] ||
-      imageTwo;
-
-    const statCards = Array.from(
-      document.querySelectorAll(".stat-card")
-    );
-
-    const statValue = (index, fallback) =>
-      statCards[index]
-        ?.querySelector(".stat-value")
-        ?.textContent
-        ?.trim() || fallback;
-
-    const statLabel = (index, fallback) =>
-      statCards[index]
-        ?.querySelector(".stat-label")
-        ?.textContent
-        ?.trim() || fallback;
-
-    heroMapEl.innerHTML = `
-      <div
-        class="area-hero-visual"
-        data-featured-hero-listing
-        role="button"
-        tabindex="0"
-        aria-label="View featured home"
-      >
-        <div class="area-hero-collage">
-          <img
-            class="area-hero-collage__main"
-            src="${imageOne}"
-            alt=""
-            loading="eager"
-            decoding="async"
-          />
-
-          <img
-            class="area-hero-collage__secondary"
-            src="${imageTwo}"
-            alt=""
-            loading="lazy"
-            decoding="async"
-          />
-
-          <img
-            class="area-hero-collage__secondary"
-            src="${imageThree}"
-            alt=""
-            loading="lazy"
-            decoding="async"
-          />
-        </div>
-
-        <div class="area-hero-visual__shade"></div>
-
-        <div class="area-hero-visual__label">
-          <span>Featured home</span>
-          <strong>View this listing &rarr;</strong>
-        </div>
-      </div>
-    `;
-
-    const featuredHero =
-      heroMapEl.querySelector(
-        "[data-featured-hero-listing]"
-      );
-
-    const openFeaturedListing = () => {
-      const featuredCard =
-        document.querySelector(".original-card");
-
-      if (featuredCard instanceof HTMLElement) {
-        featuredCard.click();
-      }
-    };
-
-    featuredHero?.addEventListener(
-      "click",
-      openFeaturedListing
-    );
-
-    featuredHero?.addEventListener(
-      "keydown",
-      (event) => {
-        if (
-          event.key === "Enter" ||
-          event.key === " "
-        ) {
-          event.preventDefault();
-          openFeaturedListing();
-        }
-      }
-    );
-
-    return;
-  }
 
   heroMapEl.innerHTML = `
     <div style="
@@ -10761,190 +10560,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
 </script>
   </>
 )}
-
-<style is:global id="area-neighbourhood-hero-styles">
- .area-hero-visual {
-  position: absolute;
-  inset: 0;
-    cursor: pointer;
-    transition:
-      transform .18s ease,
-      box-shadow .18s ease;
-  cursor: pointer;
-}
-    overflow: hidden;
-    border-radius: inherit;
-    background: #e8eef0;
-  }
-
-
-  .area-hero-visual[data-featured-hero-listing]:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 18px 42px rgba(15, 23, 42, .18);
-  }
-
-  .area-hero-visual[data-featured-hero-listing]:focus-visible {
-    outline: 3px solid var(--accent);
-    outline-offset: 3px;
-  }
-  .area-hero-collage {
-    position: absolute;
-    inset: 0;
-  }
-
-  .area-hero-collage img {
-    display: block;
-    object-fit: cover;
-  }
-
-  .area-hero-collage__main {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-  }
-
-  .area-hero-collage__secondary {
-    position: absolute;
-    z-index: 3;
-    width: 132px !important;
-    height: 94px !important;
-    object-fit: cover;
-    border: 3px solid rgba(255,255,255,.96);
-    border-radius: 10px;
-    box-shadow: 0 12px 30px rgba(15,23,42,.3);
-  }
-
-  .area-hero-collage__secondary:nth-of-type(2) {
-    right: 116px;
-    bottom: 22px;
-    transform: rotate(-2deg);
-  }
-
-  .area-hero-collage__secondary:nth-of-type(3) {
-    right: 18px;
-    bottom: 34px;
-    transform: rotate(2deg);
-  }
-
-  .area-hero-visual__shade {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    background:
-      linear-gradient(
-        180deg,
-        rgba(12,18,28,.03) 30%,
-        rgba(12,18,28,.7) 100%
-      );
-    pointer-events: none;
-  }
-
-  .area-hero-floating-stats {
-    position: absolute;
-    top: 18px;
-    left: 18px;
-    right: 18px;
-    z-index: 4;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .area-hero-floating-stat {
-    min-width: 108px;
-    padding: 10px 12px;
-    border: 1px solid rgba(255,255,255,.55);
-    border-radius: 9px;
-    background: rgba(255,255,255,.93);
-    box-shadow: 0 8px 24px rgba(15,23,42,.15);
-    backdrop-filter: blur(10px);
-  }
-
-  .area-hero-floating-stat strong {
-    display: block;
-    color: var(--ink);
-    font-size: .92rem;
-    line-height: 1.1;
-  }
-
-  .area-hero-floating-stat span {
-    display: block;
-    margin-top: 3px;
-    color: var(--muted);
-    font-size: .61rem;
-    font-weight: 700;
-    line-height: 1.2;
-  }
-
-  .area-hero-visual__label {
-    position: absolute;
-    left: 22px;
-    right: 285px;
-    bottom: 22px;
-    z-index: 4;
-    color: #fff;
-    text-shadow: 0 2px 12px rgba(0,0,0,.45);
-  }
-
-  .area-hero-visual__label span {
-    display: block;
-    margin-bottom: 4px;
-    font-size: .62rem;
-    font-weight: 850;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-  }
-
-  .area-hero-visual__label strong {
-    display: block;
-    max-width: 360px;
-    font-family: var(--serif);
-    font-size: clamp(1.15rem, 2vw, 1.55rem);
-    font-weight: 500;
-    line-height: 1.15;
-  }
-
-  @media (max-width: 700px) {
-    .area-hero-collage__secondary {
-      width: 105px !important;
-      height: 76px !important;
-    }
-
-    .area-hero-collage__secondary:nth-of-type(2) {
-      right: 88px;
-      bottom: 15px;
-    }
-
-    .area-hero-collage__secondary:nth-of-type(3) {
-      right: 12px;
-      bottom: 23px;
-    }
-
-    .area-hero-floating-stats {
-      top: 12px;
-      left: 12px;
-      right: 12px;
-    }
-
-    .area-hero-floating-stat {
-      min-width: 90px;
-      padding: 8px 10px;
-    }
-
-    .area-hero-visual__label {
-      left: 16px;
-      right: 205px;
-      bottom: 16px;
-    }
-  }
-</style>
 </Layout>
-
-
-
-
-
 
 
 
