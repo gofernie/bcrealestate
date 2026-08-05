@@ -22,13 +22,28 @@ const supabase = createClient(
 const phaseTimingStartedAt = performance.now();
 let previousPhaseTiming = phaseTimingStartedAt;
 
+const phaseTimingResults: Array<{
+  label: string;
+  durationMs: number;
+  totalMs: number;
+}> = [];
+
 function logPhaseTiming(label: string) {
   const now = performance.now();
 
+  const durationMs = now - previousPhaseTiming;
+  const totalMs = now - phaseTimingStartedAt;
+
+  phaseTimingResults.push({
+    label,
+    durationMs: Number(durationMs.toFixed(1)),
+    totalMs: Number(totalMs.toFixed(1)),
+  });
+
   console.log(
     `[PHASE TIMING] ${city}/${slug} | ${label}: ${
-      (now - previousPhaseTiming).toFixed(1)
-    }ms | total=${(now - phaseTimingStartedAt).toFixed(1)}ms`
+      durationMs.toFixed(1)
+    }ms | total=${totalMs.toFixed(1)}ms`
   );
 
   previousPhaseTiming = now;
@@ -1515,6 +1530,11 @@ if (site?.id) {
 const { data: relatedIntentPagesRaw = [] } = await relatedIntentQuery;
 
 logPhaseTiming("related intent query");
+
+console.log(
+  `[PHASE SUMMARY] ${city}/${slug}`,
+  JSON.stringify(phaseTimingResults)
+);
 
 function scoreRelatedIntent(intent: any) {
   let score = 0;
@@ -11306,6 +11326,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   }
 </style>
 </Layout>
+
 
 
 
