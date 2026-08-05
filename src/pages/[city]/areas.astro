@@ -132,6 +132,108 @@ const navTypes = [
 const accent =
   site?.accent_color ||
   "#1f5a49";
+
+const findArea = (
+  keywords: string[],
+  fallbackIndex = 0
+) => {
+  const match = areas.find((area) => {
+    const searchable = `${area.name} ${area.slug} ${area.description}`
+      .toLowerCase();
+
+    return keywords.some((keyword) =>
+      searchable.includes(keyword)
+    );
+  });
+
+  return match || areas[fallbackIndex] || areas[0] || null;
+};
+
+const lifestyleRecommendations = [
+  {
+    eyebrow: "Mountain lifestyle",
+    title: "Ski access",
+    description:
+      "Start close to the slopes, trails, and year-round mountain recreation.",
+    icon: "mountain",
+    area: findArea(
+      ["alpine resort", "ski", "resort"],
+      0
+    ),
+  },
+  {
+    eyebrow: "Everyday convenience",
+    title: "Walkable living",
+    description:
+      "Explore neighbourhoods close to shops, restaurants, and local services.",
+    icon: "walk",
+    area: findArea(
+      ["downtown", "old city", "centre", "center"],
+      1
+    ),
+  },
+  {
+    eyebrow: "Room to settle in",
+    title: "Family friendly",
+    description:
+      "Look for quieter streets, parks, schools, and practical home layouts.",
+    icon: "family",
+    area: findArea(
+      ["family", "west", "annex", "heights"],
+      2
+    ),
+  },
+  {
+    eyebrow: "Trail connections",
+    title: "Bike and explore",
+    description:
+      "Find areas with quick access to trails, parks, and outdoor recreation.",
+    icon: "bike",
+    area: findArea(
+      ["montane", "trail", "mountain"],
+      3
+    ),
+  },
+  {
+    eyebrow: "A little more space",
+    title: "Quiet living",
+    description:
+      "Browse neighbourhoods known for privacy, larger lots, and a calmer pace.",
+    icon: "trees",
+    area: findArea(
+      ["ridgemont", "rural", "acreage", "quiet"],
+      4
+    ),
+  },
+  {
+    eyebrow: "Compare your options",
+    title: "More for your budget",
+    description:
+      "See where current inventory offers the widest range of homes and prices.",
+    icon: "value",
+    area:
+      [...areas]
+        .filter((area) => area.count > 0)
+        .sort((a, b) => b.count - a.count)[0] ||
+      areas[0] ||
+      null,
+  },
+].filter((item) => item.area);
+
+const featuredArea =
+  lifestyleRecommendations[0]?.area ||
+  areas[0] ||
+  null;
+
+const areasWithListings =
+  areas.filter((area) => area.count > 0).length;
+
+const averageListingsPerArea =
+  areasWithListings > 0
+    ? Math.round(
+        listings.length / areasWithListings
+      )
+    : 0;
 ---
 
 <Layout
@@ -217,6 +319,116 @@ const accent =
     </section>
 
     <main class="areas-main">
+      <section class="areas-discovery">
+        <div class="areas-heading">
+          <div>
+            <p class="areas-eyebrow">
+              Find your fit
+            </p>
+
+            <h2>
+              What matters most to you?
+            </h2>
+          </div>
+
+          <p>
+            Choose a lifestyle and jump to a neighbourhood
+            that may be worth exploring first.
+          </p>
+        </div>
+
+        <div class="areas-lifestyle-grid">
+          {
+            lifestyleRecommendations.map((item) => (
+              <a
+                class="areas-lifestyle-card"
+                href={`/${city}/${item.area.slug}`}
+              >
+                <span
+                  class={`areas-lifestyle-icon areas-lifestyle-icon--${item.icon}`}
+                  aria-hidden="true"
+                >
+                  {
+                    item.icon === "mountain"
+                      ? "▲"
+                      : item.icon === "walk"
+                        ? "↟"
+                        : item.icon === "family"
+                          ? "⌂"
+                          : item.icon === "bike"
+                            ? "◉"
+                            : item.icon === "trees"
+                              ? "♧"
+                              : "$"
+                  }
+                </span>
+
+                <div>
+                  <small>{item.eyebrow}</small>
+                  <strong>{item.title}</strong>
+                  <p>{item.description}</p>
+                  <b>
+                    Explore {item.area.name}
+                    <span aria-hidden="true">→</span>
+                  </b>
+                </div>
+              </a>
+            ))
+          }
+        </div>
+      </section>
+
+      {
+        featuredArea && (
+          <section class="areas-featured">
+            <div class="areas-featured__copy">
+              <p class="areas-eyebrow">
+                Featured neighbourhood
+              </p>
+
+              <h2>{featuredArea.name}</h2>
+
+              <p>
+                {
+                  featuredArea.description ||
+                  `Explore current homes, local information, and market activity in ${featuredArea.name}.`
+                }
+              </p>
+
+              <div class="areas-featured__stats">
+                <span>
+                  <strong>
+                    {featuredArea.count.toLocaleString()}
+                  </strong>
+                  active listings
+                </span>
+
+                <span>
+                  <strong>{cityLabel}</strong>
+                  local area guide
+                </span>
+              </div>
+
+              <a
+                class="areas-button areas-button--primary"
+                href={`/${city}/${featuredArea.slug}`}
+              >
+                Explore {featuredArea.name}
+              </a>
+            </div>
+
+            <a
+              class="areas-featured__visual"
+              href={`/${city}/${featuredArea.slug}`}
+              aria-label={`Explore ${featuredArea.name}`}
+            >
+              <span>{featuredArea.name}</span>
+              <b aria-hidden="true">→</b>
+            </a>
+          </section>
+        )
+      }
+
       <section>
         <div class="areas-heading">
           <div>
@@ -265,6 +477,120 @@ const accent =
           }
         </div>
       </section>
+      <section class="areas-snapshot">
+        <div>
+          <p class="areas-eyebrow">
+            {cityLabel} at a glance
+          </p>
+
+          <h2>
+            A quick market snapshot
+          </h2>
+        </div>
+
+        <div class="areas-snapshot__grid">
+          <article>
+            <strong>
+              {listings.length.toLocaleString()}
+            </strong>
+            <span>Active listings</span>
+          </article>
+
+          <article>
+            <strong>{areas.length}</strong>
+            <span>Neighbourhoods</span>
+          </article>
+
+          <article>
+            <strong>{areasWithListings}</strong>
+            <span>Areas with inventory</span>
+          </article>
+
+          <article>
+            <strong>{averageListingsPerArea}</strong>
+            <span>Average listings per active area</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="areas-map-callout">
+        <div>
+          <p class="areas-eyebrow">
+            Explore geographically
+          </p>
+
+          <h2>
+            See where each neighbourhood sits
+          </h2>
+
+          <p>
+            Open the interactive map to compare areas,
+            listings, parks, schools, and nearby places.
+          </p>
+
+          <a
+            class="areas-button areas-button--primary"
+            href={`/explore?city=${encodeURIComponent(city)}`}
+          >
+            Explore {cityLabel} on the map
+          </a>
+        </div>
+
+        <a
+          class="areas-map-preview"
+          href={`/explore?city=${encodeURIComponent(city)}`}
+          aria-label={`Explore ${cityLabel} on the map`}
+        >
+          <span class="areas-map-preview__pin areas-map-preview__pin--one">
+            1
+          </span>
+          <span class="areas-map-preview__pin areas-map-preview__pin--two">
+            2
+          </span>
+          <span class="areas-map-preview__pin areas-map-preview__pin--three">
+            3
+          </span>
+          <strong>Interactive area map</strong>
+        </a>
+      </section>
+
+      <section class="areas-guide">
+        <p class="areas-eyebrow">
+          New to {cityLabel}?
+        </p>
+
+        <h2>
+          Start with the lifestyle, then compare the homes
+        </h2>
+
+        <p>
+          {cityLabel} offers a range of neighbourhoods,
+          from active, walkable areas to quieter communities
+          with more space. Explore each area to compare
+          current listings, property types, prices, local
+          amenities, and the character of the neighbourhood.
+          When an area feels right, open its guide and browse
+          the homes currently available there.
+        </p>
+
+        <div class="areas-guide__actions">
+          <a
+            class="areas-button areas-button--primary"
+            href={`/${city}`}
+          >
+            Browse all {cityLabel} homes
+          </a>
+
+          <a
+            class="areas-text-link"
+            href={`/explore?city=${encodeURIComponent(city)}`}
+          >
+            Compare areas on the map
+            <span aria-hidden="true">→</span>
+          </a>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -532,5 +858,403 @@ const accent =
         grid-template-columns: 1fr;
       }
     }
-  </style>
+  
+  .areas-discovery {
+    margin-bottom: 72px;
+  }
+
+  .areas-lifestyle-grid {
+    display: grid;
+    grid-template-columns:
+      repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .areas-lifestyle-card {
+    display: flex;
+    min-height: 210px;
+    gap: 18px;
+    padding: 24px;
+    border: 1px solid rgba(28, 25, 23, 0.1);
+    border-radius: 12px;
+    background: #fff;
+    color: inherit;
+    text-decoration: none;
+    box-shadow: 0 4px 24px rgba(28, 25, 23, 0.04);
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease,
+      border-color 0.2s ease;
+  }
+
+  .areas-lifestyle-card:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(
+      in srgb,
+      var(--areas-accent) 45%,
+      transparent
+    );
+    box-shadow: 0 16px 38px rgba(28, 25, 23, 0.09);
+  }
+
+  .areas-lifestyle-icon {
+    display: grid;
+    flex: 0 0 48px;
+    width: 48px;
+    height: 48px;
+    place-items: center;
+    border-radius: 50%;
+    background: color-mix(
+      in srgb,
+      var(--areas-accent) 12%,
+      white
+    );
+    color: var(--areas-accent);
+    font-size: 1.25rem;
+    font-weight: 800;
+  }
+
+  .areas-lifestyle-card small {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--areas-accent);
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+
+  .areas-lifestyle-card strong {
+    display: block;
+    font-family: Georgia, serif;
+    font-size: 1.35rem;
+    line-height: 1.15;
+  }
+
+  .areas-lifestyle-card p {
+    margin: 10px 0 16px;
+    color: #625f5b;
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+
+  .areas-lifestyle-card b {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    color: var(--areas-accent);
+    font-size: 0.82rem;
+  }
+
+  .areas-featured {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 0.9fr)
+      minmax(340px, 1.1fr);
+    overflow: hidden;
+    margin: 72px 0;
+    border-radius: 16px;
+    background: #172922;
+    color: #fff;
+  }
+
+  .areas-featured__copy {
+    padding: clamp(32px, 6vw, 72px);
+  }
+
+  .areas-featured h2 {
+    margin: 7px 0 15px;
+    color: #fff;
+    font-family: Georgia, serif;
+    font-size: clamp(2rem, 4vw, 3.35rem);
+  }
+
+  .areas-featured__copy > p:not(.areas-eyebrow) {
+    max-width: 580px;
+    color: rgba(255, 255, 255, 0.74);
+    line-height: 1.75;
+  }
+
+  .areas-featured__stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 28px;
+    margin: 28px 0;
+  }
+
+  .areas-featured__stats span {
+    display: grid;
+    gap: 3px;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.78rem;
+  }
+
+  .areas-featured__stats strong {
+    color: #fff;
+    font-size: 1.2rem;
+  }
+
+  .areas-featured__visual {
+    position: relative;
+    display: flex;
+    min-height: 390px;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 34px;
+    background:
+      linear-gradient(
+        135deg,
+        rgba(31, 90, 73, 0.3),
+        rgba(10, 20, 17, 0.88)
+      ),
+      var(--areas-hero-image, #315d4d);
+    background-position: center;
+    background-size: cover;
+    color: #fff;
+    text-decoration: none;
+  }
+
+  .areas-featured__visual span {
+    max-width: 80%;
+    font-family: Georgia, serif;
+    font-size: clamp(1.6rem, 3vw, 2.6rem);
+  }
+
+  .areas-featured__visual b {
+    display: grid;
+    width: 46px;
+    height: 46px;
+    place-items: center;
+    border-radius: 50%;
+    background: #fff;
+    color: #17392f;
+  }
+
+  .areas-snapshot {
+    display: grid;
+    grid-template-columns: 0.8fr 1.2fr;
+    gap: 48px;
+    align-items: end;
+    margin: 84px 0;
+    padding: clamp(30px, 5vw, 58px);
+    border-radius: 16px;
+    background: #f1f5f1;
+  }
+
+  .areas-snapshot h2,
+  .areas-map-callout h2,
+  .areas-guide h2 {
+    margin: 6px 0 0;
+    font-family: Georgia, serif;
+    font-size: clamp(1.8rem, 3.5vw, 3rem);
+    line-height: 1.08;
+  }
+
+  .areas-snapshot__grid {
+    display: grid;
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .areas-snapshot__grid article {
+    display: grid;
+    gap: 4px;
+    min-height: 118px;
+    align-content: center;
+    padding: 22px;
+    border: 1px solid rgba(28, 25, 23, 0.08);
+    border-radius: 10px;
+    background: #fff;
+  }
+
+  .areas-snapshot__grid strong {
+    color: var(--areas-accent);
+    font-family: Georgia, serif;
+    font-size: 2rem;
+  }
+
+  .areas-snapshot__grid span {
+    color: #696560;
+    font-size: 0.8rem;
+  }
+
+  .areas-map-callout {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 0.8fr)
+      minmax(340px, 1.2fr);
+    gap: 48px;
+    align-items: center;
+    margin: 84px 0;
+  }
+
+  .areas-map-callout > div > p:not(.areas-eyebrow) {
+    max-width: 560px;
+    margin: 18px 0 26px;
+    color: #68635e;
+    line-height: 1.7;
+  }
+
+  .areas-map-preview {
+    position: relative;
+    display: grid;
+    min-height: 360px;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid rgba(28, 25, 23, 0.09);
+    border-radius: 16px;
+    background:
+      linear-gradient(
+        rgba(255, 255, 255, 0.08) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.08) 1px,
+        transparent 1px
+      ),
+      linear-gradient(135deg, #23483b, #0f2922);
+    background-size: 42px 42px, 42px 42px, auto;
+    color: #fff;
+    text-decoration: none;
+  }
+
+  .areas-map-preview::before,
+  .areas-map-preview::after {
+    position: absolute;
+    width: 72%;
+    height: 62%;
+    border: 2px solid rgba(174, 224, 203, 0.55);
+    border-radius: 44% 56% 38% 62%;
+    content: "";
+    transform: rotate(-12deg);
+  }
+
+  .areas-map-preview::after {
+    width: 47%;
+    height: 43%;
+    border-color: rgba(255, 255, 255, 0.22);
+    transform: translate(38px, -20px) rotate(17deg);
+  }
+
+  .areas-map-preview strong {
+    position: relative;
+    z-index: 2;
+    padding: 12px 18px;
+    border-radius: 999px;
+    background: rgba(10, 25, 20, 0.75);
+    backdrop-filter: blur(8px);
+  }
+
+  .areas-map-preview__pin {
+    position: absolute;
+    z-index: 3;
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border: 3px solid #fff;
+    border-radius: 50%;
+    background: var(--areas-accent);
+    font-size: 0.72rem;
+    font-weight: 800;
+  }
+
+  .areas-map-preview__pin--one {
+    top: 25%;
+    left: 28%;
+  }
+
+  .areas-map-preview__pin--two {
+    top: 54%;
+    right: 24%;
+  }
+
+  .areas-map-preview__pin--three {
+    bottom: 20%;
+    left: 43%;
+  }
+
+  .areas-guide {
+    margin: 90px 0 40px;
+    padding: clamp(32px, 6vw, 70px);
+    border-radius: 16px;
+    background: #172922;
+    color: #fff;
+    text-align: center;
+  }
+
+  .areas-guide h2 {
+    max-width: 850px;
+    margin: 8px auto 20px;
+    color: #fff;
+  }
+
+  .areas-guide > p:not(.areas-eyebrow) {
+    max-width: 840px;
+    margin: 0 auto;
+    color: rgba(255, 255, 255, 0.72);
+    line-height: 1.8;
+  }
+
+  .areas-guide__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 30px;
+  }
+
+  .areas-text-link {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    color: #fff;
+    font-weight: 750;
+    text-decoration: none;
+  }
+
+  @media (max-width: 900px) {
+    .areas-lifestyle-grid {
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+    }
+
+    .areas-featured,
+    .areas-snapshot,
+    .areas-map-callout {
+      grid-template-columns: 1fr;
+    }
+
+    .areas-featured__visual {
+      min-height: 300px;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .areas-lifestyle-grid,
+    .areas-snapshot__grid {
+      grid-template-columns: 1fr;
+    }
+
+    .areas-lifestyle-card {
+      min-height: 0;
+      padding: 20px;
+    }
+
+    .areas-featured,
+    .areas-snapshot,
+    .areas-map-preview,
+    .areas-guide {
+      border-radius: 10px;
+    }
+
+    .areas-map-preview {
+      min-height: 290px;
+    }
+  }
+</style>
 </Layout>
+
