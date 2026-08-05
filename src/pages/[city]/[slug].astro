@@ -693,43 +693,55 @@ const hasActiveSearchFilters =
   filterBeds > 0 ||
   !!filterPrice ||
   (filterSort !== "" && filterSort !== "newest");
+const listingCardFields = `
+  id,
+  mls_number,
+  city,
+  normalized_city,
+  area,
+  normalized_area,
+  property_type,
+  normalized_type,
+  type,
+  price,
+  beds,
+  baths,
+  sqft,
+  address,
+  description,
+  image_url,
+  images,
+  lat,
+  lng,
+  listed_at,
+  created_at,
+  updated_at,
+  status,
+  waterfront,
+  ocean_view,
+  view_type,
+  waterfront_type,
+  primary_on_main,
+  three_plus_beds_same_floor,
+  four_plus_beds_same_floor,
+  has_floorplan,
+  has_updated_kitchen,
+  has_detached_shop
+`;
+
+const polygonCandidateFields = `
+  id,
+  lat,
+  lng
+`;
+
 let query = supabase
   .from("listing_rows")
-  .select(`
-    id,
-    mls_number,
-    city,
-    normalized_city,
-    area,
-    normalized_area,
-    property_type,
-    normalized_type,
-    type,
-    price,
-    beds,
-    baths,
-    sqft,
-    address,
-    description,
-    image_url,
-    images,
-    lat,
-    lng,
-    listed_at,
-    created_at,
-    updated_at,
-    status,
-    waterfront,
-    ocean_view,
-    view_type,
-    waterfront_type,
-    primary_on_main,
-    three_plus_beds_same_floor,
-    four_plus_beds_same_floor,
-    has_floorplan,
-    has_updated_kitchen,
-    has_detached_shop
-  `)
+  .select(
+    hasPolygonSearch
+      ? polygonCandidateFields
+      : listingCardFields
+  )
   .eq("status", "A")
   .eq("normalized_city", city);
 
@@ -913,87 +925,7 @@ console.log(
 );
 
 let listings = rawListings || [];
-const listingIds = listings
-  .map((listing) =>
-    String(
-      listing?.id ||
-      listing?.mls_number ||
-      ""
-    )
-  )
-  .filter(Boolean);
 
-const floorplansByListing = new Map();
-
-if (listingIds.length > 0) {
-  const { data: floorplanRows = [], error: floorplanError } =
-    await supabase
-      .from("listing_floorplans")
-      .select("listing_id,image_url")
-      .in("listing_id", listingIds);
-
-  if (floorplanError) {
-    console.error(
-      "Could not load listing floorplans:",
-      floorplanError
-    );
-  } else {
-    for (const row of floorplanRows) {
-      const listingId =
-        String(row.listing_id || "");
-
-      if (!listingId || !row.image_url) continue;
-
-      if (!floorplansByListing.has(listingId)) {
-        floorplansByListing.set(
-          listingId,
-          []
-        );
-      }
-
-      floorplansByListing
-        .get(listingId)
-        .push(row.image_url);
-    }
-  }
-}
-const roomsByListing = new Map();
-
-if (listingIds.length > 0) {
-  const { data: roomRows = [], error: roomError } =
-    await supabase
-      .from("listing_rooms")
-      .select("listing_id,room_label,level,length,width")
-      .in("listing_id", listingIds);
-
-  if (roomError) {
-    console.error(
-      "Could not load listing rooms:",
-      roomError
-    );
-  } else {
-    for (const row of roomRows) {
-      const listingId =
-        String(row.listing_id || "");
-
-      if (!listingId) continue;
-
-      if (!roomsByListing.has(listingId)) {
-        roomsByListing.set(
-          listingId,
-          []
-        );
-      }
-
-      roomsByListing.get(listingId).push({
-        label: row.room_label || "",
-        level: row.level || "",
-        length: row.length || "",
-        width: row.width || "",
-      });
-    }
-  }
-}
 console.log("AREA LISTING DEBUG BEFORE POLYGON", {
   city,
   slug,
@@ -1002,8 +934,9 @@ console.log("AREA LISTING DEBUG BEFORE POLYGON", {
   normalizedArea: String(page.area || "").toLowerCase().trim(),
   rawListingCount: rawListings?.length || 0,
   listingsError,
-  hasPolygonSearch
+  hasPolygonSearch,
 });
+
 function getPolygonGeometry(geojson: any) {
   if (!geojson) return null;
 
@@ -1018,7 +951,10 @@ function getPolygonGeometry(geojson: any) {
   return geojson;
 }
 
-function pointInPolygon(point: [number, number], geojson: any) {
+function pointInPolygon(
+  point: [number, number],
+  geojson: any
+) {
   const polygon = getPolygonGeometry(geojson);
 
   if (!polygon?.coordinates?.[0]) return false;
@@ -1033,7 +969,11 @@ function pointInPolygon(point: [number, number], geojson: any) {
   return rings.some((ring: any[]) => {
     let inside = false;
 
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    for (
+      let i = 0, j = ring.length - 1;
+      i < ring.length;
+      j = i++
+    ) {
       const xi = Number(ring[i][0]);
       const yi = Number(ring[i][1]);
       const xj = Number(ring[j][0]);
@@ -1041,7 +981,10 @@ function pointInPolygon(point: [number, number], geojson: any) {
 
       const intersect =
         yi > y !== yj > y &&
-        x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+        x <
+          ((xj - xi) * (y - yi)) /
+            (yj - yi) +
+            xi;
 
       if (intersect) inside = !inside;
     }
@@ -1058,7 +1001,10 @@ if (hasPolygonSearch) {
     const lat = Number(listing.lat);
     const lng = Number(listing.lng);
 
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng)
+    ) {
       return false;
     }
 
@@ -1070,7 +1016,10 @@ if (hasPolygonSearch) {
 
   console.log(
     `[POLYGON TIMING] ${city}/${slug}: ${
-      (performance.now() - polygonFilterStartedAt).toFixed(1)
+      (
+        performance.now() -
+        polygonFilterStartedAt
+      ).toFixed(1)
     }ms | before=${beforePolygon} | after=${listings.length}`
   );
 
@@ -1080,10 +1029,188 @@ if (hasPolygonSearch) {
     pageArea: page.area,
     beforePolygon,
     afterPolygon: listings.length,
-    polygonType: page.polygon_geojson?.type || null
+    polygonType:
+      page.polygon_geojson?.type || null,
   });
 }
 
+/*
+ * Polygon pages initially contain only id/lat/lng.
+ * Fetch full listing-card data for the matching IDs.
+ */
+if (hasPolygonSearch && listings.length > 0) {
+  const orderedPolygonIds = listings
+    .map((listing) =>
+      String(listing.id || "")
+    )
+    .filter(Boolean);
+
+  const detailQueryStartedAt =
+    performance.now();
+
+  const detailChunks: string[][] = [];
+
+  for (
+    let index = 0;
+    index < orderedPolygonIds.length;
+    index += 100
+  ) {
+    detailChunks.push(
+      orderedPolygonIds.slice(
+        index,
+        index + 100
+      )
+    );
+  }
+
+  const detailResults = await Promise.all(
+    detailChunks.map((ids) =>
+      supabase
+        .from("listing_rows")
+        .select(listingCardFields)
+        .in("id", ids)
+    )
+  );
+
+  const detailRows: any[] = [];
+  let detailError: any = null;
+
+  for (const result of detailResults) {
+    if (result.error && !detailError) {
+      detailError = result.error;
+    }
+
+    if (Array.isArray(result.data)) {
+      detailRows.push(...result.data);
+    }
+  }
+
+  if (detailError) {
+    console.error(
+      "Could not load polygon listing details:",
+      detailError
+    );
+
+    listings = [];
+  } else {
+    const detailsById = new Map(
+      detailRows.map((listing) => [
+        String(listing.id || ""),
+        listing,
+      ])
+    );
+
+    listings = orderedPolygonIds
+      .map((id) => detailsById.get(id))
+      .filter(Boolean);
+  }
+
+  console.log(
+    `[POLYGON DETAIL TIMING] ${city}/${slug}: ${
+      (
+        performance.now() -
+        detailQueryStartedAt
+      ).toFixed(1)
+    }ms | ids=${orderedPolygonIds.length} | rows=${listings.length}`
+  );
+}
+
+const listingIds = listings
+  .map((listing) =>
+    String(
+      listing?.id ||
+      listing?.mls_number ||
+      ""
+    )
+  )
+  .filter(Boolean);
+
+const floorplansByListing = new Map();
+
+if (listingIds.length > 0) {
+  const {
+    data: floorplanRows = [],
+    error: floorplanError,
+  } = await supabase
+    .from("listing_floorplans")
+    .select("listing_id,image_url")
+    .in("listing_id", listingIds);
+
+  if (floorplanError) {
+    console.error(
+      "Could not load listing floorplans:",
+      floorplanError
+    );
+  } else {
+    for (const row of floorplanRows) {
+      const listingId = String(
+        row.listing_id || ""
+      );
+
+      if (!listingId || !row.image_url) {
+        continue;
+      }
+
+      if (
+        !floorplansByListing.has(listingId)
+      ) {
+        floorplansByListing.set(
+          listingId,
+          []
+        );
+      }
+
+      floorplansByListing
+        .get(listingId)
+        .push(row.image_url);
+    }
+  }
+}
+
+const roomsByListing = new Map();
+
+if (listingIds.length > 0) {
+  const {
+    data: roomRows = [],
+    error: roomError,
+  } = await supabase
+    .from("listing_rooms")
+    .select(
+      "listing_id,room_label,level,length,width"
+    )
+    .in("listing_id", listingIds);
+
+  if (roomError) {
+    console.error(
+      "Could not load listing rooms:",
+      roomError
+    );
+  } else {
+    for (const row of roomRows) {
+      const listingId = String(
+        row.listing_id || ""
+      );
+
+      if (!listingId) continue;
+
+      if (!roomsByListing.has(listingId)) {
+        roomsByListing.set(
+          listingId,
+          []
+        );
+      }
+
+      roomsByListing
+        .get(listingId)
+        .push({
+          label: row.room_label || "",
+          level: row.level || "",
+          length: row.length || "",
+          width: row.width || "",
+        });
+    }
+  }
+}
 console.log("INTENT LISTINGS DEBUG", {
   city,
   slug,
@@ -10997,6 +11124,8 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   }
 </style>
 </Layout>
+
+
 
 
 
