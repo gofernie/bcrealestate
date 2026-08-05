@@ -8916,25 +8916,47 @@ function prepareTypeHeroMap() {
     Boolean(document.querySelector(".area-intelligence"));
 
   if (isAreaNeighbourhoodPage) {
-    const listingImages = Array.from(
-      document.querySelectorAll(
-        ".original-card .card-image-wrap img"
-      )
-    )
-      .map((image) => image.getAttribute("src"))
-      .filter(Boolean)
-      .slice(0, 3);
+    const featuredCard =
+      document.querySelector(".original-card");
+
+    let listingImages = [];
+
+    if (featuredCard instanceof HTMLElement) {
+      try {
+        const parsedImages = JSON.parse(
+          featuredCard.dataset.images || "[]"
+        );
+
+        if (Array.isArray(parsedImages)) {
+          listingImages = [
+            ...new Set(
+              parsedImages
+                .map((image) =>
+                  String(image || "").trim()
+                )
+                .filter(Boolean)
+            ),
+          ];
+        }
+      } catch (error) {
+        console.warn(
+          "Could not parse featured listing images:",
+          error
+        );
+      }
+    }
 
     const savedNeighbourhoodImage =
       heroMapEl.dataset.areaHeroImage?.trim() || "";
 
     const fallbackImage =
       listingImages[0] ||
+      savedNeighbourhoodImage ||
       "/images/maps/nanaimo-static-map.png";
 
-    // The saved area image sells the neighbourhood.
-    // Listing images are supporting accents only.
+    // All collage images belong to one featured listing.
     const imageOne =
+      listingImages[0] ||
       savedNeighbourhoodImage ||
       fallbackImage;
 
@@ -11396,6 +11418,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   }
 </style>
 </Layout>
+
 
 
 
