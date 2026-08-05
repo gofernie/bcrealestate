@@ -1311,15 +1311,38 @@ const listingIds = listings
   .filter(Boolean);
 
 const floorplansByListing = new Map();
+const roomsByListing = new Map();
 
 if (listingIds.length > 0) {
+  const relatedListingDataStartedAt =
+    performance.now();
+
+  const [
+    floorplanResult,
+    roomResult,
+  ] = await Promise.all([
+    supabase
+      .from("listing_floorplans")
+      .select("listing_id,image_url")
+      .in("listing_id", listingIds),
+
+    supabase
+      .from("listing_rooms")
+      .select(
+        "listing_id,room_label,level,length,width"
+      )
+      .in("listing_id", listingIds),
+  ]);
+
   const {
     data: floorplanRows = [],
     error: floorplanError,
-  } = await supabase
-    .from("listing_floorplans")
-    .select("listing_id,image_url")
-    .in("listing_id", listingIds);
+  } = floorplanResult;
+
+  const {
+    data: roomRows = [],
+    error: roomError,
+  } = roomResult;
 
   if (floorplanError) {
     console.error(
@@ -1350,20 +1373,6 @@ if (listingIds.length > 0) {
         .push(row.image_url);
     }
   }
-}
-
-const roomsByListing = new Map();
-
-if (listingIds.length > 0) {
-  const {
-    data: roomRows = [],
-    error: roomError,
-  } = await supabase
-    .from("listing_rooms")
-    .select(
-      "listing_id,room_label,level,length,width"
-    )
-    .in("listing_id", listingIds);
 
   if (roomError) {
     console.error(
@@ -1395,6 +1404,15 @@ if (listingIds.length > 0) {
         });
     }
   }
+
+  console.log(
+    `[RELATED LISTING DATA TIMING] ${city}/${slug}: ${
+      (
+        performance.now() -
+        relatedListingDataStartedAt
+      ).toFixed(1)
+    }ms | ids=${listingIds.length}`
+  );
 }
 console.log("INTENT LISTINGS DEBUG", {
   city,
@@ -11326,6 +11344,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   }
 </style>
 </Layout>
+
 
 
 
