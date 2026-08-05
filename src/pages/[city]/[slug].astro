@@ -695,7 +695,38 @@ const hasActiveSearchFilters =
   (filterSort !== "" && filterSort !== "newest");
 let query = supabase
   .from("listing_rows")
-  .select("*")
+  .select(`
+    id,
+    mls_number,
+    image,
+    image_url,
+    images,
+    price,
+    address,
+    address_text,
+    full_address,
+    beds,
+    baths,
+    sqft,
+    normalized_city,
+    city,
+    normalized_area,
+    area,
+    description,
+    property_type,
+    normalized_type,
+    lat,
+    lng,
+    listed_at,
+    created_at,
+    updated_at,
+    days_on_market,
+    dom,
+    year_built,
+    waterfront,
+    ocean_view,
+    view_type
+  `)
   .eq("status", "A")
   .eq("normalized_city", city);
 
@@ -879,7 +910,87 @@ console.log(
 );
 
 let listings = rawListings || [];
+const listingIds = listings
+  .map((listing) =>
+    String(
+      listing?.id ||
+      listing?.mls_number ||
+      ""
+    )
+  )
+  .filter(Boolean);
 
+const floorplansByListing = new Map();
+
+if (listingIds.length > 0) {
+  const { data: floorplanRows = [], error: floorplanError } =
+    await supabase
+      .from("listing_floorplans")
+      .select("listing_id,image_url")
+      .in("listing_id", listingIds);
+
+  if (floorplanError) {
+    console.error(
+      "Could not load listing floorplans:",
+      floorplanError
+    );
+  } else {
+    for (const row of floorplanRows) {
+      const listingId =
+        String(row.listing_id || "");
+
+      if (!listingId || !row.image_url) continue;
+
+      if (!floorplansByListing.has(listingId)) {
+        floorplansByListing.set(
+          listingId,
+          []
+        );
+      }
+
+      floorplansByListing
+        .get(listingId)
+        .push(row.image_url);
+    }
+  }
+}
+const roomsByListing = new Map();
+
+if (listingIds.length > 0) {
+  const { data: roomRows = [], error: roomError } =
+    await supabase
+      .from("listing_rooms")
+      .select("listing_id,room_label,level,length,width")
+      .in("listing_id", listingIds);
+
+  if (roomError) {
+    console.error(
+      "Could not load listing rooms:",
+      roomError
+    );
+  } else {
+    for (const row of roomRows) {
+      const listingId =
+        String(row.listing_id || "");
+
+      if (!listingId) continue;
+
+      if (!roomsByListing.has(listingId)) {
+        roomsByListing.set(
+          listingId,
+          []
+        );
+      }
+
+      roomsByListing.get(listingId).push({
+        label: row.room_label || "",
+        level: row.level || "",
+        length: row.length || "",
+        width: row.width || "",
+      });
+    }
+  }
+}
 console.log("AREA LISTING DEBUG BEFORE POLYGON", {
   city,
   slug,
@@ -970,87 +1081,6 @@ if (hasPolygonSearch) {
   });
 }
 
-const listingIds = listings
-  .map((listing) =>
-    String(
-      listing?.id ||
-      listing?.mls_number ||
-      ""
-    )
-  )
-  .filter(Boolean);
-
-const floorplansByListing = new Map();
-
-if (listingIds.length > 0) {
-  const { data: floorplanRows = [], error: floorplanError } =
-    await supabase
-      .from("listing_floorplans")
-      .select("listing_id,image_url")
-      .in("listing_id", listingIds);
-
-  if (floorplanError) {
-    console.error(
-      "Could not load listing floorplans:",
-      floorplanError
-    );
-  } else {
-    for (const row of floorplanRows) {
-      const listingId =
-        String(row.listing_id || "");
-
-      if (!listingId || !row.image_url) continue;
-
-      if (!floorplansByListing.has(listingId)) {
-        floorplansByListing.set(
-          listingId,
-          []
-        );
-      }
-
-      floorplansByListing
-        .get(listingId)
-        .push(row.image_url);
-    }
-  }
-}
-const roomsByListing = new Map();
-
-if (listingIds.length > 0) {
-  const { data: roomRows = [], error: roomError } =
-    await supabase
-      .from("listing_rooms")
-      .select("listing_id,room_label,level,length,width")
-      .in("listing_id", listingIds);
-
-  if (roomError) {
-    console.error(
-      "Could not load listing rooms:",
-      roomError
-    );
-  } else {
-    for (const row of roomRows) {
-      const listingId =
-        String(row.listing_id || "");
-
-      if (!listingId) continue;
-
-      if (!roomsByListing.has(listingId)) {
-        roomsByListing.set(
-          listingId,
-          []
-        );
-      }
-
-      roomsByListing.get(listingId).push({
-        label: row.room_label || "",
-        level: row.level || "",
-        length: row.length || "",
-        width: row.width || "",
-      });
-    }
-  }
-}
 console.log("INTENT LISTINGS DEBUG", {
   city,
   slug,
@@ -10965,7 +10995,6 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   }
 </style>
 </Layout>
-
 
 
 
