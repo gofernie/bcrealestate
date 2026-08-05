@@ -19,6 +19,21 @@ const supabase = createClient(
 
 
 
+const phaseTimingStartedAt = performance.now();
+let previousPhaseTiming = phaseTimingStartedAt;
+
+function logPhaseTiming(label: string) {
+  const now = performance.now();
+
+  console.log(
+    `[PHASE TIMING] ${city}/${slug} | ${label}: ${
+      (now - previousPhaseTiming).toFixed(1)
+    }ms | total=${(now - phaseTimingStartedAt).toFixed(1)}ms`
+  );
+
+  previousPhaseTiming = now;
+}
+
 const isInternalRootRewrite =
   Astro.url.searchParams.get("root_rewrite") === "1";
 
@@ -422,6 +437,8 @@ page = {
 };
   }
 }
+
+logPhaseTiming("site and page resolution");
 
 const titleCaseCity = city.charAt(0).toUpperCase() + city.slice(1).toLowerCase();
 const areaName = page.area
@@ -832,6 +849,8 @@ if (site?.id) {
 
 const { data: areaIntentPages = [] } = await areaIntentQuery
   .order("area", { ascending: true });
+logPhaseTiming("census amenities nav and area context");
+
 const hasPolygonSearch = Boolean(page.polygon_geojson?.coordinates?.[0]?.length);
 const searchParams = Astro.url.searchParams;
 
@@ -1371,6 +1390,8 @@ console.log("INTENT LISTINGS DEBUG", {
   error: listingsError
 });
 
+logPhaseTiming("listings polygon floorplans and rooms");
+
 const marketNameMap: Record<string, string> = {
   nanaimo: "Nanaimo",
   parksville: "Parksville / Qualicum",
@@ -1413,7 +1434,11 @@ function marketActivityLabel(index: any) {
   return "? Quiet";
 }
 
+logPhaseTiming("market metrics");
+
 osmSummary = await osmSummaryPromise;
+
+logPhaseTiming("remaining OSM wait");
 
 const generatedCopy = pageKind === "area"
   ? generateAreaCopy(listings, censusData, osmSummary, page.area || "", city)
@@ -1474,6 +1499,8 @@ const nearbyProfile =
       ].filter((item) => item.show)
     : [];
 
+logPhaseTiming("generated copy and nearby profile");
+
 let relatedIntentQuery = supabase
   .from("intent_pages")
   .select("*")
@@ -1486,6 +1513,8 @@ if (site?.id) {
 }
 
 const { data: relatedIntentPagesRaw = [] } = await relatedIntentQuery;
+
+logPhaseTiming("related intent query");
 
 function scoreRelatedIntent(intent: any) {
   let score = 0;
@@ -11277,6 +11306,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   }
 </style>
 </Layout>
+
 
 
 
