@@ -460,23 +460,49 @@ const areaName = page.area
   ? page.area.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
   : null;
 
-const { data: census } = pageKind === "area" ? await supabase
-  .from("neighbourhood_census_data")
-  .select("*")
-  .eq("city", String(city).toLowerCase())
-  .eq("slug", String(slug).toLowerCase())
-  .maybeSingle() : { data: null };
+const neighbourhoodCensusPromise =
+  pageKind === "area"
+    ? supabase
+        .from("neighbourhood_census_data")
+        .select("*")
+        .eq("city", String(city).toLowerCase())
+        .eq("slug", String(slug).toLowerCase())
+        .maybeSingle()
+    : Promise.resolve({
+        data: null,
+        error: null,
+      });
 
-const { data: cityCensus } = await supabase
-  .from("city_census_data")
-  .select("*")
-  .eq("city", titleCaseCity)
-  .maybeSingle();
+const cityCensusPromise =
+  pageKind !== "area"
+    ? supabase
+        .from("city_census_data")
+        .select("*")
+        .eq("city", titleCaseCity)
+        .maybeSingle()
+    : Promise.resolve({
+        data: null,
+        error: null,
+      });
 
-const censusData = pageKind === "area"
-  ? census
-  : cityCensus;
-// Pull centroid from area boundary polygon for OSM fetch
+const [
+  neighbourhoodCensusResult,
+  cityCensusResult,
+] = await Promise.all([
+  neighbourhoodCensusPromise,
+  cityCensusPromise,
+]);
+
+const census =
+  neighbourhoodCensusResult.data || null;
+
+const cityCensus =
+  cityCensusResult.data || null;
+
+const censusData =
+  pageKind === "area"
+    ? census
+    : cityCensus;
 let osmLat = 0;
 let osmLng = 0;
 
@@ -739,12 +765,23 @@ function generateAreaCopy(listings: any[], census: any, osm: typeof osmSummary, 
 
  
 
-const { data: featureRows } = await supabase
-  .from("intent_page_features")
-  .select("*")
-  .eq("intent_page_id", page.id);
+const featureResult =
+  pageKind === "intent"
+    ? await supabase
+        .from("intent_page_features")
+        .select("feature_key")
+        .eq("intent_page_id", page.id)
+    : {
+        data: [],
+        error: null,
+      };
 
-const features = (featureRows || []).map((f) => f.feature_key);
+const featureRows =
+  featureResult.data || [];
+
+const features = featureRows.map(
+  (feature) => feature.feature_key
+);
 const { data: areaBoundaryRows = [] } = await supabase
   .from("area_boundaries")
   .select("id, area_slug, area_name")
@@ -11344,6 +11381,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   }
 </style>
 </Layout>
+
 
 
 
