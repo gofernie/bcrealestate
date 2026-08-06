@@ -1,4 +1,4 @@
-﻿---
+---
 import { createClient } from "@supabase/supabase-js";
 import Layout from "../../layouts/Layout.astro";
 import SlugSaveSearch from "../../components/SlugSaveSearch.astro";
@@ -11071,6 +11071,418 @@ document.addEventListener("click", (event) => {
     window.__initRefinedLeafletMap?.();
   }
 });
+/* ROTATING TEXT-ONLY INTERRUPTOR SYSTEM */
+const interruptorCardState = {
+  applying: false,
+  chipLabels: [],
+};
+
+function getInterruptorCard() {
+  return document.getElementById("intent-interrupt-card");
+}
+
+function rememberInterruptorChips(card) {
+  if (!(card instanceof HTMLElement)) return;
+
+  const labels = Array.from(
+    card.querySelectorAll(
+      ".generated-refine-chip, .refine-chip"
+    )
+  )
+    .map((chip) =>
+      String(chip.textContent || "").trim()
+    )
+    .filter(Boolean);
+
+  if (labels.length) {
+    interruptorCardState.chipLabels = [
+      ...new Set(labels),
+    ].slice(0, 4);
+  }
+}
+
+function findClickableByText(pattern) {
+  return Array.from(
+    document.querySelectorAll(
+      'button, a[href], [role="button"]'
+    )
+  ).find((element) =>
+    pattern.test(
+      String(element.textContent || "").trim()
+    )
+  );
+}
+
+function openSaveSearchFromInterruptor() {
+  const directTrigger =
+    document.querySelector(
+      [
+        "[data-save-search-trigger]",
+        "[data-open-save-search]",
+        "[data-save-search]",
+        "#save-search-button",
+        ".save-search-button",
+      ].join(",")
+    );
+
+  const textTrigger =
+    findClickableByText(
+      /save (this )?search|save search|get alerts/i
+    );
+
+  const trigger =
+    directTrigger || textTrigger;
+
+  if (
+    trigger instanceof HTMLElement &&
+    trigger.id !== "intent-interrupt-action"
+  ) {
+    trigger.click();
+    return;
+  }
+
+  const saveSection =
+    document.querySelector(
+      [
+        "#save-search",
+        "[data-save-search-form]",
+        ".save-search",
+        ".slug-save-search",
+      ].join(",")
+    );
+
+  saveSection?.scrollIntoView({
+    behavior: "smooth",
+    block: "center",
+  });
+}
+
+function openSimilarSearchesFromInterruptor() {
+  const headings = Array.from(
+    document.querySelectorAll("h2, h3")
+  );
+
+  const heading = headings.find((element) =>
+    /explore similar searches|similar searches|next searches/i.test(
+      String(element.textContent || "")
+    )
+  );
+
+  const section =
+    heading?.closest("section") ||
+    heading?.parentElement;
+
+  if (section instanceof HTMLElement) {
+    section.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    return;
+  }
+
+  const relatedLink =
+    document.querySelector(
+      [
+        ".related-intent-card a",
+        ".related-intent-cards a",
+        "[data-related-intent] a",
+      ].join(",")
+    );
+
+  if (relatedLink instanceof HTMLAnchorElement) {
+    relatedLink.click();
+  }
+}
+
+function openQuestionFromInterruptor() {
+  const directTrigger =
+    document.querySelector(
+      [
+        "[data-intent-action='question']",
+        "[data-open-question]",
+        "[data-question-trigger]",
+        ".ask-question-button",
+        ".contact-agent-button",
+      ].join(",")
+    );
+
+  const textTrigger =
+    findClickableByText(
+      /ask (a )?question|ask the agent|contact|request (a )?showing|book (a )?tour/i
+    );
+
+  const trigger =
+    directTrigger || textTrigger;
+
+  if (
+    trigger instanceof HTMLElement &&
+    trigger.id !== "intent-interrupt-action"
+  ) {
+    trigger.click();
+    return;
+  }
+
+  const contactSection =
+    document.querySelector(
+      [
+        "#contact",
+        "#ask-question",
+        ".contact-section",
+        ".intent-contact",
+      ].join(",")
+    );
+
+  contactSection?.scrollIntoView({
+    behavior: "smooth",
+    block: "center",
+  });
+}
+
+function getInterruptorVariant() {
+  const variants = [
+    "refine",
+    "save",
+    "similar",
+    "question",
+  ];
+
+  const storageKey =
+    `listing-interruptor:${window.location.pathname}`;
+
+  let previousIndex = -1;
+
+  try {
+    previousIndex = Number(
+      sessionStorage.getItem(storageKey) || "-1"
+    );
+  } catch {
+    previousIndex = -1;
+  }
+
+  const nextIndex =
+    (previousIndex + 1) % variants.length;
+
+  try {
+    sessionStorage.setItem(
+      storageKey,
+      String(nextIndex)
+    );
+  } catch {
+    // Storage may be unavailable.
+  }
+
+  return variants[nextIndex];
+}
+
+const selectedInterruptorVariant =
+  getInterruptorVariant();
+
+function getInterruptorConfig(variant) {
+  const cityName =
+    document.body.dataset.cityLabel ||
+    document
+      .querySelector("[data-city-label]")
+      ?.getAttribute("data-city-label") ||
+    "";
+
+  const pageHeading =
+    document.querySelector("h1")
+      ?.textContent
+      ?.replace(/\s+/g, " ")
+      .trim() ||
+    "this search";
+
+  const configs = {
+    refine: {
+      kicker: "Search assistant",
+      title: "Not seeing exactly what you want?",
+      description:
+        "Choose one direction and I’ll help shape the next set of matches.",
+      buttonLabel: "Show me better matches",
+      action: () => {
+        if (
+          typeof window.saveIntentPreferences ===
+          "function"
+        ) {
+          window.saveIntentPreferences();
+        }
+      },
+      showChips: true,
+    },
+
+    save: {
+      kicker: "Never miss one",
+      title: "Want new matches sent to you?",
+      description:
+        `Save ${pageHeading.toLowerCase()} and get notified when relevant listings reach the market.`,
+      buttonLabel: "Save this search",
+      action: openSaveSearchFromInterruptor,
+      showChips: false,
+    },
+
+    similar: {
+      kicker: "Explore alternatives",
+      title: "There may be another search worth seeing.",
+      description:
+        `Compare related ${cityName || "local"} searches without losing your place here.`,
+      buttonLabel: "Explore similar searches",
+      action: openSimilarSearchesFromInterruptor,
+      showChips: false,
+    },
+
+    question: {
+      kicker: "Local help",
+      title: "Have a question about one of these homes?",
+      description:
+        "Ask about location, waterfront details, viewing times, or anything the listing does not explain.",
+      buttonLabel: "Ask a question",
+      action: openQuestionFromInterruptor,
+      showChips: false,
+    },
+  };
+
+  return configs[variant] || configs.refine;
+}
+
+function escapeInterruptorHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function applyInterruptorCard() {
+  const card = getInterruptorCard();
+
+  if (
+    !(card instanceof HTMLElement) ||
+    interruptorCardState.applying
+  ) {
+    return;
+  }
+
+  interruptorCardState.applying = true;
+
+  rememberInterruptorChips(card);
+
+  const config =
+    getInterruptorConfig(
+      selectedInterruptorVariant
+    );
+
+  const chips = config.showChips
+    ? interruptorCardState.chipLabels
+        .slice(0, 4)
+        .map(
+          (label) => `
+            <button
+              type="button"
+              class="refine-chip generated-refine-chip interruptor-choice"
+            >
+              ${escapeInterruptorHtml(label)}
+            </button>
+          `
+        )
+        .join("")
+    : "";
+
+  card.className =
+    `card interrupt-card interrupt-card--${selectedInterruptorVariant}`;
+
+  card.setAttribute(
+    "data-interruptor-variant",
+    selectedInterruptorVariant
+  );
+
+  card.innerHTML = `
+    <div class="interrupt-card__inner">
+      <p class="interrupt-card__kicker">
+        ${escapeInterruptorHtml(config.kicker)}
+      </p>
+
+      <h3 class="interrupt-card__title">
+        ${escapeInterruptorHtml(config.title)}
+      </h3>
+
+      <p class="interrupt-card__description">
+        ${escapeInterruptorHtml(
+          config.description
+        )}
+      </p>
+
+      ${
+        chips
+          ? `
+            <div
+              class="interrupt-options generated-chip-target"
+              aria-label="Search preferences"
+            >
+              ${chips}
+            </div>
+          `
+          : ""
+      }
+
+      <button
+        type="button"
+        class="interrupt-card__button"
+        id="intent-interrupt-action"
+      >
+        ${escapeInterruptorHtml(
+          config.buttonLabel
+        )}
+        <span aria-hidden="true">→</span>
+      </button>
+    </div>
+  `;
+
+  const actionButton =
+    card.querySelector(
+      "#intent-interrupt-action"
+    );
+
+  actionButton?.addEventListener(
+    "click",
+    config.action
+  );
+
+  interruptorCardState.applying = false;
+}
+
+function watchInterruptorCard() {
+  const card = getInterruptorCard();
+
+  if (!(card instanceof HTMLElement)) {
+    return;
+  }
+
+  applyInterruptorCard();
+
+  const observer = new MutationObserver(() => {
+    if (!interruptorCardState.applying) {
+      requestAnimationFrame(
+        applyInterruptorCard
+      );
+    }
+  });
+
+  observer.observe(card, {
+    childList: true,
+    subtree: false,
+  });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener(
+    "DOMContentLoaded",
+    watchInterruptorCard,
+    { once: true }
+  );
+} else {
+  watchInterruptorCard();
+}
+
 window.resetRefine = function () {
   document.querySelectorAll(".refined-card").forEach(el => el.remove());
   document.querySelectorAll(".original-card.is-hidden-by-refine").forEach(card => {
@@ -11754,8 +12166,237 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
     font-size: 1.65rem;
   }
 }
+
+/* FINAL COMPACT INTERRUPTOR */
+@media (min-width: 701px) {
+  .grid > .interrupt-card {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    aspect-ratio: 4 / 5 !important;
+    align-self: start !important;
+  }
+
+  .interrupt-card__inner {
+    height: 100% !important;
+    min-height: 0 !important;
+    box-sizing: border-box !important;
+    justify-content: flex-start !important;
+    gap: 11px !important;
+    padding: 18px !important;
+    overflow: hidden !important;
+  }
+
+  .interrupt-card__icon {
+    width: 36px !important;
+    height: 36px !important;
+    font-size: 1rem !important;
+  }
+
+  .interrupt-card__kicker {
+    margin-bottom: 5px !important;
+    font-size: 0.62rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .interrupt-card__title {
+    font-size: 1.45rem !important;
+    line-height: 1.02 !important;
+  }
+
+  .interrupt-card__description {
+    margin-top: 7px !important;
+    font-size: 0.8rem !important;
+    line-height: 1.4 !important;
+  }
+
+  .interrupt-card .interrupt-options {
+    gap: 6px !important;
+  }
+
+  .interrupt-card .refine-chip {
+    padding: 6px 9px !important;
+    font-size: 0.67rem !important;
+  }
+
+  .interrupt-card__button {
+    margin-top: auto !important;
+    padding: 10px 12px !important;
+    font-size: 0.78rem !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .grid > .interrupt-card {
+    height: auto !important;
+    min-height: 0 !important;
+    aspect-ratio: auto !important;
+  }
+
+  .interrupt-card__inner {
+    min-height: 0 !important;
+    gap: 13px !important;
+    padding: 22px 18px !important;
+  }
+}
+
+/* ROTATING TEXT-ONLY INTERRUPTOR — FINAL VISUAL */
+.grid > .interrupt-card {
+  height: auto !important;
+  min-height: 0 !important;
+  align-self: start !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 9px !important;
+  background: var(--accent) !important;
+  box-shadow: none !important;
+  color: #fff !important;
+}
+
+.interrupt-card__inner {
+  min-height: 360px !important;
+  height: auto !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  gap: 14px !important;
+  padding: 24px !important;
+}
+
+.interrupt-card__kicker {
+  margin: 0 !important;
+  color: rgba(255, 255, 255, 0.76) !important;
+  font-size: 0.68rem !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.12em !important;
+  line-height: 1.25 !important;
+  text-transform: uppercase !important;
+}
+
+.interrupt-card__title {
+  margin: 0 !important;
+  color: #fff !important;
+  font-family: var(--serif) !important;
+  font-size: clamp(1.45rem, 2vw, 1.9rem) !important;
+  font-weight: 600 !important;
+  line-height: 1.06 !important;
+}
+
+.interrupt-card__description {
+  margin: 0 !important;
+  color: rgba(255, 255, 255, 0.82) !important;
+  font-size: 0.88rem !important;
+  line-height: 1.52 !important;
+}
+
+.interrupt-card .interrupt-options {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 7px !important;
+  margin: 2px 0 0 !important;
+}
+
+.interrupt-card .refine-chip {
+  min-height: 0 !important;
+  padding: 7px 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.44) !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  color: #fff !important;
+  font-size: 0.7rem !important;
+  font-weight: 700 !important;
+  line-height: 1.15 !important;
+}
+
+.interrupt-card .refine-chip:hover,
+.interrupt-card .refine-chip.active {
+  border-color: #fff !important;
+  background: #fff !important;
+  color: var(--accent) !important;
+}
+
+.interrupt-card__button {
+  width: 100% !important;
+  margin-top: auto !important;
+  padding: 11px 13px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  border: 0 !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.28) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #fff !important;
+  cursor: pointer !important;
+  font: inherit !important;
+  font-size: 0.8rem !important;
+  font-weight: 800 !important;
+  text-align: left !important;
+}
+
+.interrupt-card__button:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+@media (max-width: 700px) {
+  .interrupt-card__inner {
+    min-height: 300px !important;
+    padding: 22px 20px !important;
+  }
+
+  .interrupt-card__title {
+    font-size: 1.55rem !important;
+  }
+}
+
+/* INTERRUPTOR_CROP_FIX_V1 */
+.grid > .interrupt-card {
+  aspect-ratio: auto !important;
+  height: auto !important;
+  min-height: 390px !important;
+  max-height: none !important;
+  align-self: start !important;
+  overflow: hidden !important;
+}
+
+.interrupt-card__inner {
+  width: 100% !important;
+  min-height: 390px !important;
+  height: auto !important;
+  box-sizing: border-box !important;
+  padding: 20px !important;
+  gap: 12px !important;
+  overflow: visible !important;
+}
+
+.interrupt-card__title {
+  font-size: 1.42rem !important;
+  line-height: 1.08 !important;
+}
+
+.interrupt-card__description {
+  font-size: 0.82rem !important;
+  line-height: 1.45 !important;
+}
+
+.interrupt-card__button {
+  flex-shrink: 0 !important;
+  margin-top: auto !important;
+  padding: 10px 4px !important;
+}
+
+@media (max-width: 700px) {
+  .grid > .interrupt-card,
+  .interrupt-card__inner {
+    min-height: 330px !important;
+  }
+}
 </style>
 </Layout>
+
+
 
 
 
