@@ -1702,6 +1702,458 @@ const typePageNewThisWeek = listings.filter((listing) => {
   const listedTime = new Date(listing.listed_at || "").getTime();
   return Number.isFinite(listedTime) && listedTime >= sevenDaysAgo;
 }).length;
+/* EDUCATION_FIRST_DISCOVERY_FACTS_V1 */
+type DiscoveryFact = {
+  kicker: string;
+  title: string;
+  description: string;
+};
+
+const discoveryFacts: DiscoveryFact[] = [];
+
+const pluralizeFact = (
+  count: number,
+  singular: string,
+  plural = `${singular}s`
+) => `${count} ${count === 1 ? singular : plural}`;
+
+const currentCityLabel = titleCase(city);
+
+if (listingCount > 0) {
+  discoveryFacts.push({
+    kicker: "Current inventory",
+    title: `${pluralizeFact(
+      listingCount,
+      "active listing"
+    )} match this search.`,
+    description:
+      typePageNewThisWeek > 0
+        ? `${pluralizeFact(
+            typePageNewThisWeek,
+            "new listing"
+          )} arrived during the past seven days.`
+        : "Inventory changes as properties are listed, sold, or taken off the market.",
+  });
+}
+
+if (typePageNewThisWeek > 0) {
+  const newShare = listingCount
+    ? Math.round(
+        (typePageNewThisWeek / listingCount) * 100
+      )
+    : 0;
+
+  discoveryFacts.push({
+    kicker: "New this week",
+    title: `${pluralizeFact(
+      typePageNewThisWeek,
+      "home"
+    )} entered this search recently.`,
+    description:
+      newShare > 0
+        ? `That represents about ${newShare}% of the active listings currently shown here.`
+        : "New inventory can quickly change the choices available to buyers.",
+  });
+}
+
+if (typePageMedianPrice > 0) {
+  discoveryFacts.push({
+    kicker: "Market snapshot",
+    title: `The median asking price is ${formatPrice(
+      typePageMedianPrice
+    )}.`,
+    description:
+      "The median is the midpoint of current asking prices, so half the listings are priced above it and half below it.",
+  });
+}
+
+if (listingPrices.length >= 2) {
+  const lowestPrice = listingPrices[0];
+  const highestPrice =
+    listingPrices[listingPrices.length - 1];
+
+  discoveryFacts.push({
+    kicker: "Price range",
+    title: `Current prices span ${formatPrice(
+      lowestPrice
+    )} to ${formatPrice(highestPrice)}.`,
+    description:
+      "The range reflects the different property types, locations, lot sizes, and features represented in this search.",
+  });
+}
+
+const listingTypeCounts = listings.reduce(
+  (counts: Record<string, number>, listing: any) => {
+    const key = String(
+      listing.normalized_type ||
+        listing.property_type ||
+        ""
+    )
+      .trim()
+      .toLowerCase();
+
+    if (key) {
+      counts[key] = (counts[key] || 0) + 1;
+    }
+
+    return counts;
+  },
+  {}
+);
+
+const dominantListingType = Object.entries(
+  listingTypeCounts
+).sort((a, b) => b[1] - a[1])[0];
+
+if (
+  dominantListingType &&
+  listingCount > 0
+) {
+  const [typeName, typeCount] =
+    dominantListingType;
+
+  const typeShare = Math.round(
+    (Number(typeCount) / listingCount) * 100
+  );
+
+  discoveryFacts.push({
+    kicker: "Housing mix",
+    title: `${typeShare}% of these listings are ${titleCase(
+      typeName
+    ).toLowerCase()} properties.`,
+    description:
+      "The mix can shift as new listings reach the market, especially in searches with limited inventory.",
+  });
+}
+
+const bedroomCounts = listings.reduce(
+  (counts: Record<string, number>, listing: any) => {
+    const beds = Number(listing.beds || 0);
+
+    if (beds > 0) {
+      const key = String(beds);
+      counts[key] = (counts[key] || 0) + 1;
+    }
+
+    return counts;
+  },
+  {}
+);
+
+const mostCommonBedroomCount = Object.entries(
+  bedroomCounts
+).sort((a, b) => b[1] - a[1])[0];
+
+if (mostCommonBedroomCount) {
+  const [beds, count] =
+    mostCommonBedroomCount;
+
+  discoveryFacts.push({
+    kicker: "Home layouts",
+    title: `${beds}-bedroom homes are the most common here.`,
+    description: `${pluralizeFact(
+      Number(count),
+      "current listing"
+    )} in this search has that bedroom count.`,
+  });
+}
+
+const countListingsWith = (
+  predicate: (listing: any) => boolean
+) => listings.filter(predicate).length;
+
+const waterfrontCount = countListingsWith(
+  (listing) => listing.waterfront === true
+);
+
+if (waterfrontCount > 0) {
+  discoveryFacts.push({
+    kicker: "Waterfront",
+    title: `${pluralizeFact(
+      waterfrontCount,
+      "listing"
+    )} is marked as waterfront.`,
+    description:
+      "Waterfront classifications can include ocean, lake, river, and other shoreline settings.",
+  });
+}
+
+const oceanViewCount = countListingsWith(
+  (listing) => listing.ocean_view === true
+);
+
+if (oceanViewCount > 0) {
+  discoveryFacts.push({
+    kicker: "Views",
+    title: `${pluralizeFact(
+      oceanViewCount,
+      "listing"
+    )} is identified as having an ocean view.`,
+    description:
+      "View quality, direction, elevation, and potential obstructions can vary significantly by property.",
+  });
+}
+
+const floorplanCount = countListingsWith(
+  (listing) => listing.has_floorplan === true
+);
+
+if (floorplanCount > 0) {
+  discoveryFacts.push({
+    kicker: "Explore the layout",
+    title: `${pluralizeFact(
+      floorplanCount,
+      "listing"
+    )} includes a floorplan.`,
+    description:
+      "Floorplans can make it easier to compare room placement, circulation, and bedroom separation before arranging a visit.",
+  });
+}
+
+const updatedKitchenCount = countListingsWith(
+  (listing) =>
+    listing.has_updated_kitchen === true
+);
+
+if (updatedKitchenCount > 0) {
+  discoveryFacts.push({
+    kicker: "Property features",
+    title: `${pluralizeFact(
+      updatedKitchenCount,
+      "home"
+    )} appears to have an updated kitchen.`,
+    description:
+      "This count is based on available listing information and image analysis, so condition should still be confirmed in person.",
+  });
+}
+
+const detachedShopCount = countListingsWith(
+  (listing) =>
+    listing.has_detached_shop === true
+);
+
+if (detachedShopCount > 0) {
+  discoveryFacts.push({
+    kicker: "Extra workspace",
+    title: `${pluralizeFact(
+      detachedShopCount,
+      "property",
+      "properties"
+    )} includes a detached shop.`,
+    description:
+      "Detached shops can be valuable for storage, projects, vehicles, or home-based work.",
+  });
+}
+
+const primaryOnMainCount = countListingsWith(
+  (listing) =>
+    listing.primary_on_main === true
+);
+
+if (primaryOnMainCount > 0) {
+  discoveryFacts.push({
+    kicker: "Home layouts",
+    title: `${pluralizeFact(
+      primaryOnMainCount,
+      "home"
+    )} has the primary bedroom on the main floor.`,
+    description:
+      "Main-floor primary bedrooms are often sought by downsizers and buyers planning for long-term accessibility.",
+  });
+}
+
+if (censusData?.population_2021) {
+  discoveryFacts.push({
+    kicker: "Local community",
+    title: `${Number(
+      censusData.population_2021
+    ).toLocaleString()} people lived in ${currentCityLabel} in 2021.`,
+    description:
+      "Population figures come from the 2021 Canadian census and provide broader community context for this search.",
+  });
+}
+
+if (censusData?.pop_change_pct != null) {
+  const change = Number(
+    censusData.pop_change_pct
+  );
+
+  discoveryFacts.push({
+    kicker: "Population trend",
+    title: `The population changed ${
+      change > 0 ? "+" : ""
+    }${change}% from 2016 to 2021.`,
+    description:
+      change >= 0
+        ? "Population growth can influence housing demand, transportation, services, and future development."
+        : "Population change can influence housing demand, transportation, services, and future development.",
+  });
+}
+
+if (censusData?.median_age) {
+  discoveryFacts.push({
+    kicker: "Community profile",
+    title: `The median age is ${censusData.median_age}.`,
+    description:
+      "Median age is the point where half the population is younger and half is older.",
+  });
+}
+
+if (censusData?.median_household_income) {
+  discoveryFacts.push({
+    kicker: "Community profile",
+    title: `Median household income is about ${Math.round(
+      Number(
+        censusData.median_household_income
+      ) / 1000
+    )}k.`,
+    description:
+      "This census measure represents the midpoint of household incomes across the broader community.",
+  });
+}
+
+if (censusData?.pct_owned) {
+  discoveryFacts.push({
+    kicker: "Housing profile",
+    title: `${censusData.pct_owned}% of occupied homes are owner-occupied.`,
+    description:
+      "The ownership rate helps describe the balance between owner and rental households in the community.",
+  });
+}
+
+const addAmenityFact = (
+  count: number,
+  singular: string,
+  plural: string,
+  kicker: string,
+  description: string
+) => {
+  if (count <= 0) return;
+
+  discoveryFacts.push({
+    kicker,
+    title: `${pluralizeFact(
+      count,
+      singular,
+      plural
+    )} is mapped within roughly 2 km.`,
+    description,
+  });
+};
+
+addAmenityFact(
+  osmSummary.restaurants,
+  "restaurant or café",
+  "restaurants or cafés",
+  "Local flavour",
+  "Nearby dining can add convenience and help shape the everyday character of an area."
+);
+
+addAmenityFact(
+  osmSummary.parks,
+  "park",
+  "parks",
+  "Green space",
+  "Local parks can provide recreation, walking routes, play areas, and access to nature."
+);
+
+addAmenityFact(
+  osmSummary.schools,
+  "school",
+  "schools",
+  "Education",
+  "School proximity is one factor many households consider when comparing locations."
+);
+
+addAmenityFact(
+  osmSummary.trails,
+  "trail",
+  "trails",
+  "Outdoor access",
+  "Nearby trails can support walking, running, cycling, and access to natural areas."
+);
+
+addAmenityFact(
+  osmSummary.beaches,
+  "beach",
+  "beaches",
+  "Water access",
+  "Nearby beaches can add swimming, paddling, shoreline walking, and seasonal recreation."
+);
+
+addAmenityFact(
+  osmSummary.grocery,
+  "grocery shop",
+  "grocery shops",
+  "Everyday convenience",
+  "Access to groceries is a useful part of understanding how a location functions day to day."
+);
+
+addAmenityFact(
+  osmSummary.transit,
+  "transit stop",
+  "transit stops",
+  "Getting around",
+  "Nearby transit may provide alternatives to driving for work, school, shopping, and appointments."
+);
+
+addAmenityFact(
+  osmSummary.medical,
+  "medical service",
+  "medical services",
+  "Nearby services",
+  "Clinics, pharmacies, and other medical services can be an important part of location convenience."
+);
+
+addAmenityFact(
+  osmSummary.playgrounds,
+  "playground",
+  "playgrounds",
+  "Family living",
+  "Playgrounds provide nearby outdoor space for children and families."
+);
+
+addAmenityFact(
+  osmSummary.recreation,
+  "recreation facility",
+  "recreation facilities",
+  "Stay active",
+  "Recreation facilities can support sports, fitness, classes, and community programs."
+);
+
+addAmenityFact(
+  osmSummary.golf,
+  "golf course",
+  "golf courses",
+  "Recreation",
+  "Nearby golf can be a meaningful lifestyle feature for some buyers."
+);
+
+addAmenityFact(
+  osmSummary.marinas,
+  "marina",
+  "marinas",
+  "Boating",
+  "Marina access can be especially relevant to buyers comparing coastal and waterfront locations."
+);
+
+addAmenityFact(
+  osmSummary.evCharging,
+  "EV charging location",
+  "EV charging locations",
+  "Electric vehicles",
+  "Public charging locations can add convenience for electric-vehicle owners."
+);
+
+if (discoveryFacts.length === 0) {
+  discoveryFacts.push({
+    kicker: "Did you know?",
+    title: "This search updates as local inventory changes.",
+    description:
+      "New listings, price adjustments, accepted offers, and removals can reshape the results throughout the week.",
+  });
+}
+
 
 const typePageLabel =
   effectivePropertyType === "house"
@@ -8296,6 +8748,7 @@ Approximate driving times from{" "}
   <aside
     class="card interrupt-card"
     id="intent-interrupt-card"
+    data-discovery-facts={JSON.stringify(discoveryFacts)}
     aria-label="Refine these listings"
   >
     <div class="interrupt-card__inner">
@@ -11240,10 +11693,11 @@ function openQuestionFromInterruptor() {
 
 function getInterruptorVariant() {
   const variants = [
-    "refine",
+    "fact",
+    "fact",
+    "fact",
+    "fact",
     "save",
-    "similar",
-    "question",
   ];
 
   const storageKey =
@@ -11277,6 +11731,84 @@ function getInterruptorVariant() {
 const selectedInterruptorVariant =
   getInterruptorVariant();
 
+/* EDUCATION_FIRST_DISCOVERY_CLIENT_V1 */
+function getDidYouKnowConfig() {
+  const card = getInterruptorCard();
+
+  let facts = [];
+
+  if (card instanceof HTMLElement) {
+    try {
+      const parsedFacts = JSON.parse(
+        card.dataset.discoveryFacts || "[]"
+      );
+
+      if (Array.isArray(parsedFacts)) {
+        facts = parsedFacts.filter(
+          (fact) =>
+            fact &&
+            typeof fact.title === "string" &&
+            fact.title.trim()
+        );
+      }
+    } catch (error) {
+      console.warn(
+        "Could not parse discovery facts:",
+        error
+      );
+    }
+  }
+
+  if (!facts.length) {
+    facts = [
+      {
+        kicker: "Did you know?",
+        title:
+          "This search updates as local inventory changes.",
+        description:
+          "New listings, price adjustments, accepted offers, and removals can reshape the results throughout the week.",
+      },
+    ];
+  }
+
+  const storageKey =
+    `discovery-fact-index:${window.location.pathname}`;
+
+  let previousIndex = -1;
+
+  try {
+    previousIndex = Number(
+      sessionStorage.getItem(storageKey) || "-1"
+    );
+  } catch {
+    previousIndex = -1;
+  }
+
+  const nextIndex =
+    (previousIndex + 1) % facts.length;
+
+  try {
+    sessionStorage.setItem(
+      storageKey,
+      String(nextIndex)
+    );
+  } catch {
+    // Ignore storage failures.
+  }
+
+  const fact = facts[nextIndex];
+
+  return {
+    kicker:
+      fact.kicker || "Did you know?",
+    title: fact.title,
+    description:
+      fact.description || "",
+    buttonLabel: "",
+    action: null,
+    showChips: false,
+  };
+}
 function getInterruptorConfig(variant) {
   const cityName =
     document.body.dataset.cityLabel ||
@@ -11293,22 +11825,7 @@ function getInterruptorConfig(variant) {
     "this search";
 
   const configs = {
-    refine: {
-      kicker: "Search assistant",
-      title: "Not seeing exactly what you want?",
-      description:
-        "Choose one direction and I’ll help shape the next set of matches.",
-      buttonLabel: "Show me better matches",
-      action: () => {
-        if (
-          typeof window.saveIntentPreferences ===
-          "function"
-        ) {
-          window.saveIntentPreferences();
-        }
-      },
-      showChips: true,
-    },
+    fact: getDidYouKnowConfig(),
 
     save: {
       kicker: "Never miss one",
@@ -11341,7 +11858,7 @@ function getInterruptorConfig(variant) {
     },
   };
 
-  return configs[variant] || configs.refine;
+  return configs[variant] || configs.fact;
 }
 
 function escapeInterruptorHtml(value) {
@@ -11422,18 +11939,22 @@ function applyInterruptorCard() {
             </div>
           `
           : ""
+      }      ${
+        config.buttonLabel
+          ? `
+            <button
+              type="button"
+              class="interrupt-card__button"
+              id="intent-interrupt-action"
+            >
+              ${escapeInterruptorHtml(
+                config.buttonLabel
+              )}
+              <span aria-hidden="true">→</span>
+            </button>
+          `
+          : ""
       }
-
-      <button
-        type="button"
-        class="interrupt-card__button"
-        id="intent-interrupt-action"
-      >
-        ${escapeInterruptorHtml(
-          config.buttonLabel
-        )}
-        <span aria-hidden="true">→</span>
-      </button>
     </div>
   `;
 
@@ -11442,10 +11963,15 @@ function applyInterruptorCard() {
       "#intent-interrupt-action"
     );
 
-  actionButton?.addEventListener(
-    "click",
-    config.action
-  );
+  if (
+    actionButton &&
+    typeof config.action === "function"
+  ) {
+    actionButton.addEventListener(
+      "click",
+      config.action
+    );
+  }
 
   interruptorCardState.applying = false;
 }
@@ -12681,6 +13207,56 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   .interrupt-card__description {
     font-size: 0.82rem !important;
   }
+}
+
+/* INTERRUPTOR_SUPPORT_COPY_V1 */
+@media (min-width: 701px) {
+  .interrupt-card__description {
+    font-size: 0.88rem !important;
+    line-height: 1.5 !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .interrupt-card__description {
+    font-size: 0.9rem !important;
+    line-height: 1.5 !important;
+  }
+}
+
+/* DID_YOU_KNOW_INTERRUPTOR_V1 */
+.interrupt-card--fact .interrupt-options {
+  display: none !important;
+}
+
+.interrupt-card--fact .interrupt-card__title {
+  font-size: 1.35rem !important;
+  line-height: 1.1 !important;
+}
+
+.interrupt-card--fact .interrupt-card__description {
+  font-size: 0.9rem !important;
+  line-height: 1.5 !important;
+}
+
+/* EDUCATION_FIRST_DISCOVERY_VISUAL_V1 */
+.interrupt-card--fact .interrupt-card__inner {
+  justify-content: flex-start !important;
+}
+
+.interrupt-card--fact .interrupt-card__title {
+  font-size: 1.42rem !important;
+  line-height: 1.08 !important;
+}
+
+.interrupt-card--fact .interrupt-card__description {
+  font-size: 0.9rem !important;
+  line-height: 1.52 !important;
+}
+
+.interrupt-card--fact .interrupt-options,
+.interrupt-card--fact .interrupt-card__button {
+  display: none !important;
 }
 </style>
 </Layout>
