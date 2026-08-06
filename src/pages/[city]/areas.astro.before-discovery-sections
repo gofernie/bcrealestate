@@ -1,0 +1,536 @@
+﻿---
+import { createClient } from "@supabase/supabase-js";
+import Layout from "../../layouts/Layout.astro";
+import SiteNav from "../../components/SiteNav.astro";
+import { getSite } from "../../lib/getSite";
+import { getNavIntentPages } from "../../lib/getNavIntentPages";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const city = String(
+  Astro.params.city ||
+  Astro.url.searchParams.get("city") ||
+  "nanaimo"
+)
+  .toLowerCase()
+  .trim();
+
+const cityLabel = city
+  .replace(/-/g, " ")
+  .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const site = await getSite(Astro.url.hostname, city);
+
+const { data: listings = [], error: listingsError } =
+  await supabase
+    .from("listing_rows")
+    .select("normalized_area")
+    .eq("normalized_city", city)
+    .eq("status", "A");
+
+if (listingsError) {
+  console.error("Areas listing query failed:", listingsError);
+}
+
+const { data: areaRows = [], error: areasError } =
+  await supabase
+    .from("area_boundaries")
+    .select(`
+      area_slug,
+      area_name,
+      short_description,
+      hero_image_url
+    `)
+    .ilike("city", city);
+
+if (areasError) {
+  console.error("Area metadata query failed:", areasError);
+}
+
+const areaToSlug = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/^pq[\s-]+/i, "")
+    .replace(/&/g, "and")
+    .replace(/\//g, "-")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const titleCase = (value) =>
+  String(value || "")
+    .replace(/^pq[\s-]+/i, "")
+    .replace(/-/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const areaCountMap = listings.reduce((result, listing) => {
+  const slug = areaToSlug(listing.normalized_area);
+
+  if (slug) {
+    result[slug] = Number(result[slug] || 0) + 1;
+  }
+
+  return result;
+}, {});
+
+const areas = areaRows
+  .map((row) => {
+    const slug = areaToSlug(row.area_slug || row.area_name);
+
+    return {
+      name: titleCase(row.area_name || row.area_slug),
+      slug,
+      count: Number(areaCountMap[slug] || 0),
+      description: String(row.short_description || "").trim(),
+    };
+  })
+  .filter((area) => area.slug)
+  .sort(
+    (a, b) =>
+      b.count - a.count ||
+      a.name.localeCompare(b.name)
+  );
+
+const heroImageUrl = String(
+  areaRows.find((row) =>
+    String(row.hero_image_url || "").trim()
+  )?.hero_image_url ||
+  site?.hero_image_url ||
+  ""
+).trim();
+
+const safeHeroImage =
+  heroImageUrl.replace(/"/g, "%22");
+
+const topArea =
+  areas[0]?.name ||
+  cityLabel;
+
+const navAreas =
+  areas.map((area) => area.name);
+
+const navIntentPages =
+  await getNavIntentPages(
+    supabase,
+    site?.id
+  );
+
+const navTypes = [
+  "house",
+  "condo",
+  "townhouse",
+  "mobile",
+  "land",
+];
+
+const accent =
+  site?.accent_color ||
+  "#1f5a49";
+---
+
+<Layout
+  title={`${cityLabel} Neighbourhoods and Areas`}
+  description={`Explore ${cityLabel} neighbourhoods and homes for sale.`}
+  accentColor={accent}
+  city={city}
+>
+  <SiteNav
+    city={city}
+    site={site}
+    areas={navAreas}
+    types={navTypes}
+    intentPages={navIntentPages}
+    showAreaNav={false}
+  />
+
+  <div
+    class="areas-page"
+    style={`--areas-accent:${accent};`}
+  >
+    <section
+      class="areas-hero"
+      style={
+        safeHeroImage
+          ? `--areas-hero-image:url("${safeHeroImage}");`
+          : undefined
+      }
+    >
+      <div class="areas-hero__shade"></div>
+
+      <div class="areas-hero__inner">
+        <div class="areas-hero__content">
+          <p class="areas-eyebrow">
+            {cityLabel} neighbourhoods
+          </p>
+
+          <h1>
+            Explore {cityLabel}
+            <br />
+            by Area<span>.</span>
+          </h1>
+
+          <p class="areas-hero__copy">
+            From waterfront living to family-friendly communities,
+            explore neighbourhoods and find the area that fits your lifestyle.
+          </p>
+
+          <div class="areas-stats">
+            <article>
+              <strong>{listings.length.toLocaleString()}</strong>
+              <small>Active listings</small>
+            </article>
+
+            <article>
+              <strong>{areas.length}</strong>
+              <small>Neighbourhoods</small>
+            </article>
+
+            <article>
+              <strong>{topArea}</strong>
+              <small>Most listings</small>
+            </article>
+          </div>
+
+          <div class="areas-actions">
+            <a
+              class="areas-button areas-button--primary"
+              href={`/${city}`}
+            >
+              View all homes
+            </a>
+
+            <a
+              class="areas-button areas-button--secondary"
+              href={`/explore?city=${encodeURIComponent(city)}`}
+            >
+              View on map
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <main class="areas-main">
+      <section>
+        <div class="areas-heading">
+          <div>
+            <p class="areas-eyebrow">
+              Browse by area
+            </p>
+
+            <h2>
+              Choose a {cityLabel} neighbourhood
+            </h2>
+          </div>
+
+          <p>
+            Start with an area, then explore current listings,
+            property types, prices, and local information.
+          </p>
+        </div>
+
+        <div class="areas-grid">
+          {
+            areas.map((area) => (
+              <a
+                class="areas-card"
+                href={`/${city}/${area.slug}`}
+              >
+                <div>
+                  <strong>{area.name}</strong>
+
+                  <span>
+                    {area.count.toLocaleString()}{" "}
+                    {area.count === 1
+                      ? "listing"
+                      : "listings"}
+                  </span>
+
+                  {
+                    area.description && (
+                      <p>{area.description}</p>
+                    )
+                  }
+                </div>
+
+                <b aria-hidden="true">→</b>
+              </a>
+            ))
+          }
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <style>
+    .areas-page {
+      --areas-ink: #14201c;
+      --areas-muted: #65716c;
+      --areas-line: rgba(20, 32, 28, 0.11);
+      overflow: hidden;
+      background: #fff;
+      color: var(--areas-ink);
+    }
+
+    .areas-hero {
+      position: relative;
+      min-height: 590px;
+      background-image:
+        var(
+          --areas-hero-image,
+          url("https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2200&q=90")
+        );
+      background-position: center;
+      background-size: cover;
+    }
+
+    .areas-hero__shade {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(
+          90deg,
+          rgba(247,249,251,.99) 0%,
+          rgba(247,249,251,.96) 27%,
+          rgba(247,249,251,.78) 46%,
+          rgba(247,249,251,.18) 72%,
+          rgba(247,249,251,.02) 100%
+        );
+    }
+
+    /* Exact same width as RealEstateHomepage */
+    .areas-hero__inner,
+    .areas-main {
+      width: min(1240px, calc(100% - 48px));
+      margin-right: auto;
+      margin-left: auto;
+    }
+
+    .areas-hero__inner {
+      position: relative;
+      z-index: 1;
+      padding: 72px 0 82px;
+    }
+
+    .areas-hero__content {
+      max-width: 680px;
+    }
+
+    .areas-eyebrow {
+      margin: 0 0 15px;
+      color: var(--areas-accent);
+      font-size: .72rem;
+      font-weight: 850;
+      letter-spacing: .17em;
+      text-transform: uppercase;
+    }
+
+    .areas-hero h1 {
+      max-width: 760px;
+      margin: 0;
+      font-family: var(--f-display, Georgia, serif);
+      font-size: clamp(4rem, 7.2vw, 7.2rem);
+      font-weight: 500;
+      line-height: .9;
+      letter-spacing: -.055em;
+    }
+
+    .areas-hero h1 span {
+      color: var(--areas-accent);
+    }
+
+    .areas-hero__copy {
+      max-width: 560px;
+      margin: 27px 0 0;
+      color: #3f4a45;
+      font-size: clamp(1rem, 1.3vw, 1.13rem);
+      line-height: 1.6;
+    }
+
+    .areas-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 35px;
+      margin-top: 30px;
+    }
+
+    .areas-stats article {
+      min-width: 135px;
+    }
+
+    .areas-stats strong,
+    .areas-stats small {
+      display: block;
+    }
+
+    .areas-stats strong {
+      font-size: 1rem;
+    }
+
+    .areas-stats small {
+      margin-top: 4px;
+      color: var(--areas-muted);
+      font-size: .69rem;
+    }
+
+    .areas-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 29px;
+    }
+
+    .areas-button {
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 22px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      font-size: .79rem;
+      font-weight: 850;
+      text-decoration: none;
+    }
+
+    .areas-button--primary {
+      background: var(--areas-accent);
+      color: #fff;
+    }
+
+    .areas-button--secondary {
+      border-color: var(--areas-line);
+      background: rgba(255,255,255,.94);
+      color: var(--areas-accent);
+    }
+
+    .areas-main {
+      padding: 73px 0 90px;
+    }
+
+    .areas-heading {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      align-items: end;
+      margin-bottom: 28px;
+    }
+
+    .areas-heading h2 {
+      margin: 0;
+      font-family: var(--f-display, Georgia, serif);
+      font-size: clamp(2.4rem, 4vw, 4rem);
+      font-weight: 500;
+      line-height: .95;
+      letter-spacing: -.052em;
+    }
+
+    .areas-heading > p {
+      max-width: 480px;
+      margin: 0;
+      color: var(--areas-muted);
+      font-size: .9rem;
+      line-height: 1.6;
+    }
+
+    .areas-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .areas-card {
+      min-height: 155px;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 22px;
+      border: 1px solid var(--areas-line);
+      border-radius: 12px;
+      background:
+        color-mix(
+          in srgb,
+          var(--areas-accent) 4%,
+          white
+        );
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .areas-card strong,
+    .areas-card span,
+    .areas-card p {
+      display: block;
+    }
+
+    .areas-card strong {
+      font-family: var(--f-display, Georgia, serif);
+      font-size: 1.35rem;
+      font-weight: 500;
+    }
+
+    .areas-card span {
+      margin-top: 6px;
+      color: var(--areas-muted);
+      font-size: .75rem;
+    }
+
+    .areas-card p {
+      margin: 12px 0 0;
+      color: var(--areas-muted);
+      font-size: .75rem;
+      line-height: 1.45;
+    }
+
+    .areas-card b {
+      align-self: flex-end;
+      color: var(--areas-accent);
+    }
+
+    @media (max-width: 1100px) {
+      .areas-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      .areas-hero {
+        min-height: 620px;
+      }
+
+      .areas-hero__inner,
+      .areas-main {
+        width: calc(100% - 32px);
+      }
+
+      .areas-hero__inner {
+        padding-top: 52px;
+      }
+
+      .areas-hero h1 {
+        font-size: clamp(3.4rem, 16vw, 5.5rem);
+      }
+
+      .areas-heading {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      .areas-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 500px) {
+      .areas-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</Layout>

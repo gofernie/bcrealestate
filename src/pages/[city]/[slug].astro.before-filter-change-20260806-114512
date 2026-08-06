@@ -1962,7 +1962,6 @@ if (primaryOnMainCount > 0) {
   });
 }
 
-if (pageKind === "area") {
 if (censusData?.population_2021) {
   discoveryFacts.push({
     kicker: "Local community",
@@ -2021,7 +2020,6 @@ if (censusData?.pct_owned) {
       "The ownership rate helps describe the balance between owner and rental households in the community.",
   });
 }
-}
 
 function addAmenityFact(
   count: number,
@@ -2040,15 +2038,15 @@ function addAmenityFact(
       count,
       singular,
       plural
-    )} ${count === 1 ? "is" : "are"} mapped within roughly 2 km.`,
+    )} is mapped within roughly 2 km.`,
     description,
   });
 }
 
 addAmenityFact(
   osmSummary.restaurants,
-  "restaurant or cafe",
-  "restaurants or cafes",
+  "restaurant or cafÃ©",
+  "restaurants or cafÃ©s",
   "Local flavour",
   "Nearby dining can add convenience and help shape the everyday character of an area."
 );
@@ -2148,105 +2146,6 @@ addAmenityFact(
   "Electric vehicles",
   "Public charging locations can add convenience for electric-vehicle owners."
 );
-
-addAmenityFact(
-  osmSummary.childcare || 0,
-  "childcare location",
-  "childcare locations",
-  "Childcare",
-  "Mapped childcare options can help households understand the everyday services available nearby."
-);
-
-const everydayServiceCount =
-  Number(osmSummary.grocery || 0) +
-  Number(osmSummary.medical || 0) +
-  Number(osmSummary.transit || 0);
-
-if (everydayServiceCount > 0) {
-  discoveryFacts.push({
-    kicker: "Everyday essentials",
-    title: `${pluralizeFact(
-      everydayServiceCount,
-      "mapped service",
-      "mapped services"
-    )} support day-to-day living nearby.`,
-    description:
-      "This combines grocery, medical, and transit locations mapped within roughly 2 km.",
-  });
-}
-
-const outdoorPlaceCount =
-  Number(osmSummary.parks || 0) +
-  Number(osmSummary.trails || 0) +
-  Number(osmSummary.beaches || 0);
-
-if (outdoorPlaceCount > 0) {
-  discoveryFacts.push({
-    kicker: "Outdoor choices",
-    title: `${pluralizeFact(
-      outdoorPlaceCount,
-      "outdoor place",
-      "outdoor places"
-    )} are mapped near this search.`,
-    description:
-      "This combines nearby parks, trails, and beaches.",
-  });
-}
-
-const familyAmenityCount =
-  Number(osmSummary.schools || 0) +
-  Number(osmSummary.playgrounds || 0) +
-  Number(osmSummary.childcare || 0);
-
-if (familyAmenityCount > 0) {
-  discoveryFacts.push({
-    kicker: "Family amenities",
-    title: `${pluralizeFact(
-      familyAmenityCount,
-      "family-focused place",
-      "family-focused places"
-    )} are mapped nearby.`,
-    description:
-      "This combines schools, playgrounds, and childcare locations within roughly 2 km.",
-  });
-}
-
-const nanaimoTriviaFacts = [
-  {
-    kicker: "Nanaimo geography",
-    title: "Nanaimo stretches along a long north-south coastline.",
-    description:
-      "That shape creates noticeable differences in travel time, outlook, terrain, and access between neighbourhoods.",
-  },
-  {
-    kicker: "Harbour city",
-    title: "Downtown Nanaimo faces an active harbour and nearby islands.",
-    description:
-      "The harbour remains an important part of the city's identity and waterfront character.",
-  },
-  {
-    kicker: "Lake country",
-    title: "Several substantial lakes sit within Nanaimo's urban area.",
-    description:
-      "Long Lake, Brannen Lake, and Westwood Lake each create different recreation and housing environments.",
-  },
-  {
-    kicker: "Island connections",
-    title: "Nanaimo is one of Vancouver Island's major transportation gateways.",
-    description:
-      "Ferry, highway, harbour, and air connections link the central Island with surrounding regions.",
-  },
-  {
-    kicker: "Outdoor city",
-    title: "Beaches, lakes, forests, and trail networks are spread throughout Nanaimo.",
-    description:
-      "Outdoor access is distributed across many parts of the city.",
-  },
-];
-
-if (String(city || "").toLowerCase() === "nanaimo") {
-  discoveryFacts.push(...nanaimoTriviaFacts);
-}
 
 if (discoveryFacts.length === 0) {
   discoveryFacts.push({
@@ -4348,13 +4247,16 @@ color: var(--accent) !important;
 }
 
 .intent-controls .type-filter-select {
-  display: inline-block !important;
+  display: none !important;
 }
 
 .intent-controls .view-toggle {
   display: inline-flex !important;
 }
 
+.intent-controls .area-filter-select {
+  display: inline-block !important;
+}
 
 .area-intelligence h2 {
   font-weight: 720 !important;
@@ -8757,10 +8659,12 @@ Approximate driving times from{" "}
     <button type="button" class="view-btn" id="map-view-btn">Map</button>
   </div>
 
-  <select class="type-filter-select" aria-label="Filter by property type">
-    <option value="all">Any Property Type</option>
-    {propertyTypes.map((type) => (
-      <option value={type} selected={type === normalizedPropertyType}>{titleCase(type)}</option>
+  <select class="area-filter-select" aria-label="Filter by area">
+    <option value="all">Any Area</option>
+    {areas.map((area) => (
+      <option value={String(area).toLowerCase().trim()}>
+        {titleCase(area)}
+      </option>
     ))}
   </select>
 
@@ -8773,6 +8677,12 @@ Approximate driving times from{" "}
     <option value="1100-plus">$1.1M+</option>
   </select>
 
+  <select class="type-filter-select" aria-label="Filter by property type">
+    <option value="all">Any Type</option>
+    {propertyTypes.map((type) => (
+      <option value={type} selected={type === normalizedPropertyType}>{titleCase(type)}</option>
+    ))}
+  </select>
 
 {normalizedPropertyType !== "land" && (
   <select class="beds-filter-select" aria-label="Filter by beds">
@@ -8805,7 +8715,7 @@ Approximate driving times from{" "}
 )}
 
     {
-  (pageKind === "intent" || hasActiveSearchFilters) && (
+  hasActiveSearchFilters && (
     <SlugSaveSearch
       siteId={site?.id}
       city={city}
@@ -8995,86 +8905,23 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
 </style>
 
 {listings.length > 16 && (
-  <div
-    id="show-more-listings-wrap"
-    style="
-      margin:30px 0 10px;
-      display:grid;
-      gap:14px;
-      text-align:center;
-    "
+  <button
+    type="button"
+    id="show-more-listings-btn"
+    class="cta-button"
+    style="margin-top:24px;"
   >
-    <div style="height:1px;background:rgba(0,0,0,.13);"></div>
-
-    <div>
-      <div
-        id="show-more-listings-copy"
-        style="
-          margin-bottom:10px;
-          font-family:var(--serif);
-          font-size:clamp(1.05rem,2vw,1.35rem);
-          color:var(--ink);
-        "
-      >
-        {listings.length - 16} more {typePageLabel.toLowerCase()} available
-      </div>
-
-      <button
-        type="button"
-        id="show-more-listings-btn"
-        style="
-          appearance:none;
-          border:0;
-          background:transparent;
-          padding:6px 10px;
-          color:var(--accent);
-          font:inherit;
-          font-size:.9rem;
-          font-weight:750;
-          cursor:pointer;
-        "
-      >
-        Continue browsing <span aria-hidden="true">&rarr;</span>
-      </button>
-    </div>
-
-    <div style="height:1px;background:rgba(0,0,0,.13);"></div>
-  </div>
+    Show more listings
+  </button>
 )}
 
 <script is:inline>
   (() => {
-    const button =
-      document.getElementById("show-more-listings-btn");
+    const button = document.getElementById("show-more-listings-btn");
 
-    const wrapper =
-      document.getElementById("show-more-listings-wrap");
-
-    const copy =
-      document.getElementById("show-more-listings-copy");
-
-    if (!button || !wrapper || !copy) return;
+    if (!button) return;
 
     const batchSize = 16;
-
-    const updateRemainingCopy = () => {
-      const remaining = document.querySelectorAll(
-        ".grid .original-card.listing-load-hidden"
-      ).length;
-
-      if (remaining === 0) {
-        wrapper.hidden = true;
-        return;
-      }
-
-      const listingLabel =
-        remaining === 1
-          ? "listing"
-          : "listings";
-
-      copy.textContent =
-        `${remaining} more ${listingLabel} available`;
-    };
 
     button.addEventListener("click", () => {
       const hiddenCards = Array.from(
@@ -9089,10 +8936,20 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
           card.classList.remove("listing-load-hidden");
         });
 
-      updateRemainingCopy();
-    });
+      const remaining = document.querySelectorAll(
+        ".grid .original-card.listing-load-hidden"
+      ).length;
 
-    updateRemainingCopy();
+      if (remaining === 0) {
+        button.hidden = true;
+        return;
+      }
+
+      button.textContent =
+        remaining <= batchSize
+          ? `Show remaining ${remaining} listings`
+          : "Show 16 more listings";
+    });
   })();
 </script>
 <RelatedIntentCards city={city} pages={relatedIntentPages} />
@@ -9296,14 +9153,6 @@ function initTypeHeroMap() {
             card.querySelector(".price")?.textContent?.trim() || "",
           address:
             card.querySelector(".address")?.textContent?.trim() || "",
-          image:
-            card.dataset.image ||
-            card.querySelector("img")?.src ||
-            "",
-          listingId:
-            card.dataset.listingId ||
-            card.dataset.mls ||
-            "",
         };
       })
       .filter(Boolean)
@@ -9332,7 +9181,7 @@ const heroMap = L.map(heroMapEl, {
   zoomControl: false,
   attributionControl: false,
   scrollWheelZoom: false,
-  doubleClickZoom: true,
+  doubleClickZoom: false,
   dragging: !L.Browser.mobile,
   touchZoom: true,
   tap: true,
@@ -9373,7 +9222,7 @@ if (L.Browser.mobile) {
           box-shadow:0 5px 14px rgba(18,58,90,.28);
           font-size:10px;
           font-weight:900;
-        "><span style="width:6px;height:6px;border-radius:50%;background:#fff;display:block;"></span></div>
+        ">?</div>
       `,
     });
 
@@ -9388,83 +9237,37 @@ if (L.Browser.mobile) {
       marker.bindPopup(
         `
           <div style="
-            width:240px;
-            overflow:hidden;
-            border-radius:9px;
+            min-width:140px;
             font-family:DM Sans,system-ui,sans-serif;
-            background:#fff;
           ">
             ${
-              point.image
-                ? `<img
-                    src="${point.image}"
-                    alt="${point.address || "Listing"}"
-                    style="
-                      display:block;
-                      width:100%;
-                      height:132px;
-                      object-fit:cover;
-                      background:#eef1f3;
-                    "
-                  />`
+              point.price
+                ? `<strong style="
+                    display:block;
+                    margin-bottom:3px;
+                    color:#172033;
+                    font-size:.9rem;
+                  ">${point.price}</strong>`
                 : ""
             }
 
-            <div style="padding:13px 14px 14px;">
-              ${
-                point.price
-                  ? `<strong style="
-                      display:block;
-                      margin-bottom:4px;
-                      color:#172033;
-                      font-size:1rem;
-                      line-height:1.2;
-                    ">${point.price}</strong>`
-                  : ""
-              }
-
-              ${
-                point.address
-                  ? `<span style="
-                      display:block;
-                      margin-bottom:11px;
-                      color:#687080;
-                      font-size:.78rem;
-                      line-height:1.4;
-                    ">${point.address}</span>`
-                  : ""
-              }
-
-              <a
-                href="#type-listings"
-                onclick="event.preventDefault();document.querySelector('[data-listing-id=&quot;${point.listingId || ""}&quot;]')?.click();"
-                style="
-                  display:inline-flex;
-                  align-items:center;
-                  justify-content:center;
-                  min-height:36px;
-                  padding:0 14px;
-                  border-radius:6px;
-                  background:${accentColor};
-                  color:#fff;
-                  font-size:.78rem;
-                  font-weight:750;
-                  text-decoration:none;
-                "
-              >
-                View listing
-              </a>
-            </div>
+            ${
+              point.address
+                ? `<span style="
+                    display:block;
+                    color:#687080;
+                    font-size:.72rem;
+                    line-height:1.35;
+                  ">${point.address}</span>`
+                : ""
+            }
           </div>
         `,
         {
-          closeButton: true,
-          offset: [0, -8],
-          maxWidth: 260,
-          minWidth: 240,
+          closeButton: false,
+          offset: [0, -5],
         }
       );
-
 
       bounds.extend([point.lat, point.lng]);
     });
@@ -9865,7 +9668,7 @@ function prepareTypeHeroMap() {
           font-size:.58rem;
           line-height:1.2;
         ">
-          Map &copy; OpenStreetMap contributors
+          Map Â© OpenStreetMap contributors
         </small>
       </div>
     </div>
@@ -9949,29 +9752,15 @@ function getCardLatLng(card) {
 function makeListingIcon() {
   return L.divIcon({
     className: "",
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    popupAnchor: [0, -10],
-    html: `
-      <div style="
-        width:24px;
-        height:24px;
-        display:grid;
-        place-items:center;
-        border:3px solid rgba(255,255,255,.96);
-        border-radius:50%;
-        background:${accentColor};
-        box-shadow:0 5px 14px rgba(18,58,90,.28);
-      ">
-        <span style="
-          width:6px;
-          height:6px;
-          display:block;
-          border-radius:50%;
-          background:#fff;
-        "></span>
-      </div>
-    `,
+    html: `<div style="position:relative;width:28px;height:36px;">
+      <svg viewBox="0 0 28 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:28px;height:36px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
+        <path d="M14 0C6.268 0 0 6.268 0 14c0 9.333 14 22 14 22S28 23.333 28 14C28 6.268 21.732 0 14 0z" fill="${accentColor}"/>
+        <circle cx="14" cy="14" r="5" fill="white"/>
+      </svg>
+    </div>`,
+    iconSize: [28, 36],
+    iconAnchor: [14, 36],
+    popupAnchor: [0, -36],
   });
 }
 
@@ -9986,108 +9775,20 @@ iconAnchor: [7, 7],
 
 function buildListingPopup(card) {
   let imgs = [];
-
-  try {
-    imgs = JSON.parse(card.dataset.images || "[]").filter(Boolean);
-  } catch {}
-
-  if (!imgs.length && card.dataset.image) {
-    imgs = [card.dataset.image];
-  }
-
-  const firstImage = imgs[0] || "";
-  const image =
-    typeof firstImage === "string"
-      ? firstImage
-      : firstImage?.mediumRes ||
-        firstImage?.highRes ||
-        firstImage?.lowRes ||
-        firstImage?.url ||
-        "";
-
-  const listingId =
-    card.dataset.listingId ||
-    card.dataset.mls ||
-    "";
+  try { imgs = JSON.parse(card.dataset.images || "[]").filter(Boolean); } catch {}
+  if (!imgs.length && card.dataset.image) imgs = [card.dataset.image];
+  const img = imgs[0] || "";
 
   return `
-    <div style="
-      width:240px;
-      overflow:hidden;
-      border-radius:9px;
-      background:#fff;
-      font-family:DM Sans,system-ui,sans-serif;
-    ">
-      ${
-        image
-          ? `<img
-              src="${image}"
-              alt="${card.dataset.address || "Listing"}"
-              style="
-                display:block;
-                width:100%;
-                height:132px;
-                object-fit:cover;
-                background:#eef1f3;
-              "
-            />`
-          : ""
-      }
-
-      <div style="padding:13px 14px 14px;">
-        <strong style="
-          display:block;
-          margin-bottom:4px;
-          color:#172033;
-          font-size:1rem;
-          line-height:1.2;
-        ">
-          ${card.dataset.price || ""}
-        </strong>
-
-        <span style="
-          display:block;
-          margin-bottom:5px;
-          color:#687080;
-          font-size:.78rem;
-          line-height:1.4;
-        ">
-          ${card.dataset.address || ""}
-        </span>
-
-        <span style="
-          display:block;
-          margin-bottom:11px;
-          color:#9c9590;
-          font-size:.74rem;
-        ">
-          ${card.dataset.beds || "-"} bd &nbsp;|&nbsp; ${card.dataset.baths || "-"} ba
-        </span>
-
-        <button
-          type="button"
-          onclick="document.querySelector('[data-listing-id=&quot;${listingId}&quot;]')?.click();"
-          style="
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            min-height:36px;
-            padding:0 14px;
-            border:0;
-            border-radius:6px;
-            background:${accentColor};
-            color:#fff;
-            font-family:inherit;
-            font-size:.78rem;
-            font-weight:750;
-            cursor:pointer;
-          "
-        >
-          View listing
-        </button>
+    <div style="width:200px;font-family:'DM Sans',system-ui,sans-serif;cursor:pointer;" onclick="document.querySelector('[data-listing-id=\\'${card.dataset.listingId || ""}\\']')?.click()">
+      ${img ? `<img src="${img}" style="width:100%;height:120px;object-fit:cover;display:block;border-radius:4px 4px 0 0;" />` : ""}
+      <div style="padding:10px 12px 12px;">
+        <strong style="font-size:0.95rem;display:block;margin-bottom:2px;">${card.dataset.price || ""}</strong>
+        <span style="font-size:0.8rem;color:#6b6560;display:block;margin-bottom:2px;">${card.dataset.address || ""}</span>
+        <span style="font-size:0.76rem;color:#9c9590;display:block;">${card.dataset.beds || "-"} bd | ${card.dataset.baths || "-"} ba</span>
+        <div style="font-size:0.76rem;font-weight:700;color:${accentColor};margin-top:6px;">View listing ?</div>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
 // --- Draw polygon ---
@@ -10163,13 +9864,15 @@ function initLeafletMap(mode = "all") {
       const marker = L.marker(latlng, { icon: makeListingIcon() }).addTo(leafletMap);
 
       const popup = L.popup({
-        maxWidth: 260,
-        closeButton: true,
-        offset: [0, -8],
-        minWidth: 240,
+        maxWidth: 210,
+        closeButton: false,
+        offset: [0, -4],
         className: "leaflet-listing-popup",
       }).setContent(buildListingPopup(card));
 
+      marker.on("mouseover", () => marker.openPopup());
+      marker.on("mouseout", () => setTimeout(() => marker.closePopup(), 200));
+      marker.on("click", () => card.click());
       marker.bindPopup(popup);
 
       listingMarkers.push(marker);
@@ -10498,6 +10201,7 @@ function initRefinedLeafletMap() {
     points.forEach(({ card, latlng }) => {
       const marker = L.marker(latlng, { icon: makeListingIcon() }).addTo(refinedLeafletMap);
       marker.bindPopup(buildListingPopup(card), { maxWidth: 210, closeButton: false });
+      marker.on("click", () => card.click());
       refinedMarkers.push(marker);
     });
 
@@ -10650,12 +10354,16 @@ this.classList.add("active");
 </script>
 
   <script is:inline>
+const areaSelect = document.querySelector(".area-filter-select");
 const priceSelect = document.querySelector(".price-filter-select");
 const typeSelect = document.querySelector(".type-filter-select");
 const sortSelect = document.querySelector(".sort-filter-select");
 const bedsSelect = document.querySelector(".beds-filter-select");
 const initialParams = new URLSearchParams(window.location.search);
 
+if (areaSelect && initialParams.get("area")) {
+  areaSelect.value = initialParams.get("area");
+}
 
 if (priceSelect && initialParams.get("price")) {
   priceSelect.value = initialParams.get("price");
@@ -10699,6 +10407,10 @@ function jsTitleCase(value = "") {
   }
 function getCurrentFilters() {
   return {
+    area: (() => {
+      const value = areaSelect?.value || "all";
+      return value.startsWith("/") ? "all" : value;
+    })(),
     price: priceSelect?.value || "all",
     type: String(typeSelect?.value || "all").toLowerCase(),
     beds: String(bedsSelect?.value || "all").toLowerCase(),
@@ -10708,10 +10420,13 @@ function getCurrentFilters() {
 function cardMatchesFilters(card, filters, options = {}) {
   const ignoreType = options.ignoreType === true;
 
+  const cardArea = String(card.dataset.area || "").toLowerCase();
   const cardType = String(card.dataset.type || "").toLowerCase();
   const price = getCardPrice(card);
   const beds = Number(card.dataset.beds || 0);
 
+  const matchesArea =
+    filters.area === "all" || cardArea === filters.area;
 
   const matchesBeds =
     filters.beds === "all" || beds >= Number(filters.beds);
@@ -10727,7 +10442,7 @@ function cardMatchesFilters(card, filters, options = {}) {
     (filters.price === "850-1100" && price >= 850000 && price < 1100000) ||
     (filters.price === "1100-plus" && price >= 1100000);
 
-  return matchesBeds && matchesPrice && matchesType;
+  return matchesArea && matchesBeds && matchesPrice && matchesType;
 }
 
 function getFilteredCards(options = {}) {
@@ -10791,6 +10506,10 @@ function updateResultsHeading(filters) {
     document.querySelector("[data-city]")?.dataset.city || "Nanaimo"
   );
 
+  const areaLabel =
+    filters.area === "all"
+      ? ""
+      : jsTitleCase(areaSelect.options[areaSelect.selectedIndex].text);
 
   const bedsLabel =
     filters.beds === "all"
@@ -10813,6 +10532,7 @@ function updateResultsHeading(filters) {
     cityLabel,
     bedsLabel,
     typeLabel,
+    areaLabel,
     priceLabel,
   ].filter(Boolean).join(" ");
 }
@@ -10872,7 +10592,7 @@ if (sort === "sqft-desc") return Number(b.dataset.sqft || 0) - Number(a.dataset.
       cards[8].after(interruptCard);
     }
 
-    submitFilters();
+    applyFilters();
   }
 function updateSearchFromFilters() {
   const params = new URLSearchParams(window.location.search);
@@ -10904,10 +10624,39 @@ sessionStorage.setItem(
 window.location.search = params.toString();
 }
 
+areaSelect?.addEventListener("change", updateSearchFromFilters);
 priceSelect?.addEventListener("change", updateSearchFromFilters);
 
 typeSelect?.addEventListener("change", () => {
-  submitFilters();
+  const selectedType = typeSelect.value;
+  const currentCity = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
+
+  if (selectedType && selectedType !== "all") {
+    const typeSlugMap = {
+      house: `${currentCity}-homes`,
+      condo: `${currentCity}-condos`,
+      townhouse: `${currentCity}-townhomes`,
+      mobile: `${currentCity}-mobile-homes`,
+      land: `${currentCity}-land`,
+    };
+    const targetSlug = typeSlugMap[selectedType];
+if (targetSlug) {
+  const currentHostname = window.location.hostname
+    .toLowerCase()
+    .replace(/^www\./, "");
+
+  const usesRootPageUrls =
+    currentHostname === "nanaimomobiles.com";
+
+  window.location.href = usesRootPageUrls
+    ? `/${targetSlug}`
+    : `/${currentCity}/${targetSlug}`;
+
+  return;
+}
+  }
+
+  applyFilters();
 });
 
 sortSelect?.addEventListener("change", updateSearchFromFilters);
@@ -10930,7 +10679,7 @@ document.querySelectorAll(".property-type-pill").forEach((button) => {
       button.classList.add("active");
     }
 
-    submitFilters();
+    applyFilters();
   });
 });
    
@@ -12202,7 +11951,7 @@ function applyInterruptorCard() {
               ${escapeInterruptorHtml(
                 config.buttonLabel
               )}
-              <span aria-hidden="true">&rarr;</span>
+              <span aria-hidden="true">â†’</span>
             </button>
           `
           : ""
@@ -13510,42 +13259,8 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
 .interrupt-card--fact .interrupt-card__button {
   display: none !important;
 }
-
-/* UNIFORM LISTING IMAGE FRAMES */
-.grid .original-card {
-  overflow: hidden;
-}
-
-.grid .original-card .card-image,
-.grid .original-card .listing-image,
-.grid .original-card .listing-card__image,
-.grid .original-card picture {
-  display: block;
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  overflow: hidden;
-  background: #eef1f2;
-}
-
-.grid .original-card .card-image img,
-.grid .original-card .listing-image img,
-.grid .original-card .listing-card__image img,
-.grid .original-card picture img,
-.grid .original-card > img {
-  display: block;
-  width: 100% !important;
-  height: auto;
-  aspect-ratio: 4 / 3;
-  object-fit: cover !important;
-  object-position: center center;
-  transform: scale(1.035);
-  transform-origin: center center;
-}
-
 </style>
 </Layout>
-
-
 
 
 

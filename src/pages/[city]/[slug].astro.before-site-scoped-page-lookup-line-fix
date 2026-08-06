@@ -155,22 +155,12 @@ const accentColor =
   site?.accent_color ||
   "#2f6f73";
 
-let pageQuery = supabase
+let { data: page } = await supabase
   .from("intent_pages")
   .select("*")
   .eq("slug", slug)
-  .eq("city", city);
-
-if (site?.id) {
-  pageQuery =
-    pageQuery.eq("site_id", site.id);
-} else {
-  pageQuery =
-    pageQuery.is("site_id", null);
-}
-
-let { data: page } =
-  await pageQuery.maybeSingle();
+  .eq("city", city)
+  .maybeSingle();
 
 let pageKind = "intent";
 
@@ -1702,561 +1692,6 @@ const typePageNewThisWeek = listings.filter((listing) => {
   const listedTime = new Date(listing.listed_at || "").getTime();
   return Number.isFinite(listedTime) && listedTime >= sevenDaysAgo;
 }).length;
-/* EDUCATION_FIRST_DISCOVERY_FACTS_V1 */
-type DiscoveryFact = {
-  kicker: string;
-  title: string;
-  description: string;
-};
-
-const discoveryFacts: DiscoveryFact[] = [];
-
-const pluralizeFact = (
-  count: number,
-  singular: string,
-  plural = `${singular}s`
-) => `${count} ${count === 1 ? singular : plural}`;
-
-const currentCityLabel = titleCase(city);
-
-if (listingCount > 0) {
-  discoveryFacts.push({
-    kicker: "Current inventory",
-    title: `${pluralizeFact(
-      listingCount,
-      "active listing"
-    )} match this search.`,
-    description:
-      typePageNewThisWeek > 0
-        ? `${pluralizeFact(
-            typePageNewThisWeek,
-            "new listing"
-          )} arrived during the past seven days.`
-        : "Inventory changes as properties are listed, sold, or taken off the market.",
-  });
-}
-
-if (typePageNewThisWeek > 0) {
-  const newShare = listingCount
-    ? Math.round(
-        (typePageNewThisWeek / listingCount) * 100
-      )
-    : 0;
-
-  discoveryFacts.push({
-    kicker: "New this week",
-    title: `${pluralizeFact(
-      typePageNewThisWeek,
-      "home"
-    )} entered this search recently.`,
-    description:
-      newShare > 0
-        ? `That represents about ${newShare}% of the active listings currently shown here.`
-        : "New inventory can quickly change the choices available to buyers.",
-  });
-}
-
-if (typePageMedianPrice > 0) {
-  discoveryFacts.push({
-    kicker: "Market snapshot",
-    title: `The median asking price is ${formatPrice(
-      typePageMedianPrice
-    )}.`,
-    description:
-      "The median is the midpoint of current asking prices, so half the listings are priced above it and half below it.",
-  });
-}
-
-if (listingPrices.length >= 2) {
-  const lowestPrice = listingPrices[0];
-  const highestPrice =
-    listingPrices[listingPrices.length - 1];
-
-  discoveryFacts.push({
-    kicker: "Price range",
-    title: `Current prices span ${formatPrice(
-      lowestPrice
-    )} to ${formatPrice(highestPrice)}.`,
-    description:
-      "The range reflects the different property types, locations, lot sizes, and features represented in this search.",
-  });
-}
-
-const discoveryListingTypeCounts = listings.reduce(
-  (counts: Record<string, number>, listing: any) => {
-    const key = String(
-      listing.normalized_type ||
-        listing.property_type ||
-        ""
-    )
-      .trim()
-      .toLowerCase();
-
-    if (key) {
-      counts[key] = (counts[key] || 0) + 1;
-    }
-
-    return counts;
-  },
-  {}
-);
-
-const dominantListingType = Object.entries(
-  discoveryListingTypeCounts
-).sort((a, b) => b[1] - a[1])[0];
-
-if (
-  dominantListingType &&
-  listingCount > 0
-) {
-  const [typeName, typeCount] =
-    dominantListingType;
-
-  const typeShare = Math.round(
-    (Number(typeCount) / listingCount) * 100
-  );
-
-  discoveryFacts.push({
-    kicker: "Housing mix",
-    title: `${typeShare}% of these listings are ${titleCase(
-      typeName
-    ).toLowerCase()} properties.`,
-    description:
-      "The mix can shift as new listings reach the market, especially in searches with limited inventory.",
-  });
-}
-
-const bedroomCounts = listings.reduce(
-  (counts: Record<string, number>, listing: any) => {
-    const beds = Number(listing.beds || 0);
-
-    if (beds > 0) {
-      const key = String(beds);
-      counts[key] = (counts[key] || 0) + 1;
-    }
-
-    return counts;
-  },
-  {}
-);
-
-const mostCommonBedroomCount = Object.entries(
-  bedroomCounts
-).sort((a, b) => b[1] - a[1])[0];
-
-if (mostCommonBedroomCount) {
-  const [beds, count] =
-    mostCommonBedroomCount;
-
-  discoveryFacts.push({
-    kicker: "Home layouts",
-    title: `${beds}-bedroom homes are the most common here.`,
-    description: `${pluralizeFact(
-      Number(count),
-      "current listing"
-    )} in this search has that bedroom count.`,
-  });
-}
-
-const countListingsWith = (
-  predicate: (listing: any) => boolean
-) => listings.filter(predicate).length;
-
-const waterfrontCount = countListingsWith(
-  (listing) => listing.waterfront === true
-);
-
-if (waterfrontCount > 0) {
-  discoveryFacts.push({
-    kicker: "Waterfront",
-    title: `${pluralizeFact(
-      waterfrontCount,
-      "listing"
-    )} is marked as waterfront.`,
-    description:
-      "Waterfront classifications can include ocean, lake, river, and other shoreline settings.",
-  });
-}
-
-const oceanViewCount = countListingsWith(
-  (listing) => listing.ocean_view === true
-);
-
-if (oceanViewCount > 0) {
-  discoveryFacts.push({
-    kicker: "Views",
-    title: `${pluralizeFact(
-      oceanViewCount,
-      "listing"
-    )} is identified as having an ocean view.`,
-    description:
-      "View quality, direction, elevation, and potential obstructions can vary significantly by property.",
-  });
-}
-
-const floorplanCount = countListingsWith(
-  (listing) => listing.has_floorplan === true
-);
-
-if (floorplanCount > 0) {
-  discoveryFacts.push({
-    kicker: "Explore the layout",
-    title: `${pluralizeFact(
-      floorplanCount,
-      "listing"
-    )} includes a floorplan.`,
-    description:
-      "Floorplans can make it easier to compare room placement, circulation, and bedroom separation before arranging a visit.",
-  });
-}
-
-const updatedKitchenCount = countListingsWith(
-  (listing) =>
-    listing.has_updated_kitchen === true
-);
-
-if (updatedKitchenCount > 0) {
-  discoveryFacts.push({
-    kicker: "Property features",
-    title: `${pluralizeFact(
-      updatedKitchenCount,
-      "home"
-    )} appears to have an updated kitchen.`,
-    description:
-      "This count is based on available listing information and image analysis, so condition should still be confirmed in person.",
-  });
-}
-
-const detachedShopCount = countListingsWith(
-  (listing) =>
-    listing.has_detached_shop === true
-);
-
-if (detachedShopCount > 0) {
-  discoveryFacts.push({
-    kicker: "Extra workspace",
-    title: `${pluralizeFact(
-      detachedShopCount,
-      "property",
-      "properties"
-    )} includes a detached shop.`,
-    description:
-      "Detached shops can be valuable for storage, projects, vehicles, or home-based work.",
-  });
-}
-
-const primaryOnMainCount = countListingsWith(
-  (listing) =>
-    listing.primary_on_main === true
-);
-
-if (primaryOnMainCount > 0) {
-  discoveryFacts.push({
-    kicker: "Home layouts",
-    title: `${pluralizeFact(
-      primaryOnMainCount,
-      "home"
-    )} has the primary bedroom on the main floor.`,
-    description:
-      "Main-floor primary bedrooms are often sought by downsizers and buyers planning for long-term accessibility.",
-  });
-}
-
-if (pageKind === "area") {
-if (censusData?.population_2021) {
-  discoveryFacts.push({
-    kicker: "Local community",
-    title: `${Number(
-      censusData.population_2021
-    ).toLocaleString()} people lived in ${currentCityLabel} in 2021.`,
-    description:
-      "Population figures come from the 2021 Canadian census and provide broader community context for this search.",
-  });
-}
-
-if (censusData?.pop_change_pct != null) {
-  const change = Number(
-    censusData.pop_change_pct
-  );
-
-  discoveryFacts.push({
-    kicker: "Population trend",
-    title: `The population changed ${
-      change > 0 ? "+" : ""
-    }${change}% from 2016 to 2021.`,
-    description:
-      change >= 0
-        ? "Population growth can influence housing demand, transportation, services, and future development."
-        : "Population change can influence housing demand, transportation, services, and future development.",
-  });
-}
-
-if (censusData?.median_age) {
-  discoveryFacts.push({
-    kicker: "Community profile",
-    title: `The median age is ${censusData.median_age}.`,
-    description:
-      "Median age is the point where half the population is younger and half is older.",
-  });
-}
-
-if (censusData?.median_household_income) {
-  discoveryFacts.push({
-    kicker: "Community profile",
-    title: `Median household income is about ${Math.round(
-      Number(
-        censusData.median_household_income
-      ) / 1000
-    )}k.`,
-    description:
-      "This census measure represents the midpoint of household incomes across the broader community.",
-  });
-}
-
-if (censusData?.pct_owned) {
-  discoveryFacts.push({
-    kicker: "Housing profile",
-    title: `${censusData.pct_owned}% of occupied homes are owner-occupied.`,
-    description:
-      "The ownership rate helps describe the balance between owner and rental households in the community.",
-  });
-}
-}
-
-function addAmenityFact(
-  count: number,
-  singular: string,
-  plural: string,
-  kicker: string,
-  description: string
-) {
-  if (count <= 0) {
-    return;
-  }
-
-  discoveryFacts.push({
-    kicker,
-    title: `${pluralizeFact(
-      count,
-      singular,
-      plural
-    )} ${count === 1 ? "is" : "are"} mapped within roughly 2 km.`,
-    description,
-  });
-}
-
-addAmenityFact(
-  osmSummary.restaurants,
-  "restaurant or cafe",
-  "restaurants or cafes",
-  "Local flavour",
-  "Nearby dining can add convenience and help shape the everyday character of an area."
-);
-
-addAmenityFact(
-  osmSummary.parks,
-  "park",
-  "parks",
-  "Green space",
-  "Local parks can provide recreation, walking routes, play areas, and access to nature."
-);
-
-addAmenityFact(
-  osmSummary.schools,
-  "school",
-  "schools",
-  "Education",
-  "School proximity is one factor many households consider when comparing locations."
-);
-
-addAmenityFact(
-  osmSummary.trails,
-  "trail",
-  "trails",
-  "Outdoor access",
-  "Nearby trails can support walking, running, cycling, and access to natural areas."
-);
-
-addAmenityFact(
-  osmSummary.beaches,
-  "beach",
-  "beaches",
-  "Water access",
-  "Nearby beaches can add swimming, paddling, shoreline walking, and seasonal recreation."
-);
-
-addAmenityFact(
-  osmSummary.grocery,
-  "grocery shop",
-  "grocery shops",
-  "Everyday convenience",
-  "Access to groceries is a useful part of understanding how a location functions day to day."
-);
-
-addAmenityFact(
-  osmSummary.transit,
-  "transit stop",
-  "transit stops",
-  "Getting around",
-  "Nearby transit may provide alternatives to driving for work, school, shopping, and appointments."
-);
-
-addAmenityFact(
-  osmSummary.medical,
-  "medical service",
-  "medical services",
-  "Nearby services",
-  "Clinics, pharmacies, and other medical services can be an important part of location convenience."
-);
-
-addAmenityFact(
-  osmSummary.playgrounds,
-  "playground",
-  "playgrounds",
-  "Family living",
-  "Playgrounds provide nearby outdoor space for children and families."
-);
-
-addAmenityFact(
-  osmSummary.recreation,
-  "recreation facility",
-  "recreation facilities",
-  "Stay active",
-  "Recreation facilities can support sports, fitness, classes, and community programs."
-);
-
-addAmenityFact(
-  osmSummary.golf,
-  "golf course",
-  "golf courses",
-  "Recreation",
-  "Nearby golf can be a meaningful lifestyle feature for some buyers."
-);
-
-addAmenityFact(
-  osmSummary.marinas,
-  "marina",
-  "marinas",
-  "Boating",
-  "Marina access can be especially relevant to buyers comparing coastal and waterfront locations."
-);
-
-addAmenityFact(
-  osmSummary.evCharging,
-  "EV charging location",
-  "EV charging locations",
-  "Electric vehicles",
-  "Public charging locations can add convenience for electric-vehicle owners."
-);
-
-addAmenityFact(
-  osmSummary.childcare || 0,
-  "childcare location",
-  "childcare locations",
-  "Childcare",
-  "Mapped childcare options can help households understand the everyday services available nearby."
-);
-
-const everydayServiceCount =
-  Number(osmSummary.grocery || 0) +
-  Number(osmSummary.medical || 0) +
-  Number(osmSummary.transit || 0);
-
-if (everydayServiceCount > 0) {
-  discoveryFacts.push({
-    kicker: "Everyday essentials",
-    title: `${pluralizeFact(
-      everydayServiceCount,
-      "mapped service",
-      "mapped services"
-    )} support day-to-day living nearby.`,
-    description:
-      "This combines grocery, medical, and transit locations mapped within roughly 2 km.",
-  });
-}
-
-const outdoorPlaceCount =
-  Number(osmSummary.parks || 0) +
-  Number(osmSummary.trails || 0) +
-  Number(osmSummary.beaches || 0);
-
-if (outdoorPlaceCount > 0) {
-  discoveryFacts.push({
-    kicker: "Outdoor choices",
-    title: `${pluralizeFact(
-      outdoorPlaceCount,
-      "outdoor place",
-      "outdoor places"
-    )} are mapped near this search.`,
-    description:
-      "This combines nearby parks, trails, and beaches.",
-  });
-}
-
-const familyAmenityCount =
-  Number(osmSummary.schools || 0) +
-  Number(osmSummary.playgrounds || 0) +
-  Number(osmSummary.childcare || 0);
-
-if (familyAmenityCount > 0) {
-  discoveryFacts.push({
-    kicker: "Family amenities",
-    title: `${pluralizeFact(
-      familyAmenityCount,
-      "family-focused place",
-      "family-focused places"
-    )} are mapped nearby.`,
-    description:
-      "This combines schools, playgrounds, and childcare locations within roughly 2 km.",
-  });
-}
-
-const nanaimoTriviaFacts = [
-  {
-    kicker: "Nanaimo geography",
-    title: "Nanaimo stretches along a long north-south coastline.",
-    description:
-      "That shape creates noticeable differences in travel time, outlook, terrain, and access between neighbourhoods.",
-  },
-  {
-    kicker: "Harbour city",
-    title: "Downtown Nanaimo faces an active harbour and nearby islands.",
-    description:
-      "The harbour remains an important part of the city's identity and waterfront character.",
-  },
-  {
-    kicker: "Lake country",
-    title: "Several substantial lakes sit within Nanaimo's urban area.",
-    description:
-      "Long Lake, Brannen Lake, and Westwood Lake each create different recreation and housing environments.",
-  },
-  {
-    kicker: "Island connections",
-    title: "Nanaimo is one of Vancouver Island's major transportation gateways.",
-    description:
-      "Ferry, highway, harbour, and air connections link the central Island with surrounding regions.",
-  },
-  {
-    kicker: "Outdoor city",
-    title: "Beaches, lakes, forests, and trail networks are spread throughout Nanaimo.",
-    description:
-      "Outdoor access is distributed across many parts of the city.",
-  },
-];
-
-if (String(city || "").toLowerCase() === "nanaimo") {
-  discoveryFacts.push(...nanaimoTriviaFacts);
-}
-
-if (discoveryFacts.length === 0) {
-  discoveryFacts.push({
-    kicker: "Did you know?",
-    title: "This search updates as local inventory changes.",
-    description:
-      "New listings, price adjustments, accepted offers, and removals can reshape the results throughout the week.",
-  });
-}
-
 
 const typePageLabel =
   effectivePropertyType === "house"
@@ -4058,6 +3493,7 @@ body.is-map-mode .bottom-refine-cta {
   .type-breadcrumb,
   .type-hero,
   .type-stats,
+  .type-tools,
   .property-type-pills,
   .section-head,
   .intent-controls,
@@ -4076,6 +3512,7 @@ body.is-map-mode .bottom-refine-cta {
 
   .type-map-card,
   .type-stats,
+  .type-tools,
   .section-head,
   .intent-controls {
     margin-top: 14px;
@@ -4348,13 +3785,16 @@ color: var(--accent) !important;
 }
 
 .intent-controls .type-filter-select {
-  display: inline-block !important;
+  display: none !important;
 }
 
 .intent-controls .view-toggle {
   display: inline-flex !important;
 }
 
+.intent-controls .area-filter-select {
+  display: inline-block !important;
+}
 
 .area-intelligence h2 {
   font-weight: 720 !important;
@@ -5298,11 +4738,38 @@ grid-template-columns: 30px minmax(0, 1fr);
   font-size: 0.68rem;
 }
 
+.type-tools {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 30px;
+}
 
+.type-tools > a {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  min-height: 96px;
+  padding: 16px;
+  border: 1px solid rgba(18,58,90,.08);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--ink);
+  text-decoration: none;
+  box-shadow: 0 7px 22px rgba(24,45,68,.035);
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
 
-
-
-
+.type-tools > a:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  box-shadow: 0 13px 34px rgba(24,45,68,.07);
+}
 
 .type-tool-icon {
   width: 43px;
@@ -5335,13 +4802,28 @@ grid-template-columns: 30px minmax(0, 1fr);
   color: #e35462;
 }
 
+.type-tools strong,
+.type-tools small {
+  display: block;
+}
 
+.type-tools strong {
+  margin-bottom: 5px;
+  font-size: 0.84rem;
+  font-weight: 850;
+}
 
+.type-tools small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.69rem;
+  line-height: 1.45;
+}
 
-
-
-
-
+.type-tools b {
+  color: var(--muted);
+  font-size: 1.1rem;
+}
 
 .is-type-page .section-head {
   margin-top: 0 !important;
@@ -5399,7 +4881,9 @@ grid-template-columns: 30px minmax(0, 1fr);
   }
 
   .type-stats,
-  
+  .type-tools {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 
   .type-stats article:nth-child(3) {
     border-left: 0;
@@ -5509,9 +4993,13 @@ grid-template-columns: 30px minmax(0, 1fr);
     font-size: 0.61rem;
   }
 
-  
+  .type-tools {
+    grid-template-columns: 1fr;
+  }
 
-  
+  .type-tools > a {
+    min-height: 82px;
+  }
 
   .is-type-page .section-head {
     width: 100% !important;
@@ -5726,7 +5214,10 @@ grid-template-columns: 30px minmax(0, 1fr);
   stroke-width: 2;
 }
 
-
+.type-tools > a:hover .type-tool-arrow {
+  color: var(--accent);
+  transform: translateX(2px);
+}
 
 .type-tool-arrow {
   transition:
@@ -5945,7 +5436,9 @@ grid-template-columns: 30px minmax(0, 1fr);
 
 /* Hide the generic tool row on mobile-home pages */
 
-.is-mobile-home-inner-page 
+.is-mobile-home-inner-page .type-tools {
+  display: none;
+}
 
 /* Listing heading and filters */
 
@@ -7260,7 +6753,7 @@ grid-template-columns: 30px minmax(0, 1fr);
   }
 }
 
-/* MOBILE EXPLORE CALLOUT â€” BUTTON UNDER COPY */
+/* MOBILE EXPLORE CALLOUT — BUTTON UNDER COPY */
 @media (max-width: 600px) {
   .explore-callout {
     display: grid !important;
@@ -7370,7 +6863,7 @@ grid-template-columns: 30px minmax(0, 1fr);
   }
 }
 
-/* MOBILE EXPLORE CALLOUT â€” BUTTON ON ITS OWN ROW */
+/* MOBILE EXPLORE CALLOUT — BUTTON ON ITS OWN ROW */
 @media (max-width: 600px) {
   .explore-callout {
     display: grid !important;
@@ -7433,7 +6926,7 @@ grid-template-columns: 30px minmax(0, 1fr);
   }
 }
 
-/* MOBILE EXPLORE CALLOUT â€” BUTTON ON ITS OWN ROW */
+/* MOBILE EXPLORE CALLOUT — BUTTON ON ITS OWN ROW */
 @media (max-width: 600px) {
   .explore-callout {
     display: grid !important;
@@ -8063,7 +7556,127 @@ grid-template-columns: 30px minmax(0, 1fr);
   </section>
 )}
 
+<section class="type-tools">
+          <a href="#type-listings">
+<span class="type-tool-icon type-tool-icon--purple" aria-hidden="true">
+ <svg
+  viewBox="0 0 24 24"
+  width="24"
+  height="24"
+  aria-hidden="true"
+>
+    <rect x="4" y="4" width="6" height="16" rx="1.5" />
+    <rect x="14" y="4" width="6" height="16" rx="1.5" />
+    <path d="M7 8h0M7 12h0M7 16h0M17 8h0M17 12h0M17 16h0" />
+  </svg>
+</span>
+            <span>
+              <strong>Compare Listings</strong>
+              <small>
+                Compare prices, features and availability.
+              </small>
+            </span>
+          <b class="type-tool-arrow" aria-hidden="true">
+ <svg
+  viewBox="0 0 24 24"
+  width="24"
+  height="24"
+  aria-hidden="true"
+>
+    <path d="m9 18 6-6-6-6" />
+  </svg>
+</b>
+          </a>
 
+       <a href={`${buildContentHref(slug)}#guide`}>
+<span class="type-tool-icon type-tool-icon--green" aria-hidden="true">
+<svg
+  viewBox="0 0 24 24"
+  width="24"
+  height="24"
+  aria-hidden="true"
+>
+    <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v17H6.5A2.5 2.5 0 0 0 4 22V5.5Z" />
+    <path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v17h4.5A2.5 2.5 0 0 1 20 22V5.5Z" />
+  </svg>
+</span>
+            <span>
+              <strong>{typePageLabel} Guide</strong>
+              <small>
+                Learn about buying {typePageLabel.toLowerCase()} in {titleCase(city)}.
+              </small>
+            </span>
+           <b class="type-tool-arrow" aria-hidden="true">
+<svg
+  viewBox="0 0 24 24"
+  width="24"
+  height="24"
+  aria-hidden="true"
+>
+    <path d="m9 18 6-6-6-6" />
+  </svg>
+</b>
+          </a>
+
+          <a href={`/market-insights?city=${encodeURIComponent(city)}`}>
+<span class="type-tool-icon type-tool-icon--gold" aria-hidden="true">
+ <svg
+  viewBox="0 0 24 24"
+  width="24"
+  height="24"
+  aria-hidden="true"
+>
+    <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+    <circle cx="12" cy="10" r="2.5" />
+  </svg>
+</span>
+            <span>
+              <strong>Neighbourhoods</strong>
+              <small>
+                Explore areas with matching inventory and lifestyle.
+              </small>
+            </span>
+          <b class="type-tool-arrow" aria-hidden="true">
+ <svg
+  viewBox="0 0 24 24"
+  width="24"
+  height="24"
+  aria-hidden="true"
+>
+    <path d="m9 18 6-6-6-6" />
+  </svg>
+</b>
+          </a>
+
+          <a href="#type-listings">
+<span class="type-tool-icon type-tool-icon--red" aria-hidden="true">
+  <svg
+  viewBox="0 0 24 24"
+  width="24"
+  height="24"
+  aria-hidden="true"
+>
+    <path d="M20.8 4.7a5.5 5.5 0 0 0-7.8 0L12 5.8l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.5a5.5 5.5 0 0 0 0-7.8Z" />
+  </svg>
+</span>
+            <span>
+              <strong>Save &amp; Track</strong>
+              <small>
+                Save favourites and compare the homes you like.
+              </small>
+            </span>
+          <b class="type-tool-arrow" aria-hidden="true">
+<svg
+  viewBox="0 0 24 24"
+  width="24"
+  height="24"
+  aria-hidden="true"
+>
+    <path d="m9 18 6-6-6-6" />
+  </svg>
+</b>
+          </a>
+        </section>
       </>
     )}
 {pageKind === "area" && (
@@ -8715,52 +8328,17 @@ Approximate driving times from{" "}
   ) : null}
 </div>
 
-{
-    pageKind === "intent" &&
-    String(page.neighbourhood_copy || "").trim() && (
-      <section
-        class="intent-top-guide"
-        aria-labelledby="intent-top-guide-heading"
-      >
-        <p class="intent-top-guide__eyebrow">
-          What buyers should know
-        </p>
-
-        <h2 id="intent-top-guide-heading">
-          {
-            page.waterfront_type === "lakefront"
-              ? `Lakefront living in ${titleCase(city)}`
-              : page.waterfront_type === "oceanfront"
-                ? `Oceanfront living in ${titleCase(city)}`
-                : page.waterfront_type === "riverfront"
-                  ? `Riverfront living in ${titleCase(city)}`
-                  : `About this ${titleCase(city)} search`
-          }
-        </h2>
-
-        <div class="intent-top-guide__copy">
-          {
-            String(page.neighbourhood_copy || "")
-              .split(/\n\n|\r\n\r\n/)
-              .filter((paragraph) => paragraph.trim())
-              .map((paragraph) => (
-                <p>{paragraph.trim()}</p>
-              ))
-          }
-        </div>
-      </section>
-    )
-  }
-
 <section class="intent-controls" style="margin-bottom:20px;"> <div class="view-toggle">
     <button type="button" class="view-btn active" id="list-view-btn">List</button>
     <button type="button" class="view-btn" id="map-view-btn">Map</button>
   </div>
 
-  <select class="type-filter-select" aria-label="Filter by property type">
-    <option value="all">Any Property Type</option>
-    {propertyTypes.map((type) => (
-      <option value={type} selected={type === normalizedPropertyType}>{titleCase(type)}</option>
+  <select class="area-filter-select" aria-label="Filter by area">
+    <option value="all">Any Area</option>
+    {areas.map((area) => (
+      <option value={String(area).toLowerCase().trim()}>
+        {titleCase(area)}
+      </option>
     ))}
   </select>
 
@@ -8773,6 +8351,12 @@ Approximate driving times from{" "}
     <option value="1100-plus">$1.1M+</option>
   </select>
 
+  <select class="type-filter-select" aria-label="Filter by property type">
+    <option value="all">Any Type</option>
+    {propertyTypes.map((type) => (
+      <option value={type} selected={type === normalizedPropertyType}>{titleCase(type)}</option>
+    ))}
+  </select>
 
 {normalizedPropertyType !== "land" && (
   <select class="beds-filter-select" aria-label="Filter by beds">
@@ -8805,7 +8389,7 @@ Approximate driving times from{" "}
 )}
 
     {
-  (pageKind === "intent" || hasActiveSearchFilters) && (
+  hasActiveSearchFilters && (
     <SlugSaveSearch
       siteId={site?.id}
       city={city}
@@ -8819,6 +8403,7 @@ Approximate driving times from{" "}
     />
   )
 }
+
 <section class="grid">
      {listings.map((listing, index) => {
           const firstImage =
@@ -8836,56 +8421,18 @@ Approximate driving times from{" "}
           return (
             <>
 {index === 8 && (
-  <aside
-    class="card interrupt-card"
-    id="intent-interrupt-card"
-    data-discovery-facts={JSON.stringify(discoveryFacts)}
-    aria-label="Refine these listings"
-  >
-    <div class="interrupt-card__inner">
-      <div class="interrupt-card__icon" aria-hidden="true">
-        âœ¦
-      </div>
-
-      <div>
-        <p class="interrupt-card__kicker">
-          Help me narrow this search
-        </p>
-
-        <h3 class="interrupt-card__title">
-          {interruptTitle || "Not seeing the right home?"}
-        </h3>
-
-        <p class="interrupt-card__description">
-          {interruptDescription ||
-            "A few quick choices can surface better matches."}
-        </p>
-      </div>
-
-      <div
-        class="interrupt-options generated-chip-target"
-        aria-label="Search preferences"
-      >
-        {[
-          ...priceDirectionLabels.slice(0, 1),
-          ...featureDirectionLabels.slice(0, 3),
-        ].map((label) => (
-          <button
-            type="button"
-            class="refine-chip generated-refine-chip"
-          >
-            {label}
-          </button>
+  <aside class="card interrupt-card" id="intent-interrupt-card" style="overflow:hidden;">
+    <div class="card-image-wrap" style="background:var(--accent-soft);display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;padding:16px;">
+      <div class="interrupt-kicker" style="margin-bottom:4px;color:var(--accent);font-size:0.72rem;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;">Shape this search</div>
+      <p style="margin:0;font-weight:600;font-size:0.95rem;line-height:1.35;color:var(--ink);">{interruptTitle}</p>
+    </div>
+    <div class="card-body">
+      <div class="interrupt-options generated-chip-target" style="gap:6px;display:flex;flex-wrap:wrap;margin-bottom:10px;">
+        {[...priceDirectionLabels.slice(0,1), ...featureDirectionLabels.slice(0, 3)].map((label) => (
+          <button type="button" class="refine-chip generated-refine-chip" style="font-size:0.75rem;padding:5px 9px;border-radius:999px;min-height:unset;">{label}</button>
         ))}
       </div>
-
-      <button
-        type="button"
-        class="cta-button interrupt-card__button"
-        onclick="saveIntentPreferences()"
-      >
-        Show me better matches
-      </button>
+      <button type="button" class="cta-button" style="width:100%;justify-content:center;" onclick="saveIntentPreferences()">Steer results</button>
     </div>
   </aside>
 )}
@@ -8995,86 +8542,23 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
 </style>
 
 {listings.length > 16 && (
-  <div
-    id="show-more-listings-wrap"
-    style="
-      margin:30px 0 10px;
-      display:grid;
-      gap:14px;
-      text-align:center;
-    "
+  <button
+    type="button"
+    id="show-more-listings-btn"
+    class="cta-button"
+    style="margin-top:24px;"
   >
-    <div style="height:1px;background:rgba(0,0,0,.13);"></div>
-
-    <div>
-      <div
-        id="show-more-listings-copy"
-        style="
-          margin-bottom:10px;
-          font-family:var(--serif);
-          font-size:clamp(1.05rem,2vw,1.35rem);
-          color:var(--ink);
-        "
-      >
-        {listings.length - 16} more {typePageLabel.toLowerCase()} available
-      </div>
-
-      <button
-        type="button"
-        id="show-more-listings-btn"
-        style="
-          appearance:none;
-          border:0;
-          background:transparent;
-          padding:6px 10px;
-          color:var(--accent);
-          font:inherit;
-          font-size:.9rem;
-          font-weight:750;
-          cursor:pointer;
-        "
-      >
-        Continue browsing <span aria-hidden="true">&rarr;</span>
-      </button>
-    </div>
-
-    <div style="height:1px;background:rgba(0,0,0,.13);"></div>
-  </div>
+    Show more listings
+  </button>
 )}
 
 <script is:inline>
   (() => {
-    const button =
-      document.getElementById("show-more-listings-btn");
+    const button = document.getElementById("show-more-listings-btn");
 
-    const wrapper =
-      document.getElementById("show-more-listings-wrap");
-
-    const copy =
-      document.getElementById("show-more-listings-copy");
-
-    if (!button || !wrapper || !copy) return;
+    if (!button) return;
 
     const batchSize = 16;
-
-    const updateRemainingCopy = () => {
-      const remaining = document.querySelectorAll(
-        ".grid .original-card.listing-load-hidden"
-      ).length;
-
-      if (remaining === 0) {
-        wrapper.hidden = true;
-        return;
-      }
-
-      const listingLabel =
-        remaining === 1
-          ? "listing"
-          : "listings";
-
-      copy.textContent =
-        `${remaining} more ${listingLabel} available`;
-    };
 
     button.addEventListener("click", () => {
       const hiddenCards = Array.from(
@@ -9089,10 +8573,20 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
           card.classList.remove("listing-load-hidden");
         });
 
-      updateRemainingCopy();
-    });
+      const remaining = document.querySelectorAll(
+        ".grid .original-card.listing-load-hidden"
+      ).length;
 
-    updateRemainingCopy();
+      if (remaining === 0) {
+        button.hidden = true;
+        return;
+      }
+
+      button.textContent =
+        remaining <= batchSize
+          ? `Show remaining ${remaining} listings`
+          : "Show 16 more listings";
+    });
   })();
 </script>
 <RelatedIntentCards city={city} pages={relatedIntentPages} />
@@ -9296,14 +8790,6 @@ function initTypeHeroMap() {
             card.querySelector(".price")?.textContent?.trim() || "",
           address:
             card.querySelector(".address")?.textContent?.trim() || "",
-          image:
-            card.dataset.image ||
-            card.querySelector("img")?.src ||
-            "",
-          listingId:
-            card.dataset.listingId ||
-            card.dataset.mls ||
-            "",
         };
       })
       .filter(Boolean)
@@ -9332,7 +8818,7 @@ const heroMap = L.map(heroMapEl, {
   zoomControl: false,
   attributionControl: false,
   scrollWheelZoom: false,
-  doubleClickZoom: true,
+  doubleClickZoom: false,
   dragging: !L.Browser.mobile,
   touchZoom: true,
   tap: true,
@@ -9373,7 +8859,7 @@ if (L.Browser.mobile) {
           box-shadow:0 5px 14px rgba(18,58,90,.28);
           font-size:10px;
           font-weight:900;
-        "><span style="width:6px;height:6px;border-radius:50%;background:#fff;display:block;"></span></div>
+        ">?</div>
       `,
     });
 
@@ -9388,83 +8874,37 @@ if (L.Browser.mobile) {
       marker.bindPopup(
         `
           <div style="
-            width:240px;
-            overflow:hidden;
-            border-radius:9px;
+            min-width:140px;
             font-family:DM Sans,system-ui,sans-serif;
-            background:#fff;
           ">
             ${
-              point.image
-                ? `<img
-                    src="${point.image}"
-                    alt="${point.address || "Listing"}"
-                    style="
-                      display:block;
-                      width:100%;
-                      height:132px;
-                      object-fit:cover;
-                      background:#eef1f3;
-                    "
-                  />`
+              point.price
+                ? `<strong style="
+                    display:block;
+                    margin-bottom:3px;
+                    color:#172033;
+                    font-size:.9rem;
+                  ">${point.price}</strong>`
                 : ""
             }
 
-            <div style="padding:13px 14px 14px;">
-              ${
-                point.price
-                  ? `<strong style="
-                      display:block;
-                      margin-bottom:4px;
-                      color:#172033;
-                      font-size:1rem;
-                      line-height:1.2;
-                    ">${point.price}</strong>`
-                  : ""
-              }
-
-              ${
-                point.address
-                  ? `<span style="
-                      display:block;
-                      margin-bottom:11px;
-                      color:#687080;
-                      font-size:.78rem;
-                      line-height:1.4;
-                    ">${point.address}</span>`
-                  : ""
-              }
-
-              <a
-                href="#type-listings"
-                onclick="event.preventDefault();document.querySelector('[data-listing-id=&quot;${point.listingId || ""}&quot;]')?.click();"
-                style="
-                  display:inline-flex;
-                  align-items:center;
-                  justify-content:center;
-                  min-height:36px;
-                  padding:0 14px;
-                  border-radius:6px;
-                  background:${accentColor};
-                  color:#fff;
-                  font-size:.78rem;
-                  font-weight:750;
-                  text-decoration:none;
-                "
-              >
-                View listing
-              </a>
-            </div>
+            ${
+              point.address
+                ? `<span style="
+                    display:block;
+                    color:#687080;
+                    font-size:.72rem;
+                    line-height:1.35;
+                  ">${point.address}</span>`
+                : ""
+            }
           </div>
         `,
         {
-          closeButton: true,
-          offset: [0, -8],
-          maxWidth: 260,
-          minWidth: 240,
+          closeButton: false,
+          offset: [0, -5],
         }
       );
-
 
       bounds.extend([point.lat, point.lng]);
     });
@@ -9865,7 +9305,7 @@ function prepareTypeHeroMap() {
           font-size:.58rem;
           line-height:1.2;
         ">
-          Map &copy; OpenStreetMap contributors
+          Map © OpenStreetMap contributors
         </small>
       </div>
     </div>
@@ -9949,29 +9389,15 @@ function getCardLatLng(card) {
 function makeListingIcon() {
   return L.divIcon({
     className: "",
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    popupAnchor: [0, -10],
-    html: `
-      <div style="
-        width:24px;
-        height:24px;
-        display:grid;
-        place-items:center;
-        border:3px solid rgba(255,255,255,.96);
-        border-radius:50%;
-        background:${accentColor};
-        box-shadow:0 5px 14px rgba(18,58,90,.28);
-      ">
-        <span style="
-          width:6px;
-          height:6px;
-          display:block;
-          border-radius:50%;
-          background:#fff;
-        "></span>
-      </div>
-    `,
+    html: `<div style="position:relative;width:28px;height:36px;">
+      <svg viewBox="0 0 28 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:28px;height:36px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
+        <path d="M14 0C6.268 0 0 6.268 0 14c0 9.333 14 22 14 22S28 23.333 28 14C28 6.268 21.732 0 14 0z" fill="${accentColor}"/>
+        <circle cx="14" cy="14" r="5" fill="white"/>
+      </svg>
+    </div>`,
+    iconSize: [28, 36],
+    iconAnchor: [14, 36],
+    popupAnchor: [0, -36],
   });
 }
 
@@ -9986,108 +9412,20 @@ iconAnchor: [7, 7],
 
 function buildListingPopup(card) {
   let imgs = [];
-
-  try {
-    imgs = JSON.parse(card.dataset.images || "[]").filter(Boolean);
-  } catch {}
-
-  if (!imgs.length && card.dataset.image) {
-    imgs = [card.dataset.image];
-  }
-
-  const firstImage = imgs[0] || "";
-  const image =
-    typeof firstImage === "string"
-      ? firstImage
-      : firstImage?.mediumRes ||
-        firstImage?.highRes ||
-        firstImage?.lowRes ||
-        firstImage?.url ||
-        "";
-
-  const listingId =
-    card.dataset.listingId ||
-    card.dataset.mls ||
-    "";
+  try { imgs = JSON.parse(card.dataset.images || "[]").filter(Boolean); } catch {}
+  if (!imgs.length && card.dataset.image) imgs = [card.dataset.image];
+  const img = imgs[0] || "";
 
   return `
-    <div style="
-      width:240px;
-      overflow:hidden;
-      border-radius:9px;
-      background:#fff;
-      font-family:DM Sans,system-ui,sans-serif;
-    ">
-      ${
-        image
-          ? `<img
-              src="${image}"
-              alt="${card.dataset.address || "Listing"}"
-              style="
-                display:block;
-                width:100%;
-                height:132px;
-                object-fit:cover;
-                background:#eef1f3;
-              "
-            />`
-          : ""
-      }
-
-      <div style="padding:13px 14px 14px;">
-        <strong style="
-          display:block;
-          margin-bottom:4px;
-          color:#172033;
-          font-size:1rem;
-          line-height:1.2;
-        ">
-          ${card.dataset.price || ""}
-        </strong>
-
-        <span style="
-          display:block;
-          margin-bottom:5px;
-          color:#687080;
-          font-size:.78rem;
-          line-height:1.4;
-        ">
-          ${card.dataset.address || ""}
-        </span>
-
-        <span style="
-          display:block;
-          margin-bottom:11px;
-          color:#9c9590;
-          font-size:.74rem;
-        ">
-          ${card.dataset.beds || "-"} bd &nbsp;|&nbsp; ${card.dataset.baths || "-"} ba
-        </span>
-
-        <button
-          type="button"
-          onclick="document.querySelector('[data-listing-id=&quot;${listingId}&quot;]')?.click();"
-          style="
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            min-height:36px;
-            padding:0 14px;
-            border:0;
-            border-radius:6px;
-            background:${accentColor};
-            color:#fff;
-            font-family:inherit;
-            font-size:.78rem;
-            font-weight:750;
-            cursor:pointer;
-          "
-        >
-          View listing
-        </button>
+    <div style="width:200px;font-family:'DM Sans',system-ui,sans-serif;cursor:pointer;" onclick="document.querySelector('[data-listing-id=\\'${card.dataset.listingId || ""}\\']')?.click()">
+      ${img ? `<img src="${img}" style="width:100%;height:120px;object-fit:cover;display:block;border-radius:4px 4px 0 0;" />` : ""}
+      <div style="padding:10px 12px 12px;">
+        <strong style="font-size:0.95rem;display:block;margin-bottom:2px;">${card.dataset.price || ""}</strong>
+        <span style="font-size:0.8rem;color:#6b6560;display:block;margin-bottom:2px;">${card.dataset.address || ""}</span>
+        <span style="font-size:0.76rem;color:#9c9590;display:block;">${card.dataset.beds || "-"} bd | ${card.dataset.baths || "-"} ba</span>
+        <div style="font-size:0.76rem;font-weight:700;color:${accentColor};margin-top:6px;">View listing ?</div>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
 // --- Draw polygon ---
@@ -10163,13 +9501,15 @@ function initLeafletMap(mode = "all") {
       const marker = L.marker(latlng, { icon: makeListingIcon() }).addTo(leafletMap);
 
       const popup = L.popup({
-        maxWidth: 260,
-        closeButton: true,
-        offset: [0, -8],
-        minWidth: 240,
+        maxWidth: 210,
+        closeButton: false,
+        offset: [0, -4],
         className: "leaflet-listing-popup",
       }).setContent(buildListingPopup(card));
 
+      marker.on("mouseover", () => marker.openPopup());
+      marker.on("mouseout", () => setTimeout(() => marker.closePopup(), 200));
+      marker.on("click", () => card.click());
       marker.bindPopup(popup);
 
       listingMarkers.push(marker);
@@ -10498,6 +9838,7 @@ function initRefinedLeafletMap() {
     points.forEach(({ card, latlng }) => {
       const marker = L.marker(latlng, { icon: makeListingIcon() }).addTo(refinedLeafletMap);
       marker.bindPopup(buildListingPopup(card), { maxWidth: 210, closeButton: false });
+      marker.on("click", () => card.click());
       refinedMarkers.push(marker);
     });
 
@@ -10650,12 +9991,16 @@ this.classList.add("active");
 </script>
 
   <script is:inline>
+const areaSelect = document.querySelector(".area-filter-select");
 const priceSelect = document.querySelector(".price-filter-select");
 const typeSelect = document.querySelector(".type-filter-select");
 const sortSelect = document.querySelector(".sort-filter-select");
 const bedsSelect = document.querySelector(".beds-filter-select");
 const initialParams = new URLSearchParams(window.location.search);
 
+if (areaSelect && initialParams.get("area")) {
+  areaSelect.value = initialParams.get("area");
+}
 
 if (priceSelect && initialParams.get("price")) {
   priceSelect.value = initialParams.get("price");
@@ -10699,6 +10044,10 @@ function jsTitleCase(value = "") {
   }
 function getCurrentFilters() {
   return {
+    area: (() => {
+      const value = areaSelect?.value || "all";
+      return value.startsWith("/") ? "all" : value;
+    })(),
     price: priceSelect?.value || "all",
     type: String(typeSelect?.value || "all").toLowerCase(),
     beds: String(bedsSelect?.value || "all").toLowerCase(),
@@ -10708,10 +10057,13 @@ function getCurrentFilters() {
 function cardMatchesFilters(card, filters, options = {}) {
   const ignoreType = options.ignoreType === true;
 
+  const cardArea = String(card.dataset.area || "").toLowerCase();
   const cardType = String(card.dataset.type || "").toLowerCase();
   const price = getCardPrice(card);
   const beds = Number(card.dataset.beds || 0);
 
+  const matchesArea =
+    filters.area === "all" || cardArea === filters.area;
 
   const matchesBeds =
     filters.beds === "all" || beds >= Number(filters.beds);
@@ -10727,7 +10079,7 @@ function cardMatchesFilters(card, filters, options = {}) {
     (filters.price === "850-1100" && price >= 850000 && price < 1100000) ||
     (filters.price === "1100-plus" && price >= 1100000);
 
-  return matchesBeds && matchesPrice && matchesType;
+  return matchesArea && matchesBeds && matchesPrice && matchesType;
 }
 
 function getFilteredCards(options = {}) {
@@ -10791,6 +10143,10 @@ function updateResultsHeading(filters) {
     document.querySelector("[data-city]")?.dataset.city || "Nanaimo"
   );
 
+  const areaLabel =
+    filters.area === "all"
+      ? ""
+      : jsTitleCase(areaSelect.options[areaSelect.selectedIndex].text);
 
   const bedsLabel =
     filters.beds === "all"
@@ -10813,6 +10169,7 @@ function updateResultsHeading(filters) {
     cityLabel,
     bedsLabel,
     typeLabel,
+    areaLabel,
     priceLabel,
   ].filter(Boolean).join(" ");
 }
@@ -10872,7 +10229,7 @@ if (sort === "sqft-desc") return Number(b.dataset.sqft || 0) - Number(a.dataset.
       cards[8].after(interruptCard);
     }
 
-    submitFilters();
+    applyFilters();
   }
 function updateSearchFromFilters() {
   const params = new URLSearchParams(window.location.search);
@@ -10904,10 +10261,39 @@ sessionStorage.setItem(
 window.location.search = params.toString();
 }
 
+areaSelect?.addEventListener("change", updateSearchFromFilters);
 priceSelect?.addEventListener("change", updateSearchFromFilters);
 
 typeSelect?.addEventListener("change", () => {
-  submitFilters();
+  const selectedType = typeSelect.value;
+  const currentCity = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
+
+  if (selectedType && selectedType !== "all") {
+    const typeSlugMap = {
+      house: `${currentCity}-homes`,
+      condo: `${currentCity}-condos`,
+      townhouse: `${currentCity}-townhomes`,
+      mobile: `${currentCity}-mobile-homes`,
+      land: `${currentCity}-land`,
+    };
+    const targetSlug = typeSlugMap[selectedType];
+if (targetSlug) {
+  const currentHostname = window.location.hostname
+    .toLowerCase()
+    .replace(/^www\./, "");
+
+  const usesRootPageUrls =
+    currentHostname === "nanaimomobiles.com";
+
+  window.location.href = usesRootPageUrls
+    ? `/${targetSlug}`
+    : `/${currentCity}/${targetSlug}`;
+
+  return;
+}
+  }
+
+  applyFilters();
 });
 
 sortSelect?.addEventListener("change", updateSearchFromFilters);
@@ -10930,7 +10316,7 @@ document.querySelectorAll(".property-type-pill").forEach((button) => {
       button.classList.add("active");
     }
 
-    submitFilters();
+    applyFilters();
   });
 });
    
@@ -11540,37 +10926,13 @@ updateGeneratedRefineChips(generatedChips);
 });
 
 interruptCard.innerHTML = `
-  <div class="interrupt-card__inner">
-    <div class="interrupt-card__icon" aria-hidden="true">
-      âœ¦
-    </div>
-
-    <div>
-      <p class="interrupt-card__kicker">
-        Help me narrow this search
-      </p>
-
-      <h3 class="interrupt-card__title">
-        Not seeing the right home?
-      </h3>
-
-      <p class="interrupt-card__description">
-        A few quick choices can surface better matches.
-      </p>
-    </div>
-
-    <div
-      class="interrupt-options generated-chip-target"
-      aria-label="Search preferences"
-    ></div>
-
-    <button
-      type="button"
-      class="cta-button interrupt-card__button"
-      onclick="saveIntentPreferences()"
-    >
-      Show me better matches
-    </button>
+  <div class="card-image-wrap" style="background:var(--accent-soft);display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;padding:16px;">
+    <div style="margin-bottom:4px;color:var(--accent);font-size:0.72rem;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;">Refined for</div>
+    <p style="margin:0;font-weight:600;font-size:0.95rem;line-height:1.35;color:var(--ink);">${label}</p>
+  </div>
+  <div class="card-body" style="display:flex;flex-direction:column;gap:8px;">
+    <div style="font-size:0.78rem;color:var(--muted);">${listings.length} better matches</div>
+    <button type="button" onclick="window.resetRefine()" style="background:none;border:none;color:var(--muted);font-size:0.75rem;cursor:pointer;padding:0;text-align:left;">? Reset search</button>
   </div>
 `;
 interruptCard.style.display = "";
@@ -11776,491 +11138,6 @@ document.addEventListener("click", (event) => {
     window.__initRefinedLeafletMap?.();
   }
 });
-/* ROTATING TEXT-ONLY INTERRUPTOR SYSTEM */
-const interruptorCardState = {
-  applying: false,
-  chipLabels: [],
-};
-
-function getInterruptorCard() {
-  return document.getElementById("intent-interrupt-card");
-}
-
-function rememberInterruptorChips(card) {
-  if (!(card instanceof HTMLElement)) return;
-
-  const labels = Array.from(
-    card.querySelectorAll(
-      ".generated-refine-chip, .refine-chip"
-    )
-  )
-    .map((chip) =>
-      String(chip.textContent || "").trim()
-    )
-    .filter(Boolean);
-
-  if (labels.length) {
-    interruptorCardState.chipLabels = [
-      ...new Set(labels),
-    ].slice(0, 3);
-  }
-}
-
-function findClickableByText(pattern) {
-  return Array.from(
-    document.querySelectorAll(
-      'button, a[href], [role="button"]'
-    )
-  ).find((element) =>
-    pattern.test(
-      String(element.textContent || "").trim()
-    )
-  );
-}
-
-function openSaveSearchFromInterruptor() {
-  const directTrigger =
-    document.querySelector(
-      [
-        "[data-save-search-trigger]",
-        "[data-open-save-search]",
-        "[data-save-search]",
-        "#save-search-button",
-        ".save-search-button",
-      ].join(",")
-    );
-
-  const textTrigger =
-    findClickableByText(
-      /save (this )?search|save search|get alerts/i
-    );
-
-  const trigger =
-    directTrigger || textTrigger;
-
-  if (
-    trigger instanceof HTMLElement &&
-    trigger.id !== "intent-interrupt-action"
-  ) {
-    trigger.click();
-    return;
-  }
-
-  const saveSection =
-    document.querySelector(
-      [
-        "#save-search",
-        "[data-save-search-form]",
-        ".save-search",
-        ".slug-save-search",
-      ].join(",")
-    );
-
-  saveSection?.scrollIntoView({
-    behavior: "smooth",
-    block: "center",
-  });
-}
-
-function openSimilarSearchesFromInterruptor() {
-  const headings = Array.from(
-    document.querySelectorAll("h2, h3")
-  );
-
-  const heading = headings.find((element) =>
-    /explore similar searches|similar searches|next searches/i.test(
-      String(element.textContent || "")
-    )
-  );
-
-  const section =
-    heading?.closest("section") ||
-    heading?.parentElement;
-
-  if (section instanceof HTMLElement) {
-    section.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-    return;
-  }
-
-  const relatedLink =
-    document.querySelector(
-      [
-        ".related-intent-card a",
-        ".related-intent-cards a",
-        "[data-related-intent] a",
-      ].join(",")
-    );
-
-  if (relatedLink instanceof HTMLAnchorElement) {
-    relatedLink.click();
-  }
-}
-
-function openQuestionFromInterruptor() {
-  const directTrigger =
-    document.querySelector(
-      [
-        "[data-intent-action='question']",
-        "[data-open-question]",
-        "[data-question-trigger]",
-        ".ask-question-button",
-        ".contact-agent-button",
-      ].join(",")
-    );
-
-  const textTrigger =
-    findClickableByText(
-      /ask (a )?question|ask the agent|contact|request (a )?showing|book (a )?tour/i
-    );
-
-  const trigger =
-    directTrigger || textTrigger;
-
-  if (
-    trigger instanceof HTMLElement &&
-    trigger.id !== "intent-interrupt-action"
-  ) {
-    trigger.click();
-    return;
-  }
-
-  const contactSection =
-    document.querySelector(
-      [
-        "#contact",
-        "#ask-question",
-        ".contact-section",
-        ".intent-contact",
-      ].join(",")
-    );
-
-  contactSection?.scrollIntoView({
-    behavior: "smooth",
-    block: "center",
-  });
-}
-
-function getInterruptorVariant() {
-  const variants = [
-    "fact",
-    "fact",
-    "fact",
-    "fact",
-    "save",
-  ];
-
-  const storageKey =
-    `listing-interruptor:${window.location.pathname}`;
-
-  let previousIndex = -1;
-
-  try {
-    previousIndex = Number(
-      sessionStorage.getItem(storageKey) || "-1"
-    );
-  } catch {
-    previousIndex = -1;
-  }
-
-  const nextIndex =
-    (previousIndex + 1) % variants.length;
-
-  try {
-    sessionStorage.setItem(
-      storageKey,
-      String(nextIndex)
-    );
-  } catch {
-    // Storage may be unavailable.
-  }
-
-  return variants[nextIndex];
-}
-
-const selectedInterruptorVariant =
-  getInterruptorVariant();
-
-/* EDUCATION_FIRST_DISCOVERY_CLIENT_V1 */
-function getDidYouKnowConfig() {
-  const card = getInterruptorCard();
-
-  let facts = [];
-
-  if (card instanceof HTMLElement) {
-    try {
-      const parsedFacts = JSON.parse(
-        card.dataset.discoveryFacts || "[]"
-      );
-
-      if (Array.isArray(parsedFacts)) {
-        facts = parsedFacts.filter(
-          (fact) =>
-            fact &&
-            typeof fact.title === "string" &&
-            fact.title.trim()
-        );
-      }
-    } catch (error) {
-      console.warn(
-        "Could not parse discovery facts:",
-        error
-      );
-    }
-  }
-
-  if (!facts.length) {
-    facts = [
-      {
-        kicker: "Did you know?",
-        title:
-          "This search updates as local inventory changes.",
-        description:
-          "New listings, price adjustments, accepted offers, and removals can reshape the results throughout the week.",
-      },
-    ];
-  }
-
-  const storageKey =
-    `discovery-fact-index:${window.location.pathname}`;
-
-  let previousIndex = -1;
-
-  try {
-    previousIndex = Number(
-      sessionStorage.getItem(storageKey) || "-1"
-    );
-  } catch {
-    previousIndex = -1;
-  }
-
-  const nextIndex =
-    (previousIndex + 1) % facts.length;
-
-  try {
-    sessionStorage.setItem(
-      storageKey,
-      String(nextIndex)
-    );
-  } catch {
-    // Ignore storage failures.
-  }
-
-  const fact = facts[nextIndex];
-
-  return {
-    kicker:
-      fact.kicker || "Did you know?",
-    title: fact.title,
-    description:
-      fact.description || "",
-    buttonLabel: "",
-    action: null,
-    showChips: false,
-  };
-}
-function getInterruptorConfig(variant) {
-  const cityName =
-    document.body.dataset.cityLabel ||
-    document
-      .querySelector("[data-city-label]")
-      ?.getAttribute("data-city-label") ||
-    "";
-
-  const pageHeading =
-    document.querySelector("h1")
-      ?.textContent
-      ?.replace(/\s+/g, " ")
-      .trim() ||
-    "this search";
-
-  const configs = {
-    fact: getDidYouKnowConfig(),
-
-    save: {
-      kicker: "Never miss one",
-      title: "Want new matches sent to you?",
-      description:
-        `Save ${pageHeading.toLowerCase()} and get notified when relevant listings reach the market.`,
-      buttonLabel: "Save this search",
-      action: openSaveSearchFromInterruptor,
-      showChips: false,
-    },
-
-    similar: {
-      kicker: "Explore alternatives",
-      title: "There may be another search worth seeing.",
-      description:
-        `Compare related ${cityName || "local"} searches without losing your place here.`,
-      buttonLabel: "Explore similar searches",
-      action: openSimilarSearchesFromInterruptor,
-      showChips: false,
-    },
-
-    question: {
-      kicker: "Local help",
-      title: "Have a question about one of these homes?",
-      description:
-        "Ask about location, waterfront details, viewing times, or anything the listing does not explain.",
-      buttonLabel: "Ask a question",
-      action: openQuestionFromInterruptor,
-      showChips: false,
-    },
-  };
-
-  return configs[variant] || configs.fact;
-}
-
-function escapeInterruptorHtml(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function applyInterruptorCard() {
-  const card = getInterruptorCard();
-
-  if (
-    !(card instanceof HTMLElement) ||
-    interruptorCardState.applying
-  ) {
-    return;
-  }
-
-  interruptorCardState.applying = true;
-
-  rememberInterruptorChips(card);
-
-  const config =
-    getInterruptorConfig(
-      selectedInterruptorVariant
-    );
-
-  const chips = config.showChips
-    ? interruptorCardState.chipLabels
-        .slice(0, 3)
-        .map(
-          (label) => `
-            <button
-              type="button"
-              class="refine-chip generated-refine-chip interruptor-choice"
-            >
-              ${escapeInterruptorHtml(label)}
-            </button>
-          `
-        )
-        .join("")
-    : "";
-
-  card.className =
-    `card interrupt-card interrupt-card--${selectedInterruptorVariant}`;
-
-  card.setAttribute(
-    "data-interruptor-variant",
-    selectedInterruptorVariant
-  );
-
-  card.innerHTML = `
-    <div class="interrupt-card__inner">
-      <p class="interrupt-card__kicker">
-        ${escapeInterruptorHtml(config.kicker)}
-      </p>
-
-      <h3 class="interrupt-card__title">
-        ${escapeInterruptorHtml(config.title)}
-      </h3>
-
-      <p class="interrupt-card__description">
-        ${escapeInterruptorHtml(
-          config.description
-        )}
-      </p>
-
-      ${
-        chips
-          ? `
-            <div
-              class="interrupt-options generated-chip-target"
-              aria-label="Search preferences"
-            >
-              ${chips}
-            </div>
-          `
-          : ""
-      }      ${
-        config.buttonLabel
-          ? `
-            <button
-              type="button"
-              class="interrupt-card__button"
-              id="intent-interrupt-action"
-            >
-              ${escapeInterruptorHtml(
-                config.buttonLabel
-              )}
-              <span aria-hidden="true">&rarr;</span>
-            </button>
-          `
-          : ""
-      }
-    </div>
-  `;
-
-  const actionButton =
-    card.querySelector(
-      "#intent-interrupt-action"
-    );
-
-  if (
-    actionButton &&
-    typeof config.action === "function"
-  ) {
-    actionButton.addEventListener(
-      "click",
-      config.action
-    );
-  }
-
-  interruptorCardState.applying = false;
-}
-
-function watchInterruptorCard() {
-  const card = getInterruptorCard();
-
-  if (!(card instanceof HTMLElement)) {
-    return;
-  }
-
-  applyInterruptorCard();
-
-  const observer = new MutationObserver(() => {
-    if (!interruptorCardState.applying) {
-      requestAnimationFrame(
-        applyInterruptorCard
-      );
-    }
-  });
-
-  observer.observe(card, {
-    childList: true,
-    subtree: false,
-  });
-}
-
-if (document.readyState === "loading") {
-  document.addEventListener(
-    "DOMContentLoaded",
-    watchInterruptorCard,
-    { once: true }
-  );
-} else {
-  watchInterruptorCard();
-}
-
 window.resetRefine = function () {
   document.querySelectorAll(".refined-card").forEach(el => el.remove());
   document.querySelectorAll(".original-card.is-hidden-by-refine").forEach(card => {
@@ -12270,39 +11147,15 @@ window.resetRefine = function () {
   const interruptCard = document.getElementById("intent-interrupt-card");
   if (interruptCard) {
     interruptCard.innerHTML = `
-  <div class="interrupt-card__inner">
-    <div class="interrupt-card__icon" aria-hidden="true">
-      âœ¦
-    </div>
-
-    <div>
-      <p class="interrupt-card__kicker">
-        Help me narrow this search
-      </p>
-
-      <h3 class="interrupt-card__title">
-        Not seeing the right home?
-      </h3>
-
-      <p class="interrupt-card__description">
-        A few quick choices can surface better matches.
-      </p>
-    </div>
-
-    <div
-      class="interrupt-options generated-chip-target"
-      aria-label="Search preferences"
-    ></div>
-
-    <button
-      type="button"
-      class="cta-button interrupt-card__button"
-      onclick="saveIntentPreferences()"
-    >
-      Show me better matches
-    </button>
-  </div>
-`;
+      <div class="card-image-wrap" style="background:var(--accent-soft);display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;padding:16px;">
+        <div style="margin-bottom:4px;color:var(--accent);font-size:0.72rem;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;">Shape this search</div>
+        <p style="margin:0;font-weight:600;font-size:0.95rem;line-height:1.35;color:var(--ink);">Want to steer the next few matches?</p>
+      </div>
+      <div class="card-body">
+        <div class="interrupt-options generated-chip-target" style="gap:6px;display:flex;flex-wrap:wrap;margin-bottom:10px;"></div>
+        <button type="button" class="cta-button" style="width:100%;justify-content:center;" onclick="saveIntentPreferences()">Steer results</button>
+      </div>
+    `;
   }
   document.getElementById("refined-results").innerHTML = "";
 };
@@ -12753,809 +11606,8 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
     font-size: 0.62rem;
   }
 }
-
-/* INTENT PAGE BUYER GUIDANCE */
-.intent-top-guide {
-  width: 100%;
-  margin: 26px 0 32px;
-  padding: clamp(24px, 4vw, 40px);
-  border: 1px solid rgba(18, 58, 90, 0.09);
-  border-radius: 12px;
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--accent) 5%, white),
-      #fff 58%
-    );
-}
-
-.intent-top-guide__eyebrow {
-  margin: 0 0 8px;
-  color: var(--accent);
-  font-size: 0.74rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.intent-top-guide h2 {
-  max-width: 820px;
-  margin: 0;
-  font-family: var(--serif);
-  font-size: clamp(1.6rem, 3vw, 2.35rem);
-  font-weight: 500;
-  line-height: 1.12;
-}
-
-.intent-top-guide__copy {
-  max-width: 900px;
-  margin-top: 14px;
-  color: var(--muted);
-  font-size: 1rem;
-  line-height: 1.72;
-}
-
-.intent-top-guide__copy p {
-  margin: 0;
-}
-
-.intent-top-guide__copy p + p {
-  margin-top: 12px;
-}
-
-@media (max-width: 600px) {
-  .intent-top-guide {
-    margin: 20px 0 26px;
-    padding: 22px 18px;
-    border-radius: 9px;
-  }
-
-  .intent-top-guide__copy {
-    font-size: 0.94rem;
-    line-height: 1.65;
-  }
-}
-
-/* ASSISTANT-STYLE LISTING INTERRUPTOR */
-.grid > .interrupt-card {
-  min-height: 330px;
-}
-
-.interrupt-card__inner {
-  justify-content: flex-start;
-}
-
-.grid > .interrupt-card {
-  height: auto;
-  min-height: 0;
-  align-self: start;
-  overflow: hidden;
-  border: 1px solid
-    color-mix(in srgb, var(--accent) 22%, transparent);
-  border-radius: 9px;
-  background:
-    radial-gradient(
-      circle at 100% 0%,
-      color-mix(in srgb, var(--accent) 18%, transparent),
-      transparent 42%
-    ),
-    linear-gradient(
-      145deg,
-      color-mix(in srgb, var(--accent) 8%, white),
-      color-mix(in srgb, var(--accent) 3%, white)
-    );
-  box-shadow: none;
-}
-
-.interrupt-card__inner {
-  min-height: 0;
-  height: auto;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 18px;
-  padding: clamp(24px, 3vw, 34px);
-}
-
-.interrupt-card__icon {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: color-mix(
-    in srgb,
-    var(--accent) 14%,
-    white
-  );
-  color: var(--accent);
-  font-size: 1.25rem;
-  line-height: 1;
-}
-
-.interrupt-card__kicker {
-  margin: 0 0 8px;
-  color: var(--accent);
-  font-size: 0.7rem;
-  font-weight: 900;
-  letter-spacing: 0.11em;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
-
-.interrupt-card__title {
-  margin: 0;
-  color: var(--ink);
-  font-family: var(--serif);
-  font-size: clamp(1.45rem, 2.2vw, 2rem);
-  font-weight: 600;
-  line-height: 1.08;
-}
-
-.interrupt-card__description {
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 0.92rem;
-  line-height: 1.55;
-}
-
-.interrupt-card .interrupt-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0;
-}
-
-.interrupt-card .refine-chip {
-  min-height: 0;
-  padding: 8px 11px;
-  border: 1px solid
-    color-mix(in srgb, var(--accent) 30%, white);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  color: var(--ink);
-  font-size: 0.76rem;
-  font-weight: 700;
-  line-height: 1.15;
-}
-
-.interrupt-card .refine-chip:hover,
-.interrupt-card .refine-chip.active {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: white;
-}
-
-.interrupt-card__button {
-  width: 100%;
-  margin-top: auto;
-  justify-content: center;
-  padding: 13px 16px;
-}
-
-@media (max-width: 700px) {
-  .interrupt-card__inner {
-    min-height: 0;
-    padding: 26px 22px;
-  }
-
-  .interrupt-card__title {
-    font-size: 1.65rem;
-  }
-}
-
-/* FINAL COMPACT INTERRUPTOR */
-@media (min-width: 701px) {
-  .grid > .interrupt-card {
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    aspect-ratio: 4 / 5 !important;
-    align-self: start !important;
-  }
-
-  .interrupt-card__inner {
-    height: 100% !important;
-    min-height: 0 !important;
-    box-sizing: border-box !important;
-    justify-content: flex-start !important;
-    gap: 11px !important;
-    padding: 18px !important;
-    overflow: hidden !important;
-  }
-
-  .interrupt-card__icon {
-    width: 36px !important;
-    height: 36px !important;
-    font-size: 1rem !important;
-  }
-
-  .interrupt-card__kicker {
-    margin-bottom: 5px !important;
-    font-size: 0.62rem !important;
-    line-height: 1.25 !important;
-  }
-
-  .interrupt-card__title {
-    font-size: 1.45rem !important;
-    line-height: 1.02 !important;
-  }
-
-  .interrupt-card__description {
-    margin-top: 7px !important;
-    font-size: 0.8rem !important;
-    line-height: 1.4 !important;
-  }
-
-  .interrupt-card .interrupt-options {
-    gap: 6px !important;
-  }
-
-  .interrupt-card .refine-chip {
-    padding: 6px 9px !important;
-    font-size: 0.67rem !important;
-  }
-
-  .interrupt-card__button {
-    margin-top: auto !important;
-    padding: 10px 12px !important;
-    font-size: 0.78rem !important;
-  }
-}
-
-@media (max-width: 700px) {
-  .grid > .interrupt-card {
-    height: auto !important;
-    min-height: 0 !important;
-    aspect-ratio: auto !important;
-  }
-
-  .interrupt-card__inner {
-    min-height: 0 !important;
-    gap: 13px !important;
-    padding: 22px 18px !important;
-  }
-}
-
-/* ROTATING TEXT-ONLY INTERRUPTOR â€” FINAL VISUAL */
-.grid > .interrupt-card {
-  height: auto !important;
-  min-height: 0 !important;
-  align-self: start !important;
-  overflow: hidden !important;
-  border: 0 !important;
-  border-radius: 9px !important;
-  background: var(--accent) !important;
-  box-shadow: none !important;
-  color: #fff !important;
-}
-
-.interrupt-card__inner {
-  min-height: 360px !important;
-  height: auto !important;
-  box-sizing: border-box !important;
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: flex-start !important;
-  gap: 14px !important;
-  padding: 24px !important;
-}
-
-.interrupt-card__kicker {
-  margin: 0 !important;
-  color: rgba(255, 255, 255, 0.76) !important;
-  font-size: 0.68rem !important;
-  font-weight: 900 !important;
-  letter-spacing: 0.12em !important;
-  line-height: 1.25 !important;
-  text-transform: uppercase !important;
-}
-
-.interrupt-card__title {
-  margin: 0 !important;
-  color: #fff !important;
-  font-family: var(--serif) !important;
-  font-size: clamp(1.45rem, 2vw, 1.9rem) !important;
-  font-weight: 600 !important;
-  line-height: 1.06 !important;
-}
-
-.interrupt-card__description {
-  margin: 0 !important;
-  color: rgba(255, 255, 255, 0.82) !important;
-  font-size: 0.88rem !important;
-  line-height: 1.52 !important;
-}
-
-.interrupt-card .interrupt-options {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  gap: 7px !important;
-  margin: 2px 0 0 !important;
-}
-
-.interrupt-card .refine-chip {
-  min-height: 0 !important;
-  padding: 7px 10px !important;
-  border: 1px solid rgba(255, 255, 255, 0.44) !important;
-  border-radius: 999px !important;
-  background: transparent !important;
-  color: #fff !important;
-  font-size: 0.7rem !important;
-  font-weight: 700 !important;
-  line-height: 1.15 !important;
-}
-
-.interrupt-card .refine-chip:hover,
-.interrupt-card .refine-chip.active {
-  border-color: #fff !important;
-  background: #fff !important;
-  color: var(--accent) !important;
-}
-
-.interrupt-card__button {
-  width: 100% !important;
-  margin-top: auto !important;
-  padding: 11px 13px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 12px !important;
-  border: 0 !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.28) !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  color: #fff !important;
-  cursor: pointer !important;
-  font: inherit !important;
-  font-size: 0.8rem !important;
-  font-weight: 800 !important;
-  text-align: left !important;
-}
-
-.interrupt-card__button:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
-}
-
-@media (max-width: 700px) {
-  .interrupt-card__inner {
-    min-height: 300px !important;
-    padding: 22px 20px !important;
-  }
-
-  .interrupt-card__title {
-    font-size: 1.55rem !important;
-  }
-}
-
-/* INTERRUPTOR_CROP_FIX_V1 */
-.grid > .interrupt-card {
-  aspect-ratio: auto !important;
-  height: auto !important;
-  min-height: 390px !important;
-  max-height: none !important;
-  align-self: start !important;
-  overflow: hidden !important;
-}
-
-.interrupt-card__inner {
-  width: 100% !important;
-  min-height: 390px !important;
-  height: auto !important;
-  box-sizing: border-box !important;
-  padding: 20px !important;
-  gap: 12px !important;
-  overflow: visible !important;
-}
-
-.interrupt-card__title {
-  font-size: 1.42rem !important;
-  line-height: 1.08 !important;
-}
-
-.interrupt-card__description {
-  font-size: 0.82rem !important;
-  line-height: 1.45 !important;
-}
-
-.interrupt-card__button {
-  flex-shrink: 0 !important;
-  margin-top: auto !important;
-  padding: 10px 4px !important;
-}
-
-@media (max-width: 700px) {
-  .grid > .interrupt-card,
-  .interrupt-card__inner {
-    min-height: 330px !important;
-  }
-}
-
-/* INTERRUPTOR_LISTING_HEIGHT_V1 */
-@media (min-width: 701px) {
-  .grid > .interrupt-card {
-    aspect-ratio: auto !important;
-    width: 100% !important;
-    height: 340px !important;
-    min-height: 340px !important;
-    max-height: 340px !important;
-    align-self: start !important;
-    overflow: hidden !important;
-  }
-
-  .interrupt-card__inner {
-    width: 100% !important;
-    height: 340px !important;
-    min-height: 340px !important;
-    max-height: 340px !important;
-    box-sizing: border-box !important;
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: flex-start !important;
-    gap: 9px !important;
-    padding: 18px !important;
-    overflow: hidden !important;
-  }
-
-  .interrupt-card__kicker {
-    margin: 0 !important;
-    font-size: 0.62rem !important;
-    line-height: 1.2 !important;
-  }
-
-  .interrupt-card__title {
-    margin: 0 !important;
-    font-size: 1.25rem !important;
-    line-height: 1.06 !important;
-  }
-
-  .interrupt-card__description {
-    margin: 2px 0 0 !important;
-    font-size: 0.76rem !important;
-    line-height: 1.42 !important;
-  }
-
-  .interrupt-card .interrupt-options {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    align-content: flex-start !important;
-    gap: 5px !important;
-    margin: 3px 0 0 !important;
-  }
-
-  .interrupt-card .refine-chip {
-    width: auto !important;
-    min-height: 0 !important;
-    padding: 5px 8px !important;
-    font-size: 0.64rem !important;
-    line-height: 1.1 !important;
-  }
-
-  .interrupt-card__button {
-    flex-shrink: 0 !important;
-    width: 100% !important;
-    margin-top: auto !important;
-    padding: 10px 3px 4px !important;
-    font-size: 0.72rem !important;
-    line-height: 1.2 !important;
-  }
-}
-
-@media (max-width: 700px) {
-  .grid > .interrupt-card {
-    aspect-ratio: auto !important;
-    height: auto !important;
-    min-height: 285px !important;
-    max-height: none !important;
-    overflow: hidden !important;
-  }
-
-  .interrupt-card__inner {
-    height: auto !important;
-    min-height: 285px !important;
-    max-height: none !important;
-    padding: 20px 18px !important;
-    gap: 10px !important;
-    overflow: visible !important;
-  }
-
-  .interrupt-card__title {
-    font-size: 1.35rem !important;
-  }
-}
-
-/* INTERRUPTOR_SHORT_CARD_V1 */
-@media (min-width: 701px) {
-  .grid > .interrupt-card {
-    aspect-ratio: auto !important;
-    width: 100% !important;
-    height: 300px !important;
-    min-height: 300px !important;
-    max-height: 300px !important;
-    align-self: start !important;
-    overflow: hidden !important;
-  }
-
-  .interrupt-card__inner {
-    width: 100% !important;
-    height: 300px !important;
-    min-height: 300px !important;
-    max-height: 300px !important;
-    box-sizing: border-box !important;
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 7px !important;
-    padding: 15px !important;
-    overflow: hidden !important;
-  }
-
-  .interrupt-card__kicker {
-    margin: 0 !important;
-    font-size: 0.56rem !important;
-    line-height: 1.15 !important;
-    letter-spacing: 0.11em !important;
-  }
-
-  .interrupt-card__title {
-    margin: 0 !important;
-    font-size: 1.08rem !important;
-    line-height: 1.05 !important;
-  }
-
-  .interrupt-card__description {
-    margin: 2px 0 0 !important;
-    font-size: 0.68rem !important;
-    line-height: 1.35 !important;
-  }
-
-  .interrupt-card .interrupt-options {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    align-content: flex-start !important;
-    gap: 5px !important;
-    margin: 4px 0 0 !important;
-  }
-
-  .interrupt-card .refine-chip {
-    width: auto !important;
-    max-width: 100% !important;
-    min-height: 0 !important;
-    padding: 5px 8px !important;
-    font-size: 0.59rem !important;
-    line-height: 1.08 !important;
-    white-space: normal !important;
-  }
-
-  .interrupt-card__button {
-    flex-shrink: 0 !important;
-    width: 100% !important;
-    margin-top: auto !important;
-    padding: 8px 2px 3px !important;
-    font-size: 0.64rem !important;
-    line-height: 1.15 !important;
-  }
-}
-
-@media (max-width: 700px) {
-  .grid > .interrupt-card {
-    aspect-ratio: auto !important;
-    height: auto !important;
-    min-height: 260px !important;
-    max-height: none !important;
-  }
-
-  .interrupt-card__inner {
-    height: auto !important;
-    min-height: 260px !important;
-    max-height: none !important;
-    gap: 9px !important;
-    padding: 18px !important;
-  }
-
-  .interrupt-card__title {
-    font-size: 1.25rem !important;
-  }
-
-  .interrupt-card .refine-chip {
-    padding: 6px 9px !important;
-    font-size: 0.67rem !important;
-  }
-}
-
-/* INTERRUPTOR_MATCH_LISTING_CARD_V2 */
-@media (min-width: 701px) {
-  .grid > .interrupt-card {
-    aspect-ratio: auto !important;
-    width: 100% !important;
-    height: 335px !important;
-    min-height: 335px !important;
-    max-height: 335px !important;
-    align-self: start !important;
-    overflow: hidden !important;
-  }
-
-  .interrupt-card__inner {
-    width: 100% !important;
-    height: 335px !important;
-    min-height: 335px !important;
-    max-height: 335px !important;
-    box-sizing: border-box !important;
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: flex-start !important;
-    gap: 10px !important;
-    padding: 20px !important;
-    overflow: hidden !important;
-  }
-
-  .interrupt-card__kicker {
-    margin: 0 !important;
-    font-size: 0.66rem !important;
-    line-height: 1.2 !important;
-    letter-spacing: 0.11em !important;
-  }
-
-  .interrupt-card__title {
-    margin: 0 !important;
-    font-size: 1.36rem !important;
-    line-height: 1.08 !important;
-  }
-
-  .interrupt-card__description {
-    margin: 2px 0 0 !important;
-    font-size: 0.8rem !important;
-    line-height: 1.45 !important;
-  }
-
-  .interrupt-card .interrupt-options {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    align-content: flex-start !important;
-    gap: 6px !important;
-    margin: 4px 0 0 !important;
-  }
-
-  .interrupt-card .refine-chip {
-    width: auto !important;
-    max-width: 100% !important;
-    min-height: 0 !important;
-    padding: 6px 9px !important;
-    font-size: 0.66rem !important;
-    line-height: 1.1 !important;
-    white-space: normal !important;
-  }
-
-  .interrupt-card__button {
-    flex-shrink: 0 !important;
-    width: 100% !important;
-    margin-top: auto !important;
-    padding: 11px 2px 4px !important;
-    font-size: 0.74rem !important;
-    line-height: 1.2 !important;
-  }
-}
-
-@media (max-width: 700px) {
-  .grid > .interrupt-card {
-    aspect-ratio: auto !important;
-    height: auto !important;
-    min-height: 300px !important;
-    max-height: none !important;
-  }
-
-  .interrupt-card__inner {
-    height: auto !important;
-    min-height: 300px !important;
-    max-height: none !important;
-    gap: 10px !important;
-    padding: 20px 18px !important;
-  }
-
-  .interrupt-card__title {
-    font-size: 1.35rem !important;
-  }
-
-  .interrupt-card__description {
-    font-size: 0.82rem !important;
-  }
-}
-
-/* INTERRUPTOR_SUPPORT_COPY_V1 */
-@media (min-width: 701px) {
-  .interrupt-card__description {
-    font-size: 0.88rem !important;
-    line-height: 1.5 !important;
-  }
-}
-
-@media (max-width: 700px) {
-  .interrupt-card__description {
-    font-size: 0.9rem !important;
-    line-height: 1.5 !important;
-  }
-}
-
-/* DID_YOU_KNOW_INTERRUPTOR_V1 */
-.interrupt-card--fact .interrupt-options {
-  display: none !important;
-}
-
-.interrupt-card--fact .interrupt-card__title {
-  font-size: 1.35rem !important;
-  line-height: 1.1 !important;
-}
-
-.interrupt-card--fact .interrupt-card__description {
-  font-size: 0.9rem !important;
-  line-height: 1.5 !important;
-}
-
-/* EDUCATION_FIRST_DISCOVERY_VISUAL_V1 */
-.interrupt-card--fact .interrupt-card__inner {
-  justify-content: flex-start !important;
-}
-
-.interrupt-card--fact .interrupt-card__title {
-  font-size: 1.42rem !important;
-  line-height: 1.08 !important;
-}
-
-.interrupt-card--fact .interrupt-card__description {
-  font-size: 0.9rem !important;
-  line-height: 1.52 !important;
-}
-
-.interrupt-card--fact .interrupt-options,
-.interrupt-card--fact .interrupt-card__button {
-  display: none !important;
-}
-
-/* UNIFORM LISTING IMAGE FRAMES */
-.grid .original-card {
-  overflow: hidden;
-}
-
-.grid .original-card .card-image,
-.grid .original-card .listing-image,
-.grid .original-card .listing-card__image,
-.grid .original-card picture {
-  display: block;
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  overflow: hidden;
-  background: #eef1f2;
-}
-
-.grid .original-card .card-image img,
-.grid .original-card .listing-image img,
-.grid .original-card .listing-card__image img,
-.grid .original-card picture img,
-.grid .original-card > img {
-  display: block;
-  width: 100% !important;
-  height: auto;
-  aspect-ratio: 4 / 3;
-  object-fit: cover !important;
-  object-position: center center;
-  transform: scale(1.035);
-  transform-origin: center center;
-}
-
 </style>
 </Layout>
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
