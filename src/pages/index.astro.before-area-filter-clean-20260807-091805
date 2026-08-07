@@ -1,0 +1,755 @@
+﻿---
+import {
+  createClient,
+} from "@supabase/supabase-js";
+
+import Layout from "../layouts/Layout.astro";
+import SiteNav from "../components/SiteNav.astro";
+
+import {
+  getSite,
+  getSiteMarkets,
+} from "../lib/getSite";
+
+import {
+  getNavIntentPages,
+} from "../lib/getNavIntentPages";
+
+import {
+  getListings,
+} from "../lib/listings/getListings";
+
+import "../styles/page-hero.css";
+import "../styles/area-page.css";
+
+import MobileHomeHomepage from "../components/sites/MobileHomeHomepage.astro";
+import CityHomepage from "../components/homepages/CityHomepage.astro";
+import RealEstateHomepage from "../components/homepages/RealEstateHomepage.astro";
+
+export const prerender = false;
+
+/*
+ * Supabase
+ */
+const supabase = createClient(
+  import.meta.env
+    .PUBLIC_SUPABASE_URL,
+  import.meta.env
+    .SUPABASE_SERVICE_ROLE_KEY
+);
+
+/*
+ * Host and site
+ */
+const hostname =
+  Astro.url.hostname
+    .toLowerCase()
+    .replace(/^www\./, "");
+
+
+
+const isBcRealEstate =
+  hostname ===
+    "bc.realestate" ||
+  hostname ===
+    "bcrealestate.netlify.app" ||
+  hostname === "localhost" ||
+  hostname === "127.0.0.1";
+
+const site =
+  await getSite(hostname);
+  console.log("ROOT SITE DEBUG", {
+  hostname,
+  id: site?.id,
+  domain: site?.domain,
+  site_name: site?.site_name,
+  city: site?.city,
+});
+const bcHeroImageUrl =
+  "https://images.unsplash.com/photo-1581590212320-a1f693559160?auto=format&fit=crop&w=2200&q=90";
+
+const heroImageUrl =
+  isBcRealEstate
+    ? bcHeroImageUrl
+    : site?.hero_image_url || "";
+const siteMarkets = site
+  ? await getSiteMarkets(site.id)
+  : [];
+
+const allowedCities =
+  siteMarkets
+    .map((market) =>
+      String(
+        market.city || ""
+      )
+        .toLowerCase()
+        .trim()
+    )
+    .filter(Boolean);
+
+/*
+ * Site strategy
+ */
+const primaryCity =
+  String(
+    site?.primaryCity ||
+      allowedCities[0] ||
+      "nanaimo"
+  )
+    .toLowerCase()
+    .trim();
+
+const primaryType =
+  String(
+    site?.primaryType || ""
+  )
+    .toLowerCase()
+    .trim();
+
+const isPropertyTypeSite =
+  Boolean(
+    site?.isPropertyTypeSite &&
+      site?.usesPropertyTypeHomepage
+  );
+
+const isMobileHomeSite =
+  isPropertyTypeSite &&
+  primaryType === "mobile";
+/*
+ * Generic city/agent sites.
+ *
+ * Any non-BC, non-property-type site configured
+ * with a city homepage can use CityHomepage.
+ *
+ * Examples:
+ * chriscrump.bc.realestate
+ * chriscrump.com
+ * parksville.homes
+ * future agent subdomains
+ */
+const isCityHomepageSite =
+  !isBcRealEstate &&
+  !isPropertyTypeSite &&
+  (
+    site?.homepage_style === "city" ||
+    site?.homepage_template === "city"
+  );
+const titleCase = (
+  value = ""
+) =>
+  String(value)
+    .replace(/[-_]/g, " ")
+    .replace(
+      /\b\w/g,
+      (character) =>
+        character.toUpperCase()
+    );
+
+const primaryCityLabel =
+  titleCase(primaryCity);
+
+/*
+ * URL filters
+ *
+ * Examples:
+ *
+ * /?city=nanaimo
+ * /?city=nanaimo&type=house
+ * /?city=nanaimo&type=house&beds=3
+ * /?city=nanaimo&maxPrice=900000
+ * /?city=nanaimo&type=condo&sort=price-low
+ * /?city=nanaimo&page=2
+ */
+const searchParams =
+  Astro.url.searchParams;
+
+const normalizeFilterValue = (
+  value: string | null
+) =>
+  String(value || "")
+    .toLowerCase()
+    .trim();
+
+const parsePositiveNumber = (
+  value: string | null
+) => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed =
+    Number(value);
+
+  if (
+    !Number.isFinite(parsed) ||
+    parsed < 0
+  ) {
+    return null;
+  }
+
+  return parsed;
+};
+
+const parsePageNumber = (
+  value: string | null
+) => {
+  const parsed =
+    Number.parseInt(
+      String(value || "1"),
+      10
+    );
+
+  if (
+    !Number.isFinite(parsed) ||
+    parsed < 1
+  ) {
+    return 1;
+  }
+
+  return parsed;
+};
+
+const requestedCity =
+  normalizeFilterValue(
+    searchParams.get("city")
+  );
+
+const requestedType =`n  normalizeFilterValue(`n    searchParams.get("type")`n  );`n`nconst requestedAreas =`n  searchParams`n    .getAll("area")`n    .map((area) =>`n      normalizeFilterValue(area)`n    )`n    .filter(Boolean);
+
+const requestedBeds =
+  parsePositiveNumber(
+    searchParams.get("beds")
+  );
+
+const requestedMaxPrice =
+  parsePositiveNumber(
+    searchParams.get(
+      "maxPrice"
+    )
+  );
+
+const requestedSort =
+  normalizeFilterValue(
+    searchParams.get("sort")
+  ) || "newest";
+
+const requestedPage =
+  parsePageNumber(
+    searchParams.get("page")
+  );
+
+const PAGE_SIZE = 24;
+
+/*
+ * Market directory sites
+ */
+let sitesQuery =
+  supabase
+    .from("sites")
+    .select(
+      `
+        city,
+        site_name,
+        domain,
+        accent_color
+      `
+    )
+    .not("city", "is", null)
+    .order("city");
+
+if (
+  !isBcRealEstate &&
+  allowedCities.length > 0
+) {
+  sitesQuery =
+    sitesQuery.in(
+      "city",
+      allowedCities
+    );
+}
+
+const {
+  data: sitesData,
+  error: sitesError,
+} = await sitesQuery;
+
+if (sitesError) {
+  console.error(
+    "Homepage sites query failed:",
+    sitesError
+  );
+}
+
+const sites =
+  sitesData || [];
+
+/*
+ * Listings
+ *
+ * BC uses paginated URL-driven filters.
+ *
+ * Specialized sites continue receiving their
+ * complete inventory until their individual
+ * homepages are moved to pagination.
+ */
+const listingResult =
+  isBcRealEstate
+    ? await getListings(
+        supabase,
+        {
+          city: requestedCity,
+          type: requestedType,`n          areas: requestedAreas,`n          beds: requestedBeds,
+          maxPrice: requestedMaxPrice,
+          sort: requestedSort,
+          page: requestedPage,
+          pageSize: PAGE_SIZE,
+          paginate: true,
+        }
+      )
+    : isCityHomepageSite
+      ? await getListings(
+          supabase,
+          {
+            city: primaryCity,
+            type: requestedType,`n          areas: requestedAreas,`n          beds: requestedBeds,
+            maxPrice: requestedMaxPrice,
+            sort: requestedSort,
+            page: requestedPage,
+            pageSize: PAGE_SIZE,
+            paginate: true,
+          }
+        )
+      : await getListings(
+          supabase,
+          {
+            city: isPropertyTypeSite
+              ? primaryCity
+              : undefined,
+
+            cities: !isPropertyTypeSite
+              ? allowedCities
+              : undefined,
+
+            type: isPropertyTypeSite
+              ? primaryType
+              : undefined,
+
+            sort: "newest",
+            paginate: false,
+          }
+        );
+
+if (listingResult.error) {
+  console.error(
+    isBcRealEstate
+      ? "BC homepage listings query failed:"
+      : "Homepage listings query failed:",
+    listingResult.error
+  );
+}
+
+const listings =
+  listingResult.listings;
+
+const totalMatchingCount =
+  listingResult.totalCount;
+
+const currentPage =
+  listingResult.currentPage;
+
+const totalPages =
+  listingResult.totalPages;
+
+const paginationStart =
+  listingResult.paginationStart;
+
+const paginationEnd =
+  listingResult.paginationEnd;
+
+const hasPreviousPage =
+  listingResult.hasPreviousPage;
+
+const hasNextPage =
+  listingResult.hasNextPage;
+
+const activeSort =
+  listingResult.sort;
+
+/*
+ * Preserve active filters when creating
+ * pagination URLs.
+ */
+const buildPageHref = (
+  page: number
+) => {
+  const params =
+    new URLSearchParams();
+
+  if (requestedCity) {
+    params.set(
+      "city",
+      requestedCity
+    );
+  }
+
+  if (requestedType) {
+    params.set(
+      "type",
+      requestedType
+    );
+  }
+
+  if (
+    requestedBeds !== null
+  ) {
+    params.set(
+      "beds",
+      String(requestedBeds)
+    );
+  }
+
+  if (
+    requestedMaxPrice !== null
+  ) {
+    params.set(
+      "maxPrice",
+      String(
+        requestedMaxPrice
+      )
+    );
+  }
+
+  if (
+    activeSort !== "newest"
+  ) {
+    params.set(
+      "sort",
+      activeSort
+    );
+  }
+
+  if (page > 1) {
+    params.set(
+      "page",
+      String(page)
+    );
+  }
+
+  const queryString =
+    params.toString();
+
+  return queryString
+    ? `/?${queryString}`
+    : "/";
+};
+
+const previousPageHref =
+  hasPreviousPage
+    ? buildPageHref(
+        currentPage - 1
+      )
+    : null;
+
+const nextPageHref =
+  hasNextPage
+    ? buildPageHref(
+        currentPage + 1
+      )
+    : null;
+
+/*
+ * Active filter object passed to BcHomepage.
+ */
+const filters = {
+  city: requestedCity,
+  type: requestedType,`n          areas: requestedAreas,`n          beds: requestedBeds,
+  maxPrice:
+    requestedMaxPrice,
+  sort: activeSort,
+  page: currentPage,
+};
+
+/*
+ * Lightweight city-count data
+ *
+ * Do not use the current 24 listing rows for
+ * BC city-card totals. That would make the
+ * cards display incorrect counts.
+ */
+let cityCountRows: Array<{
+  normalized_city?:
+    string | null;
+}> = [];
+
+if (isBcRealEstate) {
+  const {
+    data,
+    error: cityCountError,
+  } = await supabase
+    .from("listing_rows")
+    .select(
+      "normalized_city"
+    )
+    .eq("status", "A");
+
+  if (cityCountError) {
+    console.error(
+      "Homepage city-count query failed:",
+      cityCountError
+    );
+  }
+
+  cityCountRows =
+    data || [];
+} else {
+  cityCountRows =
+    listings;
+}
+
+const cityCounts =
+  cityCountRows.reduce(
+    (
+      accumulator: Record<
+        string,
+        number
+      >,
+      row
+    ) => {
+      const city =
+        String(
+          row.normalized_city ||
+            ""
+        )
+          .toLowerCase()
+          .trim();
+
+      if (!city) {
+        return accumulator;
+      }
+
+      accumulator[city] =
+        (
+          accumulator[city] ||
+          0
+        ) + 1;
+
+      return accumulator;
+    },
+    {}
+  );
+
+/*
+ * City cards
+ */
+const marketRows =
+  !isBcRealEstate &&
+  siteMarkets.length > 0
+    ? siteMarkets.map(
+        (market) => ({
+          city:
+            String(
+              market.city || ""
+            )
+              .toLowerCase()
+              .trim(),
+
+          site_name:
+            site?.site_name,
+
+          accent_color:
+            site?.accent_color,
+
+          sort_order:
+            market.sort_order ??
+            0,
+        })
+      )
+    : sites.map(
+        (row) => ({
+          ...row,
+          sort_order: 0,
+        })
+      );
+
+const cityCards =
+  Object.values(
+    marketRows.reduce(
+      (
+        accumulator: Record<
+          string,
+          any
+        >,
+        row: any
+      ) => {
+        const city =
+          String(
+            row.city || ""
+          )
+            .toLowerCase()
+            .trim();
+
+        if (!city) {
+          return accumulator;
+        }
+
+        const label =
+          titleCase(city);
+
+        if (
+          !accumulator[city]
+        ) {
+          const cityUrlSlug =
+            city.replace(
+              /\s+/g,
+              "-"
+            );
+
+          accumulator[city] = {
+            city,
+            label,
+
+            siteName:
+              row.site_name ||
+              `${label} Real Estate`,
+
+            href:
+              `/${cityUrlSlug}`,
+
+            areasHref:
+              `/${cityUrlSlug}/areas`,
+
+            count:
+              cityCounts[city] ||
+              0,
+
+            accent:
+              row.accent_color ||
+              site?.accent_color ||
+              "#2f6f73",
+
+            sortOrder:
+              row.sort_order ??
+              0,
+          };
+        }
+
+        return accumulator;
+      },
+      {}
+    )
+  ).sort(
+    (
+      first: any,
+      second: any
+    ) =>
+      first.sortOrder -
+      second.sortOrder
+  );
+
+/*
+ * Metadata
+ */
+const pageTitle =
+  isMobileHomeSite
+    ? `${primaryCityLabel} Mobile Homes for Sale`
+    : "BC Real Estate";
+
+const pageDescription =
+  isMobileHomeSite
+    ? `Browse mobile homes for sale in ${primaryCityLabel}, compare neighbourhoods, and explore local mobile-home listings.`
+    : "Browse British Columbia real estate by city, area, neighbourhood, and property type.";
+
+const navIntentPages =
+  await getNavIntentPages(
+    supabase,
+    site?.id
+  );
+---
+
+{
+  isCityHomepageSite ? (
+    <CityHomepage
+      city={primaryCity}
+      site={site}
+    />
+  ) : (
+    <Layout
+      title={pageTitle}
+      description={
+        pageDescription
+      }
+      accentColor={
+        site?.accent_color ||
+        "#2f6f73"
+      }
+      city={
+        isPropertyTypeSite
+          ? primaryCity
+          : "bc"
+      }
+    >
+     <SiteNav
+  mode="province"
+  city={primaryCity}
+  site={site}
+  showAreaNav={false}
+  intentPages={navIntentPages}
+/>
+
+      {
+        isMobileHomeSite ? (
+          <MobileHomeHomepage
+            site={site}
+            listings={
+              listings
+            }
+          />
+        ) : (
+        <RealEstateHomepage
+    site={site}
+    heroImageUrl={heroImageUrl}
+           locationCards={
+  cityCards
+}
+            listings={
+              listings
+            }
+            filters={
+              filters
+            }
+            totalMatchingCount={
+              totalMatchingCount
+            }
+            currentPage={
+              currentPage
+            }
+            totalPages={
+              totalPages
+            }
+            pageSize={
+              listingResult.pageSize
+            }
+            paginationStart={
+              paginationStart
+            }
+            paginationEnd={
+              paginationEnd
+            }
+            hasPreviousPage={
+              hasPreviousPage
+            }
+            hasNextPage={
+              hasNextPage
+            }
+            previousPageHref={
+              previousPageHref
+            }
+            nextPageHref={
+              nextPageHref
+            }
+          />
+        )
+      }
+    </Layout>
+  )
+}

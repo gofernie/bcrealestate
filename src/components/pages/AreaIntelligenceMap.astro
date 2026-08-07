@@ -1,0 +1,1706 @@
+﻿---
+type Props = {
+  city: string;
+  page: any;
+  listingTypeCounts?: any;
+};
+
+const {
+  city,
+  page,
+  listingTypeCounts = {},
+} = Astro.props;
+---
+
+<section class="area-intelligence">
+
+  <div class="area-intelligence__chips">
+
+    <button type="button" class="amenity-chip" data-amenity="grocery">
+      Grocery <strong></strong>
+    </button>
+
+    <button type="button" class="amenity-chip" data-amenity="restaurants">
+      Food & Cafés <strong></strong>
+    </button>
+
+    <button type="button" class="amenity-chip" data-amenity="medical">
+      Medical <strong></strong>
+    </button>
+
+    <button type="button" class="amenity-chip active" data-amenity="schools">
+      Schools <strong></strong>
+    </button>
+
+    <button type="button" class="amenity-chip" data-amenity="parks">
+      Parks <strong></strong>
+    </button>
+
+    <button type="button" class="amenity-chip" data-amenity="trails">
+      Trails <strong></strong>
+    </button>
+
+    <button type="button" class="amenity-chip" data-amenity="beaches">
+      Beaches <strong></strong>
+    </button>
+
+    <button type="button" class="amenity-chip" data-amenity="transit">
+      Transit <strong></strong>
+    </button>
+
+  </div>
+
+
+  <div class="area-map-toolbar">
+
+    <button
+      type="button"
+      id="toggle-listings-btn"
+      class="map-listing-toggle"
+      data-listings-visible="true"
+    >
+      Listings On
+    </button>
+
+  </div>
+
+
+  <div class="area-map-layout">
+
+    <aside id="amenity-list">
+    </aside>
+
+    <div class="area-neighbourhood-map">
+      <div
+        id="intent-map"
+        style="height:500px;"
+      ></div>
+    </div>
+
+  </div>
+
+</section>
+
+<style>
+.area-map-toolbar {
+  display:flex;
+  justify-content:flex-end;
+  margin:-8px 0 10px;
+}
+
+.map-listing-toggle {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  border:1px solid rgba(0,0,0,.08);
+  background:#fff;
+  padding:7px 12px;
+  border-radius:6px;
+  font:inherit;
+  font-size:.76rem;
+  font-weight:700;
+  cursor:pointer;
+}
+
+.map-listing-toggle.is-off {
+  opacity:.6;
+}
+
+.area-intelligence__chips {
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+  margin-bottom:12px;
+}
+
+.amenity-chip {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  white-space:nowrap;
+  border:1px solid rgba(0,0,0,.08);
+  background:#fff;
+  padding:6px 12px;
+  border-radius:6px;
+  font:inherit;
+  font-size:.76rem;
+  font-weight:600;
+  cursor:pointer;
+}
+
+.amenity-chip.active {
+  background:var(--accent);
+  color:#fff;
+}
+
+.area-map-layout {
+  display:grid;
+  grid-template-columns:340px 1fr;
+  gap:18px;
+}
+
+.area-amenity-panel {
+  border:1px solid rgba(0,0,0,.08);
+  border-radius:12px;
+  background:#fff;
+}
+
+.area-neighbourhood-map {
+  min-height:520px;
+  border-radius:12px;
+  overflow:hidden;
+  border:1px solid rgba(0,0,0,.08);
+}
+
+#intent-map {
+  height:500px;
+}
+
+@media(max-width:900px){
+  .area-map-layout {
+    grid-template-columns:1fr;
+  }
+}
+</style>
+
+<script>
+console.log("AREA INTELLIGENCE MAP LOADED");
+
+console.log(
+  "AREA MAP LISTING CARDS",
+  document.querySelectorAll(".original-card").length
+);
+
+if (intentMapEl) {
+  console.log("INTENT MAP FOUND");
+
+  console.log(
+    "AREA MAP CARDS",
+    document.querySelectorAll(".original-card").length
+  );
+}
+const amenityCategoryMap = {
+  schools: "school",
+  grocery: "grocery",
+  transit: "transit",
+  parks: "park",
+  restaurants: "restaurant",
+  medical: "medical",
+
+  childcare: "childcare",
+  playgrounds: "playground",
+  recreation: "recreation",
+  trails: "trail",
+  beaches: "beach",
+  golf: "golf",
+  marinas: "marina",
+  "ev-charging": "ev_charging",
+};
+
+// --- Helpers ---
+function getCardLatLng(card) {
+  const lat = Number(card.dataset.lat || "");
+  const lng = Number(card.dataset.lng || "");
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !lat || !lng) return null;
+  return [lat, lng];
+}
+
+function makeListingIcon() {
+  return L.divIcon({
+    className: "",
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -10],
+    html: `
+      <div style="
+        width:24px;
+        height:24px;
+        display:grid;
+        place-items:center;
+        border:3px solid rgba(255,255,255,.96);
+        border-radius:50%;
+        background:${accentColor};
+        box-shadow:0 5px 14px rgba(18,58,90,.28);
+      ">
+        <span style="
+          width:6px;
+          height:6px;
+          display:block;
+          border-radius:50%;
+          background:#fff;
+        "></span>
+      </div>
+    `,
+  });
+}
+
+function makeAmenityIcon() {
+  return L.divIcon({
+    className: "",
+  html: `<div style="width:14px;height:14px;border-radius:50%;background:${accentColor};opacity:0.6;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.25);"></div>`,
+iconSize: [14, 14],
+iconAnchor: [7, 7],
+  });
+}
+
+function buildListingPopup(card) {
+  let imgs = [];
+
+  try {
+    imgs = JSON.parse(card.dataset.images || "[]").filter(Boolean);
+  } catch {}
+
+  if (!imgs.length && card.dataset.image) {
+    imgs = [card.dataset.image];
+  }
+
+  const firstImage = imgs[0] || "";
+  const image =
+    typeof firstImage === "string"
+      ? firstImage
+      : firstImage?.mediumRes ||
+        firstImage?.highRes ||
+        firstImage?.lowRes ||
+        firstImage?.url ||
+        "";
+
+  const listingId =
+    card.dataset.listingId ||
+    card.dataset.mls ||
+    "";
+
+  return `
+    <div style="
+      width:240px;
+      overflow:hidden;
+      border-radius:9px;
+      background:#fff;
+      font-family:DM Sans,system-ui,sans-serif;
+    ">
+      ${
+        image
+          ? `<img
+              src="${image}"
+              alt="${card.dataset.address || "Listing"}"
+              style="
+                display:block;
+                width:100%;
+                height:132px;
+                object-fit:cover;
+                background:#eef1f3;
+              "
+            />`
+          : ""
+      }
+
+      <div style="padding:13px 14px 14px;">
+        <strong style="
+          display:block;
+          margin-bottom:4px;
+          color:#172033;
+          font-size:1rem;
+          line-height:1.2;
+        ">
+          ${card.dataset.price || ""}
+        </strong>
+
+        <span style="
+          display:block;
+          margin-bottom:5px;
+          color:#687080;
+          font-size:.78rem;
+          line-height:1.4;
+        ">
+          ${card.dataset.address || ""}
+        </span>
+
+        <span style="
+          display:block;
+          margin-bottom:11px;
+          color:#9c9590;
+          font-size:.74rem;
+        ">
+          ${card.dataset.beds || "-"} bd &nbsp;|&nbsp; ${card.dataset.baths || "-"} ba
+        </span>
+
+        <button
+          type="button"
+          onclick="document.querySelector('[data-listing-id=&quot;${listingId}&quot;]')?.click();"
+          style="
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            min-height:36px;
+            padding:0 14px;
+            border:0;
+            border-radius:6px;
+            background:${accentColor};
+            color:#fff;
+            font-family:inherit;
+            font-size:.78rem;
+            font-weight:750;
+            cursor:pointer;
+          "
+        >
+          View listing
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+
+function loadLeaflet() {
+  if (window.L || leafletLoadStarted) return;
+
+  leafletLoadStarted = true;
+
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+  document.head.appendChild(link);
+
+  const script = document.createElement("script");
+  script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+  script.async = true;
+
+  script.onload = () => {
+    window.__leafletReady = true;
+  };
+
+  document.body.appendChild(script);
+}
+function scheduleLeafletLoad() {
+  loadLeaflet();
+}
+
+// Leaflet is loaded only when an interactive map is requested.
+
+function waitForLeaflet(callback) {
+  if (window.L) {
+    callback();
+    return;
+  }
+
+  loadLeaflet();
+
+  let attempts = 0;
+  const maxAttempts = 200;
+
+  const check = () => {
+    if (window.L) {
+      callback();
+      return;
+    }
+
+    attempts += 1;
+
+    if (attempts < maxAttempts) {
+      window.setTimeout(check, 50);
+    }
+  };
+
+  check();
+}
+
+function initTypeHeroMap() {
+  console.log("INIT TYPE HERO MAP START");
+  const heroMapEl = document.getElementById("type-hero-map");
+
+  if (!heroMapEl || heroMapEl.dataset.mapReady === "true") {
+    return;
+  }
+
+  waitForLeaflet(() => {
+    if (!document.body.contains(heroMapEl)) return;
+
+    const listingCards = Array.from(
+      document.querySelectorAll(".bc-listing-grid .card[data-lat][data-lng]")
+    );
+
+    console.log("MAP LISTING CARDS", listingCards.length);
+
+const points = listingCards
+      .map((card) => {
+        const lat = Number(card.dataset.lat || "");
+        const lng = Number(card.dataset.lng || "");
+
+        if (
+          !Number.isFinite(lat) ||
+          !Number.isFinite(lng) ||
+          !lat ||
+          !lng
+        ) {
+          return null;
+        }
+
+        return {
+          lat,
+          lng,
+          price:
+            card.querySelector(".price")?.textContent?.trim() || "",
+          address:
+            card.querySelector(".address")?.textContent?.trim() || "",
+          image:
+            card.dataset.image ||
+            card.querySelector("img")?.src ||
+            "",
+          listingId:
+            card.dataset.listingId ||
+            card.dataset.mls ||
+            "",
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 60);
+
+    if (!points.length) {
+      heroMapEl.innerHTML = `
+        <div style="
+          height:100%;
+          display:grid;
+          place-items:center;
+          padding:24px;
+          color:#6b7280;
+          font-size:.85rem;
+          text-align:center;
+        ">
+          Map locations are not available for these listings.
+        </div>
+      `;
+      return;
+    }
+
+    heroMapEl.dataset.mapReady = "true";
+
+const heroMap = L.map(heroMapEl, {
+  zoomControl: false,
+  attributionControl: false,
+  scrollWheelZoom: false,
+  doubleClickZoom: true,
+  dragging: !L.Browser.mobile,
+  touchZoom: true,
+  tap: true,
+});
+
+if (L.Browser.mobile) {
+  heroMap.dragging.disable();
+}
+
+    L.tileLayer(
+      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      {
+        maxZoom: 19,
+      }
+    ).addTo(heroMap);
+
+    L.control
+      .zoom({
+        position: "topright",
+      })
+      .addTo(heroMap);
+
+    const heroMarkerIcon = L.divIcon({
+      className: "",
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+      popupAnchor: [0, -10],
+      html: `
+        <div style="
+          width:24px;
+          height:24px;
+          display:grid;
+          place-items:center;
+          border:3px solid rgba(255,255,255,.96);
+          border-radius:50%;
+          background:${accentColor};
+          color:#fff;
+          box-shadow:0 5px 14px rgba(18,58,90,.28);
+          font-size:10px;
+          font-weight:900;
+        "><span style="width:6px;height:6px;border-radius:50%;background:#fff;display:block;"></span></div>
+      `,
+    });
+
+    const bounds = L.latLngBounds([]);
+
+    points.forEach((point) => {
+      const marker = L.marker(
+        [point.lat, point.lng],
+        { icon: heroMarkerIcon }
+      ).addTo(heroMap);
+
+      marker.bindPopup(
+        `
+          <div style="
+            width:240px;
+            overflow:hidden;
+            border-radius:9px;
+            font-family:DM Sans,system-ui,sans-serif;
+            background:#fff;
+          ">
+            ${
+              point.image
+                ? `<img
+                    src="${point.image}"
+                    alt="${point.address || "Listing"}"
+                    style="
+                      display:block;
+                      width:100%;
+                      height:132px;
+                      object-fit:cover;
+                      background:#eef1f3;
+                    "
+                  />`
+                : ""
+            }
+
+            <div style="padding:13px 14px 14px;">
+              ${
+                point.price
+                  ? `<strong style="
+                      display:block;
+                      margin-bottom:4px;
+                      color:#172033;
+                      font-size:1rem;
+                      line-height:1.2;
+                    ">${point.price}</strong>`
+                  : ""
+              }
+
+              ${
+                point.address
+                  ? `<span style="
+                      display:block;
+                      margin-bottom:11px;
+                      color:#687080;
+                      font-size:.78rem;
+                      line-height:1.4;
+                    ">${point.address}</span>`
+                  : ""
+              }
+
+              <a
+                href="#type-listings"
+                onclick="event.preventDefault();document.querySelector('[data-listing-id=&quot;${point.listingId || ""}&quot;]')?.click();"
+                style="
+                  display:inline-flex;
+                  align-items:center;
+                  justify-content:center;
+                  min-height:36px;
+                  padding:0 14px;
+                  border-radius:6px;
+                  background:${accentColor};
+                  color:#fff;
+                  font-size:.78rem;
+                  font-weight:750;
+                  text-decoration:none;
+                "
+              >
+                View listing
+              </a>
+            </div>
+          </div>
+        `,
+        {
+          closeButton: true,
+          offset: [0, -8],
+          maxWidth: 260,
+          minWidth: 240,
+        }
+      );
+
+
+      bounds.extend([point.lat, point.lng]);
+    });
+
+    if (bounds.isValid()) {
+      heroMap.fitBounds(bounds, {
+        paddingTopLeft: [205, 34],
+        paddingBottomRight: [34, 34],
+        maxZoom: 13,
+      });
+    }
+
+    setTimeout(() => {
+      heroMap.invalidateSize();
+    }, 150);
+  });
+}
+
+function prepareTypeHeroMap() {
+  const heroMapEl =
+    document.getElementById("type-hero-map");
+
+  if (
+    !heroMapEl ||
+    heroMapEl.dataset.mapReady === "true" ||
+    heroMapEl.dataset.mapDeferred === "true"
+  ) {
+    return;
+  }
+
+  heroMapEl.dataset.mapDeferred = "true";
+
+  const isAreaNeighbourhoodPage =
+    Boolean(document.querySelector(".area-intelligence"));
+
+  if (isAreaNeighbourhoodPage) {
+    const featuredCards = Array.from(
+      document.querySelectorAll(".original-card")
+    ).filter(
+      (card) => card instanceof HTMLElement
+    );
+
+    const rotationKey =
+      `featured-listing-index:${window.location.pathname}`;
+
+    let previousFeaturedIndex = -1;
+
+    try {
+      previousFeaturedIndex = Number(
+        sessionStorage.getItem(rotationKey) || "-1"
+      );
+    } catch {
+      previousFeaturedIndex = -1;
+    }
+
+    const featuredIndex =
+      featuredCards.length > 0
+        ? (previousFeaturedIndex + 1) % featuredCards.length
+        : 0;
+
+    const featuredCard =
+      featuredCards[featuredIndex] || null;
+
+    try {
+      sessionStorage.setItem(
+        rotationKey,
+        String(featuredIndex)
+      );
+    } catch {
+      // Ignore storage failures.
+    }
+
+    let listingImages = [];
+
+    if (featuredCard instanceof HTMLElement) {
+      try {
+        const parsedImages = JSON.parse(
+          featuredCard.dataset.images || "[]"
+        );
+
+        if (Array.isArray(parsedImages)) {
+          listingImages = [
+            ...new Set(
+              parsedImages
+                .map((image) =>
+                  String(image || "").trim()
+                )
+                .filter(Boolean)
+            ),
+          ];
+        }
+      } catch (error) {
+        console.warn(
+          "Could not parse featured listing images:",
+          error
+        );
+      }
+    }
+
+    const savedNeighbourhoodImage =
+      heroMapEl.dataset.areaHeroImage?.trim() || "";
+
+    const fallbackImage =
+      listingImages[0] ||
+      savedNeighbourhoodImage ||
+      "/images/maps/nanaimo-static-map.png";
+
+    // All collage images belong to one featured listing.
+    const imageOne =
+      listingImages[0] ||
+      savedNeighbourhoodImage ||
+      fallbackImage;
+
+    const normalizeComparableImage = (value) =>
+      String(value || "")
+        .trim()
+        .replace(/[?#].*$/, "");
+
+    const mainImageKey =
+      normalizeComparableImage(imageOne);
+
+    const supportingImages = [
+      ...new Set(
+        listingImages
+          .filter(Boolean)
+          .filter(
+            (image) =>
+              normalizeComparableImage(image) !==
+              mainImageKey
+          )
+      ),
+    ];
+
+    const imageTwo =
+      supportingImages[0] ||
+      imageOne;
+
+    const imageThree =
+      supportingImages[1] ||
+      supportingImages[0] ||
+      imageOne;
+
+    const featuredBadges = [];
+
+    if (featuredCard instanceof HTMLElement) {
+      const listedAtValue =
+        featuredCard.dataset.listedAt || "";
+
+      const listedAt = listedAtValue
+        ? new Date(listedAtValue)
+        : null;
+
+      if (listedAt && Number.isFinite(listedAt.getTime())) {
+        const ageDays =
+          (Date.now() - listedAt.getTime()) / 86400000;
+
+        if (ageDays >= 0 && ageDays < 1) {
+          featuredBadges.push({
+            label: "New today",
+            className: "new",
+          });
+        } else if (ageDays >= 0 && ageDays < 7) {
+          featuredBadges.push({
+            label: "New this week",
+            className: "new",
+          });
+        }
+      }
+
+      if (featuredCard.dataset.hasFloorplan === "true") {
+        featuredBadges.push({
+          label: "Floorplan",
+          className: "floorplan",
+        });
+      }
+
+      if (featuredCard.dataset.hasUpdatedKitchen === "true") {
+        featuredBadges.push({
+          label: "Updated kitchen",
+          className: "updated",
+        });
+      }
+
+      if (featuredCard.dataset.hasDetachedShop === "true") {
+        featuredBadges.push({
+          label: "Detached shop",
+          className: "shop",
+        });
+      }
+
+      if (featuredCard.dataset.primaryOnMain === "true") {
+        featuredBadges.push({
+          label: "Primary on main",
+          className: "layout",
+        });
+      }
+    }
+
+    const featuredBadgesMarkup =
+      featuredBadges
+        .slice(0, 3)
+        .map(
+          (badge) => `
+            <span
+              class="area-hero-feature-badge area-hero-feature-badge--${badge.className}"
+            >
+              ${badge.label}
+            </span>
+          `
+        )
+        .join("");
+
+    const statCards = Array.from(
+      document.querySelectorAll(".stat-card")
+    );
+
+    const statValue = (index, fallback) =>
+      statCards[index]
+        ?.querySelector(".stat-value")
+        ?.textContent
+        ?.trim() || fallback;
+
+    const statLabel = (index, fallback) =>
+      statCards[index]
+        ?.querySelector(".stat-label")
+        ?.textContent
+        ?.trim() || fallback;
+
+    heroMapEl.innerHTML = `
+      <div
+        class="area-hero-visual"
+        data-featured-hero-listing
+        role="button"
+        tabindex="0"
+        aria-label="View featured home"
+      >
+        <div class="area-hero-collage">
+          <img
+            class="area-hero-collage__main"
+            src="${imageOne}"
+            alt=""
+            loading="eager"
+            decoding="async"
+          />
+
+          <img
+            class="area-hero-collage__secondary"
+            src="${imageTwo}"
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
+
+          <img
+            class="area-hero-collage__secondary"
+            src="${imageThree}"
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
+
+        <div class="area-hero-visual__shade"></div>
+
+        <div class="area-hero-visual__label">
+          <span>Featured home</span>
+
+          ${
+            featuredBadgesMarkup
+              ? `<div class="area-hero-feature-badges">
+                   ${featuredBadgesMarkup}
+                 </div>`
+              : ""
+          }
+
+          <strong>View this listing &rarr;</strong>
+        </div>
+      </div>
+    `;
+
+    const featuredHero =
+      heroMapEl.querySelector(
+        "[data-featured-hero-listing]"
+      );
+
+    const openFeaturedListing = () => {
+      if (featuredCard instanceof HTMLElement) {
+        featuredCard.click();
+      }
+    };
+
+    featuredHero?.addEventListener(
+      "click",
+      openFeaturedListing
+    );
+
+    featuredHero?.addEventListener(
+      "keydown",
+      (event) => {
+        if (
+          event.key === "Enter" ||
+          event.key === " "
+        ) {
+          event.preventDefault();
+          openFeaturedListing();
+        }
+      }
+    );
+
+    return;
+  }
+
+  heroMapEl.innerHTML = `
+    <div style="
+      position:absolute;
+      inset:0;
+      display:grid;
+      place-items:center;
+      overflow:hidden;
+      background:#e8f0f3;
+    ">
+      <img
+        src="/images/maps/nanaimo-static-map.png"
+        alt=""
+        width="900"
+        height="560"
+        loading="eager"
+        decoding="async"
+        aria-hidden="true"
+        style="
+          position:absolute;
+          inset:0;
+          width:100%;
+          height:100%;
+          object-fit:cover;
+          opacity:.68;
+        "
+      />
+
+      <div style="
+        position:relative;
+        z-index:1;
+        width:min(290px,calc(100% - 36px));
+        padding:20px;
+        border:1px solid rgba(23,32,51,.12);
+        border-radius:12px;
+        background:rgba(255,255,255,.92);
+        box-shadow:0 12px 34px rgba(23,32,51,.12);
+        text-align:center;
+        backdrop-filter:blur(8px);
+      ">
+        <p style="
+          margin:0 0 5px;
+          color:var(--accent);
+          font-size:.66rem;
+          font-weight:850;
+          letter-spacing:.12em;
+          text-transform:uppercase;
+        ">
+          Explore the listings
+        </p>
+
+        <strong style="
+          display:block;
+          margin-bottom:12px;
+          color:#172033;
+          font-family:Georgia,'Times New Roman',serif;
+          font-size:1.2rem;
+          font-weight:500;
+          line-height:1.2;
+        ">
+          View homes on the map
+        </strong>
+
+        <button
+          type="button"
+          data-load-type-hero-map
+          style="
+            min-height:42px;
+            padding:0 18px;
+            border:0;
+            border-radius:7px;
+            background:var(--accent);
+            color:#fff;
+            font:inherit;
+            font-size:.78rem;
+            font-weight:800;
+            cursor:pointer;
+          "
+        >
+          Open interactive map
+        </button>
+
+        <small style="
+          display:block;
+          margin-top:9px;
+          color:#6b7280;
+          font-size:.58rem;
+          line-height:1.2;
+        ">
+          Map &copy; OpenStreetMap contributors
+        </small>
+      </div>
+    </div>
+  `;
+
+  const loadButton =
+    heroMapEl.querySelector(
+      "[data-load-type-hero-map]"
+    );
+
+  loadButton?.addEventListener(
+    "click",
+    () => {
+      heroMapEl.innerHTML = "";
+      heroMapEl.dataset.mapDeferred = "false";
+
+      initTypeHeroMap();
+    },
+    { once: true }
+  );
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener(
+    "DOMContentLoaded",
+    prepareTypeHeroMap,
+    { once: true }
+  );
+} else {
+  prepareTypeHeroMap();
+}
+
+// --- State ---
+const gridEl = document.querySelector(".bc-listing-grid");
+const listViewBtn = document.getElementById("list-view-btn");
+const mapViewBtn = document.getElementById("map-view-btn");
+
+let leafletMap = null;
+let listingMarkers = [];
+let amenityMarkers = [];
+let polygonLayer = null;
+let maskLayer = null;
+let refinedLeafletMap = null;
+let refinedMarkers = [];
+let currentIntentMapBounds = null;
+
+
+// --- Helpers ---
+function getCardLatLng(card) {
+  const lat = Number(card.dataset.lat || "");
+  const lng = Number(card.dataset.lng || "");
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !lat || !lng) return null;
+  return [lat, lng];
+}
+
+function makeListingIcon() {
+  return L.divIcon({
+    className: "",
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -10],
+    html: `
+      <div style="
+        width:24px;
+        height:24px;
+        display:grid;
+        place-items:center;
+        border:3px solid rgba(255,255,255,.96);
+        border-radius:50%;
+        background:${accentColor};
+        box-shadow:0 5px 14px rgba(18,58,90,.28);
+      ">
+        <span style="
+          width:6px;
+          height:6px;
+          display:block;
+          border-radius:50%;
+          background:#fff;
+        "></span>
+      </div>
+    `,
+  });
+}
+
+function makeAmenityIcon() {
+  return L.divIcon({
+    className: "",
+  html: `<div style="width:14px;height:14px;border-radius:50%;background:${accentColor};opacity:0.6;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.25);"></div>`,
+iconSize: [14, 14],
+iconAnchor: [7, 7],
+  });
+}
+
+function buildListingPopup(card) {
+  let imgs = [];
+
+  try {
+    imgs = JSON.parse(card.dataset.images || "[]").filter(Boolean);
+  } catch {}
+
+  if (!imgs.length && card.dataset.image) {
+    imgs = [card.dataset.image];
+  }
+
+  const firstImage = imgs[0] || "";
+  const image =
+    typeof firstImage === "string"
+      ? firstImage
+      : firstImage?.mediumRes ||
+        firstImage?.highRes ||
+        firstImage?.lowRes ||
+        firstImage?.url ||
+        "";
+
+  const listingId =
+    card.dataset.listingId ||
+    card.dataset.mls ||
+    "";
+
+  return `
+    <div style="
+      width:240px;
+      overflow:hidden;
+      border-radius:9px;
+      background:#fff;
+      font-family:DM Sans,system-ui,sans-serif;
+    ">
+      ${
+        image
+          ? `<img
+              src="${image}"
+              alt="${card.dataset.address || "Listing"}"
+              style="
+                display:block;
+                width:100%;
+                height:132px;
+                object-fit:cover;
+                background:#eef1f3;
+              "
+            />`
+          : ""
+      }
+
+      <div style="padding:13px 14px 14px;">
+        <strong style="
+          display:block;
+          margin-bottom:4px;
+          color:#172033;
+          font-size:1rem;
+          line-height:1.2;
+        ">
+          ${card.dataset.price || ""}
+        </strong>
+
+        <span style="
+          display:block;
+          margin-bottom:5px;
+          color:#687080;
+          font-size:.78rem;
+          line-height:1.4;
+        ">
+          ${card.dataset.address || ""}
+        </span>
+
+        <span style="
+          display:block;
+          margin-bottom:11px;
+          color:#9c9590;
+          font-size:.74rem;
+        ">
+          ${card.dataset.beds || "-"} bd &nbsp;|&nbsp; ${card.dataset.baths || "-"} ba
+        </span>
+
+        <button
+          type="button"
+          onclick="document.querySelector('[data-listing-id=&quot;${listingId}&quot;]')?.click();"
+          style="
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            min-height:36px;
+            padding:0 14px;
+            border:0;
+            border-radius:6px;
+            background:${accentColor};
+            color:#fff;
+            font-family:inherit;
+            font-size:.78rem;
+            font-weight:750;
+            cursor:pointer;
+          "
+        >
+          View listing
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+// --- Draw polygon ---
+function drawSearchPolygon(map) {
+  if (!searchAreaGeojson?.coordinates?.[0]) return null;
+
+  const coords = searchAreaGeojson.coordinates[0].map(([lng, lat]) => [lat, lng]);
+
+  // Mask (darken outside polygon)
+  const worldCoords = [
+    [[-85, -180], [-85, 180], [85, 180], [85, -180]],
+    coords,
+  ];
+  maskLayer = L.polygon(worldCoords, {
+    color: "none",
+    fillColor: "#000",
+    fillOpacity: 0.06,
+    interactive: false,
+  }).addTo(map);
+
+  // Outline
+  polygonLayer = L.polygon(coords, {
+    color: accentColor,
+    weight: 3,
+    fillOpacity: 0.02,
+    interactive: false,
+  }).addTo(map);
+
+  return L.latLngBounds(coords);
+}
+
+// --- Init main map ---
+
+function initLeafletMap(mode = "all") {
+  if (!intentMapEl) return;
+
+  waitForLeaflet(() => {
+    const selector = mode === "refined" ? ".refined-card" : ".original-card";
+    const cards = Array.from(document.querySelectorAll(selector)).filter(
+      (c) => !c.hidden && c.style.display !== "none" && c.dataset.lat && c.dataset.lng
+    );
+
+    const points = cards.map((c) => ({ card: c, latlng: getCardLatLng(c) })).filter((i) => i.latlng);
+
+    // Init map if needed
+    if (!leafletMap) {
+    leafletMap = L.map(intentMapEl, {
+  zoomControl: true,
+  attributionControl: false,
+  scrollWheelZoom: false,
+});
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "| OpenStreetMap",
+      }).addTo(leafletMap);
+
+      L.control.attribution({ prefix: false }).addAttribution('| <a href="https://openstreetmap.org">OSM</a>').addTo(leafletMap);
+    }
+
+    // Clear existing markers
+    listingMarkers.forEach((m) => m.remove());
+    listingMarkers = [];
+    amenityMarkers.forEach((m) => m.remove());
+    amenityMarkers = [];
+    if (polygonLayer) { polygonLayer.remove(); polygonLayer = null; }
+    if (maskLayer) { maskLayer.remove(); maskLayer = null; }
+
+    // Draw polygon
+    const areaBounds = drawSearchPolygon(leafletMap);
+
+    // Add listing markers
+    points.forEach(({ card, latlng }) => {
+      const marker = L.marker(latlng, { icon: makeListingIcon() }).addTo(leafletMap);
+
+      const popup = L.popup({
+        maxWidth: 260,
+        closeButton: true,
+        offset: [0, -8],
+        minWidth: 240,
+        className: "leaflet-listing-popup",
+      }).setContent(buildListingPopup(card));
+
+      marker.bindPopup(popup);
+
+      listingMarkers.push(marker);
+    });
+
+    // Fit bounds
+    if (areaBounds) {
+      leafletMap.fitBounds(areaBounds, { padding: [40, 40] });
+    } else if (points.length) {
+      const bounds = L.latLngBounds(points.map((p) => p.latlng));
+      leafletMap.fitBounds(bounds, { padding: [40, 40] });
+    }
+
+    // Track bounds for refine
+    leafletMap.on("moveend", () => {
+      const b = leafletMap.getBounds();
+      currentIntentMapBounds = {
+        north: b.getNorth(),
+        east: b.getEast(),
+        south: b.getSouth(),
+        west: b.getWest(),
+      };
+    });
+
+    // Load amenities on area pages
+    if (document.querySelector(".area-intelligence") && !window.__amenitiesLoaded) {
+      window.__amenitiesLoaded = true;
+      setTimeout(() => loadAreaAmenities("school"), 200);
+    }
+
+    setTimeout(() => leafletMap.invalidateSize(), 100);
+  });
+}
+function pointInAreaPolygon(lat, lng) {
+  if (!searchAreaGeojson?.coordinates?.[0]?.length) {
+    return false;
+  }
+
+  const rings =
+    searchAreaGeojson.type === "MultiPolygon"
+      ? searchAreaGeojson.coordinates.flat()
+      : searchAreaGeojson.coordinates;
+
+  return rings.some((ring) => {
+    let inside = false;
+    const x = lng;
+    const y = lat;
+
+    for (
+      let i = 0, j = ring.length - 1;
+      i < ring.length;
+      j = i++
+    ) {
+      const xi = Number(ring[i][0]);
+      const yi = Number(ring[i][1]);
+      const xj = Number(ring[j][0]);
+      const yj = Number(ring[j][1]);
+
+      const intersects =
+        yi > y !== yj > y &&
+        x <
+          ((xj - xi) * (y - yi)) /
+            (yj - yi) +
+          xi;
+
+      if (intersects) inside = !inside;
+    }
+
+    return inside;
+  });
+}
+// --- Amenity radius (computed once from polygon size) ---
+let amenityRadius = 4;
+
+if (searchAreaGeojson?.coordinates?.[0]?.length) {
+  const coords = searchAreaGeojson.coordinates[0];
+
+  const lats = coords.map((c) => c[1]);
+  const lngs = coords.map((c) => c[0]);
+
+  const latSpan =
+    Math.max(...lats) - Math.min(...lats);
+
+  const lngSpan =
+    Math.max(...lngs) - Math.min(...lngs);
+
+  const spanKm =
+    Math.max(latSpan, lngSpan) * 111;
+
+  amenityRadius = Math.min(
+    Math.max(spanKm * 0.6 + 2, 4),
+    12
+  );
+}
+
+// --- Load amenities ---
+async function loadAreaAmenities(category = "school") {
+  if (!leafletMap) return;
+
+  amenityMarkers.forEach((m) => m.remove());
+  amenityMarkers = [];
+
+  const osmCity = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
+  const areaEl = document.querySelector("[data-area-center-lat]");
+  const osmLat = Number(areaEl?.dataset.areaCenterLat || 0);
+  const osmLng = Number(areaEl?.dataset.areaCenterLng || 0);
+
+  if (!osmLat || !osmLng) return;
+
+  try {
+
+
+    const res = await fetch(
+  `/api/osm-amenities?city=${encodeURIComponent(osmCity)}&lat=${osmLat}&lng=${osmLng}&radius=${Math.min(amenityRadius + 2, 15)}&limit=250`
+);
+    const payload = await res.json();
+const areaAmenityFilter = (item) => {
+  const lat = Number(item.lat);
+  const lng = Number(item.lng);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return false;
+  }
+
+  // Definitely include anything physically inside the area.
+  if (pointInAreaPolygon(lat, lng)) {
+    return true;
+  }
+
+  // Also allow nearby amenities just outside the boundary.
+  return Number(item.distKm || 0) <= 2;
+};
+    // Update chip counts
+   document.querySelectorAll(".amenity-chip").forEach((chip) => {
+  // Keep the listings toggle visible.
+  if (chip.id === "toggle-listings-btn") return;
+
+  const key =
+    amenityCategoryMap[chip.dataset.amenity] ||
+    chip.dataset.amenity;
+
+  const items =
+    payload.categories?.[key] || [];
+
+ const count =
+  items.filter(areaAmenityFilter).length;
+
+  const strong =
+    chip.querySelector("strong");
+
+  if (strong) {
+    strong.textContent = String(count);
+  }
+
+  chip.hidden = count === 0;
+});
+
+const visibleAmenityChips = Array.from(
+  document.querySelectorAll(
+    ".amenity-chip:not(#toggle-listings-btn)"
+  )
+).filter((chip) => !chip.hidden);
+
+let activeChip = document.querySelector(
+  ".amenity-chip.active:not(#toggle-listings-btn)"
+);
+
+if (!activeChip || activeChip.hidden) {
+  document
+    .querySelectorAll(
+      ".amenity-chip.active:not(#toggle-listings-btn)"
+    )
+    .forEach((chip) => {
+      chip.classList.remove("active");
+    });
+
+  activeChip = visibleAmenityChips[0] || null;
+
+  activeChip?.classList.add("active");
+}
+
+const activeCategory = activeChip
+  ? amenityCategoryMap[activeChip.dataset.amenity] ||
+    activeChip.dataset.amenity
+  : category;
+
+const rows = (
+  payload.categories?.[activeCategory] || []
+).filter(areaAmenityFilter);
+
+// Update panel
+const label =
+  activeChip?.childNodes?.[0]?.textContent?.trim() ||
+  activeCategory;
+
+const panelTitle =
+  document.querySelector("#area-amenity-panel h3");
+
+const panelCopy =
+  document.querySelector("#area-amenity-panel p");
+
+const amenityList =
+  document.querySelector("#amenity-list");
+
+    if (panelTitle) panelTitle.textContent = label;
+    if (panelCopy) panelCopy.textContent = `${rows.filter(i => i.name?.trim()).length} ${label.toLowerCase()} near ${document.querySelector("[data-slug]")?.dataset.slug?.replaceAll("-", " ") || "this area"}`;
+
+  if (amenityList) {
+  amenityList.innerHTML = rows
+    .filter((item) => item.name && item.name.trim())
+    .slice(0, 8)
+    .map((item) => `
+      <div
+        class="amenity-row"
+        data-amenity-name="${String(item.name || "").replace(/"/g, "&quot;")}"
+      >
+        <strong>${item.name}</strong>
+        <span>${Number(item.distKm || 0).toFixed(1)} km away</span>
+      </div>`)
+    .join("") || `<div style="padding:14px 18px;color:#9c9590;font-size:0.88rem;">No named ${label.toLowerCase()} found nearby.</div>`;
+
+  amenityList.querySelectorAll(".amenity-row").forEach((row) => {
+    row.addEventListener("mouseenter", () => {
+      if (window.matchMedia("(max-width: 800px)").matches) return;
+
+      const name = row.dataset.amenityName || "";
+      const marker = amenityMarkers.find((m) => m.__amenityName === name);
+
+      row.style.background = "rgba(0,0,0,0.035)";
+
+      if (marker) {
+        marker.openPopup();
+        marker.setZIndexOffset(1000);
+
+        const el = marker.getElement();
+        if (el) {
+          el.style.transform += " scale(1.35)";
+          el.style.transition = "transform 0.15s ease";
+        }
+      }
+    });
+
+    row.addEventListener("mouseleave", () => {
+      const name = row.dataset.amenityName || "";
+      const marker = amenityMarkers.find((m) => m.__amenityName === name);
+
+      row.style.background = "";
+
+      if (marker) {
+        marker.closePopup();
+        marker.setZIndexOffset(0);
+
+        const el = marker.getElement();
+        if (el) {
+          el.style.transform = el.style.transform.replace(" scale(1.35)", "");
+        }
+      }
+    });
+
+    row.addEventListener("click", () => {
+      const name = row.dataset.amenityName || "";
+      const marker = amenityMarkers.find((m) => m.__amenityName === name);
+
+      if (marker && leafletMap) {
+        leafletMap.flyTo(marker.getLatLng(), Math.max(leafletMap.getZoom(), 15), {
+          duration: 0.45,
+        });
+        marker.openPopup();
+      }
+    });
+  });
+}
+
+    // Add amenity markers
+    rows.forEach((item) => {
+      const lat = Number(item.lat);
+      const lng = Number(item.lng);
+      if (!lat || !lng) return;
+
+   const marker = L.marker([lat, lng], { icon: makeAmenityIcon() }).addTo(leafletMap);
+const popupLabel = item.name?.trim() || label || category;
+marker.bindPopup(`
+  <div style="font-family:'DM Sans',system-ui,sans-serif;padding:8px 12px;font-size:0.88rem;">
+    <strong style="display:block;font-weight:700;color:#1c1914;margin-bottom:2px;">${popupLabel}</strong>
+    <span style="font-size:0.78rem;color:#9c9590;">${Number(item.distKm || 0).toFixed(1)} km away</span>
+  </div>`, {
+  closeButton: false,
+  offset: [0, -7],
+});
+marker.on("click", () => marker.openPopup());
+marker.__amenityName = String(item.name || "").trim();
+marker.__amenityCategory = category;
+
+amenityMarkers.push(marker);
+    });
+
+  } catch (e) {
+    console.warn("Amenity load failed:", e);
+  }
+}
+
+// --- Init refined map ---
+function initRefinedLeafletMap() {
+  const refinedMapEl = document.getElementById("refined-intent-map");
+  if (!refinedMapEl) return;
+
+  waitForLeaflet(() => {
+    const cards = Array.from(document.querySelectorAll(".refined-card")).filter(
+      (c) => c.style.display !== "none"
+    );
+    const points = cards.map((c) => ({ card: c, latlng: getCardLatLng(c) })).filter((i) => i.latlng);
+
+    if (!points.length) {
+      refinedMapEl.innerHTML = "<p style='padding:16px;color:#6b6560;'>No map locations available.</p>";
+      return;
+    }
+
+    if (!refinedLeafletMap) {
+      refinedLeafletMap = L.map(refinedMapEl, { zoomControl: true, attributionControl: false, scrollWheelZoom: false });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(refinedLeafletMap);
+    }
+
+    refinedMarkers.forEach((m) => m.remove());
+    refinedMarkers = [];
+
+    points.forEach(({ card, latlng }) => {
+      const marker = L.marker(latlng, { icon: makeListingIcon() }).addTo(refinedLeafletMap);
+      marker.bindPopup(buildListingPopup(card), { maxWidth: 210, closeButton: false });
+      refinedMarkers.push(marker);
+    });
+
+    const bounds = L.latLngBounds(points.map((p) => p.latlng));
+    refinedLeafletMap.fitBounds(bounds, { padding: [40, 40] });
+    setTimeout(() => refinedLeafletMap.invalidateSize(), 100);
+  });
+}
+
+// --- View toggle ---
+listViewBtn?.addEventListener("click", () => {
+  document.body.classList.remove("is-map-mode");
+  intentMapEl.hidden = true;
+  gridEl?.classList.remove("map-hidden");
+  listViewBtn.classList.add("active");
+  mapViewBtn?.classList.remove("active");
+});
+
+mapViewBtn?.addEventListener("click", () => {
+  document.body.classList.add("is-map-mode");
+  intentMapEl.hidden = false;
+  gridEl?.classList.add("map-hidden");
+  mapViewBtn.classList.add("active");
+  listViewBtn?.classList.remove("active");
+  requestAnimationFrame(() => initLeafletMap());
+});
+
+// Area intelligence map initializes only when it approaches the viewport.
+// The separate listings map still waits for the Map button.
+const areaIntelligenceSection =
+  document.querySelector(".area-intelligence");
+
+if (areaIntelligenceSection && intentMapEl) {
+  const initializeVisibleAreaMap = () => {
+    intentMapEl.hidden = false;
+
+    waitForLeaflet(() => {
+      initLeafletMap();
+
+      window.setTimeout(() => {
+        leafletMap?.invalidateSize();
+      }, 100);
+    });
+  };
+
+  if ("IntersectionObserver" in window) {
+    const areaMapObserver = new IntersectionObserver(
+      (entries, observer) => {
+        const isNearViewport =
+          entries.some((entry) => entry.isIntersecting);
+
+        if (!isNearViewport) return;
+
+        observer.disconnect();
+        initializeVisibleAreaMap();
+      },
+      {
+        rootMargin: "300px 0px",
+        threshold: 0.01,
+      }
+    );
+
+    areaMapObserver.observe(areaIntelligenceSection);
+  } else {
+    initializeVisibleAreaMap();
+  }
+}
+
+// Show more listings
+let visibleListingCount = 12;
+document.getElementById("show-more-listings-btn")?.addEventListener("click", () => {
+  visibleListingCount += 12;
+  const cards = Array.from(document.querySelectorAll(".original-card"));
+  cards.forEach((card, index) => { if (index < visibleListingCount) card.hidden = false; });
+  if (visibleListingCount >= cards.length) {
+    document.getElementById("show-more-listings-btn")?.setAttribute("hidden", "");
+  }
+});
+
+// Re-init map on filter changes
+window.addEventListener("listing-filters-updated", () => {
+  if (leafletMap && intentMapEl && !intentMapEl.hidden) initLeafletMap();
+});
+
+</script>

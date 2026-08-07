@@ -1,0 +1,377 @@
+﻿---
+type Props = {
+  cityLabel: string;
+  heading: string;
+  intro?: string;
+  listingCount?: number;
+  propertyType?: string | null;
+  heroImage?: string | null;
+};
+
+const {
+  cityLabel,
+  heading,
+  intro = "",
+  listingCount = 0,
+  propertyType = null,
+  heroImage = null,
+} = Astro.props;
+
+const browseLabel =
+  propertyType
+    ? `Browse ${listingCount} ${propertyType}`
+    : `Browse ${listingCount} homes`;
+---
+
+<section class="city-slug-hero">
+
+  <div class="city-slug-hero__copy">
+
+    <p class="city-slug-hero__eyebrow">
+      {cityLabel} Real Estate
+    </p>
+
+    <h1>
+      {heading}
+      <span>.</span>
+    </h1>
+
+    {
+      intro && (
+        <p class="city-slug-hero__intro">
+          {intro}
+        </p>
+      )
+    }
+
+    <div class="city-slug-hero__actions">
+
+      <a
+        class="hero-button hero-button--primary"
+        href="#" onclick="event.preventDefault();document.querySelector('[data-listing-id=&quot;${p.listingId}&quot;]')?.click();"
+      >
+        {browseLabel}
+      </a>
+
+      <a
+        class="hero-button hero-button--secondary"
+        href={`/explore?city=${encodeURIComponent(cityLabel.toLowerCase())}`}
+      >
+        Explore map
+      </a>
+
+    </div>
+
+  </div>
+
+
+  <div class="city-slug-hero__visual">
+
+    {
+      (
+<div
+  id="type-hero-map"
+  class="city-slug-hero__visual"
+  data-area-hero-image={heroImage || ""}
+></div>
+)
+    }
+
+  </div>
+
+</section>
+
+
+<style>
+.city-slug-hero {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:48px;
+  align-items:center;
+  padding:48px 0;
+}
+
+.city-slug-hero__eyebrow {
+  font-size:.85rem;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  color:var(--accent);
+}
+
+.city-slug-hero h1 {
+  font-size:clamp(2.2rem,4vw,4rem);
+  line-height:1.05;
+  margin:14px 0 20px;
+}
+
+.city-slug-hero__intro {
+  font-size:1.15rem;
+  line-height:1.7;
+  color:var(--muted);
+}
+
+.city-slug-hero__actions {
+  display:flex;
+  gap:14px;
+  margin-top:28px;
+}
+
+.hero-button {
+  padding:12px 22px;
+  border-radius:999px;
+  text-decoration:none;
+  font-weight:700;
+}
+
+.hero-button--primary {
+  background:var(--accent);
+  color:white;
+}
+
+.hero-button--secondary {
+  border:1px solid var(--bc-line);
+}
+
+.city-slug-hero__visual {
+  min-height:360px;
+  border-radius:24px;
+  overflow:hidden;
+  background:var(--surface-soft);
+}
+
+.city-slug-hero__visual img {
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+
+.city-slug-hero__placeholder {
+  height:100%;
+  min-height:360px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--muted);
+}
+
+@media(max-width:800px) {
+  .city-slug-hero {
+    grid-template-columns:1fr;
+  }
+}
+</style>
+
+
+
+
+
+
+
+
+<script is:inline>
+(() => {
+
+function loadLeaflet() {
+  if (window.L) {
+    initHeroMap();
+    return;
+  }
+
+  if (window.__leafletLoading) return;
+
+  window.__leafletLoading = true;
+
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+  document.head.appendChild(link);
+
+  const script = document.createElement("script");
+  script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+
+  script.onload = () => initHeroMap();
+
+  document.body.appendChild(script);
+}
+
+
+function initHeroMap() {
+
+  const el = document.getElementById("type-hero-map");
+
+  if (!el || !window.L || el.dataset.ready) return;
+
+  el.dataset.ready = "true";
+
+  const cards = [
+    ...document.querySelectorAll(
+      ".bc-listing-grid .card[data-lat][data-lng]"
+    )
+  ];
+
+  const points = cards
+    .map(card => ({
+      lat: Number(card.dataset.lat),
+      lng: Number(card.dataset.lng),
+      image: card.dataset.image || "",
+      listingId: card.dataset.listingId || card.dataset.mls || "",
+      price:
+        card.querySelector(".price")?.textContent?.trim() || "",
+      address:
+        card.querySelector(".address")?.textContent?.trim() || ""
+    }))
+    .filter(p => p.lat && p.lng)
+    .slice(0, 60);
+
+  console.log("HERO MAP POINTS", points.length);
+
+  if (!points.length) return;
+
+  const map = L.map(el, {
+    zoomControl: false,
+    attributionControl: false,
+    scrollWheelZoom: false
+  });
+
+  L.tileLayer(
+    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+  ).addTo(map);
+
+  const bounds = L.latLngBounds();
+
+  const accent =
+    getComputedStyle(document.documentElement)
+      .getPropertyValue("--accent")
+      .trim() || "#30464d";
+
+  const markerIcon = L.divIcon({
+    className: "",
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    html: `
+      <div style="
+        width:26px;
+        height:26px;
+        border-radius:50%;
+        background:${accent};
+        border:3px solid white;
+        box-shadow:0 4px 12px rgba(0,0,0,.25);
+        display:grid;
+        place-items:center;
+      ">
+        <span style="
+          width:7px;
+          height:7px;
+          border-radius:50%;
+          background:white;
+        "></span>
+      </div>
+    `
+  });
+
+
+  points.forEach((p, index) => {
+
+    const marker = L.marker(
+      [p.lat, p.lng],
+      { icon: markerIcon }
+    ).addTo(map);
+
+
+    marker.bindPopup(`
+      <div style="
+        width:240px;
+        overflow:hidden;
+        border-radius:12px;
+        font-family:DM Sans,system-ui,sans-serif;
+        background:white;
+      ">
+
+        ${
+          p.image
+            ? `
+              <img
+                src="${p.image}"
+                style="
+                  width:100%;
+                  height:130px;
+                  object-fit:cover;
+                  display:block;
+                "
+              />
+            `
+            : ""
+        }
+
+        <div style="
+          padding:14px;
+        ">
+
+          ${
+            p.price
+              ? `
+                <div style="
+                  font-size:1.05rem;
+                  font-weight:800;
+                  margin-bottom:6px;
+                ">
+                  ${p.price}
+                </div>
+              `
+              : ""
+          }
+
+          ${
+            p.address
+              ? `
+                <div style="
+                  color:#687080;
+                  font-size:.85rem;
+                  margin-bottom:12px;
+                ">
+                  ${p.address}
+                </div>
+              `
+              : ""
+          }
+
+          <a
+            href="#" onclick="event.preventDefault();document.querySelector('[data-listing-id=&quot;${p.listingId}&quot;]')?.click();"
+            style="
+              display:inline-flex;
+              padding:8px 14px;
+              border-radius:6px;
+              background:var(--accent);
+              color:white;
+              text-decoration:none;
+              font-size:.85rem;
+              font-weight:700;
+            "
+          >
+            View listing
+          </a>
+
+        </div>
+      </div>
+    `);
+
+
+    bounds.extend([p.lat, p.lng]);
+
+  });
+
+  map.fitBounds(bounds, {
+    padding: [30, 30],
+    maxZoom: 14
+  });
+
+  setTimeout(() => {
+    map.invalidateSize();
+  }, 200);
+}
+
+loadLeaflet();
+
+})();
+</script>

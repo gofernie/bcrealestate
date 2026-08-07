@@ -1,0 +1,778 @@
+﻿---
+import {
+  createClient,
+} from "@supabase/supabase-js";
+
+import Layout from "../../layouts/Layout.astro";
+import SiteNav from "../SiteNav.astro";
+import RealEstateHomepage from "./RealEstateHomepage.astro";
+
+import {
+  getSite,
+} from "../../lib/getSite";
+
+import {
+  getNavIntentPages,
+} from "../../lib/getNavIntentPages";
+
+import {
+  getListings,
+} from "../../lib/listings/getListings";
+
+import {
+  getListingFiltersFromUrl,
+} from "../../lib/listings/getListingFiltersFromUrl";
+
+export const prerender = false;
+
+interface Props {
+  city?: string;
+  site?: any;
+}
+
+const {
+  city: cityProp = "",
+  site: suppliedSite = null,
+} = Astro.props;
+
+const requestedCity =
+  cityProp ||
+  Astro.url.searchParams.get("city") ||
+  "nanaimo";
+
+const city =
+  String(requestedCity)
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-");
+
+const databaseCity =
+  city.replace(/-/g, " ");
+
+const cityLabel =
+  databaseCity.replace(
+    /\b\w/g,
+    (letter) =>
+      letter.toUpperCase()
+  );
+
+const supabase =
+  createClient(
+    import.meta.env
+      .PUBLIC_SUPABASE_URL,
+    import.meta.env
+      .SUPABASE_SERVICE_ROLE_KEY
+  );
+
+const hostname =
+  Astro.url.hostname
+    .toLowerCase()
+    .replace(/^www\./, "");
+
+const site =
+  suppliedSite ||
+  (await getSite(
+    hostname,
+    city
+  ));
+
+const heroImageUrl =
+  site?.hero_image_url ||
+  "";
+
+const accentColor =
+  site?.accent_color ||
+  "#2f6f73";
+
+const areaToSlug = (
+  value: unknown
+) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/^pq[\s-]+/i, "")
+    .replace(/&/g, "and")
+    .replace(/\//g, "-")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const titleCase = (
+  value: unknown
+) =>
+  String(value || "")
+    .replace(/^pq[\s-]+/i, "")
+    .replace(/[-_]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(
+      /\b\w/g,
+      (letter) =>
+        letter.toUpperCase()
+    );
+
+const urlFilters =
+  getListingFiltersFromUrl(
+    Astro.url
+  );
+
+const requestedType =
+  urlFilters.type || "";
+
+const requestedAreas =
+  urlFilters.areas || [];
+
+const queryAreas =
+  requestedAreas.map(
+    (area) =>
+      String(area)
+        .replace(/-/g, " ")
+        .toLowerCase()
+        .trim()
+  );
+
+const requestedBeds =
+  urlFilters.beds ?? null;
+
+const requestedPrimaryOnMain =
+  urlFilters.primaryOnMain ?? false;
+
+const requestedBedsTogether =
+  urlFilters.bedsTogether ?? false;
+const requestedFourBedsTogether =
+  urlFilters.fourBedsTogether ?? false;
+
+const requestedHasFloorplan =
+  urlFilters.hasFloorplan ?? false;
+
+const requestedHasUpdatedKitchen =
+  urlFilters.hasUpdatedKitchen ?? false;
+
+const requestedHasDetachedShop =
+  urlFilters.hasDetachedShop ?? false;
+
+const requestedBaths =
+  urlFilters.baths ?? null;
+
+const requestedMinPrice =
+  urlFilters.minPrice ?? null;
+
+const requestedMaxPrice =
+  urlFilters.maxPrice ?? null;
+
+const requestedMinSqft =
+  urlFilters.minSqft ?? null;
+
+const requestedMaxSqft =
+  urlFilters.maxSqft ?? null;
+
+const requestedSort =
+  urlFilters.sort ||
+  "newest";
+
+const PAGE_SIZE =
+  urlFilters.pageSize || 24;
+
+/*
+ * Server-side listing query.
+ */
+const listingResult =
+  await getListings(
+    supabase,
+    {
+      ...urlFilters,
+      city: databaseCity,
+      areas: queryAreas,
+      pageSize: PAGE_SIZE,
+      paginate: true,
+    }
+  );
+const mapListingResult =
+  await getListings(
+    supabase,
+    {
+      ...urlFilters,
+      city: databaseCity,
+      areas: queryAreas,
+      paginate: false,
+    }
+  );
+
+if (mapListingResult.error) {
+  console.error(
+    `Unable to load all ${cityLabel} map listings:`,
+    mapListingResult.error
+  );
+}
+
+const mapListings =
+  mapListingResult.listings;
+if (listingResult.error) {
+  console.error(
+    `Unable to load ${cityLabel} listings:`,
+    listingResult.error
+  );
+}
+
+const listings =
+  listingResult.listings;
+
+const activeSort =
+  listingResult.sort;
+
+/*
+ * Complete city inventory is used only for
+ * neighbourhood totals. It is not sent to the
+ * listing grid.
+ */
+const {
+  data: cityAreaRows = [],
+  error: cityAreaRowsError,
+} = await supabase
+  .from("listing_rows")
+  .select(
+    `
+      normalized_area,
+      area
+    `
+  )
+  .eq(
+    "normalized_city",
+    databaseCity
+  )
+  .eq("status", "A");
+
+if (cityAreaRowsError) {
+  console.error(
+    `Unable to load ${cityLabel} area counts:`,
+    cityAreaRowsError
+  );
+}
+
+const {
+  data: areaMetaRows = [],
+  error: areasError,
+} = await supabase
+  .from("area_boundaries")
+  .select(
+    `
+      area_slug,
+      area_name,
+      short_description
+    `
+  )
+  .ilike(
+    "city",
+    databaseCity
+  );
+
+if (areasError) {
+  console.error(
+    `Unable to load ${cityLabel} areas:`,
+    areasError
+  );
+}
+
+const listingCountByArea =
+  (cityAreaRows || []).reduce(
+    (
+      counts: Record<
+        string,
+        number
+      >,
+      listing: any
+    ) => {
+      const areaSlug =
+        areaToSlug(
+          listing.normalized_area ||
+          listing.area
+        );
+
+      if (!areaSlug) {
+        return counts;
+      }
+
+      counts[areaSlug] =
+        (counts[areaSlug] || 0) +
+        1;
+
+      return counts;
+    },
+    {}
+  );
+
+const knownAreaSlugs =
+  new Set(
+    (areaMetaRows || [])
+      .map((row: any) =>
+        areaToSlug(
+          row.area_slug ||
+          row.area_name
+        )
+      )
+      .filter(Boolean)
+  );
+
+const locationCards =
+  (areaMetaRows || [])
+    .map((row: any) => {
+      const areaSlug =
+        areaToSlug(
+          row.area_slug ||
+          row.area_name
+        );
+
+      return {
+        area: areaSlug,
+        label:
+          row.area_name ||
+          titleCase(areaSlug),
+        href:
+          `/${city}/${areaSlug}`,
+        count:
+          listingCountByArea[
+            areaSlug
+          ] || 0,
+      };
+    })
+    .filter(
+      (location: any) =>
+        location.area &&
+        location.count > 0
+    )
+    .sort(
+      (
+        first: any,
+        second: any
+      ) =>
+        second.count -
+          first.count ||
+        first.label.localeCompare(
+          second.label
+        )
+    );
+
+const missingAreaCards =
+  Object.entries(
+    listingCountByArea
+  )
+    .filter(
+      ([areaSlug]) =>
+        !knownAreaSlugs.has(
+          areaSlug
+        )
+    )
+    .map(
+      ([areaSlug, count]) => ({
+        area: areaSlug,
+        label:
+          titleCase(areaSlug),
+        href:
+          `/${city}/${areaSlug}`,
+        count:
+          Number(count || 0),
+      })
+    )
+    .filter(
+      (location) =>
+        location.count > 0
+    )
+    .sort(
+      (first, second) =>
+        second.count -
+          first.count ||
+        first.label.localeCompare(
+          second.label
+        )
+    );
+
+const allLocationCards = [
+  ...locationCards,
+  ...missingAreaCards,
+];
+
+const navAreas =
+  allLocationCards.map(
+    (location) =>
+      location.label
+  );
+
+const navTypes =
+  Array.isArray(site?.nav_property_types)
+    ? site.nav_property_types
+    : [
+        "house",
+        "condo",
+        "townhouse",
+        "mobile",
+        "land",
+      ];
+
+      const buildPageHref = (
+  page: number
+) => {
+  const params =
+    new URLSearchParams();
+
+  if (requestedType) {
+    params.set(
+      "type",
+      requestedType
+    );
+  }
+
+  for (
+    const area of requestedAreas
+  ) {
+    params.append(
+      "area",
+      area
+    );
+  }
+
+ if (
+  requestedBeds !== null
+) {
+  params.set(
+    "beds",
+    String(requestedBeds)
+  );
+}
+
+if (requestedPrimaryOnMain) {
+  params.set(
+    "primaryOnMain",
+    "1"
+  );
+}
+
+if (requestedBedsTogether) {
+  params.set(
+    "bedsTogether",
+    "true"
+  );
+}
+if (requestedFourBedsTogether) {
+  params.set(
+    "fourBedsTogether",
+    "true"
+  );
+}
+
+if (requestedHasFloorplan) {
+  params.set(
+    "hasFloorplan",
+    "true"
+  );
+}
+
+if (requestedHasUpdatedKitchen) {
+  params.set(
+    "hasUpdatedKitchen",
+    "true"
+  );
+}
+
+if (requestedHasDetachedShop) {
+  params.set(
+    "hasDetachedShop",
+    "true"
+  );
+}
+
+if (
+  requestedBaths !== null
+) {
+    params.set(
+      "baths",
+      String(requestedBaths)
+    );
+  }
+
+  if (
+    requestedMinPrice !== null
+  ) {
+    params.set(
+      "minPrice",
+      String(
+        requestedMinPrice
+      )
+    );
+  }
+
+  if (
+    requestedMaxPrice !== null
+  ) {
+    params.set(
+      "maxPrice",
+      String(
+        requestedMaxPrice
+      )
+    );
+  }
+
+  if (
+    requestedMinSqft !== null
+  ) {
+    params.set(
+      "minSqft",
+      String(
+        requestedMinSqft
+      )
+    );
+  }
+
+  if (
+    requestedMaxSqft !== null
+  ) {
+    params.set(
+      "maxSqft",
+      String(
+        requestedMaxSqft
+      )
+    );
+  }
+
+  if (
+    activeSort !== "newest"
+  ) {
+    params.set(
+      "sort",
+      activeSort
+    );
+  }
+
+  if (page > 1) {
+    params.set(
+      "page",
+      String(page)
+    );
+  }
+
+  const queryString =
+    params.toString();
+
+  return queryString
+    ? `/${city}?${queryString}`
+    : `/${city}`;
+};
+
+const previousPageHref =
+  listingResult
+    .hasPreviousPage
+    ? buildPageHref(
+        listingResult
+          .currentPage - 1
+      )
+    : null;
+
+const nextPageHref =
+  listingResult.hasNextPage
+    ? buildPageHref(
+        listingResult
+          .currentPage + 1
+      )
+    : null;
+
+const filters = {
+  type: requestedType,
+  areas: requestedAreas,
+
+  beds: requestedBeds,
+  primaryOnMain:
+    requestedPrimaryOnMain,
+bedsTogether:
+  requestedBedsTogether,
+fourBedsTogether:
+  requestedFourBedsTogether,
+
+hasFloorplan:
+  requestedHasFloorplan,
+
+hasUpdatedKitchen:
+  requestedHasUpdatedKitchen,
+
+hasDetachedShop:
+  requestedHasDetachedShop,
+
+  baths: requestedBaths,
+
+  minPrice:
+    requestedMinPrice,
+  maxPrice:
+    requestedMaxPrice,
+
+  minSqft:
+    requestedMinSqft,
+  maxSqft:
+    requestedMaxSqft,
+
+  sort: activeSort,
+
+  page:
+    listingResult.currentPage,
+};
+
+const navIntentPages =
+  await getNavIntentPages(
+    supabase,
+    site?.id
+  );
+
+const previewMlsNumber =
+  String(
+    Astro.url.searchParams
+      .get("new") || ""
+  )
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)[0] || "";
+
+let previewListing: any = null;
+
+if (previewMlsNumber) {
+  const {
+    data,
+    error: previewListingError,
+  } = await supabase
+    .from("listing_rows")
+    .select(`
+      mls_number,
+      address,
+      price,
+      beds,
+      baths,
+      image_url,
+      normalized_city
+    `)
+    .eq(
+      "normalized_city",
+      databaseCity
+    )
+    .eq(
+      "mls_number",
+      previewMlsNumber
+    )
+    .limit(1)
+    .maybeSingle();
+
+  if (previewListingError) {
+    console.error(
+      "Unable to load SMS preview listing:",
+      previewListingError
+    );
+  }
+
+  previewListing = data;
+}
+
+const previewPrice =
+  previewListing?.price
+    ? `$${Number(
+        previewListing.price
+      ).toLocaleString()}`
+    : "";
+
+const pageTitle =
+  previewListing
+    ? `${previewListing.address} | ${cityLabel} Real Estate`
+    : `${cityLabel} Real Estate | Homes for Sale`;
+
+const pageDescription =
+  previewListing
+    ? [
+        previewPrice,
+        previewListing.beds
+          ? `${previewListing.beds} beds`
+          : "",
+        previewListing.baths
+          ? `${previewListing.baths} baths`
+          : "",
+        `${cityLabel}, British Columbia`,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : `Explore homes, condos, townhomes, mobile homes, land, and neighbourhoods across ${cityLabel}, British Columbia.`;
+
+const rawPageOgImage =
+  String(
+    previewListing?.image_url ||
+    heroImageUrl ||
+    ""
+  ).trim();
+
+const pageOgImage =
+  rawPageOgImage &&
+  !/^https?:\/\//i.test(
+    rawPageOgImage
+  )
+    ? new URL(
+        rawPageOgImage,
+        Astro.url.origin
+      ).toString()
+    : rawPageOgImage;
+---
+
+<Layout
+  title={pageTitle}
+  description={pageDescription}
+  ogImage={pageOgImage}
+  accentColor={accentColor}
+  city={city}
+>
+  <SiteNav
+    city={city}
+    site={site}
+    areas={navAreas}
+      intentPages={
+      navIntentPages
+    }
+    showAreaNav={false}
+  />
+
+<RealEstateHomepage
+  mode="city"
+  site={site}
+  city={city}
+  heroImageUrl={heroImageUrl}
+  listings={listings}
+  mapListings={mapListings}
+    locationCards={
+      allLocationCards
+    }
+    filters={filters}
+    totalMatchingCount={
+      listingResult.totalCount
+    }
+    currentPage={
+      listingResult.currentPage
+    }
+    totalPages={
+      listingResult.totalPages
+    }
+    pageSize={
+      listingResult.pageSize
+    }
+    paginationStart={
+      listingResult
+        .paginationStart
+    }
+    paginationEnd={
+      listingResult
+        .paginationEnd
+    }
+    hasPreviousPage={
+      listingResult
+        .hasPreviousPage
+    }
+    hasNextPage={
+      listingResult
+        .hasNextPage
+    }
+    previousPageHref={
+      previousPageHref
+    }
+    nextPageHref={
+      nextPageHref
+    }
+  />
+</Layout>
+

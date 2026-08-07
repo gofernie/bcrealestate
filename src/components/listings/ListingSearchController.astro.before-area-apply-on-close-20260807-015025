@@ -1,0 +1,724 @@
+﻿<script is:inline>
+(() => {
+  const FORM_SELECTOR =
+    "[data-listing-search-form]";
+
+  const FILTER_SELECTOR =
+    "[data-single-select], [data-area-multi-select]";
+
+  const closeAllMenus = (
+    except = null
+  ) => {
+    document
+      .querySelectorAll(
+        FILTER_SELECTOR
+      )
+      .forEach((group) => {
+        if (group === except) {
+          return;
+        }
+
+        group.removeAttribute(
+          "data-open"
+        );
+
+        const trigger =
+          group.querySelector(
+            "[data-single-trigger], [data-area-trigger]"
+          );
+
+        const menu =
+          group.querySelector(
+            "[data-single-menu], [data-area-menu]"
+          );
+
+        trigger?.setAttribute(
+          "aria-expanded",
+          "false"
+        );
+
+        if (
+          menu instanceof
+          HTMLElement
+        ) {
+          menu.hidden = true;
+        }
+      });
+  };
+
+
+  const positionSingleMenu = (
+    group
+  ) => {
+    const trigger =
+      group.querySelector(
+        "[data-single-trigger]"
+      );
+
+    const menu =
+      group.querySelector(
+        "[data-single-menu]"
+      );
+
+    if (
+      !(trigger instanceof HTMLElement) ||
+      !(menu instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    const wasHidden =
+      menu.hidden;
+
+    if (wasHidden) {
+      menu.hidden = false;
+      menu.style.visibility =
+        "hidden";
+    }
+
+    group.classList.remove(
+      "single-filter--open-up"
+    );
+
+    const rect =
+      trigger.getBoundingClientRect();
+
+    const spaceBelow =
+      window.innerHeight -
+      rect.bottom;
+
+    const spaceAbove =
+      rect.top;
+
+    const shouldOpenUp =
+      spaceBelow <
+        menu.scrollHeight + 12 &&
+      spaceAbove > spaceBelow;
+
+    group.classList.toggle(
+      "single-filter--open-up",
+      shouldOpenUp
+    );
+
+    if (wasHidden) {
+      menu.hidden = true;
+      menu.style.visibility = "";
+    }
+  };
+
+
+  const positionAreaMenu = (
+    group
+  ) => {
+    const trigger =
+      group.querySelector(
+        "[data-area-trigger]"
+      );
+
+    const menu =
+      group.querySelector(
+        "[data-area-menu]"
+      );
+
+    if (
+      !(trigger instanceof HTMLElement) ||
+      !(menu instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    const wasHidden =
+      menu.hidden;
+
+    if (wasHidden) {
+      menu.hidden = false;
+      menu.style.visibility =
+        "hidden";
+    }
+
+    menu.style.top = "";
+    menu.style.bottom = "";
+
+    const rect =
+      trigger.getBoundingClientRect();
+
+    const spaceBelow =
+      window.innerHeight -
+      rect.bottom;
+
+    const spaceAbove =
+      rect.top;
+
+    if (
+      spaceBelow <
+        menu.scrollHeight + 12 &&
+      spaceAbove > spaceBelow
+    ) {
+      menu.style.top = "auto";
+      menu.style.bottom =
+        "calc(100% + 6px)";
+    }
+
+    if (wasHidden) {
+      menu.hidden = true;
+      menu.style.visibility = "";
+    }
+  };
+
+
+  const submitForm = (
+    form
+  ) => {
+    if (
+      !(form instanceof
+        HTMLFormElement)
+    ) {
+      return;
+    }
+
+    const url =
+      new URL(
+        form.action,
+        window.location.origin
+      );
+
+    const formData =
+      new FormData(form);
+
+    for (
+      const [
+        key,
+        rawValue
+      ] of formData.entries()
+    ) {
+      const value =
+        String(
+          rawValue
+        ).trim();
+
+      if (!value) {
+        continue;
+      }
+
+      url.searchParams.append(
+        key,
+        value
+      );
+    }
+
+    window.location.assign(
+      url.toString()
+    );
+  };
+
+
+  const initialiseSingleSelect =
+    (group) => {
+      if (
+        group.dataset
+          .listingSearchReady ===
+        "true"
+      ) {
+        return;
+      }
+
+      group.dataset
+        .listingSearchReady =
+        "true";
+
+      const trigger =
+        group.querySelector(
+          "[data-single-trigger]"
+        );
+
+      const menu =
+        group.querySelector(
+          "[data-single-menu]"
+        );
+
+      const summary =
+        group.querySelector(
+          "[data-single-summary]"
+        );
+
+      const input =
+        group.querySelector(
+          "[data-single-input]"
+        );
+
+      const options =
+        group.querySelectorAll(
+          "[data-single-option]"
+        );
+
+      if (
+        !(
+          trigger instanceof
+          HTMLButtonElement
+        ) ||
+        !(
+          menu instanceof
+          HTMLElement
+        ) ||
+        !(
+          input instanceof
+          HTMLInputElement
+        )
+      ) {
+        return;
+      }
+
+      trigger.addEventListener(
+        "click",
+        () => {
+          const willOpen =
+            group.getAttribute(
+              "data-open"
+            ) !== "true";
+
+          closeAllMenus(
+            willOpen
+              ? group
+              : null
+          );
+
+          if (!willOpen) {
+            return;
+          }
+
+          positionSingleMenu(
+            group
+          );
+
+          group.setAttribute(
+            "data-open",
+            "true"
+          );
+
+          trigger.setAttribute(
+            "aria-expanded",
+            "true"
+          );
+
+          menu.hidden = false;
+        }
+      );
+
+
+      options.forEach(
+        (option) => {
+          if (
+            !(
+              option instanceof
+              HTMLButtonElement
+            )
+          ) {
+            return;
+          }
+
+          option.addEventListener(
+            "click",
+            () => {
+              input.value =
+                option.dataset
+                  .value || "";
+
+              if (
+                summary instanceof
+                HTMLElement
+              ) {
+                summary.textContent =
+                  option.dataset
+                    .label || "";
+              }
+
+              options.forEach(
+                (candidate) => {
+                  candidate.classList.toggle(
+                    "is-selected",
+                    candidate ===
+                      option
+                  );
+                }
+              );
+
+              const form =
+                group.closest(
+                  "form"
+                );
+
+              const clearNames =
+                (
+                  group.getAttribute(
+                    "data-clear-names"
+                  ) || ""
+                )
+                  .split(",")
+                  .map(
+                    (name) =>
+                      name.trim()
+                  )
+                  .filter(Boolean);
+
+              clearNames.forEach(
+                (name) => {
+                  const companion =
+                    form?.querySelector(
+                      `input[name="${CSS.escape(
+                        name
+                      )}"]`
+                    );
+
+                  if (
+                    companion instanceof
+                    HTMLInputElement
+                  ) {
+                    companion.value =
+                      "";
+                  }
+                }
+              );
+
+              const hasToggles =
+                group.querySelector(
+                  "[data-single-toggle]"
+                ) !== null;
+
+              if (!hasToggles) {
+                closeAllMenus();
+              }
+
+              submitForm(form);
+            }
+          );
+        }
+      );
+
+
+      group
+        .querySelectorAll(
+          "[data-single-toggle]"
+        )
+        .forEach(
+          (toggle) => {
+            toggle.addEventListener(
+              "change",
+              () => {
+                submitForm(
+                  group.closest(
+                    "form"
+                  )
+                );
+
+                closeAllMenus();
+              }
+            );
+          }
+        );
+    };
+
+
+  const initialiseAreaSelect =
+    (group) => {
+      if (
+        group.dataset
+          .listingSearchReady ===
+        "true"
+      ) {
+        return;
+      }
+
+      group.dataset
+        .listingSearchReady =
+        "true";
+
+      const trigger =
+        group.querySelector(
+          "[data-area-trigger]"
+        );
+
+      const menu =
+        group.querySelector(
+          "[data-area-menu]"
+        );
+
+      const summary =
+        group.querySelector(
+          "[data-area-summary]"
+        );
+
+      const clear =
+        group.querySelector(
+          "[data-area-clear]"
+        );
+
+      const done =
+        group.querySelector(
+          "[data-area-done]"
+        );
+
+      const checkboxes =
+        group.querySelectorAll(
+          "[data-area-option]"
+        );
+
+      if (
+        !(
+          trigger instanceof
+          HTMLButtonElement
+        ) ||
+        !(
+          menu instanceof
+          HTMLElement
+        )
+      ) {
+        return;
+      }
+
+      const updateSummary =
+        () => {
+          const selected =
+            Array.from(
+              checkboxes
+            ).filter(
+              (checkbox) =>
+                checkbox instanceof
+                  HTMLInputElement &&
+                checkbox.checked
+            );
+
+          const labels =
+            selected.map(
+              (checkbox) =>
+                checkbox.dataset
+                  .label ||
+                checkbox.value
+            );
+
+          if (
+            summary instanceof
+            HTMLElement
+          ) {
+            summary.textContent =
+              labels.length === 0
+                ? "All areas"
+                : labels.length === 1
+                  ? labels[0]
+                  : `${labels.length} areas`;
+          }
+        };
+
+      trigger.addEventListener(
+        "click",
+        () => {
+          const willOpen =
+            group.getAttribute(
+              "data-open"
+            ) !== "true";
+
+          closeAllMenus(
+            willOpen
+              ? group
+              : null
+          );
+
+          if (!willOpen) {
+            return;
+          }
+
+          positionAreaMenu(
+            group
+          );
+
+          group.setAttribute(
+            "data-open",
+            "true"
+          );
+
+          trigger.setAttribute(
+            "aria-expanded",
+            "true"
+          );
+
+          menu.hidden = false;
+        }
+      );
+
+      checkboxes.forEach(
+        (checkbox) => {
+          checkbox.addEventListener(
+            "change",
+            updateSummary
+          );
+        }
+      );
+
+      clear?.addEventListener(
+        "click",
+        () => {
+          checkboxes.forEach(
+            (checkbox) => {
+              if (
+                checkbox instanceof
+                HTMLInputElement
+              ) {
+                checkbox.checked =
+                  false;
+              }
+            }
+          );
+
+          updateSummary();
+        }
+      );
+
+      done?.addEventListener(
+        "click",
+        () => {
+          updateSummary();
+
+          closeAllMenus();
+
+          submitForm(
+            group.closest(
+              "form"
+            )
+          );
+        }
+      );
+    };
+
+
+  const initialiseSearch =
+    () => {
+      document
+        .querySelectorAll(
+          "[data-single-select]"
+        )
+        .forEach(
+          initialiseSingleSelect
+        );
+
+      document
+        .querySelectorAll(
+          "[data-area-multi-select]"
+        )
+        .forEach(
+          initialiseAreaSelect
+        );
+    };
+
+
+  document.addEventListener(
+    "submit",
+    (event) => {
+      const form =
+        event.target;
+
+      if (
+        !(
+          form instanceof
+          HTMLFormElement
+        ) ||
+        !form.matches(
+          FORM_SELECTOR
+        )
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+
+      submitForm(form);
+    }
+  );
+
+
+  document.addEventListener(
+    "click",
+    (event) => {
+      const target =
+        event.target;
+
+      if (
+        !(
+          target instanceof
+          Element
+        )
+      ) {
+        return;
+      }
+
+      if (
+        !target.closest(
+          FILTER_SELECTOR
+        )
+      ) {
+        closeAllMenus();
+      }
+    }
+  );
+
+
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (
+        event.key ===
+        "Escape"
+      ) {
+        closeAllMenus();
+      }
+    }
+  );
+
+
+  const repositionMenus =
+    () => {
+      document
+        .querySelectorAll(
+          '[data-single-select][data-open="true"]'
+        )
+        .forEach(
+          positionSingleMenu
+        );
+
+      document
+        .querySelectorAll(
+          '[data-area-multi-select][data-open="true"]'
+        )
+        .forEach(
+          positionAreaMenu
+        );
+    };
+
+  window.addEventListener(
+    "scroll",
+    repositionMenus,
+    {
+      passive: true,
+    }
+  );
+
+  window.addEventListener(
+    "resize",
+    repositionMenus
+  );
+
+
+  if (
+    document.readyState ===
+    "loading"
+  ) {
+    document.addEventListener(
+      "DOMContentLoaded",
+      initialiseSearch,
+      {
+        once: true,
+      }
+    );
+  } else {
+    initialiseSearch();
+  }
+})();
+</script>
