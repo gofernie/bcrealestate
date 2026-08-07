@@ -155,6 +155,30 @@ export async function sendSavedSearchNotifications(
         env.RESEND_API_KEY
       );
 
+    const emailNewMlsNumbers =
+      orderedListings
+        .map((listing: any) =>
+          String(
+            listing.mls_number ||
+            ""
+          )
+        )
+        .filter(Boolean)
+        .slice(0, 20);
+
+    const encodedEmailNewMatches =
+      encodeURIComponent(
+        emailNewMlsNumbers.join(",")
+      );
+
+    const newMatchesUrl =
+      siteUrl &&
+      encodedEmailNewMatches
+        ? `${siteUrl}/${savedSearch.city}?new=${encodedEmailNewMatches}#new-matches`
+        : siteUrl
+          ? `${siteUrl}/${savedSearch.city}#new-matches`
+          : "#";
+
     const listingHtml =
       orderedListings
         .map(
@@ -166,55 +190,129 @@ export async function sendSavedSearchNotifications(
                   ).toLocaleString()}`
                 : "Price unavailable";
 
+            const mlsNumber =
+              String(
+                listing.mls_number ||
+                ""
+              );
+
+            const imageUrl =
+              String(
+                listing.image_url ||
+                ""
+              ).trim();
+
             const href =
-              siteUrl
+              siteUrl &&
+              mlsNumber
                 ? `${siteUrl}/${savedSearch.city}?listing=${encodeURIComponent(
-                    listing.mls_number
-                  )}`
+                    mlsNumber
+                  )}${
+                    encodedEmailNewMatches
+                      ? `&new=${encodedEmailNewMatches}`
+                      : ""
+                  }#new-matches`
                 : "#";
 
             return `
               <div
                 style="
-                  padding:16px 0;
-                  border-bottom:1px solid #e7e7e7;
+                  margin:0 0 22px;
+                  overflow:hidden;
+                  border:1px solid #e1e5e3;
+                  border-radius:10px;
+                  background:#ffffff;
                 "
               >
-                <strong>
-                  ${price}
-                </strong>
-
-                <div>
-                  ${listing.address || ""}
-                </div>
-
-                <div
-                  style="
-                    color:#65716c;
-                    font-size:13px;
-                  "
-                >
-                  ${listing.beds ?? "-"} beds Â·
-                  ${listing.baths ?? "-"} baths
-                </div>
-
                 ${
-                  href !== "#"
+                  imageUrl
                     ? `
-                      <div
+                      <a
+                        href="${href}"
                         style="
-                          margin-top:8px;
+                          display:block;
+                          text-decoration:none;
                         "
                       >
-                        <a
-                          href="${href}"
-                        >
-                          View home
-                        </a>
-                      </div>
+                        <img
+                          src="${imageUrl}"
+                          alt="${listing.address || "New listing"}"
+                          width="600"
+                          style="
+                            display:block;
+                            width:100%;
+                            height:auto;
+                            max-height:320px;
+                            object-fit:cover;
+                            border:0;
+                          "
+                        />
+                      </a>
                     `
                     : ""
                 }
+
+                <div
+                  style="
+                    padding:16px 18px 18px;
+                  "
+                >
+                  <strong
+                    style="
+                      display:block;
+                      margin-bottom:4px;
+                      color:#14201c;
+                      font-size:18px;
+                    "
+                  >
+                    ${price}
+                  </strong>
+
+                  <div
+                    style="
+                      margin-bottom:3px;
+                      color:#14201c;
+                      font-size:15px;
+                      font-weight:600;
+                    "
+                  >
+                    ${listing.address || ""}
+                  </div>
+
+                  <div
+                    style="
+                      margin-bottom:12px;
+                      color:#65716c;
+                      font-size:13px;
+                    "
+                  >
+                    ${listing.beds ?? "-"} beds
+                    &middot;
+                    ${listing.baths ?? "-"} baths
+                  </div>
+
+                  ${
+                    href !== "#"
+                      ? `
+                        <a
+                          href="${href}"
+                          style="
+                            display:inline-block;
+                            padding:10px 15px;
+                            border-radius:6px;
+                            background:#14201c;
+                            color:#ffffff;
+                            font-size:13px;
+                            font-weight:700;
+                            text-decoration:none;
+                          "
+                        >
+                          View home
+                        </a>
+                      `
+                      : ""
+                  }
+                </div>
               </div>
             `;
           }
@@ -233,11 +331,9 @@ export async function sendSavedSearchNotifications(
           ],
 
           subject:
-            `${count} new ${
-              count === 1
-                ? "home"
-                : "homes"
-            } match your ${cityLabel} search`,
+            count === 1
+              ? `A new ${cityLabel} home just matched your search`
+              : `${count} new ${cityLabel} homes just matched your search`,
 
           html: `
             <div
@@ -249,13 +345,55 @@ export async function sendSavedSearchNotifications(
                 line-height:1.5;
               "
             >
-              <h2>
+              <h2
+                style="
+                  margin:0 0 8px;
+                  color:#14201c;
+                  font-size:26px;
+                  line-height:1.25;
+                "
+              >
                 ${
                   count === 1
-                    ? "A new home matches your search."
-                    : `${count} new homes match your search.`
+                    ? `🏡 A new ${cityLabel} home just matched your search`
+                    : `🏡 ${count} new ${cityLabel} homes just matched your search`
                 }
               </h2>
+
+              <p
+                style="
+                  margin:0 0 22px;
+                  color:#65716c;
+                  font-size:14px;
+                "
+              >
+                These are the homes that triggered your alert.
+              </p>
+
+
+              ${
+                newMatchesUrl !== "#"
+                  ? `
+                    <div style="margin:20px 0 24px;">
+                      <a
+                        href="${newMatchesUrl}"
+                        style="
+                          display:inline-block;
+                          padding:12px 18px;
+                          border-radius:7px;
+                          background:#14201c;
+                          color:#ffffff;
+                          font-size:14px;
+                          font-weight:700;
+                          text-decoration:none;
+                        "
+                      >
+                        View all new matches
+                      </a>
+                    </div>
+                  `
+                  : ""
+              }
 
               ${listingHtml}
             </div>
@@ -404,3 +542,4 @@ const body =
       notificationIds.length,
   };
 }
+

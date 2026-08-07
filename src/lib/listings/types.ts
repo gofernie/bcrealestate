@@ -1,4 +1,4 @@
-export type ListingSort =
+﻿export type ListingSort =
   | "newest"
   | "price-low"
   | "price-high";

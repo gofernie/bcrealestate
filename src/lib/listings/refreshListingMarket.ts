@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+﻿import { createClient } from "@supabase/supabase-js";
 import { rebuildListingRows } from "../../scripts/rebuild-listing-rows";
 
 const PAGE_SIZE = 50;
@@ -354,7 +354,7 @@ export async function refreshListingMarket(
         );
         params.set(
           "include",
-          "details,address,images,rooms"
+         "details,address,images,rooms,lot"
         );
         params.set("status", "A");
 
@@ -917,6 +917,7 @@ const metadata = {
     throw error;
   }
 }
+
 
 
 

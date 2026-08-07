@@ -1,11 +1,55 @@
----
+﻿---
 import CityHomepage from "../../components/homepages/CityHomepage.astro";
+import { getSite, getSiteMarkets } from "../../lib/getSite";
 
 export const prerender = false;
 
-const city = String(Astro.params.city || "nanaimo")
+const requestedCity = String(Astro.params.city || "nanaimo")
   .toLowerCase()
-  .trim();
+  .trim()
+  .replace(/\s+/g, "-");
+
+const hostname = Astro.url.hostname
+  .toLowerCase()
+  .replace(/^www\./, "");
+
+const isNetworkHost =
+  hostname === "bc.realestate" ||
+  hostname === "localhost" ||
+  hostname === "127.0.0.1" ||
+  hostname.endsWith(".netlify.app");
+
+const site = isNetworkHost
+  ? await getSite(hostname, requestedCity)
+  : await getSite(hostname);
+
+if (site && !isNetworkHost) {
+  const siteMarkets = await getSiteMarkets(String(site.id || ""));
+
+  const primaryCity = String(
+    site.primaryCity ||
+    site.primary_city ||
+    site.city ||
+    "nanaimo"
+  )
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-");
+
+  const allowedCities = new Set([
+    primaryCity,
+    ...siteMarkets.map((market: any) =>
+      String(market.city || "")
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, "-")
+    ),
+  ]);
+
+  if (!allowedCities.has(requestedCity)) {
+    return Astro.redirect(`/${primaryCity}`, 302);
+  }
+}
 ---
 
-<CityHomepage city={city} />
+<CityHomepage city={requestedCity} site={site} />

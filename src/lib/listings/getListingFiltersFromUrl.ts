@@ -1,4 +1,4 @@
-import type { ListingFilters } from "./types";
+﻿import type { ListingFilters } from "./types";
 
 function optionalNumber(
   value: string | null

@@ -1319,6 +1319,240 @@ const getSqft = (listing: any) => {
   return null;
 };
 
+
+const getNormalizedLotSize = (listing: any) => {
+  /* STRUCTURED REPLIERS LOT DATA */
+  const structuredSquareFeet = Number(
+    listing?.lot?.squareFeet || 0
+  );
+
+  const structuredAcres = Number(
+    listing?.lot?.acres || 0
+  );
+
+  const structuredSize = Number(
+    listing?.lot?.size || 0
+  );
+
+  const structuredMeasurement = String(
+    listing?.lot?.measurement || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const hasStructuredSquareFeet =
+    Number.isFinite(structuredSquareFeet) &&
+    structuredSquareFeet > 0;
+
+  const hasStructuredAcres =
+    Number.isFinite(structuredAcres) &&
+    structuredAcres > 0;
+
+  const hasStructuredSize =
+    Number.isFinite(structuredSize) &&
+    structuredSize > 0;
+
+  let finalSquareFeet: number | null =
+    hasStructuredSquareFeet
+      ? structuredSquareFeet
+      : null;
+
+  let finalAcres: number | null =
+    hasStructuredAcres
+      ? structuredAcres
+      : null;
+
+  if (
+    hasStructuredSize &&
+    !finalSquareFeet &&
+    /square feet|sq\.?\s*ft|sqft/.test(
+      structuredMeasurement
+    )
+  ) {
+    finalSquareFeet = structuredSize;
+  }
+
+  if (
+    hasStructuredSize &&
+    !finalAcres &&
+    /acres?|\bac\b/.test(
+      structuredMeasurement
+    )
+  ) {
+    finalAcres = structuredSize;
+  }
+
+  if (!finalSquareFeet && finalAcres) {
+    finalSquareFeet = finalAcres * 43560;
+  }
+
+  if (!finalAcres && finalSquareFeet) {
+    finalAcres = finalSquareFeet / 43560;
+  }
+
+  if (finalSquareFeet || finalAcres) {
+    return {
+      lotSizeSqft:
+        finalSquareFeet
+          ? Math.round(finalSquareFeet)
+          : null,
+
+      lotSizeAcres:
+        finalAcres
+          ? Number(finalAcres.toFixed(4))
+          : null,
+    };
+  }
+
+  const rawValue =
+    listing?.lot_size ||
+    listing?.lotSize ||
+    listing?.lot_area ||
+    listing?.lotArea ||
+    listing?.details?.lotSize ||
+    listing?.details?.lotArea ||
+    listing?.raw?.lot_size ||
+    listing?.raw?.lotSize ||
+    listing?.raw?.details?.lotSize ||
+    listing?.raw?.details?.lotArea ||
+    null;
+
+  const separateUnits = String(
+    listing?.lot_size_units ||
+      listing?.lotSizeUnits ||
+      listing?.lot_units ||
+      listing?.lotUnits ||
+      listing?.details?.lotSizeUnits ||
+      listing?.details?.lotAreaUnits ||
+      listing?.raw?.details?.lotSizeUnits ||
+      listing?.raw?.details?.lotAreaUnits ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
+
+  let value: unknown = rawValue;
+  let units = separateUnits;
+
+  if (
+    rawValue &&
+    typeof rawValue === "object"
+  ) {
+    value =
+      rawValue.value ||
+      rawValue.amount ||
+      rawValue.size ||
+      rawValue.area ||
+      null;
+
+    units = String(
+      rawValue.units ||
+        rawValue.unit ||
+        rawValue.uom ||
+        separateUnits ||
+        ""
+    )
+      .trim()
+      .toLowerCase();
+  }
+
+  const rawText = String(value || "").trim();
+  const combinedText = `${rawText} ${units}`
+    .trim()
+    .toLowerCase();
+
+  const numericValue = Number(
+    rawText.replace(/,/g, "").replace(/[^0-9.]/g, "")
+  );
+
+  let acres: number | null = null;
+  let squareFeet: number | null = null;
+
+  if (
+    Number.isFinite(numericValue) &&
+    numericValue > 0
+  ) {
+    if (
+      /\bacres?\b|\bac\b/.test(combinedText)
+    ) {
+      acres = numericValue;
+      squareFeet = acres * 43560;
+    } else if (
+      /\bhectares?\b|\bha\b/.test(combinedText)
+    ) {
+      acres = numericValue * 2.47105381;
+      squareFeet = acres * 43560;
+    } else if (
+      /sq\.?\s*ft|sqft|square\s*feet|square\s*foot|\bft2\b/.test(
+        combinedText
+      )
+    ) {
+      squareFeet = numericValue;
+      acres = squareFeet / 43560;
+    } else if (
+      /sq\.?\s*m|sqm|square\s*met(?:er|re)s?|\bm2\b/.test(
+        combinedText
+      )
+    ) {
+      squareFeet = numericValue * 10.7639104;
+      acres = squareFeet / 43560;
+    }
+  }
+
+  if (!acres || !squareFeet) {
+    const description = getDescription(listing);
+
+    const acreageMatch = description.match(
+      /(?:lot|property|parcel|site|land)?[^.\n]{0,40}?([\d,.]+)\s*(?:acres?|ac)\b/i
+    );
+
+    if (acreageMatch?.[1]) {
+      const parsedAcres = Number(
+        acreageMatch[1].replace(/,/g, "")
+      );
+
+      if (Number.isFinite(parsedAcres) && parsedAcres > 0) {
+        acres = parsedAcres;
+        squareFeet = parsedAcres * 43560;
+      }
+    }
+  }
+
+  if (!acres || !squareFeet) {
+    const description = getDescription(listing);
+
+    const lotSqftMatch = description.match(
+      /(?:lot|parcel|site)[^.\n]{0,40}?([\d,]+)\s*(?:sq\.?\s*ft\.?|sqft|square\s*feet)/i
+    );
+
+    if (lotSqftMatch?.[1]) {
+      const parsedSquareFeet = Number(
+        lotSqftMatch[1].replace(/,/g, "")
+      );
+
+      if (
+        Number.isFinite(parsedSquareFeet) &&
+        parsedSquareFeet > 0
+      ) {
+        squareFeet = parsedSquareFeet;
+        acres = parsedSquareFeet / 43560;
+      }
+    }
+  }
+
+  return {
+    lotSizeSqft:
+      squareFeet && Number.isFinite(squareFeet)
+        ? Math.round(squareFeet)
+        : null,
+
+    lotSizeAcres:
+      acres && Number.isFinite(acres)
+        ? Number(acres.toFixed(4))
+        : null,
+  };
+};
+
 const getDescription = (listing: any) =>
   text(
     listing?.description ||
@@ -1507,10 +1741,74 @@ function getAreaFromPolygon(city: string, lat: number, lng: number): string | nu
 
   const rowMap = new Map<string, any>();
 
+  let lotSizeDebugCount = 0;
+  let realLotFieldDebugCount = 0;
   for (const snapshot of snapshots || []) {
     if (!Array.isArray(snapshot.listings)) continue;
 
-    for (const listing of snapshot.listings) {
+    for (const listing of snapshot.listings) {      if (realLotFieldDebugCount < 12) {
+        const mergedDetails = {
+          ...(listing?.raw?.details || {}),
+          ...(listing?.details || {}),
+        };
+
+        const topLevelFields = Object.fromEntries(
+          Object.entries(listing || {}).filter(([key]) =>
+            /lot|land|acre|front|depth|parcel|site/i.test(key)
+          )
+        );
+
+        const detailFields = Object.fromEntries(
+          Object.entries(mergedDetails).filter(([key]) =>
+            /lot|land|acre|front|depth|parcel|site/i.test(key)
+          )
+        );
+
+        console.log("LOT FIELD INSPECTION", {
+          id:
+            listing?.mlsNumber ||
+            listing?.mls_number ||
+            listing?.id ||
+            "",
+          address: getNormalizedAddress(listing),
+          topLevelFields,
+          detailFields,
+          topLevelKeys: Object.keys(listing || {}),
+          detailKeys: Object.keys(mergedDetails),
+        });
+
+        realLotFieldDebugCount++;
+      }
+
+      const rawLotSize =
+        listing?.lot_size ||
+        listing?.lotSize ||
+        listing?.details?.lotSize ||
+        listing?.raw?.details?.lotSize ||
+        null;
+
+      if (rawLotSize && lotSizeDebugCount < 20) {
+        console.log("LOT SIZE DEBUG", {
+          id:
+            listing?.mlsNumber ||
+            listing?.mls_number ||
+            listing?.id ||
+            "",
+          address: getNormalizedAddress(listing),
+          value: rawLotSize,
+          valueType: typeof rawLotSize,
+          detailsKeys:
+            listing?.details &&
+            typeof listing.details === "object"
+              ? Object.keys(listing.details).filter((key) =>
+                  /lot|acre|land/i.test(key)
+                )
+              : [],
+        });
+
+        lotSizeDebugCount++;
+      }
+
       const id = getId(listing);
       if (!id) continue;
 
@@ -1768,6 +2066,9 @@ const finalImageUrl =
       fallbackImages?.image_url ||
       null;
 
+const normalizedLotSize =
+  getNormalizedLotSize(listing);
+
      rowMap.set(id, {
   id,
   mls_number: id,
@@ -1812,6 +2113,12 @@ baths: numOrNull(
 ),
 
 sqft: getSqft(listing),
+
+lot_size_sqft:
+  normalizedLotSize.lotSizeSqft,
+
+lot_size_acres:
+  normalizedLotSize.lotSizeAcres,
 
 address: getNormalizedAddress(listing),
 

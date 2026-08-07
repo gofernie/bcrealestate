@@ -1,0 +1,271 @@
+﻿---
+import ListingCard from "../ListingCard.astro";
+import ListingSearchForm from "../listings/ListingSearchForm.astro";
+import ListingSearchController from "../listings/ListingSearchController.astro";
+import SlugSaveSearch from "../SlugSaveSearch.astro";
+import RelatedIntentCards from "../RelatedIntentCards.astro";
+
+type Props = {
+  city: string;
+  cityLabel: string;
+
+  page: any;
+
+  listings: any[];
+  areas?: string[];
+
+  floorplansByListing?: Map<string, any[]>;
+  roomsByListing?: Map<string, any[]>;
+
+  relatedIntentPages?: any[];
+
+  resultCount?: number;
+
+  heading?: string;
+
+  propertyType?: string | null;
+};
+
+const {
+  city,
+  cityLabel,
+  page,
+  listings = [],
+  areas = [],
+  floorplansByListing = new Map(),
+  roomsByListing = new Map(),
+  relatedIntentPages = [],
+  resultCount = listings.length,
+  heading = "",
+  propertyType = null,
+} = Astro.props;
+
+const cleanHeading =
+  heading ||
+  page?.hero_heading ||
+  page?.title ||
+  `${cityLabel} Real Estate`;
+
+const listingKey = (listing: any) =>
+  String(
+    listing?.id ||
+    listing?.mls_number ||
+    ""
+  );
+---
+
+<div class="city-slug-page">
+
+  <section class="city-slug-page__intro">
+    <p class="city-slug-page__eyebrow">
+      {page?.area
+        ? `${cityLabel} neighbourhood`
+        : propertyType
+          ? `${cityLabel} ${propertyType}`
+          : `${cityLabel} real estate`}
+    </p>
+
+    <h1>{cleanHeading}</h1>
+
+    {page?.intro && (
+      <p class="city-slug-page__intro-copy">
+        {page.intro}
+      </p>
+    )}
+  </section>
+
+
+  <ListingSearchForm
+    city={city}
+    areas={areas}
+    pageArea={page?.area || null}
+    propertyType={propertyType}
+  />
+
+  <section class="city-slug-page__search-heading">
+    <h2>
+      {page?.area
+        ? `${page.area} Homes`
+        : propertyType
+          ? `${cityLabel} ${propertyType}`
+          : `${cityLabel} Homes`}
+    </h2>
+
+    <span>
+      {resultCount.toLocaleString()} listings
+    </span>
+  </section>
+
+
+  <SlugSaveSearch
+    city={city}
+    area={page?.area}
+    propertyType={propertyType}
+    minPrice={page?.price_min}
+    maxPrice={page?.price_max}
+    waterfrontType={page?.waterfront_type}
+    requiresWaterfront={page?.requires_waterfront}
+    requiresOceanView={page?.requires_ocean_view}
+  />
+
+
+  <section
+    class="city-slug-listings"
+    aria-label="Listings"
+  >
+    <div class="bc-listing-grid">
+      {listings.map((listing, index) => (
+        <ListingCard
+          listing={listing}
+          priority={index < 4}
+          floorplans={
+            floorplansByListing.get(
+              listingKey(listing)
+            ) || []
+          }
+          rooms={
+            roomsByListing.get(
+              listingKey(listing)
+            ) || []
+          }
+        />
+      ))}
+    </div>
+  </section>
+
+
+  {relatedIntentPages.length > 0 && (
+    <RelatedIntentCards
+      city={city}
+      pages={relatedIntentPages}
+    />
+  )}
+
+</div>
+
+
+
+<ListingSearchController />
+
+<style>
+  .city-slug-page {
+    width: min(
+      1240px,
+      calc(100% - 48px)
+    );
+    margin: 0 auto;
+    padding: 32px 0 80px;
+  }
+
+  .city-slug-page__intro {
+    margin-bottom: 32px;
+  }
+
+  .city-slug-page__eyebrow {
+    margin: 0 0 10px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .city-slug-page__intro h1 {
+    margin: 0;
+    font-size: clamp(
+      2.4rem,
+      5vw,
+      4.6rem
+    );
+    line-height: 0.98;
+    letter-spacing: -0.045em;
+  }
+
+  .city-slug-page__intro-copy {
+    max-width: 720px;
+    margin: 20px 0 0;
+    font-size: 1.05rem;
+    line-height: 1.7;
+  }
+
+  .city-slug-page__search-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 18px;
+  }
+
+  .city-slug-page__search-heading h2 {
+    margin: 0;
+    font-size: clamp(
+      1.55rem,
+      3vw,
+      2.25rem
+    );
+  }
+
+  .city-slug-page__search-heading span {
+    font-size: 0.85rem;
+    opacity: 0.7;
+  }
+
+  .city-slug-listings {
+    margin-top: 28px;
+  }
+
+  .bc-listing-grid {
+    display: grid;
+    grid-template-columns:
+      repeat(
+        4,
+        minmax(0, 1fr)
+      );
+    gap: 24px;
+  }
+
+  .bc-listing-grid > * {
+    min-width: 0;
+  }
+
+  @media (max-width: 1100px) {
+    .bc-listing-grid {
+      grid-template-columns:
+        repeat(
+          3,
+          minmax(0, 1fr)
+        );
+    }
+  }
+
+  @media (max-width: 760px) {
+    .city-slug-page {
+      width: calc(100% - 32px);
+      padding-top: 22px;
+    }
+
+    .bc-listing-grid {
+      grid-template-columns:
+        repeat(
+          2,
+          minmax(0, 1fr)
+        );
+    }
+  }
+
+  @media (max-width: 500px) {
+    .city-slug-page {
+      width: calc(100% - 24px);
+    }
+
+    .bc-listing-grid {
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+
+    .city-slug-page__search-heading {
+      align-items: start;
+      flex-direction: column;
+      gap: 6px;
+    }
+  }
+</style>

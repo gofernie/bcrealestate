@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   SupabaseClient,
 } from "@supabase/supabase-js";
 
@@ -29,6 +29,7 @@ fourBedsTogether?: boolean;
 hasFloorplan?: boolean;
 hasUpdatedKitchen?: boolean;
 hasDetachedShop?: boolean;
+oceanView?: boolean;
 
   sort?: ListingSort | string;
 
@@ -237,6 +238,9 @@ const hasUpdatedKitchen =
 const hasDetachedShop =
   options.hasDetachedShop === true;
 
+const oceanView =
+  options.oceanView === true;
+
   const sort =
     normalizeSort(options.sort);
 
@@ -380,6 +384,12 @@ if (hasUpdatedKitchen) {
 if (hasDetachedShop) {
   query = query.eq(
     "has_detached_shop",
+    true
+  );
+}
+if (oceanView) {
+  query = query.eq(
+    "ocean_view",
     true
   );
 }
@@ -587,6 +597,12 @@ if (hasUpdatedKitchen) {
 if (hasDetachedShop) {
   query = query.eq(
     "has_detached_shop",
+    true
+  );
+}
+if (oceanView) {
+  query = query.eq(
+    "ocean_view",
     true
   );
 }
