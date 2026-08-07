@@ -1,9 +1,7 @@
 ﻿---
 import { createClient } from "@supabase/supabase-js";
 import Layout from "../../layouts/Layout.astro";
-import CitySlugPage from "../../components/pages/CitySlugPage.astro";
 import SlugSaveSearch from "../../components/SlugSaveSearch.astro";
-import ListingCard from "../../components/ListingCard.astro";
 import IntentModalController from "../../components/IntentModalController.astro";
 import SiteNav from "../../components/SiteNav.astro";
 import { getSite } from "../../lib/getSite";
@@ -14,7 +12,6 @@ import RelatedIntentCards from "../../components/RelatedIntentCards.astro";
 import { getNavIntentPages } from "../../lib/getNavIntentPages";
 import MobileHomeAreaPage from "../../components/sites/MobileHomeAreaPage.astro";
 export const prerender = false;
-const USE_NEW_CITY_SLUG_PAGE = true;
 const supabase = createClient(
   import.meta.env.PUBLIC_SUPABASE_URL,
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
@@ -113,8 +110,6 @@ if (sharedListingId) {
       beds,
       baths,
       sqft,
-  lot_size_sqft,
-  lot_size_acres,
       normalized_city,
       normalized_type,
       image_url,
@@ -918,34 +913,13 @@ const { data: areaIntentPages = [] } = await areaIntentQuery
   .order("area", { ascending: true });
 logPhaseTiming("census amenities nav and area context");
 
+const hasPolygonSearch = Boolean(page.polygon_geojson?.coordinates?.[0]?.length);
 const searchParams = Astro.url.searchParams;
 
-const filterAreas = searchParams
-  .getAll("area")
-  .map((value) =>
-    String(value || "")
-      .trim()
-      .toLowerCase()
-  )
-  .filter(Boolean);
-
-const filterArea =
-  filterAreas[0] || "";
-
-const hasPolygonSearch =
-  !filterArea &&
-  Boolean(
-    page.polygon_geojson?.coordinates?.[0]?.length
-  );
-
+const filterArea = String(searchParams.get("area") || "").trim().toLowerCase();
 const filterBeds = Number(searchParams.get("beds") || 0);
 const filterPrice = String(searchParams.get("price") || "").trim();
 const filterSort = String(searchParams.get("sort") || "").trim();
-const filterType = String(searchParams.get("type") || "").trim().toLowerCase();
-const filterMaxPrice = Number(searchParams.get("maxPrice") || 0);
-const filterPrimaryOnMain = ["1", "true"].includes(String(searchParams.get("primaryOnMain") || "").toLowerCase());
-const filterBedsTogether = ["1", "true"].includes(String(searchParams.get("bedsTogether") || "").toLowerCase());
-const filterFourBedsTogether = ["1", "true"].includes(String(searchParams.get("fourBedsTogether") || "").toLowerCase());
 const hasActiveSearchFilters =
   !!filterArea ||
   filterBeds > 0 ||
@@ -1003,7 +977,7 @@ let query = supabase
   .eq("status", "A")
   .eq("normalized_city", city);
 
-if (page.area && !filterArea && !hasPolygonSearch) {
+if (page.area && !hasPolygonSearch) {
 const normalizedPageArea = String(page.area)
     .toLowerCase()
     .trim()
@@ -1050,47 +1024,14 @@ const effectivePropertyType =
   normalizedPropertyType ||
   (site?.isPropertyTypeSite ? sitePrimaryType : "");
 
-if (effectivePropertyType && !filterType) {
+if (effectivePropertyType) {
   query = query.eq(
     "normalized_type",
     effectivePropertyType
   );
 }
-/* HOMEPAGE FILTER CONTRACT */
-if (filterType) {
-  query = query.eq("normalized_type", filterType);
-}
-
-if (filterMaxPrice > 0) {
-  query = query.lte("price", filterMaxPrice);
-}
-
-if (filterPrimaryOnMain) {
-  query = query.eq("primary_on_main", true);
-}
-
-if (filterBedsTogether) {
-  query = query.eq("three_plus_beds_same_floor", true);
-}
-
-if (filterFourBedsTogether) {
-  query = query.eq("four_plus_beds_same_floor", true);
-}
-
-if (filterAreas.length > 0) {
-  const normalizedFilterAreas = Array.from(
-    new Set(
-      filterAreas.flatMap((area) => [
-        area,
-        area.replace(/-/g, " "),
-      ])
-    )
-  );
-
-  query = query.in(
-    "normalized_area",
-    normalizedFilterAreas
-  );
+if (filterArea) {
+  query = query.eq("normalized_area", filterArea);
 }
 
 if (filterBeds > 0) {
@@ -1158,12 +1099,7 @@ if (pageKind === "intent") {
     query = query.eq("waterfront", true);
   }
 
-  const oceanViewRequested =
-    page.requires_ocean_view ||
-    Astro.url.searchParams.get("oceanView") === "true" ||
-    Astro.url.searchParams.get("oceanView") === "1";
-
-  if (oceanViewRequested) {
+  if (page.requires_ocean_view) {
     query = query.eq("ocean_view", true);
   }
 }
@@ -1204,9 +1140,9 @@ const defaultSort =
   page.default_sort ||
   "newest";
 
-if (defaultSort === "price-asc" || defaultSort === "price-low") {
+if (defaultSort === "price-asc") {
   query = query.order("price", { ascending: true });
-} else if (defaultSort === "price-desc" || defaultSort === "price-high") {
+} else if (defaultSort === "price-desc") {
   query = query.order("price", { ascending: false });
 } else if (defaultSort === "beds-desc") {
   query = query.order("beds", { ascending: false });
@@ -1827,7 +1763,7 @@ if (typePageMedianPrice > 0) {
       typePageMedianPrice
     )}.`,
     description:
-      "Half of these homes are listed above this price, and half are listed below it.",
+      "The median is the midpoint of current asking prices, so half the listings are priced above it and half below it.",
   });
 }
 
@@ -1880,16 +1816,14 @@ if (
     (Number(typeCount) / listingCount) * 100
   );
 
-  if (!effectivePropertyType) {
   discoveryFacts.push({
     kicker: "Housing mix",
     title: `${typeShare}% of these listings are ${titleCase(
       typeName
     ).toLowerCase()} properties.`,
     description:
-      "As new listings reach the market, this mix may change.",
+      "The mix can shift as new listings reach the market, especially in searches with limited inventory.",
   });
-  }
 }
 
 const bedroomCounts = listings.reduce(
@@ -1940,7 +1874,7 @@ if (waterfrontCount > 0) {
       "listing"
     )} is marked as waterfront.`,
     description:
-      "Waterfront homes may include ocean, lake, river, or other shoreline settings.",
+      "Waterfront classifications can include ocean, lake, river, and other shoreline settings.",
   });
 }
 
@@ -2019,84 +1953,12 @@ const primaryOnMainCount = countListingsWith(
 if (primaryOnMainCount > 0) {
   discoveryFacts.push({
     kicker: "Home layouts",
-    title:
-      primaryOnMainCount === 1
-        ? "1 home has the primary bedroom on the main floor."
-        : `${primaryOnMainCount.toLocaleString()} homes have the primary bedroom on the main floor.`,
+    title: `${pluralizeFact(
+      primaryOnMainCount,
+      "home"
+    )} has the primary bedroom on the main floor.`,
     description:
       "Main-floor primary bedrooms are often sought by downsizers and buyers planning for long-term accessibility.",
-  });
-}
-
-const threeBedroomsTogetherCount = countListingsWith(
-  (listing) =>
-    listing.three_plus_beds_same_floor === true
-);
-
-if (threeBedroomsTogetherCount > 0) {
-  discoveryFacts.push({
-    kicker: "Bedroom layouts",
-    title:
-      threeBedroomsTogetherCount === 1
-        ? "1 home has at least three bedrooms on the same floor."
-        : `${threeBedroomsTogetherCount.toLocaleString()} homes have at least three bedrooms on the same floor.`,
-    description:
-      "Keeping three bedrooms together can be useful for families who prefer sleeping areas on one level.",
-  });
-}
-
-const fourBedroomsTogetherCount = countListingsWith(
-  (listing) =>
-    listing.four_plus_beds_same_floor === true
-);
-
-if (fourBedroomsTogetherCount > 0) {
-  discoveryFacts.push({
-    kicker: "Bedroom layouts",
-    title:
-      fourBedroomsTogetherCount === 1
-        ? "1 home has at least four bedrooms on the same floor."
-        : `${fourBedroomsTogetherCount.toLocaleString()} homes have at least four bedrooms on the same floor.`,
-    description:
-      "Four bedrooms on one level can be especially useful for larger households seeking a more traditional bedroom layout.",
-  });
-}
-
-
-const largeLotCount = countListingsWith(
-  (listing) => {
-    const acres = Number(listing.lot_size_acres || 0);
-
-    return acres >= 0.25 && acres < 1;
-  }
-);
-
-if (largeLotCount > 0) {
-  discoveryFacts.push({
-    kicker: "Larger lots",
-    title:
-      largeLotCount === 1
-        ? "1 home sits on at least a quarter acre."
-        : `${largeLotCount.toLocaleString()} homes sit on lots of at least a quarter acre.`,
-    description:
-      "These properties have between 0.25 and just under 1 acre of land.",
-  });
-}
-
-const acreageCount = countListingsWith(
-  (listing) =>
-    Number(listing.lot_size_acres || 0) >= 1
-);
-
-if (acreageCount > 0) {
-  discoveryFacts.push({
-    kicker: "Acreage",
-    title:
-      acreageCount === 1
-        ? "1 property offers at least 1 acre of land."
-        : `${acreageCount.toLocaleString()} properties offer at least 1 acre of land.`,
-    description:
-      "Acreage properties can offer more privacy, outdoor space, and flexibility for rural uses.",
   });
 }
 
@@ -2385,70 +2247,6 @@ const nanaimoTriviaFacts = [
 if (String(city || "").toLowerCase() === "nanaimo") {
   discoveryFacts.push(...nanaimoTriviaFacts);
 }
-
-
-/* BALANCE DISCOVERY FACT CATEGORIES */
-if (discoveryFacts.length > 1) {
-  const amenityFacts: typeof discoveryFacts = [];
-  const communityFacts: typeof discoveryFacts = [];
-  const marketFacts: typeof discoveryFacts = [];
-
-  const amenityKickerPattern =
-    /grocery|groceries|medical|health|transit|school|childcare|playground|park|trail|beach|recreation|golf|marina|boating|ev charging|everyday essentials|outdoor choices|family amenities/i;
-
-  const communityKickerPattern =
-    /population|demographic|household|income|ownership|owner|renter|age profile|community profile|local population|nanaimo geography|harbour city|lake country|island connections|outdoor city/i;
-
-  for (const fact of discoveryFacts) {
-    const searchableText = [
-      fact?.kicker,
-      fact?.title,
-      fact?.description,
-    ]
-      .filter(Boolean)
-      .join(" ");
-
-    if (amenityKickerPattern.test(searchableText)) {
-      amenityFacts.push(fact);
-      continue;
-    }
-
-    if (communityKickerPattern.test(searchableText)) {
-      communityFacts.push(fact);
-      continue;
-    }
-
-    marketFacts.push(fact);
-  }
-
-  const balancedFacts: typeof discoveryFacts = [];
-  const largestBucket = Math.max(
-    marketFacts.length,
-    amenityFacts.length,
-    communityFacts.length
-  );
-
-  for (let index = 0; index < largestBucket; index++) {
-    if (marketFacts[index]) {
-      balancedFacts.push(marketFacts[index]);
-    }
-
-    if (amenityFacts[index]) {
-      balancedFacts.push(amenityFacts[index]);
-    }
-
-    if (communityFacts[index]) {
-      balancedFacts.push(communityFacts[index]);
-    }
-  }
-
-  discoveryFacts.splice(
-    0,
-    discoveryFacts.length,
-    ...balancedFacts
-  );
-}
-/* END BALANCE DISCOVERY FACT CATEGORIES */
 
 if (discoveryFacts.length === 0) {
   discoveryFacts.push({
@@ -2841,21 +2639,7 @@ const socialUrl =
     />
   </Fragment>
 
-{USE_NEW_CITY_SLUG_PAGE ? (
-  <CitySlugPage
-    city={city}
-    cityLabel={titleCase(city)}
-    page={page}
-    listings={listings}
-    areas={areas}
-    floorplansByListing={floorplansByListing}
-    roomsByListing={roomsByListing}
-    relatedIntentPages={relatedIntentPages}
-    resultCount={listingCount}
-    heading={page.hero_heading || ""}
-    propertyType={effectivePropertyType || null}
-  />
-) : isMobileAreaPage ? (
+{isMobileAreaPage ? (
   <MobileHomeAreaPage
     site={site}
     city={city}
@@ -4007,47 +3791,6 @@ body.is-map-mode .bottom-refine-cta {
   margin: 0;
   padding: 0;
 }
-
-/* INTERRUPT CARD FIRST PAINT */
-.interrupt-card {
-  grid-column: span 1;
-  align-self: stretch;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-}
-
-.interrupt-card__inner {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  padding: 20px;
-}
-
-.interrupt-options {
-  width: 100%;
-  min-width: 0;
-  margin-top: 14px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  overflow: hidden;
-}
-
-.interrupt-options .refine-chip {
-  max-width: 100%;
-  margin: 0;
-  white-space: normal;
-}
-
-.interrupt-card__button {
-  margin-top: auto;
-}
-/* END INTERRUPT CARD FIRST PAINT */
-
 
 .interrupt-inner {
   display: grid;
@@ -9076,8 +8819,7 @@ Approximate driving times from{" "}
     />
   )
 }
-<div class="bc-home-list-view is-active">
-  <div class="bc-listing-grid">
+<section class="grid">
      {listings.map((listing, index) => {
           const firstImage =
             listing?.image_url ||
@@ -9147,42 +8889,103 @@ Approximate driving times from{" "}
     </div>
   </aside>
 )}
-              <ListingCard
-                listing={listing}
-                priority={index < 4}
-                extraClass={
-                  index >= 16
-                    ? "listing-load-hidden"
-                    : ""
-                }
-                floorplans={
-                  floorplansByListing.get(
-                    String(
-                      listing?.id ||
-                      listing?.mls_number ||
-                      ""
-                    )
-                  ) || []
-                }
-                rooms={
-                  roomsByListing.get(
-                    String(
-                      listing?.id ||
-                      listing?.mls_number ||
-                      ""
-                    )
-                  ) || []
-                }
-              />
+              <article
+class={`card original-card${index >= 16 ? " listing-load-hidden" : ""}`}
+
+                data-item-id={String(listing?.id || listing?.mls_number || index)}
+                data-card-id={String(listing?.id || listing?.mls_number || index)}
+                data-listing-id={String(listing?.id || listing?.mls_number || "")}
+            data-mls={String(listing?.mls_number || listing?.id || "")}
+data-image={image}
+
+data-floorplans={JSON.stringify(
+  floorplansByListing.get(
+    String(
+      listing?.id ||
+      listing?.mls_number ||
+      ""
+    )
+  ) || []
+)}
+data-rooms={JSON.stringify(
+  roomsByListing.get(
+    String(
+      listing?.id ||
+      listing?.mls_number ||
+      ""
+    )
+  ) || []
+)}
+data-images={JSON.stringify(
+  [
+    ...(Array.isArray(listing?.images)
+      ? listing.images.map((img) =>
+          normalizeImageUrl(
+            img?.highRes ||
+              img?.mediumRes ||
+              img?.lowRes ||
+              img?.url ||
+              img
+          )
+        )
+      : []),
+  ].filter(Boolean)
+)}                data-price={formatPrice(listing.price)}
+                data-sort-index={index}
+data-raw-price={String(listing?.price || 0)}
+data-listed-at={String(listing?.listed_at || listing?.created_at || "")}
+                data-address={formatAddress(listing.address)}
+                data-meta={`${listing.beds || "-"} bed | ${listing.baths || "-"} bath`}
+                data-beds={String(listing?.beds || "-")}
+                data-baths={String(listing?.baths || "-")}
+                data-sqft={String(listing?.sqft || "")}
+data-type={String(listing?.normalized_type || listing?.property_type || page.property_type || "Home")}                data-year={String(listing?.year_built || "")}
+                data-dom={String(listing?.days_on_market || listing?.dom || "")}
+                data-description={String(listing?.description || "").replace(/"/g, "&quot;")}
+                data-liked-tags="[]"
+                data-is-favourite="false"
+                data-decision=""
+                data-lat={listing?.lat || ""}
+                data-lng={listing?.lng || ""}
+                data-city={String(listing?.normalized_city || listing?.city || "nanaimo")}
+                data-area={String(listing?.normalized_area || listing?.area || "").toLowerCase()}
+              >
+<div class="card-image-wrap">
+  <img
+    src={image}
+    alt={formatAddress(listing.address) || "Listing"}
+    width="800"
+    height="500"
+    loading={index === 0 ? "eager" : "lazy"}
+    fetchpriority={index === 0 ? "high" : "auto"}
+    decoding="async"
+  />
+</div>
+
+<div class="card-body">
+  <div class="price">{formatPrice(listing.price)}</div>
+  <div class="address">{formatAddress(listing.address)}</div>
+  <div class="card-city">
+    {city.charAt(0).toUpperCase() + city.slice(1)}, BC
+  </div>
+  <div class="meta">
+    {listing.beds || "-"} bd | {listing.baths || "-"} ba
+    {listing.sqft
+      ? ` | ${Number(listing.sqft).toLocaleString()} sq ft`
+      : ""}
+  </div>
+</div>
+
+<div class="card-decision-badge" hidden></div>
+                </div>
+              </article>
 
 
                  
             </>
           );
         })}
-  </div>
-</div>
-
+   </section>
       <div id="refined-results-anchor"></div>
       <section id="refined-results" class="refined-results"></section>
     <style is:inline>
@@ -9391,6 +9194,7 @@ style="display:grid;grid-template-columns:1fr 1fr;gap:18px;"
     </main>
 
   
+<IntentModalController loadMapScript={false} />
 
 
 
@@ -9468,7 +9272,7 @@ function initTypeHeroMap() {
     if (!document.body.contains(heroMapEl)) return;
 
     const listingCards = Array.from(
-      document.querySelectorAll(".bc-listing-grid .card[data-lat][data-lng]")
+      document.querySelectorAll(".grid .card[data-lat][data-lng]")
     );
 
     const points = listingCards
@@ -10096,7 +9900,7 @@ if (document.readyState === "loading") {
 
 // --- State ---
 const intentMapEl = document.getElementById("intent-map");
-const gridEl = document.querySelector(".bc-listing-grid");
+const gridEl = document.querySelector(".grid");
 const listViewBtn = document.getElementById("list-view-btn");
 const mapViewBtn = document.getElementById("map-view-btn");
 
@@ -11043,7 +10847,7 @@ function submitFilters() {
 }
   function applySort() {
     const sort = sortSelect?.value || "newest";
-    const grid = document.querySelector(".bc-listing-grid");
+    const grid = document.querySelector(".grid");
     if (!grid) return;
 
     const cards = Array.from(grid.querySelectorAll(".original-card"));
@@ -11773,7 +11577,7 @@ interruptCard.style.display = "";
 
 document.querySelectorAll(".refined-card").forEach(el => el.remove());
 
-const gridEl2 = document.querySelector(".bc-listing-grid");
+const gridEl2 = document.querySelector(".grid");
 const fragment = document.createDocumentFragment();
 listings.forEach((listing, i) => {
   const tmp = document.createElement("div");
@@ -12018,7 +11822,6 @@ function openSaveSearchFromInterruptor() {
   const directTrigger =
     document.querySelector(
       [
-        "[data-slug-save-open]",
         "[data-save-search-trigger]",
         "[data-open-save-search]",
         "[data-save-search]",
@@ -12035,50 +11838,28 @@ function openSaveSearchFromInterruptor() {
   const trigger =
     directTrigger || textTrigger;
 
-  const scrollToSaveSearch = () => {
-    const saveSection =
-      document.querySelector(
-        [
-          "#save-search",
-          "[data-save-search-form]",
-          ".slug-save-search",
-          ".save-search",
-        ].join(",")
-      );
-
-    if (!(saveSection instanceof HTMLElement)) {
-      return;
-    }
-
-    saveSection.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-
-    window.setTimeout(() => {
-      window.scrollBy({
-        top: -145,
-        left: 0,
-        behavior: "smooth",
-      });
-    }, 300);
-  };
-
   if (
     trigger instanceof HTMLElement &&
     trigger.id !== "intent-interrupt-action"
   ) {
     trigger.click();
-
-    window.setTimeout(
-      scrollToSaveSearch,
-      150
-    );
-
     return;
   }
 
-  scrollToSaveSearch();
+  const saveSection =
+    document.querySelector(
+      [
+        "#save-search",
+        "[data-save-search-form]",
+        ".save-search",
+        ".slug-save-search",
+      ].join(",")
+    );
+
+  saveSection?.scrollIntoView({
+    behavior: "smooth",
+    block: "center",
+  });
 }
 
 function openSimilarSearchesFromInterruptor() {
@@ -12739,9 +12520,6 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
 </script>
   </>
 )}
-
-
-<IntentModalController loadMapScript={false} />
 
 <style is:global id="area-neighbourhood-hero-styles">
  .area-hero-visual {
@@ -13738,417 +13516,32 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   overflow: hidden;
 }
 
-
-
-
-
-/* MATCH INTERRUPT CARD HEIGHT */
-.grid {
-  align-items: stretch !important;
-}
-
-.grid > .interrupt-card {
-  align-self: stretch !important;
-  display: flex !important;
-  height: 100% !important;
-  min-height: 100% !important;
-}
-
-.grid > .interrupt-card > *,
-.grid > .interrupt-card .interrupt-card__inner {
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 100% !important;
-  flex: 1 1 auto !important;
-  display: flex !important;
-  flex-direction: column !important;
-  box-sizing: border-box !important;
-}
-
-.grid > .interrupt-card .interrupt-card__button {
-  margin-top: auto !important;
-}
-</style>
-
-<style is:global>
-/* OCEAN VIEW DISCOVERY CARD LINK */
-#intent-interrupt-card.is-ocean-view-link {
-  cursor: pointer;
-}
-
-#intent-interrupt-card.is-ocean-view-link:hover {
-  transform: translateY(-2px);
-}
-
-#intent-interrupt-card.is-ocean-view-link:focus-visible {
-  outline: 3px solid color-mix(
-    in srgb,
-    var(--accent) 45%,
-    white
-  );
-  outline-offset: 3px;
-}
-
-.interrupt-card__ocean-link {
-  margin-top: auto;
-  padding-top: 16px;
-  font-size: 0.78rem;
-  font-weight: 850;
-  line-height: 1.25;
-}
-</style>
-
-<script is:inline>
-  (() => {
-    const cardId =
-      "intent-interrupt-card";
-
-    const linkClass =
-      "is-ocean-view-link";
-
-    const linkSelector =
-      ".interrupt-card__ocean-link";
-
-    const isOceanViewFact = (card) => {
-      const kicker =
-        String(
-          card.querySelector(
-            ".interrupt-card__kicker"
-          )?.textContent || ""
-        )
-          .trim()
-          .toLowerCase();
-
-      const title =
-        String(
-          card.querySelector(
-            ".interrupt-card__title"
-          )?.textContent || ""
-        )
-          .trim()
-          .toLowerCase();
-
-      return (
-        kicker === "views" &&
-        title.includes("ocean view")
-      );
-    };
-
-    const openOceanViewSearch = () => {
-      const url =
-        new URL(window.location.href);
-
-      url.searchParams.set(
-        "oceanView",
-        "true"
-      );
-
-      url.searchParams.delete("page");
-
-      window.location.assign(
-        `${url.pathname}${url.search}${url.hash}`
-      );
-    };
-
-    const syncOceanViewCard = () => {
-      const card =
-        document.getElementById(cardId);
-
-      if (!card) return;
-
-      const shouldLink =
-        isOceanViewFact(card);
-
-      card.classList.toggle(
-        linkClass,
-        shouldLink
-      );
-
-      if (shouldLink) {
-        card.setAttribute(
-          "role",
-          "link"
-        );
-
-        card.setAttribute(
-          "tabindex",
-          "0"
-        );
-
-        card.setAttribute(
-          "aria-label",
-          "View ocean-view homes"
-        );
-
-        const inner =
-          card.querySelector(
-            ".interrupt-card__inner"
-          );
-
-        if (
-          inner &&
-          !inner.querySelector(linkSelector)
-        ) {
-          const linkLabel =
-            document.createElement("div");
-
-          linkLabel.className =
-            "interrupt-card__ocean-link";
-
-          linkLabel.textContent =
-            "View ocean-view homes →";
-
-          inner.appendChild(linkLabel);
-        }
-
-        return;
-      }
-
-      card.removeAttribute("role");
-      card.removeAttribute("tabindex");
-      card.removeAttribute("aria-label");
-
-      card
-        .querySelector(linkSelector)
-        ?.remove();
-    };
-
-    document.addEventListener(
-      "click",
-      (event) => {
-        const card =
-          event.target.closest(
-            `#${cardId}.${linkClass}`
-          );
-
-        if (!card) return;
-
-        if (
-          event.target.closest(
-            "a, button, input, select, textarea"
-          )
-        ) {
-          return;
-        }
-
-        openOceanViewSearch();
-      }
-    );
-
-    document.addEventListener(
-      "keydown",
-      (event) => {
-        const card =
-          event.target.closest(
-            `#${cardId}.${linkClass}`
-          );
-
-        if (
-          !card ||
-          (
-            event.key !== "Enter" &&
-            event.key !== " "
-          )
-        ) {
-          return;
-        }
-
-        event.preventDefault();
-        openOceanViewSearch();
-      }
-    );
-
-    const observedCard =
-      document.getElementById(cardId);
-
-    let syncScheduled = false;
-
-    const observer =
-      new MutationObserver(() => {
-        if (syncScheduled) return;
-
-        syncScheduled = true;
-
-        requestAnimationFrame(() => {
-          syncScheduled = false;
-          observer.disconnect();
-          syncOceanViewCard();
-
-          if (observedCard?.isConnected) {
-            observer.observe(
-              observedCard,
-              {
-                childList: true,
-                subtree: true,
-                characterData: true,
-              }
-            );
-          }
-        });
-      });
-
-    syncOceanViewCard();
-
-    if (observedCard) {
-      observer.observe(
-        observedCard,
-        {
-          childList: true,
-          subtree: true,
-          characterData: true,
-        }
-      );
-    }
-  })();
-</script>
-
-<style is:global>
-/* SHARED LISTING CARD HOVER PARITY */
-.grid > .original-card:hover {
-  transform: none !important;
-}
-</style>
-
-<style is:global>
-/* HOMEPAGE CONTENT WIDTH PARITY */
-
-.intent-content-shell,
-.is-type-page .intent-content-shell {
-  width: min(1240px, calc(100% - 48px)) !important;
-  max-width: 1240px !important;
-  margin-left: auto !important;
-  margin-right: auto !important;
-}
-
-/* Let the main listing grid fill that same shell */
-.intent-content-shell > .grid,
-.is-type-page .grid {
-  width: 100% !important;
-  max-width: none !important;
-}
-
-/* Same sensible mobile gutter */
-@media (max-width: 760px) {
-  .intent-content-shell,
-  .is-type-page .intent-content-shell {
-    width: calc(100% - 24px) !important;
-    max-width: none !important;
-  }
-}
-</style>
-
-<style is:global>
-/* HOMEPAGE GRID PARITY */
-
-.intent-content-shell {
-  box-sizing: border-box !important;
-  overflow: visible !important;
-}
-
-.intent-content-shell > .grid,
-.is-type-page .grid,
-.grid {
-  display: grid !important;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-  gap: 24px !important;
-  width: 100% !important;
-  max-width: none !important;
-  padding-top: 0 !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-  box-sizing: border-box !important;
-  overflow: visible !important;
-}
-
-.grid > * {
-  min-width: 0 !important;
-  box-sizing: border-box !important;
-}
-
-@media (max-width: 1200px) {
-  .intent-content-shell > .grid,
-  .is-type-page .grid,
-  .grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  }
-}
-
-@media (max-width: 760px) {
-  .intent-content-shell > .grid,
-  .is-type-page .grid,
-  .grid {
-    grid-template-columns: 1fr !important;
-    gap: 16px !important;
-  }
-}
-</style>
-
-<style is:global>
-/* SHARED LISTING IMAGE EXACT PARITY */
-
-.grid > .original-card .card-image-wrap {
-  aspect-ratio: 4 / 3 !important;
-  position: relative !important;
-  overflow: hidden !important;
-}
-
-.grid > .original-card .card-image-wrap img {
-  position: absolute !important;
-  inset: -12px !important;
-
-  width: calc(100% + 24px) !important;
-  max-width: none !important;
-
-  height: calc(100% + 24px) !important;
-  max-height: none !important;
-
-  object-fit: cover !important;
-  object-position: center !important;
-}
-</style>
-
-<style is:global>
-/* HOMEPAGE LISTING SECTION PARITY */
-
-.bc-home-list-view {
+.grid .original-card .card-image,
+.grid .original-card .listing-image,
+.grid .original-card .listing-card__image,
+.grid .original-card picture {
+  display: block;
   width: 100%;
-  margin: 0;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: #eef1f2;
 }
 
-.bc-listing-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 24px;
+.grid .original-card .card-image img,
+.grid .original-card .listing-image img,
+.grid .original-card .listing-card__image img,
+.grid .original-card picture img,
+.grid .original-card > img {
+  display: block;
+  width: 100% !important;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover !important;
+  object-position: center center;
+  transform: scale(1.035);
+  transform-origin: center center;
 }
 
-.bc-listing-grid > * {
-  min-width: 0;
-}
-
-@media (max-width: 1100px) {
-  .bc-listing-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 760px) {
-  .bc-home-list-view {
-    width: 100%;
-    margin: 0;
-  }
-
-  .bc-listing-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 24px;
-  }
-}
-
-@media (max-width: 500px) {
-  .bc-listing-grid {
-    grid-template-columns: 1fr;
-    gap: 18px;
-  }
-}
 </style>
 </Layout>
 
