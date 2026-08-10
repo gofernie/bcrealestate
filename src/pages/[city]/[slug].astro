@@ -916,12 +916,15 @@ logPhaseTiming("census amenities nav and area context");
 const hasPolygonSearch = Boolean(page.polygon_geojson?.coordinates?.[0]?.length);
 const searchParams = Astro.url.searchParams;
 
-const filterArea = String(searchParams.get("area") || "").trim().toLowerCase();
+const filterAreas = searchParams
+  .getAll("area")
+  .map((value) => String(value || "").trim().toLowerCase())
+  .filter(Boolean);
 const filterBeds = Number(searchParams.get("beds") || 0);
 const filterPrice = String(searchParams.get("price") || "").trim();
 const filterSort = String(searchParams.get("sort") || "").trim();
 const hasActiveSearchFilters =
-  !!filterArea ||
+  filterAreas.length > 0 ||
   filterBeds > 0 ||
   !!filterPrice ||
   (filterSort !== "" && filterSort !== "newest");
@@ -1030,8 +1033,8 @@ if (effectivePropertyType) {
     effectivePropertyType
   );
 }
-if (filterArea) {
-  query = query.eq("normalized_area", filterArea);
+if (filterAreas.length > 0) {
+  query = query.in("normalized_area", filterAreas);
 }
 
 if (filterBeds > 0) {
@@ -8820,7 +8823,7 @@ Approximate driving times from{" "}
   )
 }
 <section class="grid">
-     {listings.map((listing, index) => {
+     {listings.slice(0, 30).map((listing, index) => {
           const firstImage =
             listing?.image_url ||
             listing?.images?.[0]?.url ||
@@ -8889,8 +8892,8 @@ Approximate driving times from{" "}
     </div>
   </aside>
 )}
-              <article
-class={`card original-card${index >= 16 ? " listing-load-hidden" : ""}`}
+        <article
+class="card original-card"
 
                 data-item-id={String(listing?.id || listing?.mls_number || index)}
                 data-card-id={String(listing?.id || listing?.mls_number || index)}
@@ -8900,20 +8903,12 @@ data-image={image}
 
 data-floorplans={JSON.stringify(
   floorplansByListing.get(
-    String(
-      listing?.id ||
-      listing?.mls_number ||
-      ""
-    )
+    String(listing?.id || listing?.mls_number || "")
   ) || []
 )}
 data-rooms={JSON.stringify(
   roomsByListing.get(
-    String(
-      listing?.id ||
-      listing?.mls_number ||
-      ""
-    )
+    String(listing?.id || listing?.mls_number || "")
   ) || []
 )}
 data-images={JSON.stringify(
@@ -8921,11 +8916,7 @@ data-images={JSON.stringify(
     ...(Array.isArray(listing?.images)
       ? listing.images.map((img) =>
           normalizeImageUrl(
-            img?.highRes ||
-              img?.mediumRes ||
-              img?.lowRes ||
-              img?.url ||
-              img
+            img?.highRes || img?.mediumRes || img?.lowRes || img?.url || img
           )
         )
       : []),
@@ -8994,52 +8985,85 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
   }
 </style>
 
-{listings.length > 16 && (
-  <div
-    id="show-more-listings-wrap"
-    style="
-      margin:30px 0 10px;
-      display:grid;
-      gap:14px;
-      text-align:center;
-    "
-  >
-    <div style="height:1px;background:rgba(0,0,0,.13);"></div>
+{listings.length > 30 && (
+  <>
+    <script
+      type="application/json"
+      id="remaining-listings-data"
+      set:html={JSON.stringify(
+        listings.slice(30).map((listing) => ({
+          id: listing.id,
+          mls_number: listing.mls_number,
+          price: listing.price,
+          address: listing.address,
+          beds: listing.beds,
+          baths: listing.baths,
+          sqft: listing.sqft,
+          normalized_type: listing.normalized_type,
+          normalized_city: listing.normalized_city || listing.city,
+          normalized_area: listing.normalized_area || listing.area,
+          lat: listing.lat,
+          lng: listing.lng,
+          listed_at: listing.listed_at,
+          created_at: listing.created_at,
+          image: normalizeImageUrl(
+            listing?.image_url ||
+              listing?.images?.[0]?.url ||
+              listing?.images?.[0]?.highRes ||
+              listing?.images?.[0]?.mediumRes ||
+              listing?.images?.[0]?.lowRes ||
+              listing?.images?.[0]
+          ),
+        }))
+      )}
+    />
 
-    <div>
-      <div
-        id="show-more-listings-copy"
-        style="
-          margin-bottom:10px;
-          font-family:var(--serif);
-          font-size:clamp(1.05rem,2vw,1.35rem);
-          color:var(--ink);
-        "
-      >
-        {listings.length - 16} more {typePageLabel.toLowerCase()} available
+    <div
+      id="show-more-listings-wrap"
+      style="
+        margin:30px 0 10px;
+        display:grid;
+        gap:14px;
+        text-align:center;
+      "
+    >
+      <div style="height:1px;background:rgba(0,0,0,.13);"></div>
+
+      <div>
+        <div
+          id="show-more-listings-copy"
+          style="
+            margin-bottom:10px;
+            font-family:var(--serif);
+            font-size:clamp(1.05rem,2vw,1.35rem);
+            color:var(--ink);
+          "
+        >
+          {listings.length - 30} more {typePageLabel.toLowerCase()} available
+        </div>
+
+        <button
+          type="button"
+          id="show-more-listings-btn"
+          style="
+            appearance:none;
+            border:0;
+            background:transparent;
+            padding:6px 10px;
+            color:var(--accent);
+            font:inherit;
+            font-size:.9rem;
+            font-weight:750;
+            cursor:pointer;
+          "
+        >
+          Continue browsing <span aria-hidden="true">&rarr;</span>
+        </button>
       </div>
 
-      <button
-        type="button"
-        id="show-more-listings-btn"
-        style="
-          appearance:none;
-          border:0;
-          background:transparent;
-          padding:6px 10px;
-          color:var(--accent);
-          font:inherit;
-          font-size:.9rem;
-          font-weight:750;
-          cursor:pointer;
-        "
-      >
-        Continue browsing <span aria-hidden="true">&rarr;</span>
-      </button>
+      <div style="height:1px;background:rgba(0,0,0,.13);"></div>
     </div>
-
-    <div style="height:1px;background:rgba(0,0,0,.13);"></div>
-  </div>
+  </>
 )}
 
 <script is:inline>
@@ -9053,41 +9077,112 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
     const copy =
       document.getElementById("show-more-listings-copy");
 
-    if (!button || !wrapper || !copy) return;
+    const dataEl =
+      document.getElementById("remaining-listings-data");
+
+    if (!button || !wrapper || !copy || !dataEl) return;
+
+    let remainingListings = [];
+
+    try {
+      remainingListings = JSON.parse(dataEl.textContent || "[]");
+    } catch {
+      remainingListings = [];
+    }
 
     const batchSize = 16;
+    const grid = document.querySelector(".grid");
+
+    function fmtAddr(v) {
+      if (!v) return "";
+      let o = v;
+      if (typeof v === "string") {
+        const t = v.trim();
+        if (!t.startsWith("{")) return t;
+        try { o = JSON.parse(t); } catch { return ""; }
+      }
+      if (typeof o !== "object" || Array.isArray(o)) return "";
+      return [o.streetNumber, o.streetName || o.streetAddress, o.streetSuffix, o.unitNumber ? `#${o.unitNumber}` : ""]
+        .filter(Boolean).join(" ").trim();
+    }
+
+    function formatPriceClient(price) {
+      return `$${Number(price || 0).toLocaleString()}`;
+    }
+
+    function buildShowMoreCard(listing) {
+      const image = listing.image || "https://placehold.co/800x600?text=Listing";
+      const cityRaw = String(listing.normalized_city || "nanaimo");
+      const cityLabel = cityRaw.charAt(0).toUpperCase() + cityRaw.slice(1);
+
+      const article = document.createElement("article");
+      article.className = "card original-card";
+      article.dataset.itemId = String(listing.id || listing.mls_number || "");
+      article.dataset.cardId = String(listing.id || listing.mls_number || "");
+      article.dataset.listingId = String(listing.id || listing.mls_number || "");
+      article.dataset.mls = String(listing.mls_number || listing.id || "");
+      article.dataset.image = image;
+      article.dataset.floorplans = "[]";
+      article.dataset.rooms = "[]";
+      article.dataset.images = "[]";
+      article.dataset.price = formatPriceClient(listing.price);
+      article.dataset.rawPrice = String(listing.price || 0);
+      article.dataset.listedAt = String(listing.listed_at || listing.created_at || "");
+      article.dataset.address = fmtAddr(listing.address);
+      article.dataset.beds = String(listing.beds || "-");
+      article.dataset.baths = String(listing.baths || "-");
+      article.dataset.sqft = String(listing.sqft || "");
+      article.dataset.type = String(listing.normalized_type || "Home");
+      article.dataset.lat = listing.lat || "";
+      article.dataset.lng = listing.lng || "";
+      article.dataset.city = cityRaw;
+      article.dataset.area = String(listing.normalized_area || "").toLowerCase();
+      article.dataset.decision = "";
+      article.dataset.likedTags = "[]";
+      article.dataset.isFavourite = "false";
+
+      article.innerHTML = `
+        <div class="card-image-wrap">
+          <img src="${image}" alt="${fmtAddr(listing.address) || "Listing"}" loading="lazy" decoding="async" />
+        </div>
+        <div class="card-body">
+          <div class="price">${formatPriceClient(listing.price)}</div>
+          <div class="address">${fmtAddr(listing.address)}</div>
+          <div class="card-city">${cityLabel}, BC</div>
+          <div class="meta">
+            ${listing.beds || "-"} bd | ${listing.baths || "-"} ba${listing.sqft ? ` | ${Number(listing.sqft).toLocaleString()} sq ft` : ""}
+          </div>
+        </div>
+        <div class="card-decision-badge" hidden></div>
+      `;
+
+      return article;
+    }
 
     const updateRemainingCopy = () => {
-      const remaining = document.querySelectorAll(
-        ".grid .original-card.listing-load-hidden"
-      ).length;
+      const remaining = remainingListings.length;
 
       if (remaining === 0) {
         wrapper.hidden = true;
         return;
       }
 
-      const listingLabel =
-        remaining === 1
-          ? "listing"
-          : "listings";
-
-      copy.textContent =
-        `${remaining} more ${listingLabel} available`;
+      const listingLabel = remaining === 1 ? "listing" : "listings";
+      copy.textContent = `${remaining} more ${listingLabel} available`;
     };
 
     button.addEventListener("click", () => {
-      const hiddenCards = Array.from(
-        document.querySelectorAll(
-          ".grid .original-card.listing-load-hidden"
-        )
-      );
+      const nextBatch = remainingListings.splice(0, batchSize);
+      const fragment = document.createDocumentFragment();
 
-      hiddenCards
-        .slice(0, batchSize)
-        .forEach((card) => {
-          card.classList.remove("listing-load-hidden");
-        });
+      nextBatch.forEach((listing) => {
+        fragment.appendChild(buildShowMoreCard(listing));
+      });
+
+      grid?.appendChild(fragment);
+
+      if (typeof applySort === "function") applySort();
+      if (typeof updateViewedBadges === "function") updateViewedBadges();
 
       updateRemainingCopy();
     });
@@ -9263,6 +9358,12 @@ function waitForLeaflet(callback) {
 
 function initTypeHeroMap() {
   const heroMapEl = document.getElementById("type-hero-map");
+
+  if (
+    document.querySelector(".type-hero .area-hero-visual")
+  ) {
+    return;
+  }
 
   if (!heroMapEl || heroMapEl.dataset.mapReady === "true") {
     return;
@@ -10734,7 +10835,7 @@ function cardMatchesFilters(card, filters, options = {}) {
 function getFilteredCards(options = {}) {
   const filters = getCurrentFilters();
 
-  return Array.from(document.querySelectorAll(".original-card"))
+  return Array.from(document.querySelectorAll(".original-card:not(.listing-load-hidden)"))
     .filter((card) => !card.classList.contains("is-hidden-by-refine"))
     .filter((card) => cardMatchesFilters(card, filters, options));
 }
@@ -10866,7 +10967,9 @@ if (sort === "sqft-desc") return Number(b.dataset.sqft || 0) - Number(a.dataset.
       );
     });
 
- cards.forEach((card) => grid.appendChild(card));
+const sortFragment = document.createDocumentFragment();
+ cards.forEach((card) => sortFragment.appendChild(card));
+ grid.appendChild(sortFragment);
 
     const interruptCard = document.getElementById("intent-interrupt-card");
     if (interruptCard && cards[8]) {
@@ -11043,7 +11146,7 @@ card.style.filter = "";
 }
 
 function updateViewedBadges() {
-  document.querySelectorAll(".card").forEach((card) => {
+  document.querySelectorAll(".card:not(.listing-load-hidden)").forEach((card) => {
     const key = getIntentCardKey(card);
     const savedDecision =
       localStorage.getItem(`intent_decision_${key}`) ||
@@ -12237,19 +12340,6 @@ function watchInterruptorCard() {
   }
 
   applyInterruptorCard();
-
-  const observer = new MutationObserver(() => {
-    if (!interruptorCardState.applying) {
-      requestAnimationFrame(
-        applyInterruptorCard
-      );
-    }
-  });
-
-  observer.observe(card, {
-    childList: true,
-    subtree: false,
-  });
 }
 
 if (document.readyState === "loading") {
@@ -13545,6 +13635,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
 
 </style>
 </Layout>
+
 
 
 
