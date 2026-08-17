@@ -8632,16 +8632,6 @@ Approximate driving times from{" "}
 
 </div>
 
-    <div class="area-map-toolbar">
-  <button
-    type="button"
-    id="toggle-listings-btn"
-    class="map-listing-toggle"
-    data-listings-visible="true"
-  >
-    Listings On
-  </button>
-</div>
 
 <div class="area-map-layout">
       <aside class="area-amenity-panel" id="area-amenity-panel">
@@ -8655,7 +8645,22 @@ Approximate driving times from{" "}
         </div>
       </aside>
 
-    <div class="area-neighbourhood-map">
+    <div class="area-neighbourhood-map" style="position:relative;">
+
+  <div
+    class="area-map-toolbar area-map-toolbar--overlay"
+    style="position:absolute;top:14px;right:14px;z-index:1000;margin:0;"
+  >
+    <button
+      type="button"
+      id="toggle-listings-btn"
+      class="map-listing-toggle active"
+      data-listings-visible="false"
+    >
+      Show listings
+    </button>
+  </div>
+
   <div
     id="intent-map"
     class="intent-map"
@@ -10322,6 +10327,9 @@ function initLeafletMap(mode = "all") {
 
       marker.bindPopup(popup);
 
+      marker.setOpacity(0);
+      marker.getElement()?.style.setProperty("pointer-events", "none");
+
       listingMarkers.push(marker);
     });
 
@@ -10541,7 +10549,6 @@ const amenityList =
   if (amenityList) {
   amenityList.innerHTML = rows
     .filter((item) => item.name && item.name.trim())
-    .slice(0, 8)
     .map((item, index) => `
       <div
         class="amenity-row"
@@ -10804,7 +10811,6 @@ document.getElementById("toggle-listings-btn")?.addEventListener("click", functi
   if (visible) {
 listingMarkers.forEach((m) => {
   m.setOpacity(0);
-  m.off("click");
   m.getElement()?.style.setProperty("pointer-events", "none");
 });
     this.innerHTML = "Show listings";
@@ -13804,5 +13810,155 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   max-height: 520px;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+</style>
+
+<style>
+/* FIXED AMENITY PANEL SCROLL */
+
+.area-amenity-panel {
+  height: 520px !important;
+  max-height: 520px !important;
+
+  display: flex !important;
+  flex-direction: column !important;
+
+  overflow: hidden !important;
+}
+
+.area-amenity-panel__head {
+  flex: 0 0 auto !important;
+}
+
+#amenity-list {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+#amenity-list .amenity-row {
+  display: grid !important;
+}
+</style>
+<style>
+/* MATCH AMENITY PANEL TO MAP HEIGHT */
+
+.area-amenity-panel {
+  height: 540px !important;
+  min-height: 540px !important;
+  max-height: 540px !important;
+
+  display: flex !important;
+  flex-direction: column !important;
+
+  overflow: hidden !important;
+}
+
+.area-amenity-panel__head {
+  flex: 0 0 auto !important;
+}
+
+#amenity-list {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch;
+}
+</style>
+<style>
+/* AMENITY SHOW ALL */
+
+#amenity-list:not(.show-all-amenities) .amenity-row:nth-of-type(n+8) {
+  display: none !important;
+}
+
+.amenity-show-all-btn {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+
+  width: 100%;
+  min-height: 46px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 0;
+  border-top: 1px solid rgba(28,25,23,.08);
+
+  background: rgba(255,255,255,.97);
+  color: var(--accent);
+
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 800;
+
+  cursor: pointer;
+}
+</style>
+
+<script is:inline>
+document.addEventListener("click", (event) => {
+  const chip = event.target.closest(".amenity-chip");
+  if (!chip || chip.id === "toggle-listings-btn") return;
+
+  setTimeout(() => {
+    const list = document.getElementById("amenity-list");
+    if (!list) return;
+
+    list.classList.remove("show-all-amenities");
+
+    list.querySelector(".amenity-show-all-btn")?.remove();
+
+    const rows = list.querySelectorAll(".amenity-row");
+
+    if (rows.length <= 7) return;
+
+    const button = document.createElement("button");
+
+    button.type = "button";
+    button.className = "amenity-show-all-btn";
+    button.textContent = `Show all ${rows.length}`;
+
+    button.addEventListener("click", () => {
+      const expanded =
+        list.classList.toggle("show-all-amenities");
+
+      button.textContent =
+        expanded
+          ? "Show nearest 7"
+          : `Show all ${rows.length}`;
+
+      if (!expanded) {
+        list.scrollTo({
+          top: 0,
+          behavior: "smooth"
+        });
+      }
+    });
+
+    list.appendChild(button);
+  }, 50);
+});
+</script>
+
+<style>
+/* ALL AMENITIES IN FIXED SCROLL */
+#amenity-list .amenity-row {
+  display: grid !important;
+}
+
+.amenity-show-all-btn {
+  display: none !important;
 }
 </style>
