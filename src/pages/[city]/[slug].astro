@@ -8859,6 +8859,7 @@ Approximate driving times from{" "}
   <aside
     class="card interrupt-card"
     id="intent-interrupt-card"
+    style="visibility:hidden;"
     data-discovery-facts={JSON.stringify(discoveryFacts)}
     aria-label="Refine these listings"
   >
@@ -8884,6 +8885,7 @@ Approximate driving times from{" "}
 
       <div
         class="interrupt-options generated-chip-target"
+        style="display:none !important;"
         aria-label="Search preferences"
       >
         {[
@@ -12006,47 +12008,34 @@ function findClickableByText(pattern) {
 }
 
 function openSaveSearchFromInterruptor() {
-  const directTrigger =
-    document.querySelector(
-      [
-        "[data-save-search-trigger]",
-        "[data-open-save-search]",
-        "[data-save-search]",
-        "#save-search-button",
-        ".save-search-button",
-      ].join(",")
-    );
+  const saveRoot =
+    document.querySelector("[data-slug-save-search]");
 
-  const textTrigger =
-    findClickableByText(
-      /save (this )?search|save search|get alerts/i
-    );
+  const openButton =
+    saveRoot?.querySelector("[data-slug-save-open]");
 
-  const trigger =
-    directTrigger || textTrigger;
+  if (!(saveRoot instanceof HTMLElement)) return;
 
   if (
-    trigger instanceof HTMLElement &&
-    trigger.id !== "intent-interrupt-action"
+    openButton instanceof HTMLButtonElement &&
+    openButton.getAttribute("aria-expanded") !== "true"
   ) {
-    trigger.click();
-    return;
+    openButton.click();
   }
 
-  const saveSection =
-    document.querySelector(
-      [
-        "#save-search",
-        "[data-save-search-form]",
-        ".save-search",
-        ".slug-save-search",
-      ].join(",")
-    );
+  window.setTimeout(() => {
+    saveRoot.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
 
-  saveSection?.scrollIntoView({
-    behavior: "smooth",
-    block: "center",
-  });
+    const nameInput =
+      saveRoot.querySelector('input[name="searchName"]');
+
+    if (nameInput instanceof HTMLInputElement) {
+      nameInput.focus({ preventScroll: true });
+    }
+  }, 40);
 }
 
 function openSimilarSearchesFromInterruptor() {
@@ -12412,6 +12401,7 @@ function applyInterruptorCard() {
     );
   }
 
+  card.style.visibility = "visible";
   interruptorCardState.applying = false;
 }
 
@@ -13994,6 +13984,25 @@ document.addEventListener("click", (event) => {
   border: 3px solid transparent;
   background-clip: padding-box;
 }
+
+/* FINAL INTERRUPT ROW MATCH */
+@media (min-width: 701px) {
+  .grid > .interrupt-card {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    aspect-ratio: auto !important;
+    align-self: stretch !important;
+    box-sizing: border-box !important;
+  }
+
+  .grid > .interrupt-card .interrupt-card__inner {
+    height: 100% !important;
+    min-height: 0 !important;
+    box-sizing: border-box !important;
+  }
+}
+
 </style>
 <script is:inline>
 /* AMENITY LIST -> PAGE WHEEL HANDOFF */
