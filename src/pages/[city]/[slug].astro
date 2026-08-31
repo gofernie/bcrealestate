@@ -914,7 +914,6 @@ const { data: areaIntentPages = [] } = await areaIntentQuery
 logPhaseTiming("census amenities nav and area context");
 
 const hasPolygonSearch =
-  pageKind !== "area" &&
   Boolean(page.polygon_geojson?.coordinates?.[0]?.length);
 const searchParams = Astro.url.searchParams;
 
@@ -1045,6 +1044,14 @@ if (filterBeds > 0) {
 }
 
 switch (filterPrice) {
+  case "under-300":
+    query = query.lt("price", 300000);
+    break;
+
+  case "300-450":
+    query = query.gte("price", 300000).lt("price", 450000);
+    break;
+
   case "under-450":
     query = query.lt("price", 450000);
     break;
@@ -1063,6 +1070,10 @@ switch (filterPrice) {
 
   case "1100-plus":
     query = query.gte("price", 1100000);
+    break;
+
+  case "650-plus":
+    query = query.gte("price", 650000);
     break;
 }
 if (pageKind === "intent") {
@@ -1160,8 +1171,44 @@ if (defaultSort === "price-asc") {
 
 const listingQueryStartedAt = performance.now();
 
-const { data: rawListings, error: listingsError } =
-  await query.limit(listingLimit);
+let rawListings: any[] = [];
+let listingsError: any = null;
+
+if (hasPolygonSearch) {
+  const polygonBatchSize = 1000;
+
+  for (
+    let from = 0;
+    ;
+    from += polygonBatchSize
+  ) {
+    const { data: batch, error: batchError } =
+      await query.range(
+        from,
+        from + polygonBatchSize - 1
+      );
+
+    if (batchError) {
+      listingsError = batchError;
+      break;
+    }
+
+    const rows = Array.isArray(batch)
+      ? batch
+      : [];
+
+    rawListings.push(...rows);
+
+    if (rows.length < polygonBatchSize) {
+      break;
+    }
+  }
+} else {
+  const result = await query.limit(listingLimit);
+
+  rawListings = result.data || [];
+  listingsError = result.error;
+}
 
 console.log("INTENT QUERY RESULT DEBUG", {
   slug,
@@ -2670,6 +2717,10 @@ const socialUrl =
   <>
 <style>
    :root {
+        --page-max-width: 1400px;
+        --page-gutter: 40px;
+        --page-gutter-mobile: 16px;
+
         --surface-soft: color-mix(in srgb, var(--surface) 92%, var(--accent-soft));
         --ink-soft: #3d3935;
         --soft: #9c9590;
@@ -7622,7 +7673,363 @@ grid-template-columns: 30px minmax(0, 1fr);
 .intent-controls .view-btn:not(.active):hover {
   background: color-mix(in srgb, var(--accent) 7%, white) !important;
 }
-</style>
+
+/* =========================================================
+   FINAL LISTING FILTER BAR ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â HOMEPAGE SEARCH LANGUAGE
+   ========================================================= */
+
+.intent-controls {
+  gap: 0 !important;
+  padding: 0 !important;
+  min-height: 58px !important;
+  overflow: visible !important;
+  border: 1px solid rgba(18, 58, 90, 0.11) !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  box-shadow: 0 5px 18px rgba(18, 58, 90, 0.035) !important;
+}
+
+.intent-controls .view-toggle {
+  height: 58px !important;
+  min-height: 58px !important;
+  padding: 8px 12px !important;
+  border: 0 !important;
+  border-right: 1px solid rgba(18, 58, 90, 0.10) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+.intent-controls .view-btn {
+  height: 40px !important;
+  min-height: 40px !important;
+  min-width: 64px !important;
+  padding: 0 17px !important;
+  border-radius: 8px !important;
+  font-size: 0.82rem !important;
+  font-weight: 750 !important;
+}
+
+.intent-controls .view-btn.active {
+  background: var(--accent) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 7px rgba(18, 58, 90, 0.12) !important;
+}
+
+.intent-controls select {
+  height: 58px !important;
+  min-height: 58px !important;
+  min-width: 150px !important;
+  padding: 0 44px 0 20px !important;
+  border: 0 !important;
+  border-right: 1px solid rgba(18, 58, 90, 0.10) !important;
+  border-radius: 0 !important;
+  background-color: #fff !important;
+  color: var(--ink) !important;
+  font-size: 0.88rem !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+.intent-controls .price-filter-select {
+  min-width: 170px !important;
+}
+
+.intent-controls .beds-filter-select {
+  min-width: 140px !important;
+}
+
+.intent-controls .sort-filter-select {
+  min-width: 180px !important;
+}
+
+.intent-controls select:hover {
+  background-color: color-mix(in srgb, var(--accent) 3%, white) !important;
+}
+
+.intent-controls select:focus {
+  outline: none !important;
+  background-color: color-mix(in srgb, var(--accent) 5%, white) !important;
+}
+
+.intent-controls .results-bar {
+  display: flex !important;
+  align-items: center !important;
+  align-self: stretch !important;
+  margin-left: auto !important;
+  padding: 0 20px !important;
+  font-size: 0.78rem !important;
+  font-weight: 650 !important;
+  color: var(--muted) !important;
+}
+
+.is-mobile-home-inner-page .intent-controls select {
+  background-color: #fff !important;
+  border-color: rgba(18, 58, 90, 0.10) !important;
+}
+
+@media (max-width: 640px) {
+  .intent-controls {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .intent-controls .view-toggle {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    height: 52px !important;
+    min-height: 52px !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid rgba(18, 58, 90, 0.10) !important;
+  }
+
+  .intent-controls .view-btn {
+    flex: 1 !important;
+    height: 36px !important;
+    min-height: 36px !important;
+  }
+
+  .intent-controls select {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 52px !important;
+    min-height: 52px !important;
+    border-bottom: 1px solid rgba(18, 58, 90, 0.10) !important;
+  }
+
+  .intent-controls .sort-filter-select {
+    grid-column: 1 / -1 !important;
+  }
+
+  .intent-controls .results-bar {
+    grid-column: 1 / -1 !important;
+    min-height: 42px !important;
+    justify-content: flex-end !important;
+    padding: 0 14px !important;
+  }
+}
+
+
+/* =========================================================
+   GLOBAL CUSTOM FILTER DROPDOWNS
+   JS-created elements need unscoped Astro CSS
+   ========================================================= */
+
+.filter-dd {
+  position: relative;
+  min-width: 170px;
+  align-self: stretch;
+  display: flex;
+}
+
+.filter-dd__trigger {
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 44px 9px 18px;
+  border: 0;
+  border-right: 1px solid rgba(18,58,90,.10);
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  font: inherit;
+}
+
+.filter-dd__label {
+  display: block;
+  font-size: .72rem;
+  font-weight: 800;
+  line-height: 1.05;
+  color: var(--ink);
+}
+
+.filter-dd__value {
+  display: block;
+  margin-top: 5px;
+  font-size: .82rem;
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.filter-dd__trigger::after {
+  content: "";
+  position: absolute;
+  right: 17px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid #172033;
+  border-bottom: 1.5px solid #172033;
+  transform: translateY(-70%) rotate(45deg);
+  transition: transform .18s ease;
+}
+
+.filter-dd.is-open .filter-dd__trigger::after {
+  transform: translateY(-20%) rotate(225deg);
+}
+
+.filter-dd__menu {
+  position: absolute;
+  z-index: 9999;
+  top: calc(100% + 7px);
+  left: 0;
+  width: min(360px, 88vw);
+  max-height: 430px;
+  overflow-y: auto;
+  display: none;
+  background: #fff;
+  border: 1px solid rgba(18,58,90,.12);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(18,58,90,.16), 0 2px 8px rgba(18,58,90,.06);
+}
+
+.filter-dd.is-open .filter-dd__menu {
+  display: block;
+}
+
+.filter-dd__head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: 56px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border-bottom: 1px solid rgba(18,58,90,.08);
+}
+
+.filter-dd__head strong {
+  font-size: .9rem;
+  font-weight: 850;
+  color: var(--ink);
+}
+
+.filter-dd__clear {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.filter-dd__option {
+  width: 100%;
+  min-height: 56px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 0;
+  border-bottom: 1px solid rgba(18,58,90,.08);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: .84rem;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+
+.filter-dd__option:last-child {
+  border-bottom: 0;
+}
+
+.filter-dd__option:hover {
+  background: color-mix(in srgb, var(--accent) 4%, white);
+}
+
+.filter-dd__option.is-selected {
+  background: color-mix(in srgb, var(--accent) 8%, white);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.filter-dd__check {
+  opacity: 0;
+  color: var(--accent);
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+
+.filter-dd__option.is-selected .filter-dd__check {
+  opacity: 1;
+}
+
+.filter-dd--beds {
+  min-width: 145px;
+}
+
+.filter-dd--sort {
+  min-width: 185px;
+}
+
+@media (max-width: 640px) {
+  .filter-dd {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .filter-dd__trigger {
+    min-height: 52px;
+  }
+
+  .filter-dd__menu {
+    position: fixed;
+    left: 14px;
+    right: 14px;
+    top: auto;
+    bottom: 18px;
+    width: auto;
+    max-height: 62vh;
+    border-radius: 14px;
+  }
+}
+
+
+/* Filter loading feedback */
+.intent-controls.is-filter-loading {
+  pointer-events: none;
+}
+
+.intent-controls.is-filter-loading .filter-dd__trigger,
+.intent-controls.is-filter-loading .view-toggle {
+  opacity: .62;
+}
+
+.intent-controls.is-filter-loading .results-bar::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  border: 2px solid rgba(18,58,90,.16);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: listing-filter-spin .7s linear infinite;
+}
+
+.intent-controls.is-filter-loading .results-bar {
+  color: var(--accent) !important;
+}
+
+@keyframes listing-filter-spin {
+  to { transform: rotate(360deg); }
+}
+
+.grid.is-filter-loading,
+.intent-map.is-filter-loading {
+  opacity: .55;
+  transition: opacity .15s ease;
+}</style>
 
 <div
   data-intent-page-id={page.id}
@@ -8847,20 +9254,26 @@ Approximate driving times from{" "}
     <button type="button" class="view-btn" id="map-view-btn">Map</button>
   </div>
 
-  <select class="type-filter-select" aria-label="Filter by property type">
-    <option value="all">Any Property Type</option>
-    {propertyTypes.map((type) => (
-      <option value={type} selected={type === normalizedPropertyType}>{titleCase(type)}</option>
-    ))}
-  </select>
 
   <select class="price-filter-select" aria-label="Filter by price">
     <option value="all">Any Price</option>
-    <option value="under-450">Under $450k</option>
-    <option value="450-650">$450k - $650k</option>
-    <option value="650-850">$650k - $850k</option>
-    <option value="850-1100">$850k - $1.1M</option>
-    <option value="1100-plus">$1.1M+</option>
+
+    {normalizedPropertyType === "mobile" ? (
+      <>
+        <option value="under-300">Under $300k</option>
+        <option value="300-450">$300k - $450k</option>
+        <option value="450-650">$450k - $650k</option>
+        <option value="650-plus">$650k+</option>
+      </>
+    ) : (
+      <>
+        <option value="under-450">Under $450k</option>
+        <option value="450-650">$450k - $650k</option>
+        <option value="650-850">$650k - $850k</option>
+        <option value="850-1100">$850k - $1.1M</option>
+        <option value="1100-plus">$1.1M+</option>
+      </>
+    )}
   </select>
 
 
@@ -8882,7 +9295,7 @@ Approximate driving times from{" "}
     <option value="sqft-desc" selected={page.default_sort === "sqft-desc"}>Largest homes first</option>
   </select>
 
-  <span class="results-bar" style="margin-left:auto;font-size:0.82rem;color:var(--muted);font-weight:600;white-space:nowrap;">{listingCount} listings</span>
+  <span class="results-bar" data-total-listings={listings.length} style="margin-left:auto;font-size:0.82rem;color:var(--muted);font-weight:600;white-space:nowrap;">{listings.length} listings found</span>
 </section>
 
   {pageKind !== "area" && (
@@ -9464,7 +9877,7 @@ function initTypeHeroMap() {
       document.querySelectorAll(".grid .card[data-lat][data-lng]")
     );
 
-    const points = listingCards
+    const cardPoints = listingCards
       .map((card) => {
         const lat = Number(card.dataset.lat || "");
         const lng = Number(card.dataset.lng || "");
@@ -9495,8 +9908,58 @@ function initTypeHeroMap() {
             "",
         };
       })
-      .filter(Boolean)
-      .slice(0, 60);
+      .filter(Boolean);
+
+    let remainingPoints = [];
+
+    try {
+      const remainingDataEl =
+        document.getElementById("remaining-listings-data");
+
+      const remainingListings = JSON.parse(
+        remainingDataEl?.textContent || "[]"
+      );
+
+      remainingPoints = remainingListings
+        .map((listing) => {
+          const lat = Number(listing.lat || "");
+          const lng = Number(listing.lng || "");
+
+          if (
+            !Number.isFinite(lat) ||
+            !Number.isFinite(lng) ||
+            !lat ||
+            !lng
+          ) {
+            return null;
+          }
+
+          return {
+            lat,
+            lng,
+            price: listing.price
+              ? `$${Number(listing.price).toLocaleString()}`
+              : "",
+            address:
+              typeof listing.address === "string"
+                ? listing.address
+                : "",
+            image: listing.image || "",
+            listingId:
+              listing.id ||
+              listing.mls_number ||
+              "",
+          };
+        })
+        .filter(Boolean);
+    } catch (error) {
+      console.warn(
+        "Could not parse remaining listings for hero map:",
+        error
+      );
+    }
+
+    const points = [...cardPoints, ...remainingPoints];
 
     if (!points.length) {
       heroMapEl.innerHTML = `
@@ -10097,6 +10560,43 @@ const mapViewBtn = document.getElementById("map-view-btn");
 
 let leafletMap = null;
 let listingMarkers = [];
+let listingMarkerLayer = null;
+let markerClusterLoadPromise = null;
+
+function ensureMarkerCluster() {
+  if (typeof window.L?.markerClusterGroup === "function") {
+    return Promise.resolve();
+  }
+
+  if (markerClusterLoadPromise) {
+    return markerClusterLoadPromise;
+  }
+
+  markerClusterLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+
+    script.src =
+      "https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js";
+
+    script.onload = () => {
+      if (typeof window.L?.markerClusterGroup === "function") {
+        resolve();
+      } else {
+        reject(
+          new Error("MarkerCluster loaded without registering.")
+        );
+      }
+    };
+
+    script.onerror = () => {
+      reject(new Error("MarkerCluster failed to load."));
+    };
+
+    document.head.appendChild(script);
+  });
+
+  return markerClusterLoadPromise;
+}
 let amenityMarkers = [];
 let polygonLayer = null;
 let maskLayer = null;
@@ -10350,14 +10850,87 @@ function drawSearchPolygon(map) {
 function initLeafletMap(mode = "all") {
   if (!intentMapEl) return;
 
-  waitForLeaflet(() => {
+  waitForLeaflet(async () => {
     const selector = mode === "refined" ? ".refined-card" : ".original-card";
     const cards = Array.from(document.querySelectorAll(selector)).filter(
-      (c) => !c.hidden && c.style.display !== "none" && c.dataset.lat && c.dataset.lng
+      (c) => c.dataset.lat && c.dataset.lng
     );
 
-    const points = cards.map((c) => ({ card: c, latlng: getCardLatLng(c) })).filter((i) => i.latlng);
+    let points = cards
+      .map((c) => ({ card: c, latlng: getCardLatLng(c) }))
+      .filter((i) => i.latlng);
 
+    if (mode !== "refined") {
+      try {
+        const remainingDataEl =
+          document.getElementById("remaining-listings-data");
+
+        const remainingListings = JSON.parse(
+          remainingDataEl?.textContent || "[]"
+        );
+
+        const remainingPoints = remainingListings
+          .map((listing) => {
+            const lat = Number(listing.lat || "");
+            const lng = Number(listing.lng || "");
+
+            if (
+              !Number.isFinite(lat) ||
+              !Number.isFinite(lng) ||
+              !lat ||
+              !lng
+            ) {
+              return null;
+            }
+
+            const card = document.createElement("article");
+            card.dataset.listingId = String(
+              listing.id || listing.mls_number || ""
+            );
+            card.dataset.mls = String(
+              listing.mls_number || listing.id || ""
+            );
+            card.dataset.price = listing.price
+              ? `$${Number(listing.price).toLocaleString()}`
+              : "";
+            card.dataset.address =
+              typeof listing.address === "string"
+                ? listing.address
+                : "";
+            card.dataset.beds = String(listing.beds || "");
+            card.dataset.baths = String(listing.baths || "");
+            card.dataset.image = String(listing.image || "");
+            card.dataset.lat = String(lat);
+            card.dataset.lng = String(lng);
+
+            return {
+              card,
+              latlng: [lat, lng],
+            };
+          })
+          .filter(Boolean);
+
+        points = [...points, ...remainingPoints];
+      } catch (error) {
+        console.warn(
+          "Could not parse remaining listings for main map:",
+          error
+        );
+      }
+    }
+
+    const shouldCluster = points.length > 120;
+
+    if (shouldCluster) {
+      try {
+        await ensureMarkerCluster();
+      } catch (error) {
+        console.warn(
+          "Marker clustering unavailable:",
+          error
+        );
+      }
+    }
     // Init map if needed
     if (!leafletMap) {
     leafletMap = L.map(intentMapEl, {
@@ -10374,20 +10947,80 @@ function initLeafletMap(mode = "all") {
       L.control.attribution({ prefix: false }).addAttribution('| <a href="https://openstreetmap.org">OSM</a>').addTo(leafletMap);
     }
 
-    // Clear existing markers
-    listingMarkers.forEach((m) => m.remove());
-    listingMarkers = [];
-    amenityMarkers.forEach((m) => m.remove());
-    amenityMarkers = [];
-    if (polygonLayer) { polygonLayer.remove(); polygonLayer = null; }
-    if (maskLayer) { maskLayer.remove(); maskLayer = null; }
+    // Clear and rebuild the listing layer.
+    if (listingMarkerLayer) {
+      listingMarkerLayer.clearLayers();
+      leafletMap.removeLayer(listingMarkerLayer);
+    }
 
+    listingMarkers = [];
+
+    const clusteringAvailable =
+      shouldCluster &&
+      typeof window.L?.markerClusterGroup === "function";
+
+    if (clusteringAvailable) {
+      listingMarkerLayer = L.markerClusterGroup({
+        maxClusterRadius: 44,
+        disableClusteringAtZoom: 15,
+        showCoverageOnHover: false,
+        spiderfyOnMaxZoom: true,
+        zoomToBoundsOnClick: true,
+        removeOutsideVisibleBounds: true,
+
+        iconCreateFunction(cluster) {
+          const count = cluster.getChildCount();
+          const size =
+            count >= 100 ? 48 :
+            count >= 25 ? 43 :
+            38;
+
+          return L.divIcon({
+            className: "",
+            iconSize: [size, size],
+            html: `
+              <div style="
+                width:${size}px;
+                height:${size}px;
+                display:grid;
+                place-items:center;
+                border:4px solid #fff;
+                border-radius:50%;
+                background:#19b95b;
+                color:#fff;
+                box-shadow:0 3px 10px rgba(8,36,25,.28);
+                font:800 12px/1 'DM Sans',system-ui,sans-serif;
+              ">
+                ${count}
+              </div>
+            `,
+          });
+        },
+      });
+    } else {
+      listingMarkerLayer = L.layerGroup();
+    }
+
+    listingMarkerLayer.addTo(leafletMap);
+
+    amenityMarkers.forEach((marker) => marker.remove());
+    amenityMarkers = [];
+
+    if (polygonLayer) {
+      polygonLayer.remove();
+      polygonLayer = null;
+    }
+
+    if (maskLayer) {
+      maskLayer.remove();
+      maskLayer = null;
+    }
     // Draw polygon
     const areaBounds = drawSearchPolygon(leafletMap);
 
     // Add listing markers
     points.forEach(({ card, latlng }) => {
-      const marker = L.marker(latlng, { icon: makeListingIcon() }).addTo(leafletMap);
+      const marker = L.marker(latlng, { icon: makeListingIcon() }).addTo(listingMarkerLayer);
 
       const popup = L.popup({
         maxWidth: 260,
@@ -10399,8 +11032,8 @@ function initLeafletMap(mode = "all") {
 
       marker.bindPopup(popup);
 
-      marker.setOpacity(0);
-      marker.getElement()?.style.setProperty("pointer-events", "none");
+      marker.setOpacity(1);
+      marker.getElement()?.style.setProperty("pointer-events", "auto");
 
       listingMarkers.push(marker);
     });
@@ -10925,6 +11558,32 @@ if (bedsSelect && initialParams.get("beds")) {
 if (sortSelect && initialParams.get("sort")) {
   sortSelect.value = initialParams.get("sort");
 }
+const savedFilterViewMode = sessionStorage.getItem("listingFilterViewMode");
+
+if (savedFilterViewMode === "map") {
+  sessionStorage.removeItem("listingFilterViewMode");
+
+  document.body.classList.add("is-map-mode");
+
+  if (intentMapEl) {
+    intentMapEl.hidden = false;
+  }
+
+  gridEl?.classList.add("map-hidden");
+  mapViewBtn?.classList.add("active");
+  listViewBtn?.classList.remove("active");
+
+  requestAnimationFrame(() => {
+    initLeafletMap();
+
+    window.setTimeout(() => {
+      leafletMap?.invalidateSize();
+    }, 100);
+  });
+} else {
+  sessionStorage.removeItem("listingFilterViewMode");
+}
+
 const savedFilterScrollY = Number(
   sessionStorage.getItem("listingFilterScrollY") || "0"
 );
@@ -10978,11 +11637,14 @@ function cardMatchesFilters(card, filters, options = {}) {
 
   const matchesPrice =
     filters.price === "all" ||
+    (filters.price === "under-300" && price < 300000) ||
+    (filters.price === "300-450" && price >= 300000 && price < 450000) ||
     (filters.price === "under-450" && price < 450000) ||
     (filters.price === "450-650" && price >= 450000 && price < 650000) ||
     (filters.price === "650-850" && price >= 650000 && price < 850000) ||
     (filters.price === "850-1100" && price >= 850000 && price < 1100000) ||
-    (filters.price === "1100-plus" && price >= 1100000);
+    (filters.price === "1100-plus" && price >= 1100000) ||
+    (filters.price === "650-plus" && price >= 650000);
 
   return matchesBeds && matchesPrice && matchesType;
 }
@@ -11094,7 +11756,7 @@ function submitFilters() {
 
   const resultsBar = document.querySelector(".results-bar");
   if (resultsBar) {
-    resultsBar.textContent = `${filteredCards.length} listings found`;
+    resultsBar.textContent = `${resultsBar.dataset.totalListings || filteredCards.length} listings found`;
   }
 
   updateResultsHeading(filters);
@@ -11133,6 +11795,19 @@ const sortFragment = document.createDocumentFragment();
 
     submitFilters();
   }
+function showFilterLoadingState() {
+  const controls = document.querySelector(".intent-controls");
+  const resultsBar = document.querySelector(".results-bar");
+  const grid = document.querySelector(".grid");
+
+  controls?.classList.add("is-filter-loading");
+  grid?.classList.add("is-filter-loading");
+  intentMapEl?.classList.add("is-filter-loading");
+
+  if (resultsBar) {
+    resultsBar.textContent = "Updating listings...";
+  }
+}
 function updateSearchFromFilters() {
   const params = new URLSearchParams(window.location.search);
   const filters = getCurrentFilters();
@@ -11155,11 +11830,17 @@ function updateSearchFromFilters() {
     params.delete("sort");
   }
 
+  sessionStorage.setItem(
+    "listingFilterViewMode",
+    document.body.classList.contains("is-map-mode") ? "map" : "list"
+  );
+
 sessionStorage.setItem(
   "listingFilterScrollY",
   String(window.scrollY)
 );
 
+showFilterLoadingState();
 window.location.search = params.toString();
 }
 
@@ -14070,7 +14751,189 @@ document.addEventListener("click", (event) => {
   }
 }
 
-</style>
+
+/* =========================================================
+   CUSTOM HOMEPAGE-STYLE FILTER DROPDOWNS
+   ========================================================= */
+
+.intent-controls select {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.filter-dd {
+  position: relative;
+  min-width: 170px;
+  align-self: stretch;
+  display: flex;
+}
+
+.filter-dd__trigger {
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 44px 9px 18px;
+  border: 0;
+  border-right: 1px solid rgba(18,58,90,.10);
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+}
+
+.filter-dd__label {
+  display: block;
+  font-size: .72rem;
+  font-weight: 800;
+  line-height: 1.05;
+  color: var(--ink);
+}
+
+.filter-dd__value {
+  display: block;
+  margin-top: 5px;
+  font-size: .82rem;
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.filter-dd__trigger::after {
+  content: "";
+  position: absolute;
+  right: 17px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid #172033;
+  border-bottom: 1.5px solid #172033;
+  transform: translateY(-70%) rotate(45deg);
+  transition: transform .18s ease;
+}
+
+.filter-dd.is-open .filter-dd__trigger::after {
+  transform: translateY(-20%) rotate(225deg);
+}
+
+.filter-dd__menu {
+  position: absolute;
+  z-index: 9999;
+  top: calc(100% + 7px);
+  left: 0;
+  width: min(360px, 88vw);
+  max-height: 430px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid rgba(18,58,90,.12);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(18,58,90,.16);
+  display: none;
+}
+
+.filter-dd.is-open .filter-dd__menu {
+  display: block;
+}
+
+.filter-dd__head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: 54px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border-bottom: 1px solid rgba(18,58,90,.08);
+}
+
+.filter-dd__head strong {
+  font-size: .9rem;
+  font-weight: 850;
+}
+
+.filter-dd__clear {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.filter-dd__option {
+  width: 100%;
+  min-height: 54px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 0;
+  border-bottom: 1px solid rgba(18,58,90,.08);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: .84rem;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+
+.filter-dd__option:hover {
+  background: color-mix(in srgb, var(--accent) 4%, white);
+}
+
+.filter-dd__option.is-selected {
+  background: color-mix(in srgb, var(--accent) 8%, white);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.filter-dd__check {
+  opacity: 0;
+  color: var(--accent);
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+
+.filter-dd__option.is-selected .filter-dd__check {
+  opacity: 1;
+}
+
+.filter-dd--beds {
+  min-width: 145px;
+}
+
+.filter-dd--sort {
+  min-width: 185px;
+}
+
+@media (max-width: 640px) {
+  .filter-dd {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .filter-dd__trigger {
+    min-height: 52px;
+  }
+
+  .filter-dd__menu {
+    position: fixed;
+    left: 14px;
+    right: 14px;
+    top: auto;
+    bottom: 18px;
+    width: auto;
+    max-height: 62vh;
+  }
+}</style>
 <script is:inline>
 /* AMENITY LIST -> PAGE WHEEL HANDOFF */
 (() => {
@@ -14118,3 +14981,155 @@ document.addEventListener("click", (event) => {
   );
 })();
 </script>
+
+
+<script is:inline>
+(function () {
+  const configs = [
+    {
+      selector: ".price-filter-select",
+      label: "Price",
+      title: "Select price",
+      className: "filter-dd--price"
+    },
+    {
+      selector: ".beds-filter-select",
+      label: "Beds",
+      title: "Select beds",
+      className: "filter-dd--beds"
+    },
+    {
+      selector: ".sort-filter-select",
+      label: "Sort",
+      title: "Sort listings",
+      className: "filter-dd--sort"
+    }
+  ];
+
+  function closeAll(except = null) {
+    document.querySelectorAll(".filter-dd.is-open").forEach((dd) => {
+      if (dd !== except) dd.classList.remove("is-open");
+    });
+  }
+
+  configs.forEach((config) => {
+    const select = document.querySelector(config.selector);
+    if (!select || select.dataset.customDropdownReady === "true") return;
+
+    select.dataset.customDropdownReady = "true";
+
+    const dd = document.createElement("div");
+    dd.className = `filter-dd ${config.className}`;
+
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "filter-dd__trigger";
+
+    const label = document.createElement("span");
+    label.className = "filter-dd__label";
+    label.textContent = config.label;
+
+    const value = document.createElement("span");
+    value.className = "filter-dd__value";
+
+    trigger.append(label, value);
+
+    const menu = document.createElement("div");
+    menu.className = "filter-dd__menu";
+
+    const head = document.createElement("div");
+    head.className = "filter-dd__head";
+
+    const title = document.createElement("strong");
+    title.textContent = config.title;
+
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.className = "filter-dd__clear";
+    clear.textContent = "Clear";
+
+    head.append(title, clear);
+    menu.appendChild(head);
+
+    Array.from(select.options).forEach((option) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "filter-dd__option";
+      button.dataset.value = option.value;
+
+      const text = document.createElement("span");
+      text.textContent = option.textContent;
+
+      const check = document.createElement("span");
+      check.className = "filter-dd__check";
+      check.textContent = "\u2713";
+
+      button.append(text, check);
+
+      button.addEventListener("click", () => {
+        select.value = option.value;
+
+        select.dispatchEvent(
+          new Event("change", { bubbles: true })
+        );
+
+        sync();
+        dd.classList.remove("is-open");
+      });
+
+      menu.appendChild(button);
+    });
+
+    function sync() {
+      const selected =
+        select.options[select.selectedIndex] ||
+        select.options[0];
+
+      value.textContent = selected?.textContent || "";
+
+      menu.querySelectorAll(".filter-dd__option").forEach((button) => {
+        button.classList.toggle(
+          "is-selected",
+          button.dataset.value === select.value
+        );
+      });
+    }
+
+    trigger.addEventListener("click", (event) => {
+      event.stopPropagation();
+
+      const opening = !dd.classList.contains("is-open");
+
+      closeAll(dd);
+
+      dd.classList.toggle("is-open", opening);
+    });
+
+    clear.addEventListener("click", (event) => {
+      event.stopPropagation();
+
+      select.value = select.options[0]?.value || "all";
+
+      select.dispatchEvent(
+        new Event("change", { bubbles: true })
+      );
+
+      sync();
+      dd.classList.remove("is-open");
+    });
+
+    select.addEventListener("change", sync);
+
+    dd.append(trigger, menu);
+
+    select.insertAdjacentElement("afterend", dd);
+
+    sync();
+  });
+
+  document.addEventListener("click", () => closeAll());
+})();
+</script>
+
+
+

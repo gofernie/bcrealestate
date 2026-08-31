@@ -1,0 +1,198 @@
+---
+import "../styles/intent-modal.css";
+---
+<style is:global>
+.panel__osm-amenities { padding: 16px 16px 0; border-top: 0.5px solid rgba(0,0,0,0.08); margin-top: 16px; }
+.panel__osm-label { font-size: 10px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #999; margin-bottom: 10px; }
+.panel__osm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 500px) { .panel__osm-grid { grid-template-columns: 1fr; } }
+.panel__osm-card { background: #f5f4f2; border-radius: 8px; padding: 10px 12px; }
+.panel__osm-card-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.panel__osm-icon { font-size: 14px; }
+.panel__osm-cat { font-size: 11px; font-weight: 700; color: #333; flex: 1; }
+.panel__osm-closest { font-size: 11px; font-weight: 700; color: var(--accent); }
+.panel__osm-rows { display: flex; flex-direction: column; gap: 3px; }
+.panel__osm-row { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.panel__osm-name { font-size: 11px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
+.panel__osm-dist { font-size: 11px; color: #aaa; flex-shrink: 0; }
+.panel__osm-loading { font-size: 12px; color: #aaa; padding: 8px 0; }
+.panel__osm-card { transition: border-color 0.15s, box-shadow 0.15s; border: 1px solid transparent; }
+.panel__osm-card:hover { border-color: var(--accent); }
+.panel__osm-card.osm-card-active { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent); }
+</style>
+<div class="overlay" id="sheet-overlay"></div>
+
+<aside class="panel test-modal-style" id="preview-sheet" aria-hidden="true">      <div class="panel__grab" id="sheet-grab-handle" aria-hidden="true"></div>
+
+      <div class="panel__progress-wrap">
+        <div class="panel__progress-track">
+          <div class="panel__progress-bar" id="sheet-progress-bar"></div>
+        </div>
+
+        <div class="panel__header">
+          <div class="panel__position" id="sheet-position">1 of 1</div>
+
+         <div class="panel__header-actions">
+  <button class="panel__map-btn" id="sheet-map-btn" type="button">Map</button>
+  <button class="panel__top-btn" id="sheet-prev-top-btn" type="button"><span aria-hidden="true">&larr;</span> <span class="btn-label-full">Previous</span></button>
+  <button class="panel__top-btn" id="sheet-next-top-btn" type="button"><span class="btn-label-full">Next</span> <span aria-hidden="true">&rarr;</span></button></div>
+
+<button class="panel__close" id="sheet-close-btn" type="button" aria-label="Close">&times;</button>
+        </div>
+      </div>
+
+      <div class="panel__view">
+        <section class="panel__summary" id="sheet-summary" hidden>
+          <div class="review-complete">
+
+  <!-- Header -->
+  <div class="review-complete__header">
+    <div class="eyebrow">Shortlist reviewed</div>
+
+   <h2 class="review-complete__title" id="review-complete-title">
+  You’ve reviewed all the homes - nice work!
+</h2>
+
+    <p class="review-complete__sub">
+      Most buyers don’t make it this far — this really helps narrow things down.
+      Your top picks are ready for a closer look.
+    </p>
+  </div>
+
+  <div class="review-complete__faves" id="summary-fave-strip"></div>
+
+<div id="summary-insight" hidden></div>
+
+<!-- Stats -->
+<div class="review-complete__stats">
+    <div class="stat stat--love">
+   <div class="stat__num" id="summary-love-count">0</div>
+      <div class="stat__label">❤️ You loved</div>
+    </div>
+
+    <div class="stat stat--maybe">
+      <div class="stat__num" id="summary-maybe-count">0</div>
+      <div class="stat__label">🤔 Worth a second look</div>
+    </div>
+
+    <div class="stat stat--pass">
+      <div class="stat__num" id="summary-pass-count">0</div>
+      <div class="stat__label">✕ Not your fit</div>
+    </div>
+  </div>
+
+  <!-- Optional prompt -->
+  <div class="review-complete__note">
+    <h4>What would you like to do next?</h4>
+
+    <div class="quick-actions">
+      <button type="button" data-summary-comment="We'd like to set up showings for the homes we loved.">
+        👍 Set up showings
+      </button>
+      <button type="button" data-summary-comment="Can you help narrow the search based on what we liked?">
+        🎯 Narrow the search
+      </button>
+      <button type="button" data-summary-comment="These aren't quite right. Can we look at some better options?">
+        🙅 Not quite right
+      </button>
+    </div>
+
+    <textarea
+      id="summary-comment-input"
+      placeholder="Add a note for your agent..."
+    ></textarea>
+
+    <div class="summary__comment-status" id="summary-comment-status"></div>
+
+    <button class="btn-primary" id="summary-send-comment-btn" type="button">
+      Send note to agent →
+    </button>
+  </div>
+
+  </div>
+
+</div>
+        </section>
+
+         
+        
+
+       <section class="panel__content has-scroll-hint" id="sheet-content">
+         <div class="panel__image-stage">
+           <img
+  id="sheet-image"
+  class="panel__image"
+  src="https://placehold.co/800x600?text=Loading"
+  alt=""
+  loading="eager"
+  decoding="async"
+  fetchpriority="high"
+/>
+        <button type="button" class="photo-nav photo-nav--prev" id="photo-prev-btn">&#8249;</button>
+<button type="button" class="photo-nav photo-nav--next" id="photo-next-btn">&#8250;</button><div class="panel__photo-count" id="sheet-photo-count">1 / 1 photos</div>
+<div class="panel__image-overlay" id="sheet-image-overlay">
+  <h2 class="panel__price" id="sheet-price">—</h2>
+  <p class="panel__address" id="sheet-address">Address</p>
+  <div class="panel__meta" id="sheet-meta">—</div>
+</div>
+          </div>
+
+          <div id="sheet-mini-map" class="panel__mini-map" hidden></div>
+
+         <div class="panel__body">
+
+
+<div class="panel__feedback" id="sheet-feedback"></div>
+
+<div class="panel__desc-wrap">
+  <p class="panel__desc" id="sheet-description"></p>
+  <button type="button" class="panel__desc-toggle" id="sheet-desc-toggle" hidden>
+    Read more
+  </button>
+</div>
+<div class="decision-actions">
+  <button class="decision-btn decision-btn--love" type="button" id="decision-love-btn">
+    <span aria-hidden="true">&#10084;&#65039;</span>
+    <span>Love</span>
+  </button>
+  <button class="decision-btn decision-btn--maybe" type="button" id="decision-maybe-btn">
+    <span aria-hidden="true">&#128076;</span>
+    <span>Like</span>
+  </button>
+  <button class="decision-btn decision-btn--pass" type="button" id="decision-pass-btn">
+    <span aria-hidden="true">&times;</span>
+    <span>Nope</span>
+  </button>
+</div>
+</div>
+<div id="sheet-osm-amenities" class="panel__osm-amenities" hidden></div>
+<div class="panel__engage" id="sheet-engage">
+  <div class="panel__engage-copy">
+    Want to know more?
+  </div>
+
+  <div class="panel__engage-actions">
+    <button type="button" id="ask-question-btn">
+      Ask a Question
+    </button>
+
+    <button type="button" id="book-showing-btn">
+      Book a Showing
+    </button>
+  </div>
+</div>
+          <div class="panel__footer">
+  <div class="panel__nav-row">
+    <button class="panel__next-btn" id="sheet-prev-btn" type="button">
+      &larr; Previous
+    </button>
+
+    <button class="panel__next-btn" id="sheet-next-btn" type="button">
+      Next listing <span aria-hidden="true">&rarr;</span>
+    </button>
+  </div>
+</div>
+
+        </section>
+      </div>
+    </aside>

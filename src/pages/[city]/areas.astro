@@ -1,0 +1,1340 @@
+---
+import { createClient } from "@supabase/supabase-js";
+import Layout from "../../layouts/Layout.astro";
+import SiteNav from "../../components/SiteNav.astro";
+import { getSite } from "../../lib/getSite";
+import { getNavIntentPages } from "../../lib/getNavIntentPages";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const city = String(
+  Astro.params.city ||
+  Astro.url.searchParams.get("city") ||
+  "nanaimo"
+)
+  .toLowerCase()
+  .trim();
+
+const cityLabel = city
+  .replace(/-/g, " ")
+  .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const site = await getSite(Astro.url.hostname, city);
+
+const { data: listings = [], error: listingsError } =
+  await supabase
+    .from("listing_rows")
+    .select("normalized_area")
+    .eq("normalized_city", city)
+    .eq("status", "A");
+
+if (listingsError) {
+  console.error("Areas listing query failed:", listingsError);
+}
+
+const { data: areaRows = [], error: areasError } =
+  await supabase
+    .from("area_boundaries")
+    .select(`
+      area_slug,
+      area_name,
+      short_description,
+      hero_image_url
+    `)
+    .ilike("city", city);
+
+if (areasError) {
+  console.error("Area metadata query failed:", areasError);
+}
+
+const areaToSlug = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/^pq[\s-]+/i, "")
+    .replace(/&/g, "and")
+    .replace(/\//g, "-")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const titleCase = (value) =>
+  String(value || "")
+    .replace(/^pq[\s-]+/i, "")
+    .replace(/-/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const areaCountMap = listings.reduce((result, listing) => {
+  const slug = areaToSlug(listing.normalized_area);
+
+  if (slug) {
+    result[slug] = Number(result[slug] || 0) + 1;
+  }
+
+  return result;
+}, {});
+
+const areas = areaRows
+  .map((row) => {
+    const slug = areaToSlug(row.area_slug || row.area_name);
+
+    return {
+      name: titleCase(row.area_name || row.area_slug),
+      slug,
+      count: Number(areaCountMap[slug] || 0),
+      description: String(row.short_description || "").trim(),
+      image: String(row.hero_image_url || "").trim(),
+    };
+  })
+  .filter((area) => area.slug)
+  .sort(
+    (a, b) =>
+      b.count - a.count ||
+      a.name.localeCompare(b.name)
+  );
+
+const heroImageUrl = String(
+  areaRows.find((row) =>
+    String(row.hero_image_url || "").trim()
+  )?.hero_image_url ||
+  site?.hero_image_url ||
+  ""
+).trim();
+
+const safeHeroImage =
+  heroImageUrl.replace(/"/g, "%22");
+
+const topArea =
+  areas[0]?.name ||
+  cityLabel;
+
+const navAreas =
+  areas.map((area) => area.name);
+
+const navIntentPages =
+  await getNavIntentPages(
+    supabase,
+    site?.id
+  );
+
+const navTypes = [
+  "house",
+  "condo",
+  "townhouse",
+  "mobile",
+  "land",
+];
+
+const accent =
+  site?.accent_color ||
+  "#1f5a49";
+
+const findArea = (
+  keywords: string[],
+  fallbackIndex = 0
+) => {
+  const match = areas.find((area) => {
+    const searchable = `${area.name} ${area.slug} ${area.description}`
+      .toLowerCase();
+
+    return keywords.some((keyword) =>
+      searchable.includes(keyword)
+    );
+  });
+
+  return match || areas[fallbackIndex] || areas[0] || null;
+};
+
+const skiCities = new Set([
+  "fernie",
+  "whistler",
+  "revelstoke",
+  "golden",
+  "rossland",
+  "kimberley",
+  "invermere",
+  "panorama",
+  "sun-peaks",
+  "big-white",
+  "silver-star",
+]);
+
+const coastalCities = new Set([
+  "nanaimo",
+  "parksville",
+  "qualicum-beach",
+  "tofino",
+  "ucluelet",
+  "victoria",
+  "saanich",
+  "comox",
+  "courtenay",
+  "campbell-river",
+  "ladysmith",
+  "lantzville",
+]);
+
+const isSkiTown =
+  skiCities.has(city);
+
+const isCoastalTown =
+  coastalCities.has(city);
+
+const primaryLifestyleRecommendation =
+  isSkiTown
+    ? {
+        eyebrow: "Mountain lifestyle",
+        title: "Ski access",
+        description:
+          "Start close to the slopes, trails, and year-round mountain recreation.",
+        icon: "mountain",
+        area: findArea(
+          ["alpine resort", "ski", "resort"],
+          0
+        ),
+      }
+    : isCoastalTown
+      ? {
+          eyebrow: "Coastal lifestyle",
+          title: "Ocean and waterfront",
+          description:
+            "Explore communities near the ocean, beaches, marinas, and coastal trails.",
+          icon: "water",
+          area: findArea(
+            [
+              "waterfront",
+              "ocean",
+              "bay",
+              "beach",
+              "harbour",
+              "harbor",
+            ],
+            0
+          ),
+        }
+      : {
+          eyebrow: "Outdoor lifestyle",
+          title: "Parks and nature",
+          description:
+            "Start near trails, parks, green space, and outdoor recreation.",
+          icon: "trees",
+          area: findArea(
+            ["park", "trail", "nature", "rural"],
+            0
+          ),
+        };
+
+const lifestyleRecommendations = [
+  primaryLifestyleRecommendation,
+  {
+    eyebrow: "Everyday convenience",
+    title: "Walkable living",
+    description:
+      "Explore neighbourhoods close to shops, restaurants, and local services.",
+    icon: "walk",
+    area: findArea(
+      [
+        "downtown",
+        "old city",
+        "centre",
+        "center",
+      ],
+      1
+    ),
+  },
+  {
+    eyebrow: "Room to settle in",
+    title: "Family friendly",
+    description:
+      "Look for quieter streets, parks, schools, and practical home layouts.",
+    icon: "family",
+    area: findArea(
+      [
+        "family",
+        "west",
+        "annex",
+        "heights",
+      ],
+      2
+    ),
+  },
+  {
+    eyebrow: "Trail connections",
+    title: "Bike and explore",
+    description:
+      "Find areas with quick access to trails, parks, and outdoor recreation.",
+    icon: "bike",
+    area: findArea(
+      [
+        "montane",
+        "trail",
+        "mountain",
+        "park",
+      ],
+      3
+    ),
+  },
+  {
+    eyebrow: "A little more space",
+    title: "Quiet living",
+    description:
+      "Browse neighbourhoods known for privacy, larger lots, and a calmer pace.",
+    icon: "trees",
+    area: findArea(
+      [
+        "ridgemont",
+        "rural",
+        "acreage",
+        "quiet",
+        "cedar",
+      ],
+      4
+    ),
+  },
+  {
+    eyebrow: "Compare your options",
+    title: "More for your budget",
+    description:
+      "See where current inventory offers the widest range of homes and prices.",
+    icon: "value",
+    area:
+      [...areas]
+        .filter((area) => area.count > 0)
+        .sort((a, b) => b.count - a.count)[0] ||
+      areas[0] ||
+      null,
+  },
+].filter((item) => item.area);
+
+const featureCandidates =
+  areas.filter((area) => area.count > 0);
+
+const cityRotationValue =
+  [...city].reduce(
+    (total, character) =>
+      total + character.charCodeAt(0),
+    0
+  );
+
+const currentDayNumber =
+  Math.floor(Date.now() / 86400000);
+
+const featuredArea =
+  featureCandidates.length > 0
+    ? featureCandidates[
+        (
+          currentDayNumber +
+          cityRotationValue
+        ) % featureCandidates.length
+      ]
+    : areas[0] || null;
+
+const areasWithListings =
+  areas.filter((area) => area.count > 0).length;
+
+const averageListingsPerArea =
+  areasWithListings > 0
+    ? Math.round(
+        listings.length / areasWithListings
+      )
+    : 0;
+---
+
+<Layout
+  title={`${cityLabel} Neighbourhoods and Areas`}
+  description={`Explore ${cityLabel} neighbourhoods and homes for sale.`}
+  accentColor={accent}
+  city={city}
+>
+  <SiteNav
+    city={city}
+    site={site}
+    areas={navAreas}
+    types={navTypes}
+    intentPages={navIntentPages}
+    showAreaNav={false}
+  />
+
+  <div
+    class="areas-page"
+    style={`--areas-accent:${accent};`}
+  >
+    <section
+      class="areas-hero"
+      style={
+        safeHeroImage
+          ? `--areas-hero-image:url("${safeHeroImage}");`
+          : undefined
+      }
+    >
+      <div class="areas-hero__shade"></div>
+
+      <div class="areas-hero__inner">
+        <div class="areas-hero__content">
+          <p class="areas-eyebrow">
+            {cityLabel} neighbourhoods
+          </p>
+
+          <h1>
+            Explore {cityLabel}
+            <br />
+            by Area<span>.</span>
+          </h1>
+
+          <p class="areas-hero__copy">
+            From waterfront living to family-friendly communities,
+            explore neighbourhoods and find the area that fits your lifestyle.
+          </p>
+
+          <div class="areas-stats">
+            <article>
+              <strong>{listings.length.toLocaleString()}</strong>
+              <small>Active listings</small>
+            </article>
+
+            <article>
+              <strong>{areas.length}</strong>
+              <small>Neighbourhoods</small>
+            </article>
+
+            <article>
+              <strong>{topArea}</strong>
+              <small>Most listings</small>
+            </article>
+          </div>
+
+          <div class="areas-actions">
+            <a
+              class="areas-button areas-button--primary"
+              href={`/${city}`}
+            >
+              View all homes
+            </a>
+
+            <a
+              class="areas-button areas-button--secondary"
+              href={`/explore?city=${encodeURIComponent(city)}`}
+            >
+              View on map
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <main class="areas-main">
+      <section class="areas-discovery">
+        <div class="areas-heading">
+          <div>
+            <p class="areas-eyebrow">
+              Find your fit
+            </p>
+
+            <h2>
+              What matters most to you?
+            </h2>
+          </div>
+
+          <p>
+            Choose a lifestyle and jump to a neighbourhood
+            that may be worth exploring first.
+          </p>
+        </div>
+
+        <div class="areas-lifestyle-grid">
+          {
+            lifestyleRecommendations.map((item) => (
+              <a
+                class="areas-lifestyle-card"
+                href={`/${city}/${item.area.slug}`}
+              >
+                <span
+                  class={`areas-lifestyle-icon areas-lifestyle-icon--${item.icon}`}
+                  aria-hidden="true"
+                >
+                  {
+                    item.icon === "mountain"
+                      ? "▲"
+                      : item.icon === "water"
+                        ? "≈"
+                        : item.icon === "walk"
+                        ? "↟"
+                        : item.icon === "family"
+                          ? "⌂"
+                          : item.icon === "bike"
+                            ? "◉"
+                            : item.icon === "trees"
+                              ? "♧"
+                              : "$"
+                  }
+                </span>
+
+                <div>
+                  <small>{item.eyebrow}</small>
+                  <strong>{item.title}</strong>
+                  <p>{item.description}</p>
+                  <b>
+                    Explore {item.area.name}
+                    <span aria-hidden="true">→</span>
+                  </b>
+                </div>
+              </a>
+            ))
+          }
+        </div>
+      </section>
+
+      {
+        featuredArea && (
+          <section class="areas-featured">
+            <div class="areas-featured__copy">
+              <p class="areas-eyebrow">
+                Featured neighbourhood today
+              </p>
+
+              <h2>{featuredArea.name}</h2>
+
+              <p>
+                {
+                  featuredArea.description ||
+                  `Explore current homes, local information, and market activity in ${featuredArea.name}.`
+                }
+              </p>
+
+              <div class="areas-featured__stats">
+                <span>
+                  <strong>
+                    {featuredArea.count.toLocaleString()}
+                  </strong>
+                  active listings
+                </span>
+
+                <span>
+                  <strong>{cityLabel}</strong>
+                  local area guide
+                </span>
+              </div>
+
+              <a
+                class="areas-button areas-button--primary"
+                href={`/${city}/${featuredArea.slug}`}
+              >
+                Explore {featuredArea.name}
+              </a>
+            </div>
+
+            <a
+              class="areas-featured__visual"
+              href={`/${city}/${featuredArea.slug}`}
+              aria-label={`Explore ${featuredArea.name}`}
+              style={
+                featuredArea.image || heroImageUrl
+                  ? `--featured-area-image:url("${String(
+                      featuredArea.image || heroImageUrl
+                    ).replace(/"/g, "%22")}");`
+                  : undefined
+              }
+            >
+              <span>{featuredArea.name}</span>
+              <b aria-hidden="true">→</b>
+            </a>
+          </section>
+        )
+      }
+
+      <section>
+        <div class="areas-heading">
+          <div>
+            <p class="areas-eyebrow">
+              Browse by area
+            </p>
+
+            <h2>
+              Choose a {cityLabel} neighbourhood
+            </h2>
+          </div>
+
+          <p>
+            Start with an area, then explore current listings,
+            property types, prices, and local information.
+          </p>
+        </div>
+
+        <div class="areas-grid">
+          {
+            areas.map((area) => (
+              <a
+                class="areas-card"
+                href={`/${city}/${area.slug}`}
+              >
+                <div>
+                  <strong>{area.name}</strong>
+
+                  <span>
+                    {area.count.toLocaleString()}{" "}
+                    {area.count === 1
+                      ? "listing"
+                      : "listings"}
+                  </span>
+
+                  {
+                    area.description && (
+                      <p>{area.description}</p>
+                    )
+                  }
+                </div>
+
+                <b aria-hidden="true">→</b>
+              </a>
+            ))
+          }
+        </div>
+      </section>
+      <section class="areas-snapshot">
+        <div>
+          <p class="areas-eyebrow">
+            {cityLabel} at a glance
+          </p>
+
+          <h2>
+            A quick market snapshot
+          </h2>
+        </div>
+
+        <div class="areas-snapshot__grid">
+          <article>
+            <strong>
+              {listings.length.toLocaleString()}
+            </strong>
+            <span>Active listings</span>
+          </article>
+
+          <article>
+            <strong>{areas.length}</strong>
+            <span>Neighbourhoods</span>
+          </article>
+
+          <article>
+            <strong>{areasWithListings}</strong>
+            <span>Areas with inventory</span>
+          </article>
+
+          <article>
+            <strong>{averageListingsPerArea}</strong>
+            <span>Average listings per active area</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="areas-map-callout">
+        <div>
+          <p class="areas-eyebrow">
+            Explore geographically
+          </p>
+
+          <h2>
+            See where each neighbourhood sits
+          </h2>
+
+          <p>
+            Open the interactive map to compare areas,
+            listings, parks, schools, and nearby places.
+          </p>
+
+          <a
+            class="areas-button areas-button--primary"
+            href={`/explore?city=${encodeURIComponent(city)}`}
+          >
+            Explore {cityLabel} on the map
+          </a>
+        </div>
+
+        <a
+          class="areas-map-preview"
+          href={`/explore?city=${encodeURIComponent(city)}`}
+          aria-label={`Explore ${cityLabel} on the map`}
+        >
+          <div
+            class="areas-map-preview__road areas-map-preview__road--one"
+            aria-hidden="true"
+          ></div>
+
+          <div
+            class="areas-map-preview__road areas-map-preview__road--two"
+            aria-hidden="true"
+          ></div>
+
+          {
+            areas
+              .filter((area) => area.count > 0)
+              .slice(0, 5)
+              .map((area, index) => (
+                <span
+                  class={`areas-map-preview__area areas-map-preview__area--${index + 1}`}
+                >
+                  {area.name}
+                </span>
+              ))
+          }
+
+          <strong>
+            Open interactive map
+            <span aria-hidden="true">→</span>
+          </strong>
+        </a>
+      </section>
+</main>
+  </div>
+
+  <style>
+    .areas-page {
+      --areas-ink: #14201c;
+      --areas-muted: #65716c;
+      --areas-line: rgba(20, 32, 28, 0.11);
+      overflow: hidden;
+      background: #fff;
+      color: var(--areas-ink);
+    }
+
+    .areas-hero {
+      position: relative;
+      min-height: 590px;
+      background-image:
+        var(
+          --areas-hero-image,
+          url("https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2200&q=90")
+        );
+      background-position: center;
+      background-size: cover;
+    }
+
+    .areas-hero__shade {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(
+          90deg,
+          rgba(247,249,251,.99) 0%,
+          rgba(247,249,251,.96) 27%,
+          rgba(247,249,251,.78) 46%,
+          rgba(247,249,251,.18) 72%,
+          rgba(247,249,251,.02) 100%
+        );
+    }
+
+    /* Exact same width as RealEstateHomepage */
+    .areas-hero__inner,
+    .areas-main {
+      width: min(1240px, calc(100% - 48px));
+      margin-right: auto;
+      margin-left: auto;
+    }
+
+    .areas-hero__inner {
+      position: relative;
+      z-index: 1;
+      padding: 72px 0 82px;
+    }
+
+    .areas-hero__content {
+      max-width: 680px;
+    }
+
+    .areas-eyebrow {
+      margin: 0 0 15px;
+      color: var(--areas-accent);
+      font-size: .72rem;
+      font-weight: 850;
+      letter-spacing: .17em;
+      text-transform: uppercase;
+    }
+
+    .areas-hero h1 {
+      max-width: 760px;
+      margin: 0;
+      font-family: var(--f-display, Georgia, serif);
+      font-size: clamp(4rem, 7.2vw, 7.2rem);
+      font-weight: 500;
+      line-height: .9;
+      letter-spacing: -.055em;
+    }
+
+    .areas-hero h1 span {
+      color: var(--areas-accent);
+    }
+
+    .areas-hero__copy {
+      max-width: 560px;
+      margin: 27px 0 0;
+      color: #3f4a45;
+      font-size: clamp(1rem, 1.3vw, 1.13rem);
+      line-height: 1.6;
+    }
+
+    .areas-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 35px;
+      margin-top: 30px;
+    }
+
+    .areas-stats article {
+      min-width: 135px;
+    }
+
+    .areas-stats strong,
+    .areas-stats small {
+      display: block;
+    }
+
+    .areas-stats strong {
+      font-size: 1rem;
+    }
+
+    .areas-stats small {
+      margin-top: 4px;
+      color: var(--areas-muted);
+      font-size: .69rem;
+    }
+
+    .areas-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 29px;
+    }
+
+    .areas-button {
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 22px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      font-size: .79rem;
+      font-weight: 850;
+      text-decoration: none;
+    }
+
+    .areas-button--primary {
+      background: var(--areas-accent);
+      color: #fff;
+    }
+
+    .areas-button--secondary {
+      border-color: var(--areas-line);
+      background: rgba(255,255,255,.94);
+      color: var(--areas-accent);
+    }
+
+    .areas-main {
+      padding: 73px 0 90px;
+    }
+
+    .areas-heading {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      align-items: end;
+      margin-bottom: 28px;
+    }
+
+    .areas-heading h2 {
+      margin: 0;
+      font-family: var(--f-display, Georgia, serif);
+      font-size: clamp(2.4rem, 4vw, 4rem);
+      font-weight: 500;
+      line-height: .95;
+      letter-spacing: -.052em;
+    }
+
+    .areas-heading > p {
+      max-width: 480px;
+      margin: 0;
+      color: var(--areas-muted);
+      font-size: .9rem;
+      line-height: 1.6;
+    }
+
+    .areas-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .areas-card {
+      min-height: 155px;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 22px;
+      border: 1px solid var(--areas-line);
+      border-radius: 12px;
+      background:
+        color-mix(
+          in srgb,
+          var(--areas-accent) 4%,
+          white
+        );
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .areas-card strong,
+    .areas-card span,
+    .areas-card p {
+      display: block;
+    }
+
+    .areas-card strong {
+      font-family: var(--f-display, Georgia, serif);
+      font-size: 1.35rem;
+      font-weight: 500;
+    }
+
+    .areas-card span {
+      margin-top: 6px;
+      color: var(--areas-muted);
+      font-size: .75rem;
+    }
+
+    .areas-card p {
+      margin: 12px 0 0;
+      color: var(--areas-muted);
+      font-size: .75rem;
+      line-height: 1.45;
+    }
+
+    .areas-card b {
+      align-self: flex-end;
+      color: var(--areas-accent);
+    }
+
+    @media (max-width: 1100px) {
+      .areas-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      .areas-hero {
+        min-height: 620px;
+      }
+
+      .areas-hero__inner,
+      .areas-main {
+        width: calc(100% - 32px);
+      }
+
+      .areas-hero__inner {
+        padding-top: 52px;
+      }
+
+      .areas-hero h1 {
+        font-size: clamp(3.4rem, 16vw, 5.5rem);
+      }
+
+      .areas-heading {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      .areas-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 500px) {
+      .areas-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  
+  .areas-discovery {
+    margin-bottom: 72px;
+  }
+
+  .areas-lifestyle-grid {
+    display: grid;
+    grid-template-columns:
+      repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .areas-lifestyle-card {
+    display: flex;
+    min-height: 210px;
+    gap: 18px;
+    padding: 24px;
+    border: 1px solid rgba(28, 25, 23, 0.1);
+    border-radius: 12px;
+    background: #fff;
+    color: inherit;
+    text-decoration: none;
+    box-shadow: 0 4px 24px rgba(28, 25, 23, 0.04);
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease,
+      border-color 0.2s ease;
+  }
+
+  .areas-lifestyle-card:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(
+      in srgb,
+      var(--areas-accent) 45%,
+      transparent
+    );
+    box-shadow: 0 16px 38px rgba(28, 25, 23, 0.09);
+  }
+
+  .areas-lifestyle-icon {
+    display: grid;
+    flex: 0 0 48px;
+    width: 48px;
+    height: 48px;
+    place-items: center;
+    border-radius: 50%;
+    background: color-mix(
+      in srgb,
+      var(--areas-accent) 12%,
+      white
+    );
+    color: var(--areas-accent);
+    font-size: 1.25rem;
+    font-weight: 800;
+  }
+
+  .areas-lifestyle-card small {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--areas-accent);
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+
+  .areas-lifestyle-card strong {
+    display: block;
+    font-family: Georgia, serif;
+    font-size: 1.35rem;
+    line-height: 1.15;
+  }
+
+  .areas-lifestyle-card p {
+    margin: 10px 0 16px;
+    color: #625f5b;
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+
+  .areas-lifestyle-card b {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    color: var(--areas-accent);
+    font-size: 0.82rem;
+  }
+
+  .areas-featured {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 0.9fr)
+      minmax(340px, 1.1fr);
+    overflow: hidden;
+    margin: 72px 0;
+    border-radius: 16px;
+    background: #172922;
+    color: #fff;
+  }
+
+  .areas-featured__copy {
+    padding: clamp(32px, 6vw, 72px);
+  }
+
+  .areas-featured h2 {
+    margin: 7px 0 15px;
+    color: #fff;
+    font-family: Georgia, serif;
+    font-size: clamp(2rem, 4vw, 3.35rem);
+  }
+
+  .areas-featured__copy > p:not(.areas-eyebrow) {
+    max-width: 580px;
+    color: rgba(255, 255, 255, 0.74);
+    line-height: 1.75;
+  }
+
+  .areas-featured__stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 28px;
+    margin: 28px 0;
+  }
+
+  .areas-featured__stats span {
+    display: grid;
+    gap: 3px;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.78rem;
+  }
+
+  .areas-featured__stats strong {
+    color: #fff;
+    font-size: 1.2rem;
+  }
+
+  .areas-featured__visual {
+    position: relative;
+    display: flex;
+    min-height: 390px;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 34px;
+    background-color: #315d4d;
+    background-image:
+      linear-gradient(
+        135deg,
+        rgba(31, 90, 73, 0.22),
+        rgba(10, 20, 17, 0.72)
+      ),
+      var(--featured-area-image);
+    background-position: center;
+    background-size: cover;
+    color: #fff;
+    text-decoration: none;
+  }
+
+  .areas-featured__visual span {
+    max-width: 80%;
+    font-family: Georgia, serif;
+    font-size: clamp(1.6rem, 3vw, 2.6rem);
+  }
+
+  .areas-featured__visual b {
+    display: grid;
+    width: 46px;
+    height: 46px;
+    place-items: center;
+    border-radius: 50%;
+    background: #fff;
+    color: #17392f;
+  }
+
+  .areas-snapshot {
+    display: grid;
+    grid-template-columns: 0.8fr 1.2fr;
+    gap: 48px;
+    align-items: end;
+    margin: 84px 0;
+    padding: clamp(30px, 5vw, 58px);
+    border-radius: 16px;
+    background: #f1f5f1;
+  }
+
+  .areas-snapshot h2,
+  .areas-map-callout h2 {
+    margin: 6px 0 0;
+    font-family: Georgia, serif;
+    font-size: clamp(1.8rem, 3.5vw, 3rem);
+    line-height: 1.08;
+  }
+
+  .areas-snapshot__grid {
+    display: grid;
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .areas-snapshot__grid article {
+    display: grid;
+    gap: 4px;
+    min-height: 118px;
+    align-content: center;
+    padding: 22px;
+    border: 1px solid rgba(28, 25, 23, 0.08);
+    border-radius: 10px;
+    background: #fff;
+  }
+
+  .areas-snapshot__grid strong {
+    color: var(--areas-accent);
+    font-family: Georgia, serif;
+    font-size: 2rem;
+  }
+
+  .areas-snapshot__grid span {
+    color: #696560;
+    font-size: 0.8rem;
+  }
+
+  .areas-map-callout {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 0.8fr)
+      minmax(340px, 1.2fr);
+    gap: 48px;
+    align-items: center;
+    margin: 84px 0;
+  }
+
+  .areas-map-callout > div > p:not(.areas-eyebrow) {
+    max-width: 560px;
+    margin: 18px 0 26px;
+    color: #68635e;
+    line-height: 1.7;
+  }
+
+  .areas-map-preview {
+    position: relative;
+    display: grid;
+    min-height: 360px;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid rgba(28, 25, 23, 0.09);
+    border-radius: 16px;
+    background:
+      linear-gradient(
+        rgba(255, 255, 255, 0.08) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.08) 1px,
+        transparent 1px
+      ),
+      linear-gradient(135deg, #23483b, #0f2922);
+    background-size: 42px 42px, 42px 42px, auto;
+    color: #fff;
+    text-decoration: none;
+  }
+  .areas-map-preview::before {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(
+        circle at 24% 28%,
+        rgba(90, 151, 125, 0.3),
+        transparent 24%
+      ),
+      radial-gradient(
+        circle at 72% 66%,
+        rgba(74, 133, 112, 0.26),
+        transparent 27%
+      );
+    content: "";
+  }
+
+  .areas-map-preview__road {
+    position: absolute;
+    z-index: 1;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(217, 235, 226, 0.42);
+    transform-origin: left center;
+  }
+
+  .areas-map-preview__road--one {
+    top: 53%;
+    left: 8%;
+    width: 88%;
+    transform: rotate(-9deg);
+  }
+
+  .areas-map-preview__road--two {
+    top: 19%;
+    left: 48%;
+    width: 58%;
+    transform: rotate(71deg);
+  }
+
+  .areas-map-preview__area {
+    position: absolute;
+    z-index: 3;
+    padding: 7px 11px;
+    border: 2px solid rgba(255, 255, 255, 0.86);
+    border-radius: 999px;
+    background: var(--areas-accent);
+    box-shadow: 0 5px 15px rgba(6, 22, 17, 0.22);
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .areas-map-preview__area--1 {
+    top: 18%;
+    left: 13%;
+  }
+
+  .areas-map-preview__area--2 {
+    top: 31%;
+    right: 13%;
+  }
+
+  .areas-map-preview__area--3 {
+    top: 55%;
+    left: 31%;
+  }
+
+  .areas-map-preview__area--4 {
+    right: 21%;
+    bottom: 15%;
+  }
+
+  .areas-map-preview__area--5 {
+    left: 11%;
+    bottom: 14%;
+  }
+  @media (max-width: 900px) {
+    .areas-lifestyle-grid {
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+    }
+
+    .areas-featured,
+    .areas-snapshot,
+    .areas-map-callout {
+      grid-template-columns: 1fr;
+    }
+
+    .areas-featured__visual {
+      min-height: 300px;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .areas-lifestyle-grid,
+    .areas-snapshot__grid {
+      grid-template-columns: 1fr;
+    }
+
+    .areas-lifestyle-card {
+      min-height: 0;
+      padding: 20px;
+    }
+
+    .areas-featured,
+    .areas-snapshot,
+    .areas-map-preview {
+      border-radius: 10px;
+    }
+
+    .areas-map-preview {
+      min-height: 290px;
+    }
+  }
+</style>
+</Layout>
+
+
+
+

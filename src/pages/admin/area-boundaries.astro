@@ -1,0 +1,690 @@
+---
+import AdminSidebar from "../../components/AdminSidebar.astro";
+import { createClient } from "@supabase/supabase-js";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+
+
+const { data: sites = [] } = await supabase
+  .from("sites")
+  .select("id, site_name, domain, city")
+  .order("site_name", { ascending: true });
+
+const { data: areaBoundaryRows = [] } = await supabase
+  .from("area_boundaries")
+  .select("city, area_name, area_slug")
+  .order("area_name", { ascending: true });
+
+const areaOptions: Record<string, string[]> = {};
+for (const row of areaBoundaryRows) {
+  const city = String(row.city || "").toLowerCase().trim();
+  const name = String(row.area_name || row.area_slug || "").trim();
+  if (!city || !name) continue;
+  if (!areaOptions[city]) areaOptions[city] = [];
+  if (!areaOptions[city].includes(name)) areaOptions[city].push(name);
+}
+const areasByCityJson = JSON.stringify(areaOptions);
+const sitesJson = JSON.stringify(sites);
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Area Boundaries</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    
+    <link
+      href="https://?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+    <style>
+      :global(:root) {
+        --bg: #f7f4ef;
+        --ink: #181614;
+        --font-body: "DM Sans", system-ui, sans-serif;
+        --font-display: "Instrument Serif", Georgia, serif;
+      }
+
+      :global(body) {
+        margin: 0;
+        font-family: var(--font-body);
+        background: var(--bg);
+        color: var(--ink);
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+      .page {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 220px 1fr;
+      }
+
+      .main {
+        padding: 48px 32px 64px;
+        min-width: 0;
+        overflow-x: hidden;
+        max-width: 1200px;
+      }
+
+    .main h1 {
+        margin: 0 0 8px;
+        font-family: var(--font-body);
+        font-size: 2.2rem;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -0.03em;
+      }
+
+      .muted {
+        color: #6f6a63;
+        margin: 0 0 28px;
+      }
+
+      .panel {
+        background: #fff;
+        border: 1px solid #e3ddd2;
+        border-radius: 22px;
+        padding: 22px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns:
+          minmax(220px, 1fr)
+          minmax(220px, 1fr)
+          minmax(220px, 1fr)
+          minmax(220px, 1fr);
+        gap: 12px;
+        align-items: end;
+        margin-bottom: 18px;
+      }
+
+      .control-actions {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(150px, 1fr));
+        gap: 12px;
+      }
+
+      .controls button {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .main label {
+        display: grid;
+        gap: 6px;
+        font-size: 13px;
+        font-weight: 700;
+        color: #514a43;
+      }
+
+      .main select,
+      .main input,
+      .main button {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        height: 44px;
+        border-radius: 999px;
+        border: 1px solid #ddd3c8;
+        padding: 0 14px;
+        font: inherit;
+        background: #fff;
+      }
+
+      .main button {
+        cursor: pointer;
+        font-weight: 800;
+      }
+
+      .main button.primary {
+        background: #181614;
+        color: #fff;
+        border-color: #181614;
+      }
+
+      .danger {
+        color: #9f1d1d;
+        border-color: #e8bcbc;
+      }
+
+      .main button.is-active {
+        background: #2f6f73 !important;
+        border-color: #2f6f73 !important;
+        color: #fff !important;
+        box-shadow: 0 0 0 4px rgba(47, 111, 115, 0.18);
+      }
+
+      .main button.danger.is-active {
+        background: #9f1d1d !important;
+        border-color: #9f1d1d !important;
+        color: #fff !important;
+      }
+
+      #map {
+        width: 100%;
+        height: 640px;
+        border-radius: 20px;
+        overflow: hidden;
+        border: 1px solid #e2d8cd;
+        background: #e9e1d7;
+      }
+
+      .status {
+        margin-top: 14px;
+        font-weight: 700;
+      }
+
+      .hint {
+        margin-top: 10px;
+        color: #766f66;
+        font-size: 14px;
+      }
+
+      @media (max-width: 1150px) {
+        .controls {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .control-actions {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 900px) {
+        .page {
+          display: block;
+        }
+
+        .main {
+          padding: 28px 18px 48px;
+        }
+
+        .controls,
+        .control-actions {
+          grid-template-columns: 1fr;
+        }
+
+        #map {
+          height: 520px;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="page">
+      <AdminSidebar active="areas" />
+
+      <main class="main">
+        <h1>Area Boundaries</h1>
+        <p class="muted">
+          Draw a hidden map boundary for each area. Public pages will use this for listing accuracy.
+        </p>
+
+        <section class="panel">
+          <div class="controls">
+            <label>
+              Site
+              <select id="siteSelect">
+                {sites.map((site) => (
+                  <option value={site.id} data-city={String(site.city || "").toLowerCase()}>
+                    {site.site_name || site.domain || site.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              City
+              <select id="citySelect">
+              {[...new Set([...sites.map((s) => s.city).filter(Boolean), "whistler"])].map((c) => (
+                  <option value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Area
+              <select id="areaSelect"><option value="">-- select or type new --</option></select>
+            </label>
+          <label style="display:none;">
+              New Area Name
+              <input id="areaNameNew" type="text" placeholder="e.g. Sparwood East" />
+            </label>
+
+            <label>
+              Short Description
+              <input id="shortDescription" type="text" placeholder="Ocean views • Shopping" />
+            </label>
+
+           <label>
+              Hero Image URL
+              <input id="heroImageUrl" type="text" placeholder="https://images.unsplash.com/..." />
+            </label>
+
+            <label>
+              Hero heading h1 <span style="font-weight:400;font-size:11px;">(use | for line break)</span>
+              <input id="heroHeading" type="text" placeholder="North Nanaimo | Ocean Views" />
+            </label>
+
+            <label>
+              Section heading h2
+              <input id="seoHeading" type="text" placeholder="North Nanaimo real estate — active listings" />
+            </label>
+
+            <label>
+              SEO title
+              <input id="seoTitle" type="text" placeholder="North Nanaimo Homes for Sale | Nanaimo BC" />
+            </label>
+
+            <label>
+              Intro copy
+              <input id="introCopy" type="text" placeholder="North Nanaimo is known for..." />
+            </label>
+
+            <label>
+              Meta description
+              <input id="metaDescription" type="text" placeholder="Browse North Nanaimo homes for sale..." />
+            </label>
+
+            <div class="control-actions">
+              <button type="button" id="drawBtn">Draw Boundary</button>
+              <button type="button" id="loadLinesBtn">Load Boundary Lines</button>
+              <button type="button" id="buildPolygonBtn">Build Path</button>
+              <button type="button" class="danger" id="clearBtn">Clear</button>
+              <button type="button" class="primary" id="saveBtn">Save Boundary</button>
+            </div>
+          </div>
+
+          <div id="map"></div>
+
+          <div class="status" id="status">Draw a polygon on the map, then save it.</div>
+          <div class="hint">
+            Tip: load boundary lines, click only the red pieces you want, then build a path. Saving closes it into a polygon.
+          </div>
+        </section>
+      </main>
+    </div>
+
+   <script is:inline define:vars={{ areasByCityJson, sitesJson }}>
+      const areasByCity = JSON.parse(areasByCityJson);
+      const sites = JSON.parse(sitesJson);
+
+      const siteSelect = document.getElementById("siteSelect");
+      const citySelect = document.getElementById("citySelect");
+      const areaSelect = document.getElementById("areaSelect");
+      const shortDescriptionInput = document.getElementById("shortDescription");
+      const heroImageUrlInput = document.getElementById("heroImageUrl");
+      const drawBtn = document.getElementById("drawBtn");
+      const clearBtn = document.getElementById("clearBtn");
+      const saveBtn = document.getElementById("saveBtn");
+      const statusEl = document.getElementById("status");
+
+      let map = null;
+      let drawnItems = null;
+      let drawControl = null;
+      let activeLayer = null;   // the current polygon/polyline layer
+      let importedLineLayers = [];
+      let selectedLineLayers = [];
+      let isDrawingPath = false;
+      let pathPoints = [];
+      let pathMarkers = [];
+      let pathPolyline = null;
+
+      const cityCenters = {
+        nanaimo:   { lat: 49.1967, lng: -123.9401, zoom: 12 },
+        parksville:{ lat: 49.3193, lng: -124.3136, zoom: 11 },
+        tofino:    { lat: 49.1520, lng: -125.9067, zoom: 12 },
+        sparwood:  { lat: 49.7300, lng: -114.8850, zoom: 13 },
+        fernie:    { lat: 49.5037, lng: -115.0631, zoom: 13 },
+        duncan:    { lat: 48.7787, lng: -123.7079, zoom: 13 },
+        colwood:   { lat: 48.4254, lng: -123.4956, zoom: 13 },
+        whistler:  { lat: 50.1163, lng: -122.9574, zoom: 13 },
+      };
+
+      function slugify(value) {
+        return String(value || "")
+          .toLowerCase()
+          .replace(/&/g, "and")
+          .replace(/\//g, "-")
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+      }
+
+      function setStatus(message) { statusEl.textContent = message; }
+
+      function setActiveAction(action) {
+        drawBtn?.classList.toggle("is-active", action === "draw");
+        clearBtn?.classList.toggle("is-active", action === "clear");
+      }
+
+      function moveMapToCity() {
+        if (!map) return;
+        const c = cityCenters[citySelect.value] || cityCenters.nanaimo;
+        map.setView([c.lat, c.lng], c.zoom);
+      }
+
+      function refreshAreas() {
+        const city = citySelect.value;
+        const areas = areasByCity[city] || [];
+        areaSelect.innerHTML = areas
+          .map(a => `<option value="${slugify(a)}">${a}</option>`)
+          .join("");
+        moveMapToCity();
+      }
+
+      // ── polygon helpers ──────────────────────────────────────────
+      function clearActiveLayer({ quiet = false } = {}) {
+        if (activeLayer) { map.removeLayer(activeLayer); activeLayer = null; }
+        pathMarkers.forEach(m => map.removeLayer(m));
+        pathMarkers = [];
+        pathPoints = [];
+        isDrawingPath = false;
+        if (pathPolyline) { map.removeLayer(pathPolyline); pathPolyline = null; }
+        if (!quiet) setStatus("Boundary cleared. Choose Draw Boundary to start again.");
+      }
+
+      function layerToGeoJsonCoords(layer) {
+        // works for both Polygon and Polyline
+        const latlngs = layer.getLatLngs();
+        const ring = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
+        const coords = ring.map(p => [p.lng, p.lat]);
+        // close the ring
+        if (coords.length && (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1])) {
+          coords.push(coords[0]);
+        }
+        return coords;
+      }
+
+      function getLayerCenter(layer) {
+        const c = layer.getBounds ? layer.getBounds().getCenter() : layer.getLatLng();
+        return { lat: c.lat, lng: c.lng };
+      }
+
+      function rebuildPolylineFromPath() {
+        if (pathPolyline) map.removeLayer(pathPolyline);
+        if (pathPoints.length < 2) { pathPolyline = null; return; }
+        pathPolyline = L.polyline(pathPoints, { color: "#2563eb", weight: 3, opacity: 0.6 }).addTo(map);
+      }
+
+      // ── draw mode ────────────────────────────────────────────────
+      drawBtn?.addEventListener("click", () => {
+        if (!map) { setStatus("Map not ready."); return; }
+        clearActiveLayer({ quiet: true });
+        isDrawingPath = true;
+        map.getContainer().style.cursor = "crosshair";
+        setActiveAction("draw");
+        setStatus("Click points around the boundary. Each click adds a vertex.");
+      });
+
+      // map click → add point in draw mode
+      function onMapClick(e) {
+        if (!isDrawingPath) return;
+        pathPoints.push(e.latlng);
+
+        const marker = L.circleMarker(e.latlng, {
+          radius: 5, color: "#2563eb", fillColor: "#fff", fillOpacity: 1, weight: 2,
+        }).addTo(map);
+
+        // right-click marker to delete
+        marker.on("contextmenu", () => {
+          const idx = pathMarkers.indexOf(marker);
+          if (idx === -1) return;
+          map.removeLayer(marker);
+          pathMarkers.splice(idx, 1);
+          pathPoints.splice(idx, 1);
+          rebuildPolylineFromPath();
+          setStatus(`Point removed. ${pathPoints.length} points remain.`);
+        });
+
+        pathMarkers.push(marker);
+        rebuildPolylineFromPath();
+
+        // update live polygon preview
+        if (activeLayer) map.removeLayer(activeLayer);
+        if (pathPoints.length >= 3) {
+          activeLayer = L.polygon(pathPoints, { color: "#2f6f73", weight: 3, fillOpacity: 0.15 }).addTo(map);
+        }
+
+        setStatus(`${pathPoints.length} points added. Keep clicking, then Save Boundary when done.`);
+      }
+
+      clearBtn?.addEventListener("click", () => {
+        setActiveAction("clear");
+        clearActiveLayer();
+        importedLineLayers.forEach(l => map.removeLayer(l));
+        importedLineLayers = [];
+        selectedLineLayers = [];
+        map.getContainer().style.cursor = "";
+      });
+
+      // ── load boundary lines ──────────────────────────────────────
+      async function loadImportedLines() {
+        importedLineLayers.forEach(l => map.removeLayer(l));
+        importedLineLayers = [];
+        selectedLineLayers = [];
+
+        const res = await fetch(
+          `/api/admin/imported-boundary-lines?city=${encodeURIComponent(citySelect.value)}&site_id=${encodeURIComponent(siteSelect.value)}`
+        );
+        const result = await res.json();
+
+        if (!res.ok || !result.ok) {
+          setStatus(`Could not load boundary lines: ${result.error || "Unknown error"}`);
+          return;
+        }
+
+        result.lines.forEach(row => {
+          const coords = row.geometry_geojson.coordinates.map(([lng, lat]) => [lat, lng]);
+          for (let i = 0; i < coords.length - 1; i++) {
+            const seg = [coords[i], coords[i + 1]];
+            const line = L.polyline(seg, { color: "#cc4444", weight: 2, opacity: 0.55 }).addTo(map);
+            line.__selected = false;
+            line.__row = row;
+
+            line.on("click", () => {
+              line.__selected = !line.__selected;
+              line.setStyle(line.__selected
+                ? { color: "#2563eb", weight: 4, opacity: 1 }
+                : { color: "#cc4444", weight: 2, opacity: 0.55 }
+              );
+              if (line.__selected) selectedLineLayers.push(line);
+              else selectedLineLayers = selectedLineLayers.filter(l => l !== line);
+              setStatus(`${selectedLineLayers.length} segment(s) selected.`);
+            });
+
+            importedLineLayers.push(line);
+          }
+        });
+
+        setStatus(`${importedLineLayers.length} boundary segments loaded. Click the ones you want.`);
+      }
+
+      // ── build polygon from selected lines ────────────────────────
+      function buildPolygonFromSelectedLines() {
+        if (!selectedLineLayers.length) { setStatus("Select boundary segments first."); return; }
+        if (activeLayer) { map.removeLayer(activeLayer); activeLayer = null; }
+
+        const segments = selectedLineLayers.map(line => {
+          const pts = line.getLatLngs();
+          return [{ lat: pts[0].lat, lng: pts[0].lng }, { lat: pts[1].lat, lng: pts[1].lng }];
+        });
+
+        function key(p) { return `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`; }
+
+        const used = new Set();
+        const points = [...segments[0]];
+        used.add(0);
+        let changed = true;
+
+        while (changed) {
+          changed = false;
+          for (let i = 0; i < segments.length; i++) {
+            if (used.has(i)) continue;
+            const [a, b] = segments[i];
+            const first = points[0], last = points[points.length - 1];
+            if      (key(a) === key(last))  { points.push(b);    used.add(i); changed = true; }
+            else if (key(b) === key(last))  { points.push(a);    used.add(i); changed = true; }
+            else if (key(b) === key(first)) { points.unshift(a); used.add(i); changed = true; }
+            else if (key(a) === key(first)) { points.unshift(b); used.add(i); changed = true; }
+          }
+        }
+
+        if (points.length < 3) { setStatus("Need at least 3 connected segments."); return; }
+
+        const latlngs = points.map(p => [p.lat, p.lng]);
+        activeLayer = L.polygon(latlngs, { color: "#2563eb", weight: 3, fillOpacity: 0.15 }).addTo(map);
+
+        const bounds = L.latLngBounds(latlngs);
+        map.fitBounds(bounds, { padding: [40, 40] });
+
+        setStatus(`Path built from ${used.size} segment(s). Save Boundary when ready.`);
+      }
+
+      // ── load existing boundary ───────────────────────────────────
+      async function loadBoundary() {
+        if (!map || !areaSelect.value) return;
+        clearActiveLayer({ quiet: true });
+        setActiveAction(null);
+
+        const res = await fetch(
+          `/api/admin/area-boundary?city=${encodeURIComponent(citySelect.value)}&area_slug=${encodeURIComponent(areaSelect.value)}&site_id=${encodeURIComponent(siteSelect.value)}`
+        );
+
+        if (!res.ok) {
+          shortDescriptionInput.value = "";
+          heroImageUrlInput.value = "";
+          setStatus("No saved boundary found for this area.");
+          return;
+        }
+
+        const result = await res.json();
+        shortDescriptionInput.value = result?.boundary?.short_description || result?.short_description || "";
+        heroImageUrlInput.value     = result?.boundary?.hero_image_url    || result?.hero_image_url    || "";
+        document.getElementById("heroHeading").value     = result?.boundary?.hero_heading    || result?.hero_heading    || "";
+        document.getElementById("seoHeading").value      = result?.boundary?.seo_heading     || result?.seo_heading     || "";
+        document.getElementById("seoTitle").value        = result?.boundary?.seo_title       || result?.seo_title       || "";
+        document.getElementById("introCopy").value       = result?.boundary?.intro_copy      || result?.intro_copy      || "";
+        document.getElementById("metaDescription").value = result?.boundary?.meta_description || result?.meta_description || "";
+
+        const polygon = result?.boundary?.polygon_geojson || result?.polygon_geojson;
+        if (!polygon?.coordinates?.[0]?.length) { setStatus("No saved boundary found for this area."); return; }
+
+        const latlngs = polygon.coordinates[0].map(([lng, lat]) => [lat, lng]);
+        activeLayer = L.polygon(latlngs, { color: "#2f6f73", weight: 3, fillOpacity: 0.15 }).addTo(map);
+
+        const bounds = L.latLngBounds(latlngs);
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40] });
+
+        setStatus(`Loaded boundary for ${result?.boundary?.area_name || result?.area_name || "this area"}.`);
+      }
+
+      // ── save ─────────────────────────────────────────────────────
+      async function saveBoundary() {
+        if (!activeLayer) { setStatus("Draw or build a boundary first."); return; }
+
+        const selectedOption = areaSelect.options[areaSelect.selectedIndex];
+        const areaName = selectedOption?.textContent || areaSelect.value;
+        const areaSlug = areaSelect.value;
+        const center   = getLayerCenter(activeLayer);
+        const coords   = layerToGeoJsonCoords(activeLayer);
+
+        const payload = {
+          site_id:          siteSelect.value,
+          city:             citySelect.value,
+          area_slug:        areaSlug,
+          area_name:        areaName,
+          short_description: shortDescriptionInput.value.trim(),
+          hero_image_url:   heroImageUrlInput.value.trim(),
+          hero_heading:     document.getElementById("heroHeading").value.trim(),
+          seo_heading:      document.getElementById("seoHeading").value.trim(),
+          seo_title:        document.getElementById("seoTitle").value.trim(),
+          intro_copy:       document.getElementById("introCopy").value.trim(),
+          meta_description: document.getElementById("metaDescription").value.trim(),
+          polygon_geojson:  { type: "Polygon", coordinates: [coords] },
+          center_lat:       center.lat,
+          center_lng:       center.lng,
+        };
+
+        setStatus("Saving boundary...");
+
+        const res = await fetch("/api/admin/area-boundary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const result = await res.json();
+
+        if (!res.ok || !result.ok) { setStatus(`Save failed: ${result.error || "Unknown error"}`); return; }
+        setActiveAction(null);
+        setStatus(`Saved boundary for ${areaName}.`);
+      }
+
+      // ── sync site → city ─────────────────────────────────────────
+      function syncCityFromSite() {
+        const selected = siteSelect.options[siteSelect.selectedIndex];
+        const siteCity = selected?.dataset?.city;
+        if (siteCity && areasByCity[siteCity]) {
+          citySelect.value = siteCity;
+          refreshAreas();
+        }
+      }
+
+      // ── init map ─────────────────────────────────────────────────
+      function initMap() {
+        const start = cityCenters.nanaimo;
+        map = L.map("map", { zoomControl: true, scrollWheelZoom: true });
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          attribution: "© OpenStreetMap contributors",
+        }).addTo(map);
+        map.setView([start.lat, start.lng], start.zoom);
+        map.on("click", onMapClick);
+        syncCityFromSite();
+        setTimeout(loadBoundary, 300);
+      }
+
+      // ── boot ─────────────────────────────────────────────────────
+      window.addEventListener("DOMContentLoaded", () => {
+        refreshAreas();
+        syncCityFromSite();
+        initMap();
+      });
+
+      siteSelect?.addEventListener("change", async () => { syncCityFromSite(); await loadBoundary(); });
+      citySelect?.addEventListener("change", async () => { refreshAreas(); await loadBoundary(); });
+      areaSelect?.addEventListener("change", async () => { await loadBoundary(); });
+      clearBtn?.addEventListener("click", () => { setActiveAction("clear"); clearActiveLayer(); importedLineLayers.forEach(l => map.removeLayer(l)); importedLineLayers = []; selectedLineLayers = []; map.getContainer().style.cursor = ""; });
+      document.getElementById("loadLinesBtn")?.addEventListener("click", loadImportedLines);
+      document.getElementById("buildPolygonBtn")?.addEventListener("click", buildPolygonFromSelectedLines);
+      saveBtn?.addEventListener("click", saveBoundary);
+    </script>
+  </body>
+</html>
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,1077 @@
+---
+import { createClient } from "@supabase/supabase-js";
+import AdminSidebar from "../../../../components/AdminSidebar.astro";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const siteId = String(Astro.params.id || "").trim();
+
+const { data: site, error: siteError } = await supabase
+  .from("sites")
+  .select(`
+    id,
+    domain,
+    city,
+    site_name,
+    accent_color,
+    nav_property_types
+  `)
+  .eq("id", siteId)
+  .maybeSingle();
+
+if (!site && !siteError) {
+  return Astro.redirect("/admin");
+}
+
+const city = String(site?.city || "")
+  .trim()
+  .toLowerCase()
+  .replace(/-/g, " ")
+  .replace(/\s+/g, " ");
+
+const citySlug = city.replace(/\s+/g, "-");
+
+const cityLabel = city.replace(
+  /\b\w/g,
+  (letter) => letter.toUpperCase()
+);
+
+const siteName =
+  String(site?.site_name || site?.domain || "Website");
+
+const visibleCoreTypes =
+  Array.isArray(site?.nav_property_types)
+    ? site.nav_property_types.map((value: unknown) =>
+        String(value).trim().toLowerCase()
+      )
+    : [
+        "house",
+        "condo",
+        "townhouse",
+        "mobile",
+        "land",
+      ];
+
+const corePages = [
+  {
+    label: "Homepage",
+    description: `${cityLabel} website homepage`,
+    href: `/${citySlug}`,
+    propertyType: "",
+    alwaysVisible: true,
+  },
+  {
+    label: "Areas",
+    description: "Neighbourhood and area directory",
+    href: `/${citySlug}/areas`,
+    propertyType: "",
+    alwaysVisible: true,
+  },
+  {
+    label: "Homes",
+    description: "Detached house listings",
+    href: `/${citySlug}/homes`,
+    propertyType: "house",
+  },
+  {
+    label: "Condos",
+    description: "Condo and apartment listings",
+    href: `/${citySlug}/condos`,
+    propertyType: "condo",
+  },
+  {
+    label: "Townhomes",
+    description: "Townhouse listings",
+    href: `/${citySlug}/townhomes`,
+    propertyType: "townhouse",
+  },
+  {
+    label: "Mobile homes",
+    description: "Manufactured and mobile homes",
+    href: `/${citySlug}/mobile-homes`,
+    propertyType: "mobile",
+  },
+  {
+    label: "Land",
+    description: "Lots and land for sale",
+    href: `/${citySlug}/land`,
+    propertyType: "land",
+  },
+].map((page) => ({
+  ...page,
+  isVisible:
+    page.alwaysVisible ||
+    visibleCoreTypes.includes(page.propertyType),
+}));
+
+const pageIdeas = [
+  {
+    label: "Waterfront",
+    description: "Homes directly on the water",
+    template: "waterfront",
+  },
+  {
+    label: "Ocean view",
+    description: "Homes featuring ocean views",
+    template: "ocean_view_homes",
+  },
+  {
+    label: "Luxury",
+    description: "Premium and luxury listings",
+    template: "luxury_homes",
+  },
+  {
+    label: "Homes with suites",
+    description: "Mortgage-helper and income suites",
+    template: "homes_with_suites",
+  },
+  {
+    label: "Family homes",
+    description: "Yards, garages, and family-friendly layouts",
+    template: "family_homes",
+  },
+  {
+    label: "Updated homes",
+    description: "Renovated and updated properties",
+    template: "updated_homes",
+  },
+  {
+    label: "Walkable homes",
+    description: "Homes close to daily amenities",
+    template: "walkable_homes",
+  },
+  {
+    label: "Investment properties",
+    description: "Income and investment opportunities",
+    template: "investment_properties",
+  },
+];
+
+const { data: customPages = [], error: pagesError } = await supabase
+  .from("intent_pages")
+  .select(`
+    id,
+    slug,
+    city,
+    hero_heading,
+    nav_label,
+    lifestyle_angle,
+    property_type,
+    is_published,
+    show_in_nav,
+    sort_order,
+    created_at
+  `)
+  .or(`site_id.eq.${siteId},and(site_id.is.null,city.eq.${citySlug})`)
+  .order("sort_order", { ascending: true })
+  .order("created_at", { ascending: false });
+
+function titleCase(value: unknown) {
+  return String(value || "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function publicPageHref(page: any) {
+  const pageCity = String(page?.city || city)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+
+  return `/${pageCity}/${page.slug}`;
+}
+
+function ideaHref(template: string) {
+  const params = new URLSearchParams({
+    site_id: siteId,
+    city: citySlug,
+    page_type: "intent",
+    template,
+  });
+
+  return `/admin/intent-pages/new?${params.toString()}`;
+}
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{siteName} Website Pages</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <style is:global>
+      .mobile-topbar,
+      .drawer-overlay {
+        display: none;
+      }
+
+      @media (max-width: 768px) {
+        .mobile-topbar {
+          display: flex !important;
+        }
+      }
+    </style>
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+
+  <body>
+    <div class="page">
+      <AdminSidebar active="pages" />
+
+      <main class="main">
+        <nav class="breadcrumbs" aria-label="Breadcrumb">
+          <a href="/admin">Websites</a>
+          <span>›</span>
+          <a href={`/admin/sites/${siteId}/settings`}>
+            {siteName}
+          </a>
+          <span>›</span>
+          <strong>Pages</strong>
+        </nav>
+
+        <header class="workspace-header">
+          <div>
+            <p class="eyebrow">Website Studio</p>
+            <h1>{siteName}</h1>
+
+            <p class="workspace-meta">
+              {cityLabel} website
+              {site?.domain ? ` · ${site.domain}` : ""}
+            </p>
+          </div>
+
+          <div class="header-actions">
+            <a
+              class="button button--secondary"
+              href={`/${citySlug}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              View website
+            </a>
+
+            <a
+              class="button button--secondary"
+              href={`/admin/sites/${siteId}/settings`}
+            >
+              Settings
+            </a>
+          </div>
+        </header>
+
+        {siteError && (
+          <div class="notice notice--error">
+            {siteError.message}
+          </div>
+        )}
+
+        <section class="workspace-section">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Website foundation</p>
+              <h2>Core pages</h2>
+
+              <p>
+                Essential listing and location pages created automatically
+                for this website.
+              </p>
+            </div>
+          </div>
+
+          <div class="page-grid">
+            {corePages.map((corePage) => (
+              <article class="website-page-card">
+                <div class="page-card-copy">
+                  <div class="page-title-row">
+                    <h3>{corePage.label}</h3>
+
+                    <span
+                      class:list={[
+                        "status",
+                        {
+                          "status--live": corePage.isVisible,
+                          "status--hidden": !corePage.isVisible,
+                        },
+                      ]}
+                    >
+                      {corePage.isVisible ? "In navigation" : "Hidden"}
+                    </span>
+                  </div>
+
+                  <p>{corePage.description}</p>
+                </div>
+
+                <div class="page-card-actions">
+                  <a
+                    class="small-button"
+                    href={corePage.href}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open
+                  </a>
+
+                  {
+                    corePage.propertyType && (
+                      <button
+                        type="button"
+                        class:list={[
+                          "small-button",
+                          "nav-toggle",
+                          {
+                            "nav-toggle--remove": corePage.isVisible,
+                          },
+                        ]}
+                        data-core-nav-toggle
+                        data-site-id={siteId}
+                        data-property-type={corePage.propertyType}
+                        data-visible={String(corePage.isVisible)}
+                      >
+                        {corePage.isVisible
+                          ? "Remove from nav"
+                          : "Add to nav"}
+                      </button>
+                    )
+                  }
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section class="workspace-section">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Ready-made opportunities</p>
+              <h2>Ideas</h2>
+
+              <p>
+                Add useful niche and lifestyle pages using your existing
+                page generator.
+              </p>
+            </div>
+          </div>
+
+          <div class="ideas-grid">
+            {pageIdeas.map((idea) => (
+              <article class="idea-card">
+                <div>
+                  <h3>{idea.label}</h3>
+                  <p>{idea.description}</p>
+                </div>
+
+                <a
+                  class="idea-button"
+                  href={ideaHref(idea.template)}
+                >
+                  Add to website
+                </a>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section class="workspace-section">
+          <div class="section-heading section-heading--actions">
+            <div>
+              <p class="section-kicker">Made for this website</p>
+              <h2>My pages</h2>
+
+              <p>
+                Custom category, lifestyle, and buyer-discovery pages.
+              </p>
+            </div>
+
+            <a
+              class="button button--primary"
+              href={`/admin/intent-pages/new?site_id=${encodeURIComponent(
+                siteId
+              )}&city=${encodeURIComponent(citySlug)}`}
+            >
+              + Create custom page
+            </a>
+          </div>
+
+          {pagesError && (
+            <div class="notice notice--error">
+              {pagesError.message}
+            </div>
+          )}
+
+          {!customPages.length ? (
+            <div class="empty-state">
+              <h3>No custom pages yet</h3>
+
+              <p>
+                Start with one of the ideas above or create your own page.
+              </p>
+            </div>
+          ) : (
+            <div class="custom-pages">
+              {customPages.map((customPage) => (
+                <article class="custom-page-row">
+                  <div>
+                    <div class="page-title-row">
+                      <h3>
+                        {customPage.hero_heading ||
+                          customPage.nav_label ||
+                          titleCase(customPage.slug)}
+                      </h3>
+
+                      <span
+                        class:list={[
+                          "status",
+                          {
+                            "status--live":
+                              customPage.is_published !== false,
+                            "status--hidden":
+                              customPage.is_published === false,
+                          },
+                        ]}
+                      >
+                        {customPage.is_published === false
+                          ? "Draft"
+                          : "Published"}
+                      </span>
+                    </div>
+
+                    <p class="page-path">
+                      {publicPageHref(customPage)}
+                    </p>
+
+                    <div class="page-tags">
+                      <span>
+                        {customPage.lifestyle_angle
+                          ? titleCase(customPage.lifestyle_angle)
+                          : "Custom"}
+                      </span>
+
+                      {customPage.property_type && (
+                        <span>
+                          {titleCase(customPage.property_type)}
+                        </span>
+                      )}
+
+                      {customPage.show_in_nav && (
+                        <span>In navigation</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div class="page-card-actions">
+                    <a
+                      class="small-button"
+                      href={publicPageHref(customPage)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open
+                    </a>
+
+                    <a
+                      class="small-button small-button--dark"
+                      href={`/admin/intent-pages/${customPage.id}/edit`}
+                    >
+                      Edit
+                    </a>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+
+          <div class="advanced-link">
+            <a
+              href={`/admin/intent-pages?site_id=${encodeURIComponent(
+                siteId
+              )}&city=${encodeURIComponent(citySlug)}`}
+            >
+              Open advanced page manager →
+            </a>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const navSortList =
+        document.querySelector("[data-nav-sort-list]");
+
+      const navSaveButton =
+        document.querySelector("[data-save-nav-order]");
+
+      let draggedNavItem = null;
+
+      navSortList?.addEventListener("dragstart", (event) => {
+        draggedNavItem =
+          event.target.closest("[data-nav-sort-item]");
+
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "move";
+        }
+      });
+
+      navSortList?.addEventListener("dragover", (event) => {
+        event.preventDefault();
+
+        const target =
+          event.target.closest("[data-nav-sort-item]");
+
+        if (!target || target === draggedNavItem || !draggedNavItem) {
+          return;
+        }
+
+        const rect = target.getBoundingClientRect();
+        const insertAfter =
+          event.clientY > rect.top + rect.height / 2;
+
+        navSortList.insertBefore(
+          draggedNavItem,
+          insertAfter ? target.nextSibling : target
+        );
+      });
+
+      navSaveButton?.addEventListener("click", async () => {
+        const items = Array.from(
+          document.querySelectorAll("[data-nav-sort-item]")
+        ).map((item, index) => ({
+          id: item.getAttribute("data-id"),
+          sort_order: index + 1,
+        }));
+
+        const originalText =
+          navSaveButton.textContent || "Save navigation order";
+
+        navSaveButton.disabled = true;
+        navSaveButton.textContent = "Saving...";
+
+        try {
+          const response = await fetch(
+            "/api/admin/save-nav-order",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ items }),
+            }
+          );
+
+          const result = await response.json();
+
+          if (!response.ok) {
+            throw new Error(
+              result?.error || "Could not save navigation order"
+            );
+          }
+
+          navSaveButton.textContent = "Saved!";
+        } catch (error) {
+          console.error(error);
+
+          navSaveButton.textContent =
+            error instanceof Error
+              ? error.message
+              : "Save failed";
+        }
+
+        setTimeout(() => {
+          navSaveButton.textContent = originalText;
+          navSaveButton.disabled = false;
+        }, 1400);
+      });
+      document
+        .querySelectorAll("[data-core-nav-toggle]")
+        .forEach((button) => {
+          button.addEventListener("click", async () => {
+            const siteId =
+              button.getAttribute("data-site-id") || "";
+
+            const propertyType =
+              button.getAttribute("data-property-type") || "";
+
+            if (!siteId || !propertyType) {
+              return;
+            }
+
+            button.disabled = true;
+
+            const originalText =
+              button.textContent || "";
+
+            button.textContent = "Saving...";
+
+            try {
+              const response = await fetch(
+                "/api/admin/toggle-core-nav",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    site_id: siteId,
+                    property_type: propertyType,
+                  }),
+                }
+              );
+
+              const result = await response.json();
+
+              if (!response.ok) {
+                throw new Error(
+                  result?.error ||
+                    "Could not update navigation"
+                );
+              }
+
+              window.location.reload();
+            } catch (error) {
+              console.error(error);
+
+              button.textContent =
+                error instanceof Error
+                  ? error.message
+                  : "Save failed";
+
+              setTimeout(() => {
+                button.textContent = originalText;
+              }, 1800);
+
+              button.disabled = false;
+            }
+          });
+        });
+    </script>
+
+    <style>
+      :global(:root) {
+        --bg: #f7f4ef;
+        --surface: #ffffff;
+        --surface-soft: #fbfaf7;
+        --ink: #181614;
+        --muted: #6c6862;
+        --line: #e3ddd2;
+        --accent: #2f6f73;
+        --font: "DM Sans", system-ui, sans-serif;
+      }
+
+      :global(*) {
+        box-sizing: border-box;
+      }
+
+      :global(body) {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--font);
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+      .page {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+      }
+
+      .main {
+        width: 100%;
+        min-width: 0;
+        padding: 42px 48px 80px;
+      }
+
+      .breadcrumbs,
+      .workspace-header,
+      .workspace-section,
+      .notice {
+        width: 100%;
+        max-width: 1160px;
+        margin-right: auto;
+      }
+
+      .breadcrumbs {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 7px;
+        margin-bottom: 25px;
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+
+      .breadcrumbs a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .breadcrumbs a:hover {
+        color: var(--ink);
+      }
+
+      .workspace-header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 40px;
+      }
+
+      .eyebrow,
+      .section-kicker {
+        margin: 0 0 6px;
+        color: var(--accent);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2.15rem, 5vw, 3.6rem);
+        line-height: 0.98;
+        letter-spacing: -0.055em;
+      }
+
+      .workspace-meta {
+        margin: 11px 0 0;
+        color: var(--muted);
+      }
+
+      .header-actions,
+      .page-card-actions {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .button,
+      .small-button,
+      .idea-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 9px;
+        font: inherit;
+        font-weight: 700;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      .button {
+        min-height: 42px;
+        padding: 0 15px;
+        border: 1px solid var(--line);
+      }
+
+      .button--secondary {
+        background: var(--surface);
+        color: var(--ink);
+      }
+
+      .button--primary {
+        border-color: var(--ink);
+        background: var(--ink);
+        color: #fff;
+      }
+
+      .workspace-section {
+        margin-bottom: 54px;
+      }
+
+      .section-heading {
+        margin-bottom: 17px;
+      }
+
+      .section-heading--actions {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 20px;
+      }
+
+      .section-heading h2 {
+        margin: 0;
+        font-size: 1.55rem;
+        letter-spacing: -0.035em;
+      }
+
+      .section-heading p:not(.section-kicker) {
+        max-width: 680px;
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 0.87rem;
+      }
+
+      .page-grid,
+      .ideas-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 11px;
+      }
+
+      .website-page-card,
+      .idea-card,
+      .custom-page-row {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 17px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--surface);
+      }
+
+      .page-card-copy,
+      .idea-card > div,
+      .custom-page-row > div:first-child {
+        min-width: 0;
+      }
+
+      .page-title-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .website-page-card h3,
+      .idea-card h3,
+      .custom-page-row h3,
+      .empty-state h3 {
+        margin: 0;
+        font-size: 0.95rem;
+        letter-spacing: -0.015em;
+      }
+
+      .website-page-card p,
+      .idea-card p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+
+      .status {
+        display: inline-flex;
+        padding: 3px 7px;
+        border-radius: 999px;
+        font-size: 0.64rem;
+        font-weight: 700;
+      }
+
+      .status--live {
+        background: #e8f4eb;
+        color: #29723d;
+      }
+
+      .status--hidden {
+        background: #eeebe6;
+        color: var(--muted);
+      }
+
+      .small-button,
+      .idea-button {
+        min-height: 31px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        background: var(--surface-soft);
+        color: var(--ink);
+        font-size: 0.7rem;
+      }
+
+      .small-button--dark,
+      .idea-button,
+      .nav-toggle--remove {
+        border-color: var(--ink);
+        background: var(--ink);
+        color: #fff;
+      }
+
+      button.small-button:disabled {
+        opacity: 0.55;
+        cursor: wait;
+      }
+
+      .idea-card {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .idea-button {
+        margin-top: 10px;
+      }
+
+      .custom-pages {
+        display: grid;
+        gap: 10px;
+      }
+
+      .page-path {
+        margin: 5px 0 0;
+        color: var(--muted);
+        font-size: 0.75rem;
+      }
+
+      .page-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-top: 9px;
+      }
+
+      .page-tags span {
+        padding: 3px 7px;
+        border-radius: 999px;
+        background: #eeebe6;
+        color: var(--muted);
+        font-size: 0.64rem;
+        font-weight: 700;
+      }
+
+      .empty-state {
+        padding: 30px;
+        border: 1px dashed #cfc6ba;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.45);
+        text-align: center;
+      }
+
+      .empty-state p {
+        margin: 6px 0 0;
+        color: var(--muted);
+      }
+
+      .advanced-link {
+        margin-top: 16px;
+      }
+
+      .advanced-link a {
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      .advanced-link a:hover {
+        color: var(--ink);
+      }
+
+      .notice {
+        margin-bottom: 24px;
+        padding: 14px 16px;
+        border-radius: 10px;
+      }
+
+      .notice--error {
+        border: 1px solid #dcb4ae;
+        background: #fff2f0;
+        color: #7b3027;
+      }
+
+      @media (max-width: 980px) {
+        .page-grid,
+        .ideas-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 860px) {
+        .page {
+          display: block;
+        }
+
+        .main {
+          padding: 28px 18px 58px;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .workspace-header,
+        .section-heading--actions {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .header-actions,
+        .button--primary {
+          width: 100%;
+        }
+
+        .header-actions .button {
+          flex: 1;
+        }
+
+        .website-page-card,
+        .custom-page-row {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .page-card-actions {
+          width: 100%;
+        }
+      }
+          .nav-order-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 20px;
+        max-width: 760px;
+      }
+
+      .nav-order-item {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        min-height: 58px;
+        padding: 12px 16px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--surface);
+        cursor: grab;
+      }
+
+      .nav-order-item:active {
+        cursor: grabbing;
+      }
+
+      .nav-order-label {
+        flex: 1;
+        font-weight: 700;
+      }
+
+      .drag-handle {
+        display: grid;
+        grid-template-columns: repeat(2, 4px);
+        gap: 3px;
+        padding: 4px;
+      }
+
+      .drag-handle span {
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+
+      .nav-order-save {
+        margin-top: 14px;
+      }
+
+    </style>
+  </body>
+</html>

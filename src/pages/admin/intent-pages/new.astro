@@ -1,0 +1,1221 @@
+---
+import { createClient } from "@supabase/supabase-js";
+import AdminSidebar from "../../../components/AdminSidebar.astro";
+import { getSite } from "../../../lib/getSite";
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+const site = await getSite(Astro.url.hostname);
+let message = "";
+
+const TEMPLATE_FEATURES = {
+  first_time_buyers: ["value", "updated", "walkability"],
+  downsizers: ["walkability", "updated", "views"],
+  family_homes: ["yard", "garage", "suite"],
+  ocean_view_homes: ["views"],
+  homes_with_suites: ["suite", "income", "mortgage_helper"],
+  luxury_homes: ["views", "garage", "updated"],
+  investment_properties: ["suite", "income", "value"],
+waterfront: ["views", "waterfront"],
+oceanfront: ["views", "waterfront"],
+lakefront: ["views", "waterfront"],
+riverfront: ["views", "waterfront"],
+walkable_homes: ["walkability"],
+  updated_homes: ["updated"],
+};
+
+function clean(value: FormDataEntryValue | null) {
+  return String(value || "").trim();
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function titleCase(value: string) {
+  return value
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function pluralType(value: string) {
+  if (!value) return "Homes";
+  if (value === "house") return "Homes";
+  if (value === "mobile") return "Mobile Homes";
+  if (value === "condo") return "Condos";
+  if (value === "townhouse") return "Townhomes";
+  return `${titleCase(value)}s`;
+}
+
+function formatPriceLabel(priceMax: number | null, priceMin: number | null) {
+  if (priceMax) return `Under $${priceMax.toLocaleString()}`;
+  if (priceMin) return `$${priceMin.toLocaleString()}+`;
+  return "";
+}
+
+function getPricePreset(value: string) {
+  if (value === "under-500") return { price_min: null, price_max: 500000 };
+  if (value === "under-650") return { price_min: null, price_max: 650000 };
+  if (value === "under-800") return { price_min: null, price_max: 800000 };
+  if (value === "under-1000") return { price_min: null, price_max: 1000000 };
+  if (value === "800-plus") return { price_min: 800000, price_max: null };
+  if (value === "luxury") return { price_min: 1200000, price_max: null };
+
+  return { price_min: null, price_max: null };
+}
+let areaOptions: string[] = [];
+
+try {
+  const { data } = await supabase
+    .from("listing_rows")
+    .select("normalized_area")
+    .eq("status", "A")
+    .eq("normalized_city", site?.city || "nanaimo")
+    .not("normalized_area", "is", null);
+
+  areaOptions = Array.from(
+    new Set((data || []).map((row: any) => row.normalized_area).filter(Boolean))
+  ).sort();
+} catch {}
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+
+  const pageType = clean(form.get("page_type") || "category").toLowerCase();
+  const template = clean(form.get("template")).toLowerCase();
+  const city = clean(form.get("city") || "nanaimo").toLowerCase();
+  const area = clean(form.get("area")).toLowerCase();
+  const propertyType = clean(form.get("property_type")).toLowerCase();
+  let pricePreset = clean(form.get("price_preset"));
+
+if (!pricePreset && template === "luxury_homes") {
+  pricePreset = "luxury";
+}
+const customName = clean(form.get("custom_name"));
+const slugOverride = clean(form.get("slug_override"));
+const heroHeadingOverride = clean(form.get("hero_heading_override"));
+const seoTitleOverride = clean(form.get("seo_title_override"));
+const introCopyOverride = clean(form.get("intro_copy_override"));
+const metaDescriptionOverride = clean(form.get("meta_description_override"));  
+const defaultSort = clean(form.get("default_sort")) || "newest";
+const polygonGeojsonRaw = clean(form.get("polygon_geojson"));
+const polygonGeojson = polygonGeojsonRaw
+  ? JSON.parse(polygonGeojsonRaw)
+  : null;
+  const polygonCenterLat =
+  Number(clean(form.get("polygon_center_lat"))) || null;
+
+const polygonCenterLng =
+  Number(clean(form.get("polygon_center_lng"))) || null;
+
+const polygonBoundsRaw =
+  clean(form.get("polygon_bounds"));
+
+const polygonBounds =
+  polygonBoundsRaw
+    ? JSON.parse(polygonBoundsRaw)
+    : null;
+  const { price_min, price_max } = getPricePreset(pricePreset);
+
+  const areaLabel = area ? titleCase(area) : titleCase(city);
+  const typeLabel = pluralType(propertyType);
+  const priceLabel = formatPriceLabel(price_max, price_min);
+  const templateLabel = titleCase(template);
+
+  const features =
+    pageType === "intent"
+      ? TEMPLATE_FEATURES[template as keyof typeof TEMPLATE_FEATURES] || []
+      : [];
+
+ const slugParts =
+  pageType === "category"
+    ? [area || city, propertyType ? pluralType(propertyType) : "homes", priceLabel]
+    : pageType === "polygon"
+      ? [city, customName || "custom-area", propertyType ? pluralType(propertyType) : "homes", priceLabel]
+      : [area || city, template, propertyType ? pluralType(propertyType) : "", priceLabel];
+ const slug = slugify(slugOverride || slugParts.filter(Boolean).join(" "));
+
+  const heroHeading =
+    pageType === "category"
+      ? [areaLabel, typeLabel, priceLabel, "worth a closer look"]
+          .filter(Boolean)
+          .join(" ")
+      : [areaLabel, templateLabel.toLowerCase(), typeLabel.toLowerCase(), priceLabel, "worth a closer look"]
+          .filter(Boolean)
+          .join(" ");
+
+  const seoTitle =
+    pageType === "category"
+      ? [areaLabel, typeLabel, priceLabel].filter(Boolean).join(" ")
+      : [areaLabel, templateLabel, typeLabel, priceLabel].filter(Boolean).join(" ");
+const metaDescription = [
+  `Browse active ${areaLabel} ${typeLabel.toLowerCase()} for sale.`,
+  priceLabel ? `View options ${priceLabel.toLowerCase()}.` : "",
+  `Explore current listings and find homes that match your preferences.`,
+]
+  .filter(Boolean)
+  .join(" ");
+  const introCopy =
+    pageType === "category"
+      ? [
+          `Browse active ${areaLabel} ${typeLabel.toLowerCase()}.`,
+          priceLabel ? `This page focuses on options ${priceLabel.toLowerCase()}.` : "",
+          `React to listings as you browse and the page will help surface better matches.`,
+        ]
+          .filter(Boolean)
+          .join(" ")
+      : [
+          `Browse active ${areaLabel} ${typeLabel.toLowerCase()} shaped around ${templateLabel.toLowerCase()}.`,
+          priceLabel ? `This page focuses on options ${priceLabel.toLowerCase()}.` : "",
+          `React to listings as you browse and the page will help surface better matches.`,
+        ]
+          .filter(Boolean)
+          .join(" ");
+const { data: existingPage } = await supabase
+  .from("intent_pages")
+  .select("id, city, slug, site_id")
+  .eq("slug", slug)
+  .eq("site_id", site?.id)
+  .maybeSingle();
+
+if (existingPage) {
+message = `A page with this URL already exists.||/${existingPage.city}/${existingPage.slug}||/admin/intent-pages/${existingPage.id}/edit`;} else {
+  const { data: page, error } = await supabase
+    .from("intent_pages")
+  .insert({
+  site_id: site?.id,
+  slug,
+  city,
+  area,
+  property_type: propertyType || null,
+  price_min,
+  price_max,
+  hero_heading: heroHeadingOverride || heroHeading,
+intro_copy: introCopyOverride || introCopy,
+seo_title: seoTitleOverride || seoTitle,
+meta_description: metaDescriptionOverride || metaDescription,
+default_sort: defaultSort,
+is_published: true,
+  lifestyle_angle: pageType,
+polygon_geojson: polygonGeojson,
+polygon_center_lat: polygonCenterLat,
+polygon_center_lng: polygonCenterLng,
+polygon_bounds: polygonBounds,
+
+requires_waterfront:
+  pageType === "intent" &&
+  (
+    template === "waterfront" ||
+    template === "oceanfront" ||
+    template === "lakefront" ||
+    template === "riverfront"
+  ),
+
+requires_ocean_view:
+  pageType === "intent" &&
+  template === "ocean_view_homes",
+
+waterfront_type:
+  template === "oceanfront"
+    ? "oceanfront"
+    : template === "lakefront"
+    ? "lakefront"
+    : template === "riverfront"
+    ? "riverfront"
+    : template === "waterfront"
+    ? "waterfront"
+    : null,
+})
+    .select("*")
+    .single();
+
+  if (error) {
+    message = error.message;
+  } else {
+    if (features.length) {
+      await supabase.from("intent_page_features").insert(
+        features.map((feature) => ({
+          intent_page_id: page.id,
+          feature_key: feature,
+        }))
+      );
+    }
+
+return Astro.redirect("/admin/intent-pages");
+  }
+}
+}
+---
+
+<html lang="en">
+  <head>
+   <meta charset="utf-8" />
+   <title>Create Intent Page</title>
+   <meta name="viewport" content="width=device-width, initial-scale=1" />
+   <style is:global>
+     @media (min-width: 769px) { .mobile-topbar, .drawer-overlay { display: none !important; } }
+     @media (max-width: 768px) { .mobile-topbar { display: flex !important; width: 100% !important; } }
+   </style>
+   <script
+  is:inline
+  src={`https://maps.googleapis.com/maps/api/js?key=${import.meta.env.PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=drawing`}
+></script>
+    
+    <link href="https://?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+     *, *::before, *::after { box-sizing: border-box; margin: 0; }
+
+      :root {
+        --bg: #f7f4ef;
+        --surface: #fff;
+        --border: rgba(24,22,20,0.10);
+        --border-strong: rgba(24,22,20,0.22);
+        --ink: #181614;
+        --muted: rgba(24,22,20,0.52);
+        --radius: 16px;
+        --font-body: "DM Sans", system-ui, sans-serif;
+        --font-display: "Instrument Serif", Georgia, serif;
+      }
+
+      body {
+        font-family: var(--font-body);
+        background: var(--bg);
+        color: var(--ink);
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+      .page {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        min-height: 100vh;
+      }
+
+      .main {
+        padding: 40px 48px 80px;
+        max-width: 900px;
+        min-width: 0;
+      }
+
+      .page-header {
+        margin-bottom: 36px;
+      }
+
+     .page-header h1 {
+        font-family: var(--font-body);
+        font-size: 2.2rem;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -0.03em;
+      }
+
+      .intro {
+        color: var(--muted);
+        margin-top: 6px;
+        font-size: 0.9rem;
+        line-height: 1.55;
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 24px;
+      }
+
+      label {
+        display: block;
+        margin: 18px 0 6px;
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      input,
+select,
+textarea {
+        width: 100%;
+        max-width: 100%;
+        padding: 10px 13px;
+        border: 1px solid var(--border-strong);
+        border-radius: 10px;
+        font: inherit;
+        font-size: 0.9rem;
+        background: var(--surface);
+        color: var(--ink);
+        transition: border-color 0.14s, box-shadow 0.14s;
+      }
+
+      input:focus,
+select:focus,
+textarea:focus {
+        outline: none;
+        border-color: var(--ink);
+        box-shadow: 0 0 0 3px rgba(24,22,20,0.08);
+      }
+
+  #slugOverrideInput {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+      .grid-2 {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 12px;
+      }
+
+      .grid-2 > div { min-width: 0; }
+
+     .page-type-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+      .page-type-option {
+        position: relative;
+        cursor: pointer;
+      }
+
+      .page-type-option input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .page-type-card {
+        min-height: 120px;
+        padding: 16px;
+        border-radius: 12px;
+        border: 2px solid var(--border);
+        background: var(--surface);
+        transition: border-color 0.18s, box-shadow 0.18s;
+      }
+
+      .page-type-card strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 0.92rem;
+        font-weight: 700;
+      }
+
+      .page-type-card span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.84rem;
+        line-height: 1.45;
+      }
+
+      .page-type-option input:checked + .page-type-card {
+        border-color: var(--ink);
+        box-shadow: 0 0 0 3px rgba(24,22,20,0.10);
+      }
+
+      .intent-only[hidden] { display: none; }
+
+      .preview-box {
+        margin-top: 20px;
+        padding: 20px;
+        border-radius: 12px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+      }
+
+      .preview-kicker {
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .preview-title {
+        margin: 0;
+        font-family: var(--font-display);
+        font-size: 1.4rem;
+        font-weight: 400;
+        line-height: 1.1;
+        letter-spacing: -0.03em;
+      }
+
+      .preview-copy {
+        margin: 8px 0 14px;
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.5;
+      }
+
+      .preview-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .preview-meta span {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        padding: 0 9px;
+        border-radius: 999px;
+        background: rgba(24,22,20,0.07);
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+
+      .actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 24px;
+        padding-top: 22px;
+        border-top: 1px solid var(--border);
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 11px 20px;
+        border-radius: 999px;
+        border: 1px solid transparent;
+        font: inherit;
+        font-size: 0.86rem;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.14s, color 0.14s, border-color 0.14s;
+      }
+
+     .btn--primary {
+        background: var(--ink);
+        color: #fff;
+        border-color: var(--ink);
+      }
+
+      .btn--primary:hover { background: #333; border-color: #333; }
+
+      .btn--ghost {
+        background: transparent;
+        color: var(--ink);
+        border-color: var(--border-strong);
+      }
+
+      .btn--ghost:hover { background: rgba(24,22,20,0.05); }
+
+      .error {
+        color: #b33;
+        font-weight: 700;
+        margin-bottom: 16px;
+      }
+
+      .hint {
+        margin: 5px 0 0;
+        color: var(--muted);
+        font-size: 0.78rem;
+        line-height: 1.4;
+      }
+.polygon-block {
+  margin-top: 20px;
+}
+
+.polygon-block[hidden] {
+  display: none;
+}
+
+.polygon-map {
+  height: 420px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: #e8e2d8;
+}
+
+.polygon-tools {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+@media (max-width: 860px) {
+        .page { display: block; }
+        .main { padding: 24px 20px 60px; }
+        .grid-2, .page-type-grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+
+<body>
+  <div class="page">
+    <AdminSidebar active="new-page" />
+    <main class="main">
+
+   <div class="page-header">
+        <h1>Create intent page</h1>
+        <p class="intro">
+          Create broad category-style pages or narrower buyer-intent pages from the same generator.
+          Both use the same public intent page experience, modal, reactions, refine chips, and agent intelligence.
+        </p>
+      </div>
+
+    {message && (
+  <p class="error">
+    {message.split("||")[0]}
+
+    {message.includes("||") && (
+      <>
+        {" "}
+        <a href={message.split("||")[1]} target="_blank">
+          Open page
+        </a>
+
+        {" | "}
+
+        <a href={message.split("||")[2]}>
+          Edit page
+        </a>
+      </>
+    )}
+  </p>
+)}
+
+      <form method="POST" class="card" id="intentForm">
+<input type="hidden" name="polygon_geojson" id="polygonGeojsonInput" />
+<input type="hidden" name="polygon_center_lat" id="polygonCenterLatInput" />
+<input type="hidden" name="polygon_center_lng" id="polygonCenterLngInput" />
+<input type="hidden" name="polygon_bounds" id="polygonBoundsInput" />        <label>Page type</label>
+
+       <div class="page-type-grid">
+  <label class="page-type-option">
+    <input type="radio" name="page_type" value="category" checked />
+    <div class="page-type-card">
+      <strong>Category page</strong>
+      <span>
+        Broad doorway page. Uses city, area, property type, and price only.
+        No feature filters on initial load.
+      </span>
+    </div>
+  </label>
+
+  <label class="page-type-option">
+    <input type="radio" name="page_type" value="intent" />
+    <div class="page-type-card">
+      <strong>Intent page</strong>
+      <span>
+        More specific buyer-goal page. Adds feature filters like views, suites,
+        walkability, yards, or updated homes.
+      </span>
+    </div>
+  </label>
+
+  <label class="page-type-option">
+    <input type="radio" name="page_type" value="polygon" />
+    <div class="page-type-card">
+      <strong>Polygon page</strong>
+      <span>
+        Draw a custom area on a map and create a page from listings inside that shape.
+      </span>
+    </div>
+  </label>
+</div>
+        <div class="intent-only" id="intentTemplateBlock" hidden>
+          <label>Intent template</label>
+          <select name="template" id="templateSelect">
+            <option value="first_time_buyers">First-time buyers</option>
+            <option value="downsizers">Downsizers</option>
+            <option value="family_homes">Family homes</option>
+            <option value="ocean_view_homes">Ocean view homes</option>
+            <option value="homes_with_suites">Homes with suites</option>
+            <option value="luxury_homes">Luxury homes</option>
+            <option value="investment_properties">Investment properties</option>
+            <option value="waterfront">Waterfront</option>
+<option value="oceanfront">Oceanfront</option>
+<option value="lakefront">Lakefront</option>
+<option value="riverfront">Riverfront</option>
+            <option value="walkable_homes">Walkable homes</option>
+            <option value="updated_homes">Updated homes</option>
+          </select>
+        </div>
+
+        <div class="grid-2">
+        <div>
+            <label>City</label>
+          <select name="city" id="cityInput">
+  <option value={site?.city || "nanaimo"}>
+    {(site?.city || "nanaimo").replace(/\b\w/g, (c) => c.toUpperCase())}
+  </option>
+</select>
+          </div>
+
+          <div>
+            <label>Area</label>
+<select name="area" id="areaInput">
+  <option value="">City-wide</option>
+  {areaOptions.map((area) => (
+    <option value={area}>
+      {area.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())}
+    </option>
+  ))}
+</select>            <p class="hint">Leave blank for a city-wide page.</p>
+         </div>
+        </div>
+<div class="polygon-block" id="polygonBlock" hidden>
+
+  <label>Area Name</label>
+  <input
+    type="text"
+    name="custom_name"
+    id="customNameInput"
+    placeholder="Example: Fairwinds Waterfront"
+  />
+
+  <p class="hint">
+    Used only for custom polygon area names.
+  </p>
+  <label>Draw search area</label>
+  <div id="polygonMap" class="polygon-map"></div>
+
+  <div class="polygon-tools">
+    <button type="button" class="btn btn--ghost" id="clearPolygonBtn">
+      Clear shape
+    </button>
+  </div>
+
+  <p class="hint">
+    Click the map to draw points. Once you have 3+ points, the shape will save with the page.
+  </p>
+</div>
+        <div class="grid-2">
+          <div>
+            <label>Property type</label>
+            <select name="property_type" id="typeSelect">
+              <option value="">Any</option>
+              <option value="house">House</option>
+              <option value="condo">Condo</option>
+              <option value="townhouse">Townhouse</option>
+              <option value="mobile">Mobile</option>
+              <option value="land">Land</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Price preset</label>
+            <select name="price_preset" id="priceSelect">
+              <option value="">Any price</option>
+              <option value="under-500">Under $500k</option>
+              <option value="under-650">Under $650k</option>
+              <option value="under-800">Under $800k</option>
+              <option value="under-1000">Under $1M</option>
+              <option value="800-plus">$800k+</option>
+              <option value="luxury">Luxury / $1.2M+</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="seo-box">
+<label>Default sort</label>
+<select name="default_sort" id="defaultSortSelect">
+  <option value="newest">Newest listings first</option>
+  <option value="price-asc">Price: low to high</option>
+  <option value="price-desc" selected>Price: high to low</option>
+  <option value="beds-desc">Most bedrooms first</option>
+  <option value="sqft-desc">Largest homes first</option>
+</select>
+
+<p class="hint">
+  Controls the default listing order on this page.
+</p>
+
+<label>Page URL</label>
+<input
+  name="slug_override"
+  id="slugOverrideInput"
+/>
+
+  <label>H1 Heading</label>
+  <input name="hero_heading_override" id="heroHeadingInput" />
+
+  <label>SEO Title</label>
+  <input name="seo_title_override" id="seoTitleInput" />
+
+<label>Meta Description</label>
+<textarea name="meta_description_override" id="metaDescriptionInput" rows="3"></textarea>
+
+<label>Page Intro</label>
+<textarea name="intro_copy_override" id="introCopyInput" rows="4"></textarea>
+</div>
+
+<div class="preview-box">
+          <div class="preview-kicker" id="previewType">Category page</div>
+          <h2 class="preview-title" id="previewTitle">Nanaimo Homes</h2>
+          <p class="preview-copy" id="previewCopy">
+            Browse active Nanaimo homes. React to listings as you browse and the page will help surface better matches.
+          </p>
+
+          <div class="preview-meta">
+            <span id="previewSlug">nanaimo-homes</span>
+            <span id="previewFeatures">No starting feature filters</span>
+          </div>
+        </div>
+
+       <div class="actions">
+          <button type="submit" class="btn btn--primary">Create page</button>
+          <a href="/admin/agent-page" class="btn btn--ghost">Cancel</a>
+        </div>
+      </form>
+    </main>
+
+    <script is:inline>
+      const form = document.getElementById("intentForm");
+      const pageTypeInputs = Array.from(document.querySelectorAll('input[name="page_type"]'));
+
+      const intentTemplateBlock = document.getElementById("intentTemplateBlock");
+      const templateSelect = document.getElementById("templateSelect");
+      const cityInput = document.getElementById("cityInput");
+      const areaInput = document.getElementById("areaInput");
+      const typeSelect = document.getElementById("typeSelect");
+      const priceSelect = document.getElementById("priceSelect");
+const customNameInput = document.getElementById("customNameInput");
+const slugOverrideInput = document.getElementById("slugOverrideInput");
+const heroHeadingInput = document.getElementById("heroHeadingInput");
+const seoTitleInput = document.getElementById("seoTitleInput");
+const introCopyInput = document.getElementById("introCopyInput");
+     const metaDescriptionInput = document.getElementById("metaDescriptionInput"); 
+const previewType = document.getElementById("previewType");
+      const previewTitle = document.getElementById("previewTitle");
+      const previewCopy = document.getElementById("previewCopy");
+      const previewSlug = document.getElementById("previewSlug");
+      const previewFeatures = document.getElementById("previewFeatures");
+
+      const templateFeatures = {
+        first_time_buyers: ["value", "updated", "walkability"],
+        downsizers: ["walkability", "updated", "views"],
+        family_homes: ["yard", "garage", "suite"],
+        ocean_view_homes: ["views"],
+        homes_with_suites: ["suite", "income", "mortgage helper"],
+        luxury_homes: ["views", "garage", "updated"],
+        investment_properties: ["suite", "income", "value"],
+        waterfront: ["views", "waterfront"],
+oceanfront: ["views", "waterfront"],
+lakefront: ["views", "waterfront"],
+riverfront: ["views", "waterfront"],
+        walkable_homes: ["walkability"],
+        updated_homes: ["updated"],
+      };
+
+      function getPageType() {
+        return pageTypeInputs.find((input) => input.checked)?.value || "category";
+      }
+
+      function titleCase(value) {
+        return String(value || "")
+          .replace(/[-_]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .replace(/\b\w/g, (char) => char.toUpperCase());
+      }
+
+      function slugify(value) {
+        return String(value || "")
+          .toLowerCase()
+          .replace(/&/g, "and")
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+      }
+
+     function pluralType(value) {
+        if (!value) return "Homes";
+        if (value === "house") return "Homes";
+        if (value === "mobile") return "Mobile Homes";
+        if (value === "condo") return "Condos";
+        if (value === "townhouse") return "Townhomes";
+        if (value === "land") return "Land";
+        return `${titleCase(value)}s`;
+      }
+
+      function priceLabel(value) {
+        if (value === "under-500") return "Under $500k";
+        if (value === "under-650") return "Under $650k";
+        if (value === "under-800") return "Under $800k";
+        if (value === "under-1000") return "Under $1M";
+        if (value === "800-plus") return "$800k+";
+        if (value === "luxury") return "Luxury";
+        return "";
+      }
+
+    function updatePreview() {
+  syncPolygonBlock();
+
+  const pageType = getPageType();
+        const template = templateSelect.value;
+        const city = cityInput.value || "nanaimo";
+        const area = areaInput.value || city;
+        const type = typeSelect.value;
+        const price = priceLabel(priceSelect.value);
+const customName = customNameInput?.value || "";
+        const areaLabel = titleCase(area);
+        const typeLabel = pluralType(type);
+        const templateLabel = titleCase(template);
+
+        intentTemplateBlock.hidden = pageType !== "intent";
+
+        const title =
+          pageType === "category"
+            ? [areaLabel, typeLabel, price].filter(Boolean).join(" ")
+            : [areaLabel, templateLabel, typeLabel, price].filter(Boolean).join(" ");
+
+       const slug =
+  pageType === "category"
+    ? slugify([area, typeLabel, price].filter(Boolean).join(" "))
+    : pageType === "polygon"
+      ? slugify([city, customName || "custom-area", typeLabel, price].filter(Boolean).join(" "))
+      : slugify([area, template, typeLabel, price].filter(Boolean).join(" "));
+
+        const copy =
+          pageType === "category"
+            ? [
+                `Browse active ${areaLabel} ${typeLabel.toLowerCase()}.`,
+                price ? `This page focuses on options ${price.toLowerCase()}.` : "",
+                `React to listings as you browse and the page will help surface better matches.`,
+              ].filter(Boolean).join(" ")
+            : [
+                `Browse active ${areaLabel} ${typeLabel.toLowerCase()} shaped around ${templateLabel.toLowerCase()}.`,
+                price ? `This page focuses on options ${price.toLowerCase()}.` : "",
+                `React to listings as you browse and the page will help surface better matches.`,
+              ].filter(Boolean).join(" ");
+const seoTitle = `${title} | ${titleCase(city)} Real Estate`;
+const metaDescription = [
+  `Browse active ${areaLabel} ${typeLabel.toLowerCase()} for sale.`,
+  price ? `View options ${price.toLowerCase()}.` : "",
+  `Explore current listings and find homes that match your preferences.`,
+].filter(Boolean).join(" ");
+if (slugOverrideInput && !slugOverrideInput.dataset.edited) {
+  slugOverrideInput.value = slug;
+}
+
+if (heroHeadingInput && !heroHeadingInput.dataset.edited) {
+  heroHeadingInput.value = title;
+}
+
+if (seoTitleInput && !seoTitleInput.dataset.edited) {
+  seoTitleInput.value = seoTitle;
+}
+
+if (metaDescriptionInput && !metaDescriptionInput.dataset.edited) {
+  metaDescriptionInput.value = metaDescription;
+}
+
+if (introCopyInput && !introCopyInput.dataset.edited) {
+  introCopyInput.value = copy;
+}
+        previewType.textContent =
+          pageType === "category" ? "Category page" : "Intent page";
+
+        previewTitle.textContent = title;
+        previewCopy.textContent = copy;
+        previewSlug.textContent = slug;
+
+        if (pageType === "category") {
+          previewFeatures.textContent = "No starting feature filters";
+        } else {
+          const features = templateFeatures[template] || [];
+          previewFeatures.textContent = features.length
+            ? `Features: ${features.join(", ")}`
+            : "No starting feature filters";
+        }
+      }
+
+      [
+        ...pageTypeInputs,
+        templateSelect,
+        cityInput,
+        areaInput,
+        typeSelect,
+        priceSelect,
+customNameInput,
+      ].forEach((el) => {
+        el.addEventListener("input", updatePreview);
+        el.addEventListener("change", updatePreview);
+      });
+[
+  slugOverrideInput,
+  heroHeadingInput,
+  seoTitleInput,
+  metaDescriptionInput,
+  introCopyInput,
+].forEach((el) => {
+  el?.addEventListener("input", () => {
+    el.dataset.edited = "true";
+  });
+});
+          // updatePreview runs after polygon map setup below
+
+     async function loadCities() { // returns promise implicitly via async
+        try {
+          const res = await fetch("/api/listing-filters");
+          const json = await res.json();
+          const cities = Array.isArray(json?.cities) ? json.cities : [];
+          const select = document.getElementById("cityInput");
+          if (!select || !cities.length) return;
+          const current = select.value;
+const siteCity = current || "parksville";
+
+select.innerHTML = "";
+
+if (siteCity) {
+  const opt = document.createElement("option");
+  opt.value = siteCity;
+  opt.textContent = siteCity.replace(/\b\w/g, (c) => c.toUpperCase());
+  opt.selected = true;
+  select.appendChild(opt);
+}
+        cities.forEach((item) => {
+  const value = String(item?.value || item || "").trim().toLowerCase();
+  const label = item?.label || value.replace(/\b\w/g, (c) => c.toUpperCase());
+
+  if (!value) return;
+  if (value === siteCity) return;
+
+  const opt = document.createElement("option");
+  opt.value = value;
+  opt.textContent = label;
+  if (value === current) opt.selected = true;
+
+  select.appendChild(opt);
+});
+          updatePreview();
+        } catch (err) {
+          console.error("Could not load cities:", err);
+        }
+      }
+
+           // loadCities runs after polygon map setup below
+
+      async function loadAreas(city) {
+        try {
+          const res = await fetch("/api/listing-filters");
+          const json = await res.json();
+          const areasByCity = json?.areasByCity || {};
+          const cityKey = Object.keys(areasByCity).find(
+            (k) => k.toLowerCase() === city.toLowerCase()
+          );
+          const areas = cityKey ? areasByCity[cityKey] : [];
+          const select = document.getElementById("areaInput");
+          if (!select) return;
+          select.innerHTML = `<option value="">City-wide</option>`;
+          areas.forEach((item) => {
+            const value = String(item?.value || item || "").trim().toLowerCase();
+            const label = item?.label || value.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+            if (!value) return;
+            const opt = document.createElement("option");
+            opt.value = value;
+            opt.textContent = label;
+            select.appendChild(opt);
+          });
+        } catch (err) {
+          console.error("Could not load areas:", err);
+        }
+      }
+
+      document.getElementById("cityInput")?.addEventListener("change", (e) => {
+        loadAreas(e.target.value);
+        updatePreview();
+      });
+
+    
+   const polygonBlock = document.getElementById("polygonBlock");
+const polygonInput = document.getElementById("polygonGeojsonInput");
+const polygonCenterLatInput = document.getElementById("polygonCenterLatInput");
+const polygonCenterLngInput = document.getElementById("polygonCenterLngInput");
+const polygonBoundsInput = document.getElementById("polygonBoundsInput");
+const clearPolygonBtn = document.getElementById("clearPolygonBtn");
+
+let polygonMap = null;
+let activePolygon = null;
+let polygonPath = [];
+let polygonMarkers = [];
+
+function savePolygon() {
+  if (!polygonInput || polygonPath.length < 3) {
+    polygonInput.value = "";
+
+    if (polygonCenterLatInput) polygonCenterLatInput.value = "";
+    if (polygonCenterLngInput) polygonCenterLngInput.value = "";
+    if (polygonBoundsInput) polygonBoundsInput.value = "";
+
+    return;
+  }
+
+  const coordinates = polygonPath.map((point) => [point.lng, point.lat]);
+  coordinates.push(coordinates[0]);
+
+  polygonInput.value = JSON.stringify({
+    type: "Polygon",
+    coordinates: [coordinates],
+  });
+
+  const avgLat =
+    polygonPath.reduce((sum, p) => sum + p.lat, 0) /
+    polygonPath.length;
+
+  const avgLng =
+    polygonPath.reduce((sum, p) => sum + p.lng, 0) /
+    polygonPath.length;
+
+  const lats = polygonPath.map((p) => p.lat);
+  const lngs = polygonPath.map((p) => p.lng);
+
+  const bounds = {
+    north: Math.max(...lats),
+    south: Math.min(...lats),
+    east: Math.max(...lngs),
+    west: Math.min(...lngs),
+  };
+
+  if (polygonCenterLatInput) {
+    polygonCenterLatInput.value = String(avgLat);
+  }
+
+  if (polygonCenterLngInput) {
+    polygonCenterLngInput.value = String(avgLng);
+  }
+
+  if (polygonBoundsInput) {
+    polygonBoundsInput.value = JSON.stringify(bounds);
+  }
+}
+
+function redrawPolygon() {
+  if (activePolygon) {
+    activePolygon.setMap(null);
+  }
+
+  if (polygonPath.length < 2) {
+    savePolygon();
+    return;
+  }
+
+  activePolygon = new google.maps.Polygon({
+    paths: polygonPath,
+    editable: true,
+    draggable: false,
+    strokeWeight: 2,
+    fillOpacity: 0.22,
+  });
+
+  activePolygon.setMap(polygonMap);
+  savePolygon();
+}
+
+function addPolygonPoint(latLng) {
+  const point = {
+    lat: latLng.lat(),
+    lng: latLng.lng(),
+  };
+
+  polygonPath.push(point);
+
+  const marker = new google.maps.Marker({
+    position: point,
+    map: polygonMap,
+    label: String(polygonPath.length),
+  });
+
+  polygonMarkers.push(marker);
+  redrawPolygon();
+}
+
+const cityCenters = {
+  nanaimo:    { lat: 49.1659, lng: -123.9401 },
+  parksville: { lat: 49.3193, lng: -124.3136 },
+  fernie:     { lat: 49.5037, lng: -115.0631 },
+};
+
+function initPolygonMap() {
+  if (polygonMap || !window.google?.maps) return;
+
+  const selectedCity = (cityInput?.value || "nanaimo").toLowerCase();
+  const center = cityCenters[selectedCity] || cityCenters.nanaimo;
+
+  polygonMap = new google.maps.Map(document.getElementById("polygonMap"), {
+    center,
+    zoom: 11,
+    mapTypeId: "roadmap",
+    draggableCursor: "crosshair",
+  });
+
+  polygonMap.addListener("click", (e) => {
+    addPolygonPoint(e.latLng);
+  });
+}
+
+function clearPolygon() {
+  polygonPath = [];
+
+  if (activePolygon) {
+    activePolygon.setMap(null);
+  }
+
+  polygonMarkers.forEach((marker) => marker.setMap(null));
+  polygonMarkers = [];
+  activePolygon = null;
+
+  if (polygonInput) {
+    polygonInput.value = "";
+  }
+}
+
+clearPolygonBtn?.addEventListener("click", clearPolygon);
+
+function syncPolygonBlock() {
+  const pageType = getPageType();
+
+  if (!polygonBlock) return;
+
+  polygonBlock.hidden = pageType !== "polygon";
+
+  if (pageType === "polygon") {
+    setTimeout(() => {
+      initPolygonMap();
+
+   if (polygonMap) {
+        const selectedCity = (cityInput?.value || "nanaimo").toLowerCase();
+        const center = cityCenters[selectedCity] || cityCenters.nanaimo;
+        google.maps.event.trigger(polygonMap, "resize");
+        polygonMap.setCenter(center);
+      }
+    }, 100);
+  }
+}
+loadCities().then(() => {
+  loadAreas(cityInput.value);
+  updatePreview();
+});
+form?.addEventListener("submit", (e) => {
+  if (getPageType() === "polygon" && !customNameInput?.value.trim()) {
+    e.preventDefault();
+    alert("Add a custom page name before creating this page.");
+    return;
+  }
+
+  if (getPageType() === "polygon" && !polygonInput.value) {
+    e.preventDefault();
+    alert("Draw a polygon before creating this page.");
+  }
+});
+    </script>
+  </div>
+</body>
+</html>
