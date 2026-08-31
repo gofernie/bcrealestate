@@ -259,6 +259,11 @@
       const opening = !dropdown.classList.contains("is-open");
 
       closeAll(dropdown);
+      if (opening) {
+        document.dispatchEvent(
+          new CustomEvent("hero-dropdown:opened", { detail: dropdown })
+        );
+      }
       dropdown.classList.toggle("is-open", opening);
       menu.hidden = !opening;
       trigger.setAttribute("aria-expanded", String(opening));
@@ -273,6 +278,7 @@
   });
 
   document.addEventListener("click", () => closeAll());
+  document.addEventListener("hero-dropdown:opened", () => closeAll());
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeAll();
