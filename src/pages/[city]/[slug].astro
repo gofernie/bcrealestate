@@ -4418,6 +4418,7 @@ color: var(--accent) !important;
 
 .intent-controls .type-filter-select {
   display: inline-block !important;
+  min-width: 160px !important;
 }
 
 .intent-controls .view-toggle {
@@ -9131,10 +9132,10 @@ Approximate driving times from{" "}
     <button
       type="button"
       id="toggle-listings-btn"
-      class="map-listing-toggle active"
-      data-listings-visible="false"
+      class="map-listing-toggle"
+      data-listings-visible="true"
     >
-      Show listings
+      Hide listings
     </button>
   </div>
 
@@ -9249,10 +9250,25 @@ Approximate driving times from{" "}
     )
   }
 
-<section class="intent-controls" style="margin-bottom:20px;"> <div class="view-toggle">
-    <button type="button" class="view-btn active" id="list-view-btn">List</button>
-    <button type="button" class="view-btn" id="map-view-btn">Map</button>
+<section class="intent-controls" style="margin-bottom:20px;"> {pageKind !== "area" && (
+  <div class="view-toggle">
+    <button
+      type="button"
+      class="view-btn active"
+      id="list-view-btn"
+    >
+      List
+    </button>
+
+    <button
+      type="button"
+      class="view-btn"
+      id="map-view-btn"
+    >
+      Map
+    </button>
   </div>
+)}
 
 
   <select class="price-filter-select" aria-label="Filter by price">
@@ -9276,6 +9292,37 @@ Approximate driving times from{" "}
     )}
   </select>
 
+
+
+<!-- intent-type-filter-control -->
+{pageKind !== "type" && (
+  <select
+    class="type-filter-select"
+    aria-label="Filter by property type"
+  >
+    <option value="all">Any type</option>
+
+    {listingTypeCounts.house > 0 && (
+      <option value="house">Homes</option>
+    )}
+
+    {listingTypeCounts.condo > 0 && (
+      <option value="condo">Condos</option>
+    )}
+
+    {listingTypeCounts.townhouse > 0 && (
+      <option value="townhouse">Townhomes</option>
+    )}
+
+    {listingTypeCounts.mobile > 0 && (
+      <option value="mobile">Mobile Homes</option>
+    )}
+
+    {listingTypeCounts.land > 0 && (
+      <option value="land">Lot / Land</option>
+    )}
+  </select>
+)}
 
 {normalizedPropertyType !== "land" && (
   <select class="beds-filter-select" aria-label="Filter by beds">
@@ -11401,7 +11448,20 @@ function initRefinedLeafletMap() {
 // --- View toggle ---
 listViewBtn?.addEventListener("click", () => {
   document.body.classList.remove("is-map-mode");
-  intentMapEl.hidden = true;
+  const keepNeighbourhoodMapVisible =
+    Boolean(document.querySelector(".area-intelligence"));
+
+  intentMapEl.hidden = !keepNeighbourhoodMapVisible;
+
+  if (keepNeighbourhoodMapVisible) {
+    requestAnimationFrame(() => {
+      initLeafletMap();
+
+      window.setTimeout(() => {
+        leafletMap?.invalidateSize();
+      }, 100);
+    });
+  }
   gridEl?.classList.remove("map-hidden");
   listViewBtn.classList.add("active");
   mapViewBtn?.classList.remove("active");
@@ -11549,6 +11609,11 @@ const initialParams = new URLSearchParams(window.location.search);
 
 if (priceSelect && initialParams.get("price")) {
   priceSelect.value = initialParams.get("price");
+}
+
+if (typeSelect && initialParams.get("type")) {
+  typeSelect.value =
+    String(initialParams.get("type") || "all").toLowerCase();
 }
 
 if (bedsSelect && initialParams.get("beds")) {
@@ -11821,6 +11886,7 @@ function updateSearchFromFilters() {
   };
 
   setOrDelete("area", filters.area);
+  setOrDelete("type", filters.type);
   setOrDelete("beds", filters.beds);
   setOrDelete("price", filters.price);
 
@@ -14991,6 +15057,12 @@ document.addEventListener("click", (event) => {
       label: "Price",
       title: "Select price",
       className: "filter-dd--price"
+    },
+    {
+      selector: ".type-filter-select",
+      label: "Type",
+      title: "Select property type",
+      className: "filter-dd--type"
     },
     {
       selector: ".beds-filter-select",

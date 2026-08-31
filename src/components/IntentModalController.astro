@@ -3933,28 +3933,41 @@ sheetFloorplanBtn?.addEventListener("click", (event) => {
     returnToRegularPhotos();
     return;
   }
+  // Guarantee that every detected floorplan is in the active gallery.
+  const floorplanGalleryIndexes = floorplanUrls.map(
+    (floorplanUrl) => {
+      const normalizedFloorplan =
+        normalizeForMatch(floorplanUrl);
 
-  const firstFloorplanUrl =
-    normalizeForMatch(floorplanUrls[0]);
+      let galleryIndex = activePhotoUrls.findIndex(
+        (url) =>
+          normalizeForMatch(url) ===
+          normalizedFloorplan
+      );
 
-  let floorplanIndex = activePhotoUrls.findIndex(
-    (url) =>
-      normalizeForMatch(url) === firstFloorplanUrl
+      if (galleryIndex < 0) {
+        activePhotoUrls.push(floorplanUrl);
+        galleryIndex = activePhotoUrls.length - 1;
+      }
+
+      return galleryIndex;
+    }
   );
 
-  if (floorplanIndex < 0) {
-  activePhotoUrls.push(floorplanUrls[0]);
-  floorplanIndex = activePhotoUrls.length - 1;
-}
-activePhotoIndex = floorplanIndex;
-
-showActivePhoto();
-
-  activePhotoIndex = floorplanIndex;
+  activePhotoIndex = floorplanGalleryIndexes[0];
 
   showActivePhoto();
-
   hidePhotoOverlayTemporarily();
+
+  // floorplan-contained-navigation
+  if (photoPrevBtn) {
+    photoPrevBtn.disabled = true;
+  }
+
+  if (photoNextBtn) {
+    photoNextBtn.disabled =
+      floorplanUrls.length <= 1;
+  }
 
   if (sheetMiniMap) {
     sheetMiniMap.hidden = true;
@@ -4035,11 +4048,34 @@ function goToFloorplanPosition(position) {
   showActivePhoto();
   hidePhotoOverlayTemporarily();
 
+  if (photoPrevBtn) {
+    photoPrevBtn.disabled = position <= 0;
+  }
+
+  if (photoNextBtn) {
+    photoNextBtn.disabled =
+      position >= currentFloorplans.length - 1;
+  }
+
+
   return true;
 }
 
 photoPrevBtn?.addEventListener("click", (event) => {
   event.stopPropagation();
+
+  const floorplanPosition =
+    getActiveFloorplanPosition();
+
+  if (floorplanPosition >= 0) {
+    if (floorplanPosition > 0) {
+      goToFloorplanPosition(
+        floorplanPosition - 1
+      );
+    }
+
+    return;
+  }
   if (activePhotoIndex <= 0) return;
 
   activePhotoIndex -= 1;
@@ -4405,6 +4441,22 @@ sheetImage?.addEventListener("touchend", (event) => {
 
       photoNextBtn?.addEventListener("click", (event) => {
   event.stopPropagation();
+
+  const floorplanPosition =
+    getActiveFloorplanPosition();
+
+  if (floorplanPosition >= 0) {
+    const floorplanCount =
+      getCurrentFloorplanUrls().length;
+
+    if (floorplanPosition < floorplanCount - 1) {
+      goToFloorplanPosition(
+        floorplanPosition + 1
+      );
+    }
+
+    return;
+  }
   if (activePhotoIndex >= activePhotoUrls.length - 1) return;
 
   activePhotoIndex += 1;
