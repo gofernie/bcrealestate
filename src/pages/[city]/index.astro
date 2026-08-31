@@ -1306,7 +1306,7 @@ const homepageNeighbourhoodImages = [
   <>
     <div id="intent-map" class="intent-map" hidden></div>
 
-<section class="grid" aria-label={`${listings.length} listings${city ? ` in ${city}` : ""}`}> {listings.map((listing: any) => {              const image = getListingImage(listing);
+<section class="grid" aria-label={`${listings.length} listings${city ? ` in ${city}` : ""}`}> {listings.slice(0, 24).map((listing: any) => {              const image = getListingImage(listing);
               const address = getListingAddress(listing);
               const price = getListingPrice(listing);
               const beds = getListingBeds(listing);
@@ -1320,7 +1320,6 @@ const homepageNeighbourhoodImages = [
           return (
                                   <article
                     class="card original-card"
-                    hidden={listings.indexOf(listing) >= 24}
                     data-item-id={String(listing?.id || listing?.mls_number || "")}
                     data-card-id={String(listing?.id || listing?.mls_number || "")}
                     data-listing-id={String(listing?.id || listing?.mls_number || "")}
@@ -2962,7 +2961,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
              Array.from(document.querySelectorAll("#homepage-refine-panel [data-refine].active")).length > 0;
     })();
 
-    if (hasActiveFilters) {
+    if (hasActiveFilters && !mapListings.length) {
       // Only show markers for cards matching current filters (ignore hidden/pagination)
       mapListings = Array.from(document.querySelectorAll(".grid .card")).map((card) => ({
         lat: card.dataset.lat,
@@ -3046,7 +3045,7 @@ const cardWaterfront = String(card.dataset.waterfront || "").toLowerCase();
         .filter((listing) =>
           listing.lat && listing.lng
         );
-    } else if (allListingsEl) {
+    } else if (!hasActiveFilters && allListingsEl) {
       try { mapListings = JSON.parse(allListingsEl.textContent || "[]"); } catch {}
     }
 
@@ -3282,13 +3281,15 @@ const cardWaterfront = String(card.dataset.waterfront || "").toLowerCase();
           .getElement()
           ?.querySelector("[data-map-listing-id]");
 
-        button?.addEventListener("click", () => {
+        button?.addEventListener("click", async () => {
           const id = String(button.dataset.mapListingId || "");
-          const cards = Array.from(document.querySelectorAll(".grid .card"));
-          const card = cards.find(
+          let cards = Array.from(document.querySelectorAll(".grid .card"));
+          let card = cards.find(
             (candidate) => String(candidate.dataset.listingId || "") === id
           );
-
+          if (!card && typeof window.ensureHomeListingCard === "function") {
+            card = await window.ensureHomeListingCard(id);
+          }
           card?.click();
         });
       });
@@ -3818,9 +3819,7 @@ window.setTimeout(updateSearchSummary, 50);
   (() => {
     const form = document.getElementById("home-filter-form");
     const resultsHeading = document.getElementById("results-heading");
-const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";    let homeOffset = 0;
-    let homeTotal = 0;
-    let homeLoading = false;
+const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
 
     function esc(value) {
       return String(value || "")
@@ -3855,6 +3854,10 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";  
       data-year="${esc(listing.year)}"
       data-lot-size="${esc(listing.lotSize)}"
       data-area="${esc(listing.area)}"
+      data-ocean-view="${esc(listing.oceanView)}"
+      data-view-type="${esc(listing.viewType)}"
+      data-waterfront="${esc(listing.waterfront)}"
+      data-waterfront-type="${esc(listing.waterfrontType)}"
       data-liked-tags="[]"
       data-is-favourite="false"
       data-decision=""
@@ -3884,7 +3887,10 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";  
   `;
 }
 
-   let visibleCount = 24;
+   const HOME_PAGE_SIZE = 24;
+   let homeOffset = document.querySelectorAll(".grid > .card").length;
+   let homeTotal = Number(document.getElementById("results-count")?.textContent || 0);
+   let homeLoading = false;
 
     function getLoadMoreButton() {
       return document.getElementById("home-load-more");
@@ -3896,18 +3902,19 @@ function updateLoadMoreBtn() {
   const btn = getLoadMoreButton();
   if (!btn) return;
 
-  btn.style.display = lastMatchingCount > visibleCount ? "block" : "none";
+  btn.disabled = homeLoading;
+  btn.textContent = homeLoading ? "Loading..." : "Load more listings";
+  btn.style.display = homeOffset < homeTotal ? "block" : "none";
 }
 
 function showMoreCards() {
-      visibleCount += 24;
-      fetchHomeListings({ resetVisible: false });
+      fetchHomeListings({ append: true, resetVisible: false });
     }
 
     document.getElementById("home-load-more")?.addEventListener("click", showMoreCards);
     updateLoadMoreBtn();
 
-   function fetchHomeListings({ resetVisible = true } = {}) {
+   async function fetchHomeListings({ resetVisible = true, append = false } = {}) {
   const grid = document.querySelector(".grid");
   if (!grid || !form) return;
 
@@ -3933,69 +3940,8 @@ const maxPriceVal = storyBudgetVal
   const bedsVal = Number(form.elements.beds?.value || 0);
   const sortVal = String(form.elements.sort?.value || "newest");
 
-  const allCards = Array.from(grid.querySelectorAll(".card"));
-
-  function cardMatches(card) {
-    const cardArea = String(card.dataset.area || "").toLowerCase();
-    const cardType = String(card.dataset.type || card.dataset.propertyType || "").toLowerCase();
-    const cardPrice = Number(card.dataset.rawPrice || 0);
-    const cardBeds = Number(card.dataset.beds || 0);
-const cardDesc = String(card.dataset.description || "").toLowerCase();
-const cardOceanView = String(card.dataset.oceanView || "").toLowerCase();
-const cardViewType = String(card.dataset.viewType || "").toLowerCase();
-const cardWaterfront = String(card.dataset.waterfront || "").toLowerCase();
-    const matchArea = storyAreas.length
-      ? storyAreas.some((a) => cardArea.includes(a))
-      : !areaVal || cardArea.includes(areaVal);
-
-const matchType =
-  !typeVal ||
-  (typeVal === "house" && cardType === "house") ||
-  (typeVal === "condo" && cardType === "condo") ||
-  (typeVal === "townhouse" && (cardType === "townhouse" || cardType === "townhome")) ||
-  (typeVal === "mobile" && cardType === "mobile") ||
-  (typeVal === "land" && cardType === "land");
-
-    const matchPrice =
-      (!minPriceVal || cardPrice >= minPriceVal) &&
-      (!maxPriceVal || cardPrice <= maxPriceVal);
-
- const matchBeds = !bedsVal || cardBeds >= bedsVal;
-
 const selectedFeatures = String(document.querySelector(".story-blank[data-story-step='features']")?.dataset.label || "")
   .toLowerCase();
-
-const matchFeatures =
-  !selectedFeatures.includes("ocean views") ||
-  cardDesc.includes("ocean view") ||
-  cardDesc.includes("ocean views") ||
-  cardDesc.includes("sea view") ||
-  cardDesc.includes("water view") ||
-  cardViewType.includes("ocean") ||
-  cardWaterfront.includes("ocean");
-
-return matchArea && matchType && matchPrice && matchBeds && matchFeatures;
-  }
-
-  if (resetVisible) {
-   allCards.sort((a, b) => {
-  const priceA = Number(a.dataset.rawPrice || 0);
-  const priceB = Number(b.dataset.rawPrice || 0);
-
-  if (storyBudgetVal) {
-    const target = storyBudgetVal * 1000;
-    return Math.abs(priceA - target) - Math.abs(priceB - target);
-  }
-
-  if (sortVal === "price-low") return priceA - priceB;
-  if (sortVal === "price-high") return priceB - priceA;
-
-  return new Date(b.dataset.listedAt || 0).getTime() - new Date(a.dataset.listedAt || 0).getTime();
-});
-
-    allCards.forEach((card) => grid.appendChild(card));
-    visibleCount = 24;
-  }
 
   const titleCase = (value) =>
     String(value || "")
@@ -4036,24 +3982,31 @@ return matchArea && matchType && matchPrice && matchBeds && matchFeatures;
       `${resultsScope} ${typeTitle}`;
   }
 
-  const matchingCards = allCards.filter(cardMatches);
-  const matchingCardSet = new Set(matchingCards);
+  const requestOffset = append && !resetVisible ? homeOffset : 0;
+  const params = new URLSearchParams({ city, offset: String(requestOffset), limit: String(HOME_PAGE_SIZE), sort: sortVal });
+  if (storyAreas.length) params.set("areas", storyAreas.join("|"));
+  else if (areaVal) params.set("area", areaVal);
+  if (typeVal) params.set("type", typeVal);
+  if (minPriceVal) params.set("minPrice", String(minPriceVal));
+  if (maxPriceVal) params.set("maxPrice", String(maxPriceVal));
+  if (bedsVal) params.set("beds", String(bedsVal));
+  if (selectedFeatures.includes("ocean views")) params.set("oceanViews", "true");
 
-  allCards.forEach((card) => {
-    card.dataset.matchesFilters = matchingCardSet.has(card)
-      ? "true"
-      : "false";
-  });
-  console.log("Story filter check", {
-  storyBudgetVal,
-  minPriceVal,
-  maxPriceVal,
-  typeVal,
-  bedsVal,
-  matchingCount: matchingCards.length,
-  firstPrices: matchingCards.slice(0, 10).map((card) => card.dataset.rawPrice),
-});
-lastMatchingCount = matchingCards.length;
+  homeLoading = true;
+  updateLoadMoreBtn();
+
+  try {
+    const response = await fetch(`/api/home-listings?${params.toString()}`);
+    if (!response.ok) throw new Error(`Listing request failed (${response.status})`);
+    const payload = await response.json();
+    const pageListings = Array.isArray(payload.listings) ? payload.listings : [];
+    homeTotal = Number(payload.total || 0);
+    lastMatchingCount = homeTotal;
+
+    if (!append || resetVisible) grid.innerHTML = "";
+    grid.insertAdjacentHTML("beforeend", pageListings.map(cardHtml).join(""));
+    homeOffset = requestOffset + pageListings.length;
+    window.currentHomeMapListings = Array.isArray(payload.markers) ? payload.markers : [];
 
 const summaryPriceRange = document.getElementById("summary-price-range");
 
@@ -4063,7 +4016,7 @@ if (summaryPriceRange) {
     const max = Math.round(storyBudgetVal * 1.15);
     summaryPriceRange.textContent = `$${min}kâ€“$${max}k`;
   } else {
-    const prices = matchingCards
+    const prices = Array.from(grid.querySelectorAll(".card"))
       .map((card) => Number(card.dataset.rawPrice || 0))
       .filter(Boolean);
 
@@ -4072,21 +4025,40 @@ if (summaryPriceRange) {
       : "â€”";
   }
 }
-  allCards.forEach((card) => {
-    card.hidden = true;
-  });
-
-  matchingCards.slice(0, visibleCount).forEach((card) => {
-    card.hidden = false;
-  });
-
   const resultsCount = document.getElementById("results-count");
-  if (resultsCount) resultsCount.textContent = String(lastMatchingCount);
-
-  updateLoadMoreBtn();
+  if (resultsCount) resultsCount.textContent = String(homeTotal);
   applySavedHomeDecisions();
   window.dispatchEvent(new CustomEvent("intent:cards-updated"));
+  } catch (error) {
+    console.error("Could not load homepage listings:", error);
+  } finally {
+    homeLoading = false;
+    updateLoadMoreBtn();
+  }
 }
+window.ensureHomeListingCard = async (id) => {
+  const grid = document.querySelector(".grid");
+  if (!grid || !id) return null;
+  let card = Array.from(grid.querySelectorAll(".card")).find(
+    (candidate) => String(candidate.dataset.listingId || "") === String(id)
+  );
+  if (card) return card;
+
+  try {
+    const response = await fetch(`/api/home-listings?city=${encodeURIComponent(city)}&id=${encodeURIComponent(id)}&limit=1`);
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const listing = payload.listings?.[0];
+    if (!listing) return null;
+    grid.insertAdjacentHTML("beforeend", cardHtml(listing));
+    card = grid.lastElementChild;
+    if (card) card.hidden = true;
+    return card;
+  } catch (error) {
+    console.error("Could not load map listing:", error);
+    return null;
+  }
+};
 const HOME_INTENT_COLLECTIONS = JSON.parse(
   document.getElementById("home-intent-collections-json")?.textContent || "[]"
 );function renderHomeIntentCards() {
