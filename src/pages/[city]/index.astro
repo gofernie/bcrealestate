@@ -92,7 +92,13 @@ const area = areas[0] || "";
 const type = url.searchParams.get("type") || "";
 const minPrice = Number(url.searchParams.get("minPrice") || 0);
 const maxPrice = Number(url.searchParams.get("maxPrice") || 0);
-const beds = Number(url.searchParams.get("beds") || 0);
+const bedsSelection = String(url.searchParams.get("beds") || "").trim();
+const planMode =
+  String(url.searchParams.get("planMode") || "").trim() ||
+  (["primary-on-main", "three-same-floor", "four-same-floor"].includes(bedsSelection)
+    ? bedsSelection
+    : "");
+const beds = /^\d+$/.test(bedsSelection) ? Number(bedsSelection) : 0;
 const sort = url.searchParams.get("sort") || "newest";
 
 const hasActiveSearch =
@@ -1056,10 +1062,17 @@ const homepageNeighbourhoodImages = [
       <span>Beds</span>
 
       <select name="beds">
-        <option value="">Any Beds</option>
-        <option value="2">2+ Beds</option>
-        <option value="3">3+ Beds</option>
-        <option value="4">4+ Beds</option>
+        <option value="" selected={!beds && !planMode}>Any Beds</option>
+        <optgroup label="Bedroom count">
+          <option value="2" selected={beds === 2}>2+ Beds</option>
+          <option value="3" selected={beds === 3}>3+ Beds</option>
+          <option value="4" selected={beds === 4}>4+ Beds</option>
+        </optgroup>
+        <optgroup label="Plan mode">
+          <option value="primary-on-main" selected={planMode === "primary-on-main"}>Primary on main</option>
+          <option value="three-same-floor" selected={planMode === "three-same-floor"}>3 beds on same floor</option>
+          <option value="four-same-floor" selected={planMode === "four-same-floor"}>4 beds on same floor</option>
+        </optgroup>
       </select>
     </label>
 
@@ -1439,12 +1452,19 @@ const homepageNeighbourhoodImages = [
   ))}
 </select>
 
-<select name="beds" class="filter-select" aria-label="Bedrooms">
-  <option value="" selected={!beds}>Any Beds</option>
-  <option value="2" selected={beds === 2}>2+ Beds</option>
-  <option value="3" selected={beds === 3}>3+ Beds</option>
-  <option value="4" selected={beds === 4}>4+ Beds</option>
-  <option value="5" selected={beds === 5}>5+ Beds</option>
+<select name="beds" class="filter-select" aria-label="Bedrooms and floor plan">
+  <option value="" selected={!beds && !planMode}>Any Beds</option>
+  <optgroup label="Bedroom count">
+    <option value="2" selected={beds === 2}>2+ Beds</option>
+    <option value="3" selected={beds === 3}>3+ Beds</option>
+    <option value="4" selected={beds === 4}>4+ Beds</option>
+    <option value="5" selected={beds === 5}>5+ Beds</option>
+  </optgroup>
+  <optgroup label="Plan mode">
+    <option value="primary-on-main" selected={planMode === "primary-on-main"}>Primary on main</option>
+    <option value="three-same-floor" selected={planMode === "three-same-floor"}>3 beds on same floor</option>
+    <option value="four-same-floor" selected={planMode === "four-same-floor"}>4 beds on same floor</option>
+  </optgroup>
 </select>
 
 <select name="sort" class="filter-select" aria-label="Sort">
@@ -4211,7 +4231,17 @@ const minPriceVal = storyBudgetVal
 const maxPriceVal = storyBudgetVal
   ? Math.round(storyBudgetVal * 1000 * 1.15)
   : rawMaxPriceVal * 1000;
-  const bedsVal = Number(form.elements.beds?.value || 0);
+  const bedsSelectionVal = String(form.elements.beds?.value || "");
+  const bedsVal = /^\d+$/.test(bedsSelectionVal)
+    ? Number(bedsSelectionVal)
+    : 0;
+  const planModeVal = [
+    "primary-on-main",
+    "three-same-floor",
+    "four-same-floor",
+  ].includes(bedsSelectionVal)
+    ? bedsSelectionVal
+    : "";
   const sortVal = String(form.elements.sort?.value || "newest");
 
 const selectedFeatures = String(document.querySelector(".story-blank[data-story-step='features']")?.dataset.label || "")
@@ -4264,6 +4294,7 @@ const selectedFeatures = String(document.querySelector(".story-blank[data-story-
   if (minPriceVal) params.set("minPrice", String(minPriceVal));
   if (maxPriceVal) params.set("maxPrice", String(maxPriceVal));
   if (bedsVal) params.set("beds", String(bedsVal));
+  if (planModeVal) params.set("planMode", planModeVal);
   if (selectedFeatures.includes("ocean views")) params.set("oceanViews", "true");
 
   homeLoading = true;
@@ -4511,7 +4542,9 @@ const bedsValue = form.elements.beds?.value || "";
 let bedsText = "";
 
 if (bedsValue) {
-  bedsText = ` ${bedsValue}+ Bed`;
+  const selectedBedsLabel =
+    form.elements.beds?.selectedOptions?.[0]?.textContent?.trim() || "";
+  bedsText = selectedBedsLabel ? ` ${selectedBedsLabel}` : "";
 }
   if (priceValue) {
     const selectedPriceOption =

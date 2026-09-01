@@ -6,6 +6,15 @@ export const prerender = false;
 export const GET: APIRoute = async ({ request }) => {
   const url = new URL(request.url);
   const listingId = String(url.searchParams.get("id") || "").trim();
+  const listingMls = String(
+    url.searchParams.get("mls") || ""
+  ).trim();
+
+  const candidateListingIds = Array.from(
+    new Set(
+      [listingId, listingMls].filter(Boolean)
+    )
+  );
 
   if (!listingId) {
     return new Response(
@@ -31,12 +40,12 @@ export const GET: APIRoute = async ({ request }) => {
     supabase
       .from("listing_floorplans")
       .select("listing_id,image_url")
-      .eq("listing_id", listingId),
+      .in("listing_id", candidateListingIds),
 
     supabase
       .from("listing_rooms")
       .select("*")
-      .eq("listing_id", listingId),
+      .in("listing_id", candidateListingIds),
   ]);
 
   if (floorplanResult.error) {
@@ -61,7 +70,14 @@ export const GET: APIRoute = async ({ request }) => {
     JSON.stringify({
       images: [],
       floorplans,
-      rooms: roomResult.data || [],
+      rooms: (roomResult.data || []).map((room) => ({
+        ...room,
+        label:
+          room.label ||
+          room.room_label ||
+          room.room_type ||
+          "Room",
+      })),
     }),
     {
       status: 200,

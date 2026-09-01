@@ -532,6 +532,20 @@ const { listings = [] } = Astro.props;
   <p class="panel__desc" id="sheet-description"></p>
   <button type="button" class="panel__desc-toggle" id="sheet-desc-toggle" hidden>Read more</button>
 
+
+</div>
+
+
+
+<div class="panel__engage" id="sheet-engage">
+        <div class="panel__engage-copy">Want to know more?</div>
+        <div class="panel__engage-actions">
+          <button type="button" id="ask-question-btn">Ask a Question</button>
+          <button type="button" id="book-showing-btn">Book a Showing</button>
+        </div>
+      </div>
+
+<div class="panel__share-row">
 <button
   type="button"
   class="panel__share-link"
@@ -555,21 +569,6 @@ const { listings = [] } = Astro.props;
   <span>Share this listing</span>
 </button>
 </div>
-
-<div class="listing-reaction-actions">
-          <button class="decision-btn decision-btn--love" type="button" id="decision-love-btn">
-            <span aria-hidden="true">&#10084;&#65039;</span>
-            <span>Love</span>
-          </button>
-          <button class="decision-btn decision-btn--maybe" type="button" id="decision-maybe-btn">
-            <span aria-hidden="true">&#128076;</span>
-            <span>Like</span>
-          </button>
-          <button class="decision-btn decision-btn--pass" type="button" id="decision-pass-btn">
-            <span aria-hidden="true">&times;</span>
-            <span>Nope</span>
-          </button>
-        </div>
         <div
   class="panel__rooms"
   id="sheet-rooms"
@@ -578,14 +577,6 @@ const { listings = [] } = Astro.props;
       </div>
 
       <div id="sheet-osm-amenities" class="panel__osm-amenities" hidden></div>
-
-      <div class="panel__engage" id="sheet-engage">
-        <div class="panel__engage-copy">Want to know more?</div>
-        <div class="panel__engage-actions">
-          <button type="button" id="ask-question-btn">Ask a Question</button>
-          <button type="button" id="book-showing-btn">Book a Showing</button>
-        </div>
-      </div>
 
       <div class="panel__footer">
         <div class="panel__nav-row">
@@ -615,6 +606,19 @@ const sheetFloorplanBtn = document.getElementById("sheet-floorplan-btn");
 const sheetFloorplanDownloadBtn =
   document.getElementById("sheet-floorplan-download-btn");
 const sheetShareBtn = document.getElementById("sheet-share-btn");
+// move-share-outside-description
+const listingReactionActions =
+  document.querySelector(".listing-reaction-actions");
+
+if (
+  sheetShareBtn &&
+  listingReactionActions?.parentElement
+) {
+  listingReactionActions.parentElement.insertBefore(
+    sheetShareBtn,
+    listingReactionActions
+  );
+}
 const sheetRooms =
   document.getElementById("sheet-rooms");
 const sheetMiniMap = document.getElementById("sheet-mini-map");
@@ -622,6 +626,207 @@ const sheetMiniMapWrap = document.getElementById("sheet-mini-map-wrap");
 const sheetMapExpandBtn = document.getElementById("sheet-map-expand-btn");
 const sheetImageStage = document.querySelector(".panel__image-stage");
 
+// redesign-listing-utilities
+const redesignListingUtilities = () => {
+  const openContent =
+    Array.from(
+      document.querySelectorAll(".panel__content")
+    ).find((element) =>
+      element.classList.contains("open")
+    );
+
+  const visibleBody =
+    openContent?.querySelector(
+      ":scope > .panel__body"
+    );
+
+  if (!visibleBody) return;
+
+  const canonicalActions =
+    document
+      .getElementById("decision-love-btn")
+      ?.closest(".listing-reaction-actions") ||
+    document.querySelector(
+      ".listing-reaction-actions"
+    );
+
+  // Hide any cloned/duplicate reaction groups.
+  document
+    .querySelectorAll(".listing-reaction-actions")
+    .forEach((group) => {
+      const keep = group === canonicalActions;
+
+      group.hidden = !keep;
+      group.style.setProperty(
+        "display",
+        keep ? "flex" : "none",
+        "important"
+      );
+    });
+
+  // Share becomes the fourth action.
+  if (
+    sheetShareBtn &&
+    canonicalActions &&
+    sheetShareBtn.parentElement !== canonicalActions
+  ) {
+    canonicalActions.appendChild(sheetShareBtn);
+  }
+
+  // Keep one action row followed by Rooms.
+  if (
+    canonicalActions &&
+    canonicalActions.parentElement !== visibleBody
+  ) {
+    visibleBody.appendChild(canonicalActions);
+  }
+
+  if (
+    sheetRooms &&
+    sheetRooms.parentElement !== visibleBody
+  ) {
+    visibleBody.appendChild(sheetRooms);
+  }
+
+  // Ensure order remains actions, then rooms.
+  if (canonicalActions && sheetRooms) {
+    canonicalActions.after(sheetRooms);
+  }
+};
+
+document
+  .querySelectorAll(".panel__content")
+  .forEach((contentElement) => {
+    new MutationObserver(() => {
+      if (contentElement.classList.contains("open")) {
+        window.setTimeout(
+          redesignListingUtilities,
+          0
+        );
+      }
+    }).observe(contentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  });
+
+if (sheetRooms) {
+  new MutationObserver(() => {
+    window.setTimeout(
+      redesignListingUtilities,
+      0
+    );
+  }).observe(sheetRooms, {
+    attributes: true,
+    childList: true,
+    subtree: true,
+  });
+}
+
+window.addEventListener("resize", () => {
+  window.setTimeout(
+    redesignListingUtilities,
+    0
+  );
+});
+
+// sync-listing-sections-to-open-panel
+const syncListingSectionsToOpenPanel = () => {
+  const openPanelContent =
+    Array.from(
+      document.querySelectorAll(".panel__content")
+    ).find((content) =>
+      content.classList.contains("open")
+    );
+
+  const targetBody =
+    openPanelContent?.querySelector(
+      ":scope > .panel__body"
+    );
+
+  if (!targetBody) return;
+
+  const descriptionWrap =
+    targetBody.querySelector(".panel__desc-wrap");
+
+  const engage =
+    document.getElementById("sheet-engage");
+
+  const decisionActions =
+    targetBody.querySelector(".decision-actions");
+
+  /*
+   * Put Ask / Book immediately beneath the description.
+   * This runs once through the existing modal-open observer.
+   */
+  if (descriptionWrap && engage) {
+    descriptionWrap.insertAdjacentElement(
+      "afterend",
+      engage
+    );
+  }
+
+  /*
+   * Preserve or create the Share wrapper, then centre it
+   * beneath Love / Like / Nope.
+   */
+  let shareRow =
+    targetBody.querySelector(".panel__share-row") ||
+    document.querySelector(".panel__share-row");
+
+  if (!shareRow) {
+    shareRow = document.createElement("div");
+    shareRow.className = "panel__share-row";
+  }
+
+  if (sheetShareBtn) {
+    shareRow.appendChild(sheetShareBtn);
+    sheetShareBtn.hidden = false;
+    sheetShareBtn.style.removeProperty("display");
+  }
+
+  if (decisionActions) {
+    decisionActions.insertAdjacentElement(
+      "afterend",
+      shareRow
+    );
+  } else if (engage) {
+    engage.insertAdjacentElement(
+      "afterend",
+      shareRow
+    );
+  } else {
+    targetBody.appendChild(shareRow);
+  }
+
+  if (sheetRooms) {
+    shareRow.insertAdjacentElement(
+      "afterend",
+      sheetRooms
+    );
+  }
+};
+
+document
+  .querySelectorAll(".panel__content")
+  .forEach((panelContent) => {
+    new MutationObserver(() => {
+      if (panelContent.classList.contains("open")) {
+        requestAnimationFrame(() => {
+          syncListingSectionsToOpenPanel();
+        });
+      }
+    }).observe(panelContent, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  });
+
+window.addEventListener("resize", () => {
+  requestAnimationFrame(() => {
+    syncListingSectionsToOpenPanel();
+  });
+});
 // dedicated-floorplan-pdf-overlay
 const sheetFloorplanPdfOverlayBtn =
   document.createElement("button");
@@ -1600,7 +1805,21 @@ if (images.length > 0 && rooms.length > 0) return false;
   if (!listingId) return false;
 
   try {
-    const res = await fetch(`/api/listing-detail?id=${encodeURIComponent(listingId)}`);
+    const listingMls =
+    card.dataset.mls || "";
+
+    const detailParams =
+      new URLSearchParams({
+        id: listingId,
+      });
+
+    if (listingMls) {
+      detailParams.set("mls", listingMls);
+    }
+
+    const res = await fetch(
+      `/api/listing-detail?${detailParams.toString()}`
+    );
     const data = await res.json();
     if (Array.isArray(data.images) && data.images.length > 0) {
       card.dataset.images = JSON.stringify(data.images);
@@ -1803,6 +2022,7 @@ window.updateViewedBadges?.();
   renderCard(card);
 
 sheetContent?.classList.add("open");
+syncListingSectionsToOpenPanel();
 sheetSummary?.classList.remove("open");
 sheetSummary?.setAttribute("hidden", "");
 
@@ -3088,6 +3308,7 @@ message: [
       sheet.classList.remove("is-engagement-mode");
       sheetSummary.classList.remove("open");
       sheetContent?.classList.add("open");
+syncListingSectionsToOpenPanel();
       goNext();
     });
 
@@ -5160,5 +5381,600 @@ sheetImage?.addEventListener("touchend", (event) => {
     display: block !important;
     width: 17px !important;
     height: 17px !important;
+  }
+</style>
+<style is:global>
+  /* independent-share-row */
+  .panel__share-row {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    margin: 14px 0 4px;
+  }
+
+  .panel__share-row
+    #sheet-share-btn.panel__share-link {
+    margin: 0 !important;
+  }
+</style>
+<style is:global>
+  /* redesigned-listing-utilities */
+
+  .panel__share-row {
+    display: none !important;
+  }
+
+  .panel__body > .listing-reaction-actions {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    width: 100%;
+    margin: 24px 0 20px;
+    padding: 0;
+  }
+
+  .listing-reaction-actions
+    #sheet-share-btn.panel__share-link {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 7px !important;
+    height: 44px !important;
+    margin: 0 !important;
+    padding: 0 16px !important;
+    border: 1px solid #e3d7c9 !important;
+    border-radius: 12px !important;
+    background: #fff !important;
+    color: #161b1e !important;
+    box-shadow: none !important;
+    font-size: 0.86rem !important;
+    font-weight: 750 !important;
+  }
+
+  .listing-reaction-actions
+    #sheet-share-btn.panel__share-link:hover {
+    background: #f7f8f7 !important;
+    border-color: #bcc6c3 !important;
+  }
+
+  .panel__body > .panel__rooms {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0 0 26px;
+    padding: 22px 26px 20px;
+    border: 1px solid rgba(16, 35, 49, 0.10);
+    border-radius: 14px;
+    background: #f7f9f8;
+  }
+
+  .panel__body > .panel__rooms[hidden] {
+    display: none !important;
+  }
+
+  .panel__rooms > h3,
+  .panel__rooms-title {
+    margin: 0 0 18px !important;
+    color: #102331 !important;
+    font-size: 0.76rem !important;
+    font-weight: 850 !important;
+    letter-spacing: 0.12em !important;
+    text-align: left !important;
+    text-transform: uppercase !important;
+  }
+
+  .panel__room-level {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .panel__room-level-title {
+    margin: 0 0 13px !important;
+    color: #102331 !important;
+    font-size: 1rem !important;
+    font-weight: 800 !important;
+  }
+
+  .panel__room-grid {
+    column-gap: 34px !important;
+    row-gap: 10px !important;
+  }
+
+  .panel__rooms-toggle {
+    display: block !important;
+    margin: 18px auto 0 !important;
+    color: #167a49 !important;
+    font-weight: 800 !important;
+  }
+
+  @media (max-width: 640px) {
+    .panel__body > .listing-reaction-actions {
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    .listing-reaction-actions
+      #sheet-share-btn.panel__share-link {
+      width: 100% !important;
+      max-width: 260px !important;
+    }
+
+    .panel__body > .panel__rooms {
+      padding: 18px 16px;
+      border-radius: 11px;
+    }
+
+    .panel__room-grid {
+      grid-template-columns: 1fr !important;
+    }
+  }
+</style>
+<!-- single-reactions-centered-share -->
+<style is:global>
+  .panel__share-solo {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    margin: 14px 0 26px;
+  }
+
+  .panel__share-solo #sheet-share-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    min-width: 220px;
+    margin: 0;
+  }
+
+  .listing-reaction-actions[data-duplicate-actions="true"] {
+    display: none !important;
+  }
+</style>
+
+<script is:inline>
+  (() => {
+    function arrangeListingActions() {
+      const openPanel =
+        document.querySelector(".panel__content.open") ||
+        document.querySelector(".panel__content");
+
+      const body = openPanel?.querySelector(".panel__body");
+      const shareButton =
+        document.getElementById("sheet-share-btn");
+
+      if (!body || !shareButton) return;
+
+      const reactionRows = [
+        ...body.querySelectorAll(".listing-reaction-actions"),
+      ];
+
+      if (!reactionRows.length) return;
+
+      const primaryRow =
+        reactionRows.find((row) =>
+          row.querySelector("#decision-love-btn")
+        ) || reactionRows[0];
+
+      reactionRows.forEach((row) => {
+        const duplicate = row !== primaryRow;
+
+        row.dataset.duplicateActions =
+          duplicate ? "true" : "false";
+
+        row.hidden = duplicate;
+      });
+
+      let shareSolo =
+        body.querySelector(".panel__share-solo");
+
+      if (!shareSolo) {
+        shareSolo = document.createElement("div");
+        shareSolo.className = "panel__share-solo";
+      }
+
+      shareSolo.appendChild(shareButton);
+
+      primaryRow.insertAdjacentElement(
+        "afterend",
+        shareSolo
+      );
+
+      shareButton.hidden = false;
+      shareButton.style.display = "inline-flex";
+    }
+
+    arrangeListingActions();
+
+    const observer = new MutationObserver(() => {
+      window.requestAnimationFrame(arrangeListingActions);
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    document.addEventListener(
+      "click",
+      () => window.requestAnimationFrame(arrangeListingActions),
+      true
+    );
+  })();
+</script>
+<!-- final-modal-actions-cleanup -->
+<style is:global>
+  .panel__share-solo {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    margin: 12px 0 28px;
+  }
+
+  .panel__share-solo #sheet-share-btn {
+    display: inline-flex !important;
+    justify-content: center;
+    min-width: 220px;
+    margin: 0;
+  }
+
+  .panel__body > .panel__rooms,
+  .panel__content.open .panel__rooms {
+    box-sizing: border-box;
+    width: auto !important;
+    margin: 0 16px 28px !important;
+  }
+
+  @media (min-width: 700px) {
+    .panel__body > .panel__rooms,
+    .panel__content.open .panel__rooms {
+      margin-left: 24px !important;
+      margin-right: 24px !important;
+    }
+  }
+</style>
+
+<script is:inline>
+  (() => {
+    let cleanupScheduled = false;
+
+    function cleanModalUtilities() {
+      cleanupScheduled = false;
+
+      const openPanel =
+        document.querySelector(".panel__content.open");
+
+      const body = openPanel?.querySelector(".panel__body");
+
+      if (!body) return;
+
+      const reactionRows = [
+        ...body.querySelectorAll(
+          ".listing-reaction-actions"
+        ),
+      ];
+
+      const primaryRow =
+        reactionRows.find((row) =>
+          row.querySelector("#decision-love-btn")
+        ) || reactionRows[0];
+
+      reactionRows.forEach((row) => {
+        if (row !== primaryRow) {
+          row.remove();
+        }
+      });
+
+      const shareButton =
+        document.getElementById("sheet-share-btn");
+
+      if (!shareButton || !primaryRow) return;
+
+      let shareSolo =
+        body.querySelector(".panel__share-solo");
+
+      if (!shareSolo) {
+        shareSolo = document.createElement("div");
+        shareSolo.className = "panel__share-solo";
+      }
+
+      shareSolo.appendChild(shareButton);
+
+      primaryRow.insertAdjacentElement(
+        "afterend",
+        shareSolo
+      );
+
+      shareButton.hidden = false;
+      shareButton.style.display = "inline-flex";
+    }
+
+    function scheduleCleanup() {
+      if (cleanupScheduled) return;
+
+      cleanupScheduled = true;
+
+      requestAnimationFrame(cleanModalUtilities);
+    }
+
+    scheduleCleanup();
+
+    new MutationObserver(scheduleCleanup).observe(
+      document.body,
+      {
+        childList: true,
+        subtree: true,
+      }
+    );
+
+    document.addEventListener(
+      "click",
+      scheduleCleanup,
+      true
+    );
+  })();
+</script>
+<!-- hide-duplicate-reactions-final -->
+<style is:global>
+  /* Keep decision-actions; remove the duplicated second row. */
+  .panel__content.open .listing-reaction-actions {
+    display: none !important;
+  }
+
+  /* Leave white space around the Rooms card. */
+  .panel__content.open #sheet-rooms {
+    box-sizing: border-box !important;
+    width: calc(100% - 40px) !important;
+    margin: 20px !important;
+  }
+
+  @media (max-width: 600px) {
+    .panel__content.open #sheet-rooms {
+      width: calc(100% - 24px) !important;
+      margin: 16px 12px 24px !important;
+    }
+  }
+</style>
+<!-- exact-reaction-and-rooms-fix -->
+<style is:global>
+  /* Remove the second Love / Like / Nope row. */
+  #preview-sheet .listing-reaction-actions {
+    display: none !important;
+  }
+
+  /* Match the Rooms card sides to the amenities cards. */
+  #preview-sheet .panel__content.open #sheet-rooms {
+    box-sizing: border-box !important;
+    width: calc(100% - 32px) !important;
+    margin: 20px 16px 26px !important;
+  }
+
+  @media (max-width: 600px) {
+    #preview-sheet .panel__content.open #sheet-rooms {
+      width: calc(100% - 24px) !important;
+      margin: 16px 12px 24px !important;
+    }
+  }
+</style>
+<!-- remove-legacy-reaction-row -->
+<style is:global>
+  /* Rooms sits inside a wrapper with four pixels of extra inset. */
+  #preview-sheet #sheet-rooms {
+    box-sizing: border-box !important;
+    width: calc(100% - 24px) !important;
+    margin-left: 12px !important;
+    margin-right: 12px !important;
+  }
+</style>
+
+<script is:inline>
+  (() => {
+    let scheduled = false;
+
+    function removeLegacyReactionRow() {
+      scheduled = false;
+
+      document
+        .querySelectorAll(
+          "#preview-sheet .listing-reaction-actions"
+        )
+        .forEach((row) => row.remove());
+    }
+
+    function scheduleRemoval() {
+      if (scheduled) return;
+
+      scheduled = true;
+      requestAnimationFrame(removeLegacyReactionRow);
+    }
+
+    removeLegacyReactionRow();
+
+    new MutationObserver(scheduleRemoval).observe(
+      document.getElementById("preview-sheet") ||
+        document.body,
+      {
+        childList: true,
+        subtree: true,
+      }
+    );
+
+    document.addEventListener(
+      "click",
+      scheduleRemoval,
+      true
+    );
+  })();
+</script>
+<!-- static-modal-utility-layout -->
+<style is:global>
+  #preview-sheet #sheet-engage {
+    width: auto !important;
+    margin: 18px 8px 8px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  #preview-sheet #sheet-engage .panel__engage-copy {
+    display: none !important;
+  }
+
+  #preview-sheet #sheet-engage .panel__engage-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+
+  #preview-sheet .panel__share-row {
+    display: flex !important;
+    justify-content: center !important;
+    width: 100% !important;
+    margin: 18px 0 26px !important;
+  }
+
+  #preview-sheet .panel__share-row #sheet-share-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: auto !important;
+    min-width: 220px !important;
+    margin: 0 auto !important;
+  }
+
+  /* Same visible side alignment as the amenity cards. */
+  #preview-sheet #sheet-rooms {
+    box-sizing: border-box !important;
+    width: calc(100% - 16px) !important;
+    margin-left: 8px !important;
+    margin-right: 8px !important;
+  }
+
+  @media (max-width: 600px) {
+    #preview-sheet #sheet-engage .panel__engage-actions {
+      grid-template-columns: 1fr !important;
+    }
+  }
+</style>
+<!-- stable-enquiry-share-final -->
+<style is:global>
+  #preview-sheet .panel__share-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    margin: 16px 0 26px !important;
+    padding: 0 !important;
+  }
+
+  #preview-sheet .panel__share-row #sheet-share-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: auto !important;
+    min-width: 220px !important;
+    margin: 0 auto !important;
+  }
+
+  #preview-sheet #sheet-engage {
+    width: auto !important;
+    margin: 18px 8px 10px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  #preview-sheet #sheet-engage .panel__engage-copy {
+    display: none !important;
+  }
+
+  #preview-sheet #sheet-engage .panel__engage-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+</style>
+<!-- authoritative-modal-order-style -->
+<style is:global>
+  #preview-sheet .panel__share-row {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
+    margin: 16px 0 26px !important;
+    padding: 0 !important;
+  }
+
+  #preview-sheet .panel__share-row #sheet-share-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: auto !important;
+    min-width: 220px !important;
+    margin: 0 auto !important;
+  }
+
+  #preview-sheet #sheet-engage {
+    display: block !important;
+    width: auto !important;
+    margin: 18px 8px 10px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  #preview-sheet #sheet-engage .panel__engage-copy {
+    display: none !important;
+  }
+
+  #preview-sheet #sheet-engage .panel__engage-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+</style>
+<!-- stable-modal-placement-final -->
+<style is:global>
+  #preview-sheet .panel__share-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    margin: 16px 0 26px !important;
+    padding: 0 !important;
+  }
+
+  #preview-sheet .panel__share-row #sheet-share-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: auto !important;
+    min-width: 220px !important;
+    margin: 0 auto !important;
+  }
+
+  #preview-sheet #sheet-engage {
+    display: block !important;
+    width: auto !important;
+    margin: 18px 8px 10px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  #preview-sheet #sheet-engage .panel__engage-copy {
+    display: none !important;
+  }
+
+  #preview-sheet #sheet-engage .panel__engage-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+    width: 100% !important;
   }
 </style>
