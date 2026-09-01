@@ -167,7 +167,7 @@
     });
   };
 
-  ["type", "maxPrice", "beds"].forEach((name) => {
+  ["type", "beds"].forEach((name) => {
     const select = form.querySelector(`select[name="${name}"]`);
     if (!select || select.dataset.enhanced === "true") return;
 
