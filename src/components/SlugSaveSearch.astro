@@ -1,19 +1,20 @@
-﻿---
+---
 const {
-  siteId,
-  city,
-  area,
-  propertyType,
-  minPrice,
-  maxPrice,
-  waterfrontType,
-  requiresWaterfront,
-  requiresOceanView
+  siteId = "",
+  city = "",
+  area = "",
+  propertyType = "",
+  minPrice = "",
+  maxPrice = "",
+  waterfrontType = "",
+  requiresWaterfront = false,
+  requiresOceanView = false,
 } = Astro.props;
 ---
 
 <div
   class="slug-save-search"
+  data-slug-save-search
   data-site-id={siteId}
   data-city={city}
   data-area={area}
@@ -21,25 +22,328 @@ const {
   data-min-price={minPrice}
   data-max-price={maxPrice}
   data-waterfront-type={waterfrontType}
-  data-requires-waterfront={requiresWaterfront}
-  data-requires-ocean-view={requiresOceanView}
+  data-requires-waterfront={String(Boolean(requiresWaterfront))}
+  data-requires-ocean-view={String(Boolean(requiresOceanView))}
 >
-  <button type="button">
+  <button
+    type="button"
+    class="slug-save-search__open"
+    data-slug-save-open
+    aria-expanded="false"
+  >
     Save this search
   </button>
+
+  <form class="slug-save-search__panel" data-slug-save-form hidden>
+    <div class="slug-save-search__heading">
+      <strong>Save this search</strong>
+      <span>Leave your details and we’ll follow up when relevant listings appear.</span>
+    </div>
+
+    <div class="slug-save-search__fields">
+      <label>
+        <span>Search name</span>
+        <input
+          type="text"
+          name="searchName"
+          placeholder="My home search"
+        />
+      </label>
+
+      <label>
+        <span>Your name</span>
+        <input
+          type="text"
+          name="name"
+          autocomplete="name"
+          placeholder="Your name"
+        />
+      </label>
+
+      <label>
+        <span>Email</span>
+        <input
+          type="email"
+          name="email"
+          autocomplete="email"
+          placeholder="you@example.com"
+        />
+      </label>
+
+      <label>
+        <span>Phone</span>
+        <input
+          type="tel"
+          name="phone"
+          autocomplete="tel"
+          placeholder="Optional"
+        />
+      </label>
+    </div>
+
+    <p class="slug-save-search__status" data-slug-save-status hidden></p>
+
+    <div class="slug-save-search__actions">
+      <button type="submit" class="slug-save-search__submit">
+        Save my search
+      </button>
+
+      <button
+        type="button"
+        class="slug-save-search__cancel"
+        data-slug-save-cancel
+      >
+        Cancel
+      </button>
+    </div>
+  </form>
 </div>
 
-<style>
-.slug-save-search {
-  margin: 1rem 0;
-}
+<script is:inline>
+  document.querySelectorAll("[data-slug-save-search]").forEach((root) => {
+    if (root.dataset.saveSearchReady === "true") return;
+    root.dataset.saveSearchReady = "true";
 
-.slug-save-search button {
-  border: 1px solid #ddd;
-  border-radius: 999px;
-  padding: 10px 18px;
-  background: white;
-  cursor: pointer;
-  font-weight: 600;
-}
+    const openButton = root.querySelector("[data-slug-save-open]");
+    const form = root.querySelector("[data-slug-save-form]");
+    const cancelButton = root.querySelector("[data-slug-save-cancel]");
+    const status = root.querySelector("[data-slug-save-status]");
+    const submitButton = root.querySelector(".slug-save-search__submit");
+
+    const setOpen = (open) => {
+      form.hidden = !open;
+      openButton.setAttribute("aria-expanded", String(open));
+      openButton.textContent = open ? "Close saved search" : "Save this search";
+
+      if (open) {
+        form.querySelector('input[name="searchName"]')?.focus();
+      }
+    };
+
+    openButton?.addEventListener("click", () => {
+      setOpen(form.hidden);
+    });
+
+    cancelButton?.addEventListener("click", () => {
+      setOpen(false);
+    });
+
+    form?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const formData = new FormData(form);
+      const name = String(formData.get("name") || "").trim();
+      const email = String(formData.get("email") || "").trim();
+      const phone = String(formData.get("phone") || "").trim();
+      const searchName =
+        String(formData.get("searchName") || "").trim() ||
+        "Saved property search";
+
+      status.hidden = true;
+      status.className = "slug-save-search__status";
+
+      if (!email && !phone) {
+        status.textContent = "Please enter an email address or phone number.";
+        status.classList.add("is-error");
+        status.hidden = false;
+        return;
+      }
+
+      submitButton.disabled = true;
+      submitButton.textContent = "Saving...";
+
+      const criteria = {
+        url: window.location.href,
+        area: root.dataset.area || "",
+        propertyType: root.dataset.propertyType || "",
+        minPrice: root.dataset.minPrice || "",
+        maxPrice: root.dataset.maxPrice || "",
+        waterfrontType: root.dataset.waterfrontType || "",
+        requiresWaterfront:
+          root.dataset.requiresWaterfront === "true",
+        requiresOceanView:
+          root.dataset.requiresOceanView === "true",
+      };
+
+      try {
+        const response = await fetch("/api/intent-lead", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name,
+            email,
+            phone,
+            city: root.dataset.city || "",
+            slug:
+              window.location.pathname
+                .split("/")
+                .filter(Boolean)
+                .pop() || "",
+            source: "saved_search",
+            message:
+              `${searchName}\nSearch URL: ${window.location.href}\nCriteria: ${JSON.stringify(criteria)}`,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Save request failed (${response.status})`);
+        }
+
+        status.textContent =
+          "Search saved. We’ll follow up when relevant listings appear.";
+        status.classList.add("is-success");
+        status.hidden = false;
+
+        submitButton.textContent = "Saved";
+        openButton.textContent = "Search saved";
+        openButton.disabled = true;
+      } catch (error) {
+        console.error("Could not save search:", error);
+
+        status.textContent =
+          "We couldn’t save this search. Please try again.";
+        status.classList.add("is-error");
+        status.hidden = false;
+
+        submitButton.disabled = false;
+        submitButton.textContent = "Save my search";
+      }
+    });
+  });
+</script>
+
+<style>
+  .slug-save-search {
+    margin: 1rem 0 1.75rem;
+  }
+
+  .slug-save-search button,
+  .slug-save-search input {
+    font: inherit;
+  }
+
+  .slug-save-search__open {
+    min-height: 40px;
+    padding: 0 18px;
+    border: 1px solid #d8d8d4;
+    border-radius: 999px;
+    background: #fff;
+    color: #111;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .slug-save-search__panel {
+    max-width: 760px;
+    margin-top: 14px;
+    padding: 20px;
+    border: 1px solid #dfe4e1;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 16px 36px rgba(17, 34, 28, 0.08);
+  }
+
+  .slug-save-search__panel[hidden] {
+    display: none;
+  }
+
+  .slug-save-search__heading {
+    display: grid;
+    gap: 5px;
+    margin-bottom: 16px;
+  }
+
+  .slug-save-search__heading strong {
+    font-size: 1.15rem;
+  }
+
+  .slug-save-search__heading span {
+    color: #65716b;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  .slug-save-search__fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .slug-save-search__fields label {
+    display: grid;
+    gap: 6px;
+  }
+
+  .slug-save-search__fields label > span {
+    color: #53615a;
+    font-size: 0.76rem;
+    font-weight: 800;
+  }
+
+  .slug-save-search__fields input {
+    width: 100%;
+    min-height: 46px;
+    box-sizing: border-box;
+    padding: 0 13px;
+    border: 1px solid #d8dfdb;
+    border-radius: 10px;
+    background: #fbfcfb;
+    color: #172019;
+  }
+
+  .slug-save-search__actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .slug-save-search__submit,
+  .slug-save-search__cancel {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 10px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .slug-save-search__submit {
+    border: 0;
+    background: #18bf58;
+    color: #fff;
+  }
+
+  .slug-save-search__cancel {
+    border: 1px solid #d8dfdb;
+    background: #fff;
+    color: #53615a;
+  }
+
+  .slug-save-search__status {
+    margin: 14px 0 0;
+    padding: 10px 12px;
+    border-radius: 9px;
+    font-size: 0.85rem;
+  }
+
+  .slug-save-search__status.is-error {
+    background: #fff0f0;
+    color: #a12626;
+  }
+
+  .slug-save-search__status.is-success {
+    background: #eaf9ef;
+    color: #176b35;
+  }
+
+  @media (max-width: 700px) {
+    .slug-save-search__fields {
+      grid-template-columns: 1fr;
+    }
+
+    .slug-save-search__actions {
+      flex-direction: column;
+    }
+  }
 </style>

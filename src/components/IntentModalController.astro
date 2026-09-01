@@ -405,6 +405,28 @@ const { listings = [] } = Astro.props;
   content: "\203A" !important;
 }
 
+
+#preview-sheet .panel__image-stage.is-floorplan {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: #fff !important;
+}
+
+#preview-sheet .panel__image.is-floorplan {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  object-position: center center !important;
+  background: #fff !important;
+}
+
+#preview-sheet .panel__image-stage.is-floorplan
+.panel__image-overlay {
+  display: none !important;
+}
 </style>
 <div class="overlay" id="sheet-overlay"></div>
 
@@ -425,9 +447,19 @@ const { listings = [] } = Astro.props;
   id="sheet-floorplan-btn"
   type="button"
   hidden
-  style="display:none;"
+  style="display:none !important;"
 >
   Floorplan
+</button>
+
+  <button
+  class="panel__map-btn"
+  id="sheet-floorplan-download-btn"
+  type="button"
+  hidden
+  style="display:none !important;"
+>
+  Download
 </button>
 
   <button
@@ -580,6 +612,8 @@ const { listings = [] } = Astro.props;
         const closeBtn = document.getElementById("sheet-close-btn");
 const sheetMapBtn = document.getElementById("sheet-map-btn");
 const sheetFloorplanBtn = document.getElementById("sheet-floorplan-btn");
+const sheetFloorplanDownloadBtn =
+  document.getElementById("sheet-floorplan-download-btn");
 const sheetShareBtn = document.getElementById("sheet-share-btn");
 const sheetRooms =
   document.getElementById("sheet-rooms");
@@ -643,6 +677,14 @@ function refreshFloorplanButtonVisibility() {
       visibleMapButton
     );
   }
+  // Keep Download PDF inside the image rather than in the header.
+  if (
+    sheetImageStage &&
+    sheetFloorplanDownloadBtn &&
+    sheetFloorplanDownloadBtn.parentElement !== sheetImageStage
+  ) {
+    sheetImageStage.appendChild(sheetFloorplanDownloadBtn);
+  }
 
   const floorplans = getCurrentFloorplanUrls();
   const hasFloorplans = floorplans.length > 0;
@@ -675,6 +717,7 @@ function rememberRegularPhotoPosition() {
   }
 }
 function returnToRegularPhotos() {
+  isFloorplanMode = false;
   const floorplans = getCurrentFloorplanUrls()
     .map(normalizeGalleryUrl);
 
@@ -1227,6 +1270,7 @@ let lastPhotoTapTime = 0;
 let landscapeFullscreenNeedsRefresh = false;
 
 let activeCard = null;
+let isFloorplanMode = false;
 let modalHistoryPushed = false;
 let totalIntentReactions = 0;
 let positiveIntentReactions = 0;
@@ -1766,6 +1810,15 @@ function preloadNearbyListingPhotos(currentCard) {
   preloadImages(urls);
 }
 function renderCard(card) {
+  isFloorplanMode = false;
+  // floorplan-state-reset
+  sheetImage?.classList.remove("is-floorplan");
+  sheetImageStage?.classList.remove("is-floorplan");
+  if (sheetFloorplanDownloadBtn) {
+    sheetFloorplanDownloadBtn.hidden = true;
+    sheetFloorplanDownloadBtn.style.display = "none";
+    sheetFloorplanDownloadBtn.dataset.url = "";
+  }
   sheet.classList.remove("is-engagement-mode");
   if (chipAdvanceTimer) { clearTimeout(chipAdvanceTimer); chipAdvanceTimer = null; }
 resetChipProgressBar();
@@ -3954,6 +4007,7 @@ sheetFloorplanBtn?.addEventListener("click", (event) => {
     }
   );
 
+  isFloorplanMode = true;
   activePhotoIndex = floorplanGalleryIndexes[0];
 
   showActivePhoto();
@@ -4014,6 +4068,7 @@ function getActiveFloorplanPosition() {
 }
 
 function goToFloorplanPosition(position) {
+  isFloorplanMode = true;
   const currentFloorplans =
     getCurrentFloorplanUrls();
 
@@ -4147,6 +4202,65 @@ function updatePhotoCounter() {
     }
   }
 }
+// floorplan-download-handler
+sheetFloorplanDownloadBtn?.addEventListener("click", async () => {
+  if (!activeCard || !sheetFloorplanDownloadBtn) return;
+
+  const floorplans = getCurrentFloorplanUrls();
+  if (!floorplans.length) return;
+
+  const originalText = sheetFloorplanDownloadBtn.textContent;
+  sheetFloorplanDownloadBtn.disabled = true;
+  sheetFloorplanDownloadBtn.textContent = "Building PDF...";
+
+  const listingLink =
+    activeCard.dataset.url ||
+    activeCard.dataset.href ||
+    activeCard.querySelector("a[href]")?.href ||
+    window.location.href;
+
+  try {
+    const response = await fetch("/api/floorplan-pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        floorplans,
+        siteId: document.body.dataset.siteId || "",
+        city: activeCard.dataset.city || document.body.dataset.city || "",
+        address: activeCard.dataset.address || "Property floorplan",
+        price: activeCard.dataset.price || "",
+        beds: activeCard.dataset.beds || "",
+        baths: activeCard.dataset.baths || "",
+        sqft: activeCard.dataset.sqft || "",
+        mls: activeCard.dataset.mls || activeCard.dataset.listingId || "",
+        listingUrl: new URL(listingLink, window.location.origin).href,
+      }),
+    });
+
+    if (!response.ok) {
+      const failure = await response.json().catch(() => ({}));
+      throw new Error(failure.error || "PDF creation failed");
+    }
+
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const disposition = response.headers.get("content-disposition") || "";
+    const filenameMatch = disposition.match(/filename="([^"]+)"/i);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filenameMatch?.[1] || "property-floorplans.pdf";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+  } catch (error) {
+    console.error(error);
+    window.alert(error instanceof Error ? error.message : "Could not create the PDF.");
+  } finally {
+    sheetFloorplanDownloadBtn.disabled = false;
+    sheetFloorplanDownloadBtn.textContent = originalText || "Download PDF";
+  }
+});
 function showActivePhoto() {
   if (!sheetImage || !activePhotoUrls.length) return;
 
@@ -4162,6 +4276,140 @@ function showActivePhoto() {
 
   const targetSrc =
     activePhotoUrls[activePhotoIndex];
+
+  const activeImageIsFloorplan =
+    isFloorplanMode;
+
+  sheetImage.classList.toggle(
+    "is-floorplan",
+    activeImageIsFloorplan
+  );
+
+  sheetImageStage?.classList.toggle(
+    "is-floorplan",
+    activeImageIsFloorplan
+  );
+
+  if (sheetFloorplanDownloadBtn) {
+    sheetFloorplanDownloadBtn.hidden = !activeImageIsFloorplan;
+    sheetFloorplanDownloadBtn.dataset.url =
+      activeImageIsFloorplan ? targetSrc : "";
+
+    const overlayStyle =
+      sheetFloorplanDownloadBtn.style;
+
+    overlayStyle.setProperty(
+      "display",
+      activeImageIsFloorplan ? "inline-flex" : "none",
+      "important"
+    );
+
+    if (activeImageIsFloorplan) {
+      sheetFloorplanDownloadBtn.textContent =
+        "Download PDF";
+
+      overlayStyle.setProperty(
+        "position",
+        "absolute",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "top",
+        "auto",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "right",
+        "18px",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "bottom",
+        "18px",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "left",
+        "auto",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "z-index",
+        "50",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "width",
+        "auto",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "min-width",
+        "126px",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "height",
+        "38px",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "margin",
+        "0",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "padding",
+        "0 15px",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "transform",
+        "none",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "background",
+        "rgba(255,255,255,.94)",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "color",
+        "#102331",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "border",
+        "1px solid rgba(15,35,49,.22)",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "border-radius",
+        "7px",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "box-shadow",
+        "0 5px 16px rgba(0,0,0,.16)",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "align-items",
+        "center",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "justify-content",
+        "center",
+        "important"
+      );
+      overlayStyle.setProperty(
+        "white-space",
+        "nowrap",
+        "important"
+      );
+    }
+  }
 
   if (sheetImageStage) {
     // keep current photo visible while next photo loads
@@ -4509,5 +4757,134 @@ sheetImage?.addEventListener("touchend", (event) => {
 <style>
   [data-end-action="unlock-more"] {
     display: none !important;
+  }
+</style>
+
+<style is:global>
+  #sheet-floorplan-download-btn[hidden] {
+    display: none !important;
+  }
+</style>
+<style is:global>
+  /* floorplan-pdf-overlay */
+  .panel__image-stage {
+    position: relative;
+  }
+
+  #sheet-floorplan-download-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 25;
+    width: auto;
+    min-width: 118px;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+  }
+
+  #sheet-floorplan-download-btn[hidden] {
+    display: none !important;
+  }
+
+  .panel__image-stage.is-floorplan
+    #sheet-floorplan-download-btn:not([hidden]) {
+    display: inline-flex !important;
+  }
+
+  @media (max-width: 640px) {
+    #sheet-floorplan-download-btn {
+      top: 10px;
+      right: 10px;
+      min-width: 0;
+      padding-inline: 13px;
+    }
+  }
+</style>
+<style is:global>
+  /* floorplan-download-position-fix */
+  .panel__image-stage.is-floorplan
+    #sheet-floorplan-download-btn:not([hidden]) {
+    position: absolute !important;
+    top: 16px !important;
+    left: 16px !important;
+    right: auto !important;
+    bottom: auto !important;
+    z-index: 50 !important;
+    display: inline-flex !important;
+    width: auto !important;
+    min-width: 126px !important;
+    max-width: calc(100% - 32px) !important;
+    margin: 0 !important;
+    transform: none !important;
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
+  }
+
+  @media (max-width: 640px) {
+    .panel__image-stage.is-floorplan
+      #sheet-floorplan-download-btn:not([hidden]) {
+      top: 10px !important;
+      left: 10px !important;
+      max-width: calc(100% - 20px) !important;
+    }
+  }
+</style>
+<style is:global>
+  /* refined-floorplan-download */
+
+  #sheet-floorplan-download-btn[hidden],
+  .panel__image-stage:not(.is-floorplan)
+    #sheet-floorplan-download-btn {
+    display: none !important;
+  }
+
+  .panel__image-stage.is-floorplan
+    #sheet-floorplan-download-btn:not([hidden]) {
+    position: absolute !important;
+    top: 58px !important;
+    right: 18px !important;
+    left: auto !important;
+    bottom: auto !important;
+    z-index: 50 !important;
+
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    width: auto !important;
+    min-width: 122px !important;
+    max-width: calc(100% - 36px) !important;
+    height: 38px !important;
+    padding: 0 15px !important;
+    margin: 0 !important;
+
+    border: 1px solid rgba(15, 35, 49, 0.18) !important;
+    border-radius: 7px !important;
+    background: rgba(255, 255, 255, 0.94) !important;
+    color: #102331 !important;
+    box-shadow: 0 5px 16px rgba(0, 0, 0, 0.15) !important;
+    backdrop-filter: blur(6px);
+    transform: none !important;
+
+    font-size: 0.82rem !important;
+    font-weight: 750 !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  .panel__image-stage.is-floorplan
+    #sheet-floorplan-download-btn:not([hidden]):hover {
+    background: #fff !important;
+    border-color: rgba(15, 35, 49, 0.35) !important;
+  }
+
+  @media (max-width: 640px) {
+    .panel__image-stage.is-floorplan
+      #sheet-floorplan-download-btn:not([hidden]) {
+      top: 52px !important;
+      right: 10px !important;
+      min-width: 108px !important;
+      height: 36px !important;
+      padding: 0 12px !important;
+    }
   }
 </style>

@@ -86,22 +86,33 @@ export const GET: APIRoute = async ({ url }) => {
           0.1
         )
       );
+    const amenityRows: any[] = [];
+    const pageSize = 1000;
+    const maximumRows = 5000;
 
-    const {
-      data: amenityRows = [],
-      error,
-    } = await supabase
-      .from("osm_amenities")
-      .select("*")
-      .eq("city", city)
-      .gte("lat", lat - latitudeDelta)
-      .lte("lat", lat + latitudeDelta)
-      .gte("lng", lng - longitudeDelta)
-      .lte("lng", lng + longitudeDelta)
-      .limit(limit);
+    for (let from = 0; from < maximumRows; from += pageSize) {
+      const {
+        data: batch = [],
+        error,
+      } = await supabase
+        .from("osm_amenities")
+        .select("*")
+        .eq("city", city)
+        .gte("lat", lat - latitudeDelta)
+        .lte("lat", lat + latitudeDelta)
+        .gte("lng", lng - longitudeDelta)
+        .lte("lng", lng + longitudeDelta)
+        .range(from, from + pageSize - 1);
 
-    if (error) {
-      throw error;
+      if (error) {
+        throw error;
+      }
+
+      amenityRows.push(...(batch || []));
+
+      if ((batch || []).length < pageSize) {
+        break;
+      }
     }
 
     const categories: Record<string, any[]> = {};

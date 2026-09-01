@@ -11151,6 +11151,67 @@ function pointInAreaPolygon(lat, lng) {
     return inside;
   });
 }
+function distanceToAreaBoundaryKm(lat, lng) {
+  if (!searchAreaGeojson?.coordinates?.length) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  if (pointInAreaPolygon(lat, lng)) {
+    return 0;
+  }
+
+  const rings =
+    searchAreaGeojson.type === "MultiPolygon"
+      ? searchAreaGeojson.coordinates.flat()
+      : searchAreaGeojson.coordinates;
+
+  const kmPerLatDegree = 111;
+  const kmPerLngDegree =
+    111 * Math.max(Math.cos((lat * Math.PI) / 180), 0.1);
+
+  let closestKm = Number.POSITIVE_INFINITY;
+
+  for (const ring of rings) {
+    if (!Array.isArray(ring)) continue;
+
+    for (let index = 0; index < ring.length; index++) {
+      const start = ring[index];
+      const end = ring[(index + 1) % ring.length];
+
+      if (!Array.isArray(start) || !Array.isArray(end)) continue;
+
+      const ax = (Number(start[0]) - lng) * kmPerLngDegree;
+      const ay = (Number(start[1]) - lat) * kmPerLatDegree;
+      const bx = (Number(end[0]) - lng) * kmPerLngDegree;
+      const by = (Number(end[1]) - lat) * kmPerLatDegree;
+
+      const dx = bx - ax;
+      const dy = by - ay;
+      const segmentLengthSquared = dx * dx + dy * dy;
+
+      const projection =
+        segmentLengthSquared > 0
+          ? Math.max(
+              0,
+              Math.min(
+                1,
+                -(ax * dx + ay * dy) / segmentLengthSquared
+              )
+            )
+          : 0;
+
+      const closestX = ax + projection * dx;
+      const closestY = ay + projection * dy;
+      const distanceKm = Math.sqrt(
+        closestX * closestX + closestY * closestY
+      );
+
+      closestKm = Math.min(closestKm, distanceKm);
+    }
+  }
+
+  return closestKm;
+}
 // --- Amenity radius (computed once from polygon size) ---
 let amenityRadius = 4;
 
@@ -11210,7 +11271,7 @@ const areaAmenityFilter = (item) => {
   }
 
   // Also allow nearby amenities just outside the boundary.
-  return Number(item.distKm || 0) <= 2;
+  return distanceToAreaBoundaryKm(lat, lng) <= 2;
 };
     // Update chip counts
    document.querySelectorAll(".amenity-chip").forEach((chip) => {
@@ -11236,6 +11297,15 @@ const areaAmenityFilter = (item) => {
 
   chip.hidden = count === 0;
 });
+
+document.querySelectorAll(".area-amenity-group").forEach((group) => {
+  const hasVisibleChip = Array.from(
+    group.querySelectorAll(".amenity-chip")
+  ).some((chip) => !chip.hidden);
+
+  group.hidden = !hasVisibleChip;
+});
+
 
 const visibleAmenityChips = Array.from(
   document.querySelectorAll(

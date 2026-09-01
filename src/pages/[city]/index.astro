@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import Layout from "../../layouts/Layout.astro";
 import ShortlistReviewModal from "../../components/ShortlistReviewModal.astro";
 import IntentModalController from "../../components/IntentModalController.astro";
+import SlugSaveSearch from "../../components/SlugSaveSearch.astro";
 import SiteNav from "../../components/SiteNav.astro";
 import "../../styles/intent-modal.css";
 import "../../styles/page-hero.css";
@@ -201,9 +202,9 @@ const propertyLabel = type
   ? titleCase(type === "house" ? "homes" : `${type}s`)
   : "Homes";
 
-const seoTitle = `${pageSubject} & ${propertyLabel} For Sale | MLSÂ® Listings`;
+const seoTitle = `${pageSubject} & ${propertyLabel} For Sale | MLS® Listings`;
 
-const seoDescription = `Browse ${pageSubject.toLowerCase()} including ${propertyLabel.toLowerCase()} for sale. View active MLSÂ® listings with photos, prices, maps, and local search details.`;
+const seoDescription = `Browse ${pageSubject.toLowerCase()} including ${propertyLabel.toLowerCase()} for sale. View active MLS® listings with photos, prices, maps, and local search details.`;
 
 const heroHeading =
   site?.hero_heading ||
@@ -343,24 +344,38 @@ if (type) {
 }
 
 intentCollections = intentCollections.slice(0, 8);
-const propertyTypeOrder = ["homes", "condo", "townhouse", "mobile"];
+const propertyTypeOrder = [
+  "homes",
+  "condo",
+  "townhouse",
+  "mobile",
+  "land",
+];
 
 const propertyTypeOptions = Array.from(
-  new Set(
-    allIntentCollections
+  new Set([
+    "homes",
+    ...allIntentCollections
       .map((card) => {
         const type = String(card.type || "").toLowerCase().trim();
         return type === "house" ? "homes" : type;
       })
-      .filter(Boolean)
-  )
-).sort((a, b) => propertyTypeOrder.indexOf(a) - propertyTypeOrder.indexOf(b));
+      .filter(Boolean),
+  ])
+).sort((a, b) => {
+  const aIndex = propertyTypeOrder.indexOf(a);
+  const bIndex = propertyTypeOrder.indexOf(b);
 
+  return (
+    (aIndex === -1 ? 999 : aIndex) -
+    (bIndex === -1 ? 999 : bIndex)
+  );
+});
 const groupLabel = [  area || "",
   type ? type.replace(/-/g, " ") : "",
   maxPrice ? `under $${maxPrice}k` : "",
   minPrice ? `over $${minPrice}k` : ""
-].filter(Boolean).join(" Â· ");
+].filter(Boolean).join(" · ");
 
 let areaOptions: string[] = [];
 let homepageAreaCards: any[] = [];
@@ -559,6 +574,110 @@ let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(10
   errorMessage = error?.message || "Could not load listings.";
 }
 
+const inventoryPrices = listings
+  .map((listing: any) =>
+    Number(
+      listing?.price ??
+      listing?.listPrice ??
+      listing?.priceNumber ??
+      0
+    )
+  )
+  .filter(
+    (price: number) =>
+      Number.isFinite(price) &&
+      price >= 50000
+  )
+  .sort((a: number, b: number) => a - b);
+
+const inventoryPercentile = (percentile: number) => {
+  if (!inventoryPrices.length) return 0;
+
+  const index = Math.min(
+    inventoryPrices.length - 1,
+    Math.max(
+      0,
+      Math.round((inventoryPrices.length - 1) * percentile)
+    )
+  );
+
+  return inventoryPrices[index];
+};
+
+const roundMarketPrice = (price: number) => {
+  let increment = 50000;
+
+  if (price >= 6000000) increment = 1000000;
+  else if (price >= 3000000) increment = 500000;
+  else if (price >= 1500000) increment = 250000;
+  else if (price >= 750000) increment = 100000;
+
+  return Math.max(
+    increment,
+    Math.round(price / increment) * increment
+  );
+};
+
+const fallbackPriceBands = [500000, 700000, 900000, 1200000];
+
+const calculatedPriceBands =
+  inventoryPrices.length >= 8
+    ? [0.2, 0.4, 0.6, 0.8].map((percentile) =>
+        roundMarketPrice(inventoryPercentile(percentile))
+      )
+    : fallbackPriceBands;
+
+const selectedMaxPriceDollars =
+  maxPrice > 0 ? maxPrice * 1000 : 0;
+
+const priceBandDollars = Array.from(
+  new Set([
+    ...calculatedPriceBands,
+    ...(selectedMaxPriceDollars > 0
+      ? [selectedMaxPriceDollars]
+      : []),
+  ])
+)
+  .filter((price) => price > 0)
+  .sort((a, b) => a - b);
+
+const formatPriceBand = (price: number) => {
+  if (price >= 1000000) {
+    const millions = price / 1000000;
+
+    return `$${millions.toLocaleString("en-CA", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })}M`;
+  }
+
+  return `$${Math.round(price / 1000)}k`;
+};
+
+const underPriceBandOptions = priceBandDollars.map((price) => ({
+  value: String(Math.round(price / 1000)),
+  threshold: Math.round(price / 1000),
+  kind: "under",
+  label: `Under ${formatPriceBand(price)}`,
+}));
+
+const highestPriceBand =
+  underPriceBandOptions[underPriceBandOptions.length - 1];
+
+const priceBandOptions = highestPriceBand
+  ? [
+      ...underPriceBandOptions,
+      {
+        value: `over-${highestPriceBand.threshold}`,
+        threshold: highestPriceBand.threshold,
+        kind: "over",
+        label: `Over ${formatPriceBand(
+          highestPriceBand.threshold * 1000
+        )}`,
+      },
+    ]
+  : underPriceBandOptions;
+
 // Homepage presentation data
 const homepageFeaturedResidentialTypes = new Set([
   "house",
@@ -723,6 +842,7 @@ const homepageNeighbourhoodImages = [
   <div
     data-intent-page-id="homepage"
     data-city={city || "nanaimo"}
+    data-site-id={String(site?.id || "")}
     data-slug="homepage"
    
   >
@@ -746,7 +866,7 @@ const homepageNeighbourhoodImages = [
       <p class="locus-home-kicker">{cityName} Real Estate</p>
 
       <h1>
-        Find a home.<br />
+        Find a {cityName} home.<br />
         Love where you live.
       </h1>
 
@@ -803,8 +923,13 @@ const homepageNeighbourhoodImages = [
     method="get"
     action={`/${city || "nanaimo"}`}
   >
-    <div
-      class="locus-home-search__field area-multiselect"
+    <input
+      type="hidden"
+      name="minPrice"
+      value={minPrice || ""}
+    />
+
+    <div class="locus-home-search__field area-multiselect"
       data-area-multiselect
     >
       <span>Area / neighbourhood</span>
@@ -910,11 +1035,20 @@ const homepageNeighbourhoodImages = [
       <span>Price</span>
 
       <select name="maxPrice">
-        <option value="">Any Price</option>
-        <option value="500">Under $500k</option>
-        <option value="700">Under $700k</option>
-        <option value="900">Under $900k</option>
-        <option value="1200">Under $1.2M</option>
+        <option value="" selected={!maxPrice}>Any Price</option>
+
+        {priceBandOptions.map((band) => (
+          <option
+            value={band.value}
+            selected={
+              band.kind === "over"
+                ? minPrice === band.threshold && !maxPrice
+                : maxPrice === band.threshold && !minPrice
+            }
+          >
+            {band.label}
+          </option>
+        ))}
       </select>
     </label>
 
@@ -929,11 +1063,6 @@ const homepageNeighbourhoodImages = [
       </select>
     </label>
 
-    <button type="submit" class="locus-home-search__submit">
-      <span>&#8981;</span>
-      Search Listings
-    </button>
-
     <div class="locus-home-search__popular">
       <span>Popular searches:</span>
 
@@ -945,21 +1074,23 @@ const homepageNeighbourhoodImages = [
     </div>
 
   </form>
+
+
 </header>
 
 <section class="home-story-panel" id="home-story-panel" hidden>
   <div class="home-story-panel__head">
-    <button type="button" id="home-story-back">â† Back</button>
+    <button type="button" id="home-story-back">← Back</button>
     <span id="home-story-progress">Step 1 of 5</span>
   </div>
 
-  <h2 id="home-story-question">Iâ€™m...</h2>
+  <h2 id="home-story-question">I’m...</h2>
 
   <div class="home-story-options" id="home-story-options"></div>
 
   <div class="home-story-panel__footer">
     <button type="button" class="home-story-primary" id="home-story-next">
-      Next â†’
+      Next →
     </button>
   </div>
 </section>
@@ -977,7 +1108,7 @@ const homepageNeighbourhoodImages = [
     </div>
   </div>
 
-  <div class="locus-home-benefit">
+<div class="locus-home-benefit">
     <span class="locus-home-benefit__icon">&#8599;</span>
 
     <div>
@@ -1187,6 +1318,37 @@ const homepageNeighbourhoodImages = [
   id="home-results-experience"
   data-active-search={String(hasActiveSearch)}
 >
+<div class="homepage-save-nudge-slot">
+<div class="homepage-save-nudge" data-save-search-prompt hidden={!hasActiveSearch}>
+  <div class="homepage-save-nudge__copy">
+    <strong>Like these results?</strong>
+    <span>Save this search and get matching new listings sent to you.</span>
+  </div>
+
+  <button
+    type="button"
+    class="interrupt-btn interrupt-primary"
+    id="hero-save-search-btn"
+  >
+    Save This Search
+  </button>
+</div>
+</div>
+
+<div class="homepage-save-search-form">
+    <SlugSaveSearch
+      siteId={site?.id}
+      city={city}
+      area={areas.join("|")}
+      propertyType={type}
+      minPrice={minPrice}
+      maxPrice={maxPrice}
+      waterfrontType=""
+      requiresWaterfront={false}
+      requiresOceanView={false}
+    />
+  </div>
+
 <div class="locus-home-listing-intro" id="homepage-listings">
 
   <div>
@@ -1214,11 +1376,11 @@ const homepageNeighbourhoodImages = [
       <span>matching homes</span>
     </div>
     <div>
-      <strong id="summary-price-range">â€”</strong>
+      <strong id="summary-price-range">—</strong>
       <span>price range</span>
     </div>
     <div>
-      <strong id="summary-area-count">â€”</strong>
+      <strong id="summary-area-count">—</strong>
       <span>areas represented</span>
     </div>
   </div>
@@ -1262,9 +1424,19 @@ const homepageNeighbourhoodImages = [
 
  <select name="maxPrice" class="filter-select" aria-label="Max price">
   <option value="" selected={!maxPrice}>Any Price</option>
-  <option value="500" selected={maxPrice === 500}>Under $500k</option>
-  <option value="800" selected={maxPrice === 800}>Under $800k</option>
-  <option value="1200" selected={maxPrice === 1200}>Under $1.2M</option>
+
+  {priceBandOptions.map((band) => (
+    <option
+      value={band.value}
+            selected={
+              band.kind === "over"
+                ? minPrice === band.threshold && !maxPrice
+                : maxPrice === band.threshold && !minPrice
+            }
+    >
+      {band.label}
+    </option>
+  ))}
 </select>
 
 <select name="beds" class="filter-select" aria-label="Bedrooms">
@@ -1323,7 +1495,7 @@ const homepageNeighbourhoodImages = [
                     data-raw-price={String(listing?.price || 0)}
                     data-listed-at={String(listing?.listed_at || listing?.created_at || "")}
                     data-address={address}
-                    data-meta={`${beds || "-"} bed Â· ${baths || "-"} bath`}
+                    data-meta={`${beds || "-"} bed · ${baths || "-"} bath`}
                     data-image={image}
                     data-images={JSON.stringify(images)}
                     data-beds={String(beds)}
@@ -1346,7 +1518,7 @@ data-liked-tags="[]"
                     data-lng={listing?.lng || ""}
                     data-city={String(listing?.normalized_city || listing?.city || city || "")}
                     data-mls={mls}
-                    aria-label={`${price} â€” ${address}`}
+                    aria-label={`${price} — ${address}`}
                   >
                <div class="card-image-wrap">
   <img src={image || "https://placehold.co/800x600?text=Listing"} alt={address || "Listing"} loading="lazy" decoding="async" />
@@ -1369,7 +1541,7 @@ data-liked-tags="[]"
             })}
                  </section>
 <button type="button" id="home-load-more" class="home-load-more-btn">Load more listings</button>
-<div class="homepage-interruptor">
+<div class="homepage-interruptor" data-save-search-prompt hidden={!hasActiveSearch}>
   <div class="homepage-interruptor-copy">
     <strong>Not seeing what you're looking for?</strong>
     <p>
@@ -1386,11 +1558,13 @@ data-liked-tags="[]"
   Save Search
 </button>
   </div>
+
+  
   <div class="homepage-refine-panel" id="homepage-refine-panel" hidden>
 <p>
   Refine the listings above:
  <div id="refine-update-note" class="refine-update-note" hidden>
-  Showing updated matches above â†‘
+  Showing updated matches above ↑
 </div>
 </p>  <div class="homepage-refine-chips">
     <button type="button" data-refine="views">Views</button>
@@ -1443,7 +1617,7 @@ data-liked-tags="[]"
 
                 <p>{card.description}</p>
 
-                <span class="intent-link">View search â†’</span>
+                <span class="intent-link">View search →</span>
               </a>
             ))}
           </div>
@@ -1564,16 +1738,16 @@ data-liked-tags="[]"
   color: #d3a24f;
 }
 
-.home-story-option[data-value="views"]::before { content: "ðŸŒŠ"; }
-.home-story-option[data-value="waterfront"]::before { content: "ã€°ï¸"; }
-.home-story-option[data-value="walkability"]::before { content: "ðŸš¶"; }
-.home-story-option[data-value="beach"]::before { content: "â›±ï¸"; }
-.home-story-option[data-value="quiet"]::before { content: "ðŸŒ³"; }
-.home-story-option[data-value="yard"]::before { content: "ðŸŒ²"; }
-.home-story-option[data-value="garage"]::before { content: "â–£"; }
+.home-story-option[data-value="views"]::before { content: "🌊"; }
+.home-story-option[data-value="waterfront"]::before { content: "〰️"; }
+.home-story-option[data-value="walkability"]::before { content: "🚶"; }
+.home-story-option[data-value="beach"]::before { content: "⛱️"; }
+.home-story-option[data-value="quiet"]::before { content: "🌳"; }
+.home-story-option[data-value="yard"]::before { content: "🌲"; }
+.home-story-option[data-value="garage"]::before { content: "▣"; }
 .home-story-option[data-value="suite"]::before { content: "ðŸ "; }
-.home-story-option[data-value="updated"]::before { content: "ðŸ›‹ï¸"; }
-.home-story-option[data-value="investment"]::before { content: "â†—"; }
+.home-story-option[data-value="updated"]::before { content: "🛋️"; }
+.home-story-option[data-value="investment"]::before { content: "↗"; }
 
 @media (max-width: 650px) {
 
@@ -2042,6 +2216,56 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
   white-space: nowrap;
 }
 
+.homepage-save-nudge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  max-width: 1208px;
+  margin: 0 auto 28px;
+  padding: 15px 20px;
+  border: 1px solid rgba(0, 0, 0, 0.09);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 24px rgba(18, 38, 32, 0.06);
+}
+
+.homepage-save-nudge[hidden] {
+  display: none;
+}
+
+.homepage-save-nudge__copy {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+}
+
+.homepage-save-nudge__copy strong {
+  color: var(--ink);
+  font-size: 0.98rem;
+}
+
+.homepage-save-nudge__copy span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.homepage-interruptor[hidden] {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .homepage-save-nudge {
+    align-items: stretch;
+    flex-direction: column;
+    margin: 12px 16px 0;
+  }
+
+  .homepage-save-nudge .interrupt-btn {
+    width: 100%;
+  }
+}
 .home-load-more-btn,
 .interrupt-btn {
   height: 44px;
@@ -2593,7 +2817,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
 }
 
 .home-story-panel.is-popover .home-story-option.is-selected::after {
-  content: "âœ“";
+  content: "✓";
   position: absolute;
   right: 18px;
   top: 50%;
@@ -2633,7 +2857,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
 .home-story-panel.is-popover .home-story-option.is-selected::after,
 .home-story-panel.is-popover .home-story-option.active::after,
 .home-story-panel.is-popover .home-story-option[aria-pressed="true"]::after {
-  content: "âœ“" !important;
+  content: "✓" !important;
   position: absolute;
   right: 16px;
   top: 50%;
@@ -2699,6 +2923,33 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
   (() => {
     const heroForm =
       document.getElementById("home-hero-search");
+
+    heroForm?.addEventListener("submit", () => {
+      const heroPriceSelect =
+        heroForm.querySelector('select[name="maxPrice"]');
+
+      const heroMinPriceInput =
+        heroForm.querySelector('input[name="minPrice"]');
+
+      const heroPriceSelection =
+        String(heroPriceSelect?.value || "");
+
+      const heroOverPriceMatch =
+        heroPriceSelection.match(/^over-(\d+)$/);
+
+      if (
+        heroPriceSelect instanceof HTMLSelectElement &&
+        heroMinPriceInput instanceof HTMLInputElement
+      ) {
+        if (heroOverPriceMatch) {
+          heroMinPriceInput.value = heroOverPriceMatch[1];
+          heroPriceSelect.disabled = true;
+        } else {
+          heroMinPriceInput.value = "";
+          heroPriceSelect.disabled = false;
+        }
+      }
+    });
 
     const multiselect =
       heroForm?.querySelector("[data-area-multiselect]");
@@ -2975,17 +3226,29 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
         baths: card.dataset.baths,
         _hidden: card.hidden,
       })).filter((l) => l.lat && l.lng && !l._hidden);
-      // But we want ALL matching cards, not just the paginated 8 â€” unhide logic runs separately
+      // But we want ALL matching cards, not just the paginated 8 — unhide logic runs separately
       // so read all cards and check filter match directly
       const form = document.getElementById("home-filter-form");
       const areaVal = String(form?.elements?.area?.value || "").trim().toLowerCase();
       const typeVal = String(form?.elements?.type?.value || "").trim().toLowerCase();
-const rawMaxPriceVal = Number(form?.elements?.maxPrice?.value || 0);
+const rawPriceSelection =
+  String(form?.elements?.maxPrice?.value || "");
+
+const overPriceMatch =
+  rawPriceSelection.match(/^over-(\d+)$/);
+
+const rawMinPriceVal = overPriceMatch
+  ? Number(overPriceMatch[1])
+  : Number(form?.elements?.minPrice?.value || 0);
+
+const rawMaxPriceVal = overPriceMatch
+  ? 0
+  : Number(rawPriceSelection || 0);
 const storyMaxPriceVal = Number(form?.elements?.storyMaxPrice?.value || 0);
 
 const minPriceVal = storyMaxPriceVal
   ? Math.round(storyMaxPriceVal * 1000 * 0.85)
-  : 0;
+  : rawMinPriceVal * 1000;
 
 const maxPriceVal = storyMaxPriceVal
   ? Math.round(storyMaxPriceVal * 1000 * 1.15)
@@ -3090,7 +3353,7 @@ const cardWaterfront = String(card.dataset.waterfront || "").toLowerCase();
     if (!leafletMap) {
       leafletMap = L.map(intentMapEl, { zoomControl: true, attributionControl: false, scrollWheelZoom: false });
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(leafletMap);
-      L.control.attribution({ prefix: false }).addAttribution('Â© <a href="https://openstreetmap.org">OSM</a>').addTo(leafletMap);
+      L.control.attribution({ prefix: false }).addAttribution('© <a href="https://openstreetmap.org">OSM</a>').addTo(leafletMap);
     }
 
     const shouldCluster = points.length > 120;
@@ -3337,7 +3600,7 @@ area: [],
     const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
 
     const labels = {
-      buyer: "Iâ€™m...",
+      buyer: "I’m...",
       type: "Looking for a...",
      budget: "Around...",
 beds: "With...",
@@ -3674,7 +3937,7 @@ const matchCount = document.getElementById("results-count")?.textContent || visi
     `${titleCase(areaLabel)} ${titleCase(typeLabel)} Search`;
 
   document.getElementById("home-search-summary-copy").textContent =
-    `Based on what you told us, weâ€™re showing ${typeLabel.toLowerCase()} options around ${budgetLabel.toLowerCase()} in ${areaLabel}, with attention to ${featuresLabel.toLowerCase()}.`;
+    `Based on what you told us, we’re showing ${typeLabel.toLowerCase()} options around ${budgetLabel.toLowerCase()} in ${areaLabel}, with attention to ${featuresLabel.toLowerCase()}.`;
 
 document.getElementById("summary-match-count").textContent =
     String(matchCount);
@@ -3685,18 +3948,18 @@ if (summaryPriceRange) {
   if (state.budget && state.budget !== "1200plus") {
     const min = Math.round(Number(state.budget) * 0.85);
     const max = Math.round(Number(state.budget) * 1.15);
-    summaryPriceRange.textContent = `$${min}kâ€“$${max}k`;
+    summaryPriceRange.textContent = `$${min}k–$${max}k`;
   } else if (state.budget === "1200plus") {
     summaryPriceRange.textContent = "$1.2M+";
   } else {
     summaryPriceRange.textContent = prices.length
-      ? `$${Math.round(prices[0] / 1000)}kâ€“$${Math.round(prices[prices.length - 1] / 1000)}k`
-      : "â€”";
+      ? `$${Math.round(prices[0] / 1000)}k–$${Math.round(prices[prices.length - 1] / 1000)}k`
+      : "—";
   }
 }
 
   document.getElementById("summary-area-count").textContent =
-    areas.size ? String(areas.size) : "â€”";
+    areas.size ? String(areas.size) : "—";
 
   summary.hidden = false;
 }
@@ -3839,7 +4102,7 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
       data-raw-price="${esc(listing.rawPrice)}"
       data-listed-at="${esc(listing.listedAt)}"
       data-address="${esc(listing.address)}"
-      data-meta="${esc(`${listing.beds || "-"} bed Â· ${listing.baths || "-"} bath`)}"
+      data-meta="${esc(`${listing.beds || "-"} bed · ${listing.baths || "-"} bath`)}"
       data-image="${esc(listing.image)}"
       data-images='${esc(JSON.stringify(listing.images || []))}'
       data-beds="${esc(listing.beds)}"
@@ -3862,7 +4125,7 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
       data-lng="${esc(listing.lng)}"
       data-city="${esc(listing.city)}"
       data-mls="${esc(listing.mls)}"
-      aria-label="${esc(`${listing.price} â€” ${listing.address}`)}"
+      aria-label="${esc(`${listing.price} — ${listing.address}`)}"
     >
       <div class="card-image-wrap">
         <img src="${esc(listing.image || "https://placehold.co/800x600?text=Listing")}" alt="${esc(listing.address || "Listing")}" loading="lazy" decoding="async" />
@@ -3875,7 +4138,7 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
         <div class="meta">
           <span>${esc(listing.beds || "-")} bd</span>
           <span>${esc(listing.baths || "-")} ba</span>
-          ${sqft ? `<span>â†— ${esc(sqft)} sq ft</span>` : ""}
+          ${sqft ? `<span>↗ ${esc(sqft)} sq ft</span>` : ""}
         </div>
 
         <div class="card-decision-badge" hidden></div>
@@ -3912,6 +4175,8 @@ function showMoreCards() {
     updateLoadMoreBtn();
 
    async function fetchHomeListings({ resetVisible = true, append = false } = {}) {
+  syncSaveSearchPrompts();
+
   const grid = document.querySelector(".grid");
   if (!grid || !form) return;
 
@@ -3923,10 +4188,22 @@ function showMoreCards() {
     .filter(Boolean);
 
   const typeVal = String(form.elements.type?.value || "").trim().toLowerCase();
-const storyBudgetVal = Number(form.elements.storyMaxPrice?.value || 0);
-const rawMinPriceVal = Number(form.elements.minPrice?.value || 0);
-const rawMaxPriceVal = Number(form.elements.maxPrice?.value || 0);
+const storyBudgetVal =
+  Number(form.elements.storyMaxPrice?.value || 0);
 
+const rawPriceSelection =
+  String(form.elements.maxPrice?.value || "");
+
+const overPriceMatch =
+  rawPriceSelection.match(/^over-(\d+)$/);
+
+const rawMinPriceVal = overPriceMatch
+  ? Number(overPriceMatch[1])
+  : Number(form.elements.minPrice?.value || 0);
+
+const rawMaxPriceVal = overPriceMatch
+  ? 0
+  : Number(rawPriceSelection || 0);
 const minPriceVal = storyBudgetVal
   ? Math.round(storyBudgetVal * 1000 * 0.85)
   : rawMinPriceVal * 1000;
@@ -4011,15 +4288,15 @@ if (summaryPriceRange) {
   if (storyBudgetVal) {
     const min = Math.round(storyBudgetVal * 0.85);
     const max = Math.round(storyBudgetVal * 1.15);
-    summaryPriceRange.textContent = `$${min}kâ€“$${max}k`;
+    summaryPriceRange.textContent = `$${min}k–$${max}k`;
   } else {
     const prices = Array.from(grid.querySelectorAll(".card"))
       .map((card) => Number(card.dataset.rawPrice || 0))
       .filter(Boolean);
 
     summaryPriceRange.textContent = prices.length
-      ? `$${Math.round(Math.min(...prices) / 1000)}kâ€“$${Math.round(Math.max(...prices) / 1000)}k`
-      : "â€”";
+      ? `$${Math.round(Math.min(...prices) / 1000)}k–$${Math.round(Math.max(...prices) / 1000)}k`
+      : "—";
   }
 }
   const resultsCount = document.getElementById("results-count");
@@ -4075,13 +4352,90 @@ const HOME_INTENT_COLLECTIONS = JSON.parse(
       <span class="intent-type">${esc(card.type)}</span>
       <h3>${esc(card.title)}</h3>
       <p>${esc(card.description)}</p>
-      <span class="intent-link">View search â†’</span>
+      <span class="intent-link">View search →</span>
     </a>
   `).join("");
 }
 
 const refineSearchBtn = document.getElementById("refine-search-btn");
 const homepageRefinePanel = document.getElementById("homepage-refine-panel");
+const homepageSaveSearchBtn =
+  document.getElementById("save-search-btn");
+const heroSaveSearchBtn =
+  document.getElementById("hero-save-search-btn");
+
+function syncSaveSearchPrompts() {
+  if (!form) return;
+
+  const currentAreas = String(form.elements.storyAreas?.value || "")
+    .split("|")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const currentArea = String(form.elements.area?.value || "").trim();
+  const currentType = String(form.elements.type?.value || "").trim();
+  const currentMinPrice =
+    Number(form.elements.minPrice?.value || 0);
+
+  const currentPriceSelection =
+    String(form.elements.maxPrice?.value || "");
+
+  const currentOverPriceMatch =
+    currentPriceSelection.match(/^over-(\d+)$/);
+
+  const currentMaxPrice = currentOverPriceMatch
+    ? 0
+    : Number(currentPriceSelection || 0);
+
+  const currentBeds = Number(form.elements.beds?.value || 0);
+
+  const hasCuratedSearch =
+    currentAreas.length > 0 ||
+    Boolean(currentArea) ||
+    Boolean(currentType) ||
+    currentMinPrice > 0 ||
+    currentMaxPrice > 0 ||
+    Boolean(currentPriceSelection) ||
+    currentBeds > 0;
+
+  document
+    .querySelectorAll("[data-save-search-prompt]")
+    .forEach((prompt) => {
+      if (prompt instanceof HTMLElement) {
+        prompt.hidden = !hasCuratedSearch;
+      }
+    });
+}
+
+syncSaveSearchPrompts();
+
+heroSaveSearchBtn?.addEventListener("click", () => {
+  homepageSaveSearchBtn?.click();
+});
+
+homepageSaveSearchBtn?.addEventListener("click", () => {
+  const saveRoot = document.querySelector(
+    ".homepage-save-search-form [data-slug-save-search]"
+  );
+
+  const openButton = saveRoot?.querySelector(
+    "[data-slug-save-open]"
+  );
+
+  if (
+    openButton instanceof HTMLButtonElement &&
+    openButton.getAttribute("aria-expanded") !== "true"
+  ) {
+    openButton.click();
+  }
+
+  window.setTimeout(() => {
+    saveRoot?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, 40);
+});
 
 refineSearchBtn?.addEventListener("click", () => {
   if (!homepageRefinePanel) return;
@@ -4098,7 +4452,7 @@ const note = document.getElementById("refine-update-note");
 
 if (note) {
   note.hidden = false;
-  note.textContent = "Showing updated matches above â†‘";
+  note.textContent = "Showing updated matches above ↑";
 
   note.onclick = () => {
     document.querySelector(".results-heading")?.scrollIntoView({
@@ -4159,9 +4513,17 @@ let bedsText = "";
 if (bedsValue) {
   bedsText = ` ${bedsValue}+ Bed`;
 }
-  if (priceValue === "500") priceText = " Under $500k";
-  else if (priceValue === "800") priceText = " Under $800k";
-  else if (priceValue === "1200") priceText = " Under $1.2M";
+  if (priceValue) {
+    const selectedPriceOption =
+      form.elements.maxPrice?.selectedOptions?.[0];
+
+    const selectedPriceLabel =
+      selectedPriceOption?.textContent?.trim() || "";
+
+    priceText = selectedPriceLabel
+      ? ` ${selectedPriceLabel}`
+      : "";
+  }
 
   if (resultsHeading) {
     resultsHeading.textContent =
@@ -4451,11 +4813,11 @@ document.documentElement.style.visibility = "";
 .locus-home-hero h1 {
   margin: 14px 0 18px;
   max-width: 760px;
-  font-family: var(--sans, Arial, sans-serif);
+  font-family: var(--serif, Georgia, serif);
   font-size: clamp(3.7rem, 6vw, 6rem);
-  font-weight: 750;
+  font-weight: 500;
   line-height: .94;
-  letter-spacing: -.055em;
+  letter-spacing: -.045em;
 }
 
 .locus-home-hero__lede {
@@ -5786,7 +6148,41 @@ document.documentElement.style.visibility = "";
   }
 </style>
 
-<script is:inline src="/home-search-dropdowns.js?v=13"></script></Layout>
+<script is:inline src="/home-search-dropdowns.js?v=13"></script>
+<style is:global>
+  .homepage-save-search-form {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .homepage-save-search-form .slug-save-search {
+    margin: 0;
+  }
+
+  .homepage-save-search-form .slug-save-search__open {
+    display: none;
+  }
+
+  .homepage-save-search-form .slug-save-search__panel {
+    max-width: none;
+    margin-top: 16px;
+  }
+</style>
+
+<style is:global>
+  /* hero-save-search-position */
+  .locus-home-hero > .homepage-save-search-form {
+    width: min(1400px, calc(100% - 80px));
+    margin: 0 auto;
+  }
+
+  @media (max-width: 760px) {
+    .locus-home-hero > .homepage-save-search-form {
+      width: calc(100% - 24px);
+    }
+  }
+</style>
+</Layout>
 
 
 

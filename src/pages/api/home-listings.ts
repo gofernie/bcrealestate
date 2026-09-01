@@ -154,13 +154,36 @@ export const GET: APIRoute = async ({ request }) => {
     if (!areas.length && area && !String(listing.area).toLowerCase().includes(area)) return false;
     if (type) {
       const listingType = listing.type;
+
+      const landSignalText =
+        `${listing.address} ${listing.propertyType} ${listing.description}`
+          .trim()
+          .toLowerCase();
+
+      const looksLikeLand =
+        listingType === "land" ||
+        /^\s*(lot|lt)\b/i.test(listing.address) ||
+        /\b(vacant land|bare land|building lot|residential lot|development lot|land only|lot for sale)\b/i.test(landSignalText) ||
+        /\b(vacant|bare|building|residential|serviced)\s+lot\b/i.test(landSignalText);
+
       const matches =
-        (type === "house" && listingType === "house") ||
+        (
+          type === "house" &&
+          listingType === "house" &&
+          !looksLikeLand
+        ) ||
         (type === "condo" && listingType === "condo") ||
-        (type === "townhouse" && ["townhouse", "townhome"].includes(listingType)) ||
+        (
+          type === "townhouse" &&
+          ["townhouse", "townhome"].includes(listingType)
+        ) ||
         (type === "mobile" && listingType === "mobile") ||
-        (type === "land" && listingType === "land") ||
-        (type === "multi-family" && ["multi-family", "multifamily"].includes(listingType));
+        (type === "land" && looksLikeLand) ||
+        (
+          type === "multi-family" &&
+          ["multi-family", "multifamily"].includes(listingType)
+        );
+
       if (!matches) return false;
     }
     if (minPrice && listing.rawPrice < minPrice) return false;
