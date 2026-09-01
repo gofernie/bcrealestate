@@ -622,6 +622,225 @@ const sheetMiniMapWrap = document.getElementById("sheet-mini-map-wrap");
 const sheetMapExpandBtn = document.getElementById("sheet-map-expand-btn");
 const sheetImageStage = document.querySelector(".panel__image-stage");
 
+// dedicated-floorplan-pdf-overlay
+const sheetFloorplanPdfOverlayBtn =
+  document.createElement("button");
+
+sheetFloorplanPdfOverlayBtn.type = "button";
+sheetFloorplanPdfOverlayBtn.textContent =
+  "Download PDF";
+sheetFloorplanPdfOverlayBtn.hidden = true;
+sheetFloorplanPdfOverlayBtn.setAttribute(
+  "aria-label",
+  "Download floorplan PDF"
+);
+
+sheetImageStage?.appendChild(
+  sheetFloorplanPdfOverlayBtn
+);
+
+const syncDedicatedFloorplanPdfOverlay = () => {
+  const hasFloorplans =
+    getCurrentFloorplanUrls().length > 0;
+
+  const showOverlay =
+    Boolean(isFloorplanMode && hasFloorplans);
+
+  // The original control owns the PDF click handler,
+  // but it must never appear in the modal header.
+  if (sheetFloorplanDownloadBtn) {
+    if (!sheetFloorplanDownloadBtn.hidden) {
+      sheetFloorplanDownloadBtn.hidden = true;
+    }
+
+    if (
+      sheetFloorplanDownloadBtn.style
+        .getPropertyValue("display") !== "none" ||
+      sheetFloorplanDownloadBtn.style
+        .getPropertyPriority("display") !== "important"
+    ) {
+      sheetFloorplanDownloadBtn.style.setProperty(
+        "display",
+        "none",
+        "important"
+      );
+    }
+  }
+
+  sheetFloorplanPdfOverlayBtn.hidden =
+    !showOverlay;
+
+  const style =
+    sheetFloorplanPdfOverlayBtn.style;
+
+  style.setProperty(
+    "display",
+    showOverlay ? "inline-flex" : "none",
+    "important"
+  );
+
+  if (!showOverlay) return;
+
+  sheetFloorplanPdfOverlayBtn.disabled =
+    Boolean(sheetFloorplanDownloadBtn?.disabled);
+
+  sheetFloorplanPdfOverlayBtn.textContent =
+    sheetFloorplanDownloadBtn?.disabled
+      ? "Building PDF..."
+      : "Download PDF";
+
+  style.setProperty(
+    "position",
+    "absolute",
+    "important"
+  );
+  style.setProperty(
+    "top",
+    "auto",
+    "important"
+  );
+  style.setProperty(
+    "right",
+    "18px",
+    "important"
+  );
+  style.setProperty(
+    "bottom",
+    "18px",
+    "important"
+  );
+  style.setProperty(
+    "left",
+    "auto",
+    "important"
+  );
+  style.setProperty(
+    "z-index",
+    "60",
+    "important"
+  );
+  style.setProperty(
+    "align-items",
+    "center",
+    "important"
+  );
+  style.setProperty(
+    "justify-content",
+    "center",
+    "important"
+  );
+  style.setProperty(
+    "width",
+    "auto",
+    "important"
+  );
+  style.setProperty(
+    "min-width",
+    "126px",
+    "important"
+  );
+  style.setProperty(
+    "height",
+    "38px",
+    "important"
+  );
+  style.setProperty(
+    "padding",
+    "0 15px",
+    "important"
+  );
+  style.setProperty(
+    "margin",
+    "0",
+    "important"
+  );
+  style.setProperty(
+    "border",
+    "1px solid rgba(16,35,49,.24)",
+    "important"
+  );
+  style.setProperty(
+    "border-radius",
+    "7px",
+    "important"
+  );
+  style.setProperty(
+    "background",
+    "rgba(255,255,255,.94)",
+    "important"
+  );
+  style.setProperty(
+    "color",
+    "#102331",
+    "important"
+  );
+  style.setProperty(
+    "box-shadow",
+    "0 5px 16px rgba(0,0,0,.16)",
+    "important"
+  );
+  style.setProperty(
+    "font-size",
+    ".82rem",
+    "important"
+  );
+  style.setProperty(
+    "font-weight",
+    "750",
+    "important"
+  );
+  style.setProperty(
+    "white-space",
+    "nowrap",
+    "important"
+  );
+  style.setProperty(
+    "cursor",
+    "pointer",
+    "important"
+  );
+  style.setProperty(
+    "transform",
+    "none",
+    "important"
+  );
+};
+
+sheetFloorplanPdfOverlayBtn.addEventListener(
+  "click",
+  (event) => {
+    event.stopPropagation();
+
+    if (
+      isFloorplanMode &&
+      getCurrentFloorplanUrls().length
+    ) {
+      sheetFloorplanDownloadBtn?.click();
+    }
+  }
+);
+
+if (sheetFloorplanDownloadBtn) {
+  new MutationObserver(() => {
+    syncDedicatedFloorplanPdfOverlay();
+  }).observe(sheetFloorplanDownloadBtn, {
+    attributes: true,
+    childList: true,
+    subtree: true
+  });
+}
+
+new MutationObserver(() => {
+  syncDedicatedFloorplanPdfOverlay();
+}).observe(sheetImageStage, {
+  attributes: true,
+  attributeFilter: ["class"]
+});
+
+queueMicrotask(() => {
+  syncDedicatedFloorplanPdfOverlay();
+});
+
 function getCurrentFloorplanUrls() {
   try {
     const urls = JSON.parse(activeCard?.dataset?.floorplans || "[]");
