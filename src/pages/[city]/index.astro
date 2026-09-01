@@ -580,34 +580,76 @@ let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(10
   errorMessage = error?.message || "Could not load listings.";
 }
 
-const inventoryPrices = listings
-  .map((listing: any) =>
-    Number(
-      listing?.price ??
-      listing?.listPrice ??
-      listing?.priceNumber ??
-      0
-    )
-  )
-  .filter(
-    (price: number) =>
-      Number.isFinite(price) &&
-      price >= 50000
-  )
-  .sort((a: number, b: number) => a - b);
+const normalizeInventoryType = (value: unknown) => {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
 
-const inventoryPercentile = (percentile: number) => {
-  if (!inventoryPrices.length) return 0;
+  const aliases: Record<string, string> = {
+    homes: "house",
+    home: "house",
+    houses: "house",
+    condos: "condo",
+    apartment: "condo",
+    apartments: "condo",
+    townhome: "townhouse",
+    townhomes: "townhouse",
+    mobiles: "mobile",
+    "mobile-home": "mobile",
+    "mobile-homes": "mobile",
+    lots: "land",
+  };
+
+  return aliases[normalized] || normalized;
+};
+
+const getInventoryType = (listing: any) =>
+  normalizeInventoryType(
+    listing?.normalized_type ??
+    listing?.property_type ??
+    listing?.propertyType ??
+    listing?.details?.propertyType ??
+    ""
+  );
+
+const getInventoryPrices = (inventoryType = "") =>
+  listings
+    .filter(
+      (listing: any) =>
+        !inventoryType ||
+        getInventoryType(listing) === inventoryType
+    )
+    .map((listing: any) =>
+      Number(
+        listing?.price ??
+        listing?.listPrice ??
+        listing?.priceNumber ??
+        0
+      )
+    )
+    .filter(
+      (price: number) =>
+        Number.isFinite(price) &&
+        price >= 50000
+    )
+    .sort((a: number, b: number) => a - b);
+
+const inventoryPercentile = (
+  prices: number[],
+  percentile: number
+) => {
+  if (!prices.length) return 0;
 
   const index = Math.min(
-    inventoryPrices.length - 1,
+    prices.length - 1,
     Math.max(
       0,
-      Math.round((inventoryPrices.length - 1) * percentile)
+      Math.round((prices.length - 1) * percentile)
     )
   );
 
-  return inventoryPrices[index];
+  return prices[index];
 };
 
 const roundMarketPrice = (price: number) => {
@@ -624,65 +666,105 @@ const roundMarketPrice = (price: number) => {
   );
 };
 
-const fallbackPriceBands = [500000, 700000, 900000, 1200000];
-
-const calculatedPriceBands =
-  inventoryPrices.length >= 8
-    ? [0.2, 0.4, 0.6, 0.8].map((percentile) =>
-        roundMarketPrice(inventoryPercentile(percentile))
-      )
-    : fallbackPriceBands;
-
-const selectedMaxPriceDollars =
-  maxPrice > 0 ? maxPrice * 1000 : 0;
-
-const priceBandDollars = Array.from(
-  new Set([
-    ...calculatedPriceBands,
-    ...(selectedMaxPriceDollars > 0
-      ? [selectedMaxPriceDollars]
-      : []),
-  ])
-)
-  .filter((price) => price > 0)
-  .sort((a, b) => a - b);
+const fallbackPriceBandsByType: Record<string, number[]> = {
+  all: [500000, 700000, 900000, 1200000],
+  house: [500000, 750000, 1000000, 1500000],
+  condo: [200000, 300000, 400000, 500000],
+  townhouse: [300000, 450000, 600000, 750000],
+  mobile: [100000, 200000, 300000, 400000],
+  land: [200000, 400000, 700000, 1000000],
+};
 
 const formatPriceBand = (price: number) => {
   if (price >= 1000000) {
     const millions = price / 1000000;
 
-    return `$${millions.toLocaleString("en-CA", {
+    return `${millions.toLocaleString("en-CA", {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     })}M`;
   }
 
-  return `$${Math.round(price / 1000)}k`;
+  return `${Math.round(price / 1000)}k`;
 };
 
-const underPriceBandOptions = priceBandDollars.map((price) => ({
-  value: String(Math.round(price / 1000)),
-  threshold: Math.round(price / 1000),
-  kind: "under",
-  label: `Under ${formatPriceBand(price)}`,
-}));
+const selectedMaxPriceDollars =
+  maxPrice > 0 ? maxPrice * 1000 : 0;
 
-const highestPriceBand =
-  underPriceBandOptions[underPriceBandOptions.length - 1];
+const buildPriceBandOptions = (
+  inventoryType: string,
+  prices: number[]
+) => {
+  const fallback =
+    fallbackPriceBandsByType[inventoryType] ||
+    fallbackPriceBandsByType.all;
 
-const priceBandOptions = highestPriceBand
-  ? [
-      ...underPriceBandOptions,
-      {
-        value: `over-${highestPriceBand.threshold}`,
-        threshold: highestPriceBand.threshold,
-        kind: "over",
-        label: `Over ${formatPriceBand(
-          highestPriceBand.threshold * 1000
-        )}`,
-      },
-    ]
-  : underPriceBandOptions;
+  const calculated =
+    prices.length >= 8
+      ? [0.2, 0.4, 0.6, 0.8].map((percentile) =>
+          roundMarketPrice(
+            inventoryPercentile(prices, percentile)
+          )
+        )
+      : fallback;
+
+  const priceBands = Array.from(
+    new Set(calculated)
+  )
+    .filter((price) => price > 0)
+    .sort((a, b) => a - b);
+
+  const underOptions = priceBands.map((price) => ({
+    value: String(Math.round(price / 1000)),
+    threshold: Math.round(price / 1000),
+    kind: "under",
+    label: `Under ${formatPriceBand(price)}`,
+  }));
+
+  const highest = underOptions[underOptions.length - 1];
+
+  return highest
+    ? [
+        ...underOptions,
+        {
+          value: `over-${highest.threshold}`,
+          threshold: highest.threshold,
+          kind: "over",
+          label: `Over ${formatPriceBand(
+            highest.threshold * 1000
+          )}`,
+        },
+      ]
+    : underOptions;
+};
+
+const inventoryTypes = Array.from(
+  new Set([
+    "all",
+    ...listings
+      .map((listing: any) => getInventoryType(listing))
+      .filter(Boolean),
+  ])
+);
+
+const priceBandOptionsByType = Object.fromEntries(
+  inventoryTypes.map((inventoryType) => [
+    inventoryType,
+    buildPriceBandOptions(
+      inventoryType,
+      getInventoryPrices(
+        inventoryType === "all" ? "" : inventoryType
+      )
+    ),
+  ])
+);
+
+const activeInventoryType =
+  normalizeInventoryType(type) || "all";
+
+const priceBandOptions =
+  priceBandOptionsByType[activeInventoryType] ||
+  priceBandOptionsByType.all;
 
 // Homepage presentation data
 const homepageFeaturedResidentialTypes = new Set([
@@ -1017,10 +1099,16 @@ const homepageNeighbourhoodImages = [
       <span>Property type</span>
 
       <select name="type">
-        <option value="">Any Type</option>
+        <option value="" selected={!type}>Any Type</option>
 
         {propertyTypeOptions.map((propertyType) => (
-          <option value={propertyType === "homes" ? "house" : propertyType}>
+          <option
+            value={propertyType === "homes" ? "house" : propertyType}
+            selected={
+              type === propertyType ||
+              (type === "house" && propertyType === "homes")
+            }
+          >
             {propertyType === "homes"
               ? "Homes"
               : propertyType === "condo"
@@ -1645,6 +1733,47 @@ data-liked-tags="[]"
       </div>
     </main>
 
+
+<style is:global>
+  @view-transition {
+    navigation: auto;
+  }
+
+  ::view-transition-old(root) {
+    animation: home-filter-fade-out 120ms ease-out both;
+  }
+
+  ::view-transition-new(root) {
+    animation: home-filter-fade-in 220ms ease-out both;
+  }
+
+  @keyframes home-filter-fade-out {
+    from {
+      opacity: 1;
+    }
+
+    to {
+      opacity: 0.82;
+    }
+  }
+
+  @keyframes home-filter-fade-in {
+    from {
+      opacity: 0.82;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      animation: none;
+    }
+  }
+</style>
 
 <IntentModalController loadMapScript={false} />
 
@@ -2938,12 +3067,100 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
     );
   })();
 </script>
-
 <script is:inline>
   (() => {
     const heroForm =
       document.getElementById("home-hero-search");
 
+    const filterScrollStorageKey =
+      "home-filter-scroll-position";
+
+    const savedFilterScrollPosition =
+      sessionStorage.getItem(filterScrollStorageKey);
+
+    if (savedFilterScrollPosition !== null) {
+      sessionStorage.removeItem(filterScrollStorageKey);
+
+      const scrollPosition =
+        Number(savedFilterScrollPosition);
+
+      if (Number.isFinite(scrollPosition)) {
+        history.scrollRestoration = "manual";
+
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            window.scrollTo({
+              top: scrollPosition,
+              behavior: "instant",
+            });
+          });
+        });
+      }
+    }
+
+    const rememberFilterScrollPosition = () => {
+      sessionStorage.setItem(
+        filterScrollStorageKey,
+        String(window.scrollY)
+      );
+    };
+
+    heroForm?.addEventListener("change", (event) => {
+      const target = event.target;
+
+      if (!(target instanceof HTMLSelectElement)) {
+        return;
+      }
+
+      if (target.name === "type") {
+        event.stopImmediatePropagation();
+
+        const nextUrl = new URL(
+          heroForm.action,
+          window.location.origin
+        );
+
+        const formData = new FormData(heroForm);
+
+        for (const [key, value] of formData.entries()) {
+          if (
+            key === "type" ||
+            key === "maxPrice" ||
+            key === "minPrice"
+          ) {
+            continue;
+          }
+
+          const cleanValue = String(value || "").trim();
+
+          if (cleanValue) {
+            nextUrl.searchParams.append(key, cleanValue);
+          }
+        }
+
+        const selectedType =
+          String(target.value || "").trim();
+
+        if (selectedType) {
+          nextUrl.searchParams.set(
+            "type",
+            selectedType
+          );
+        }
+
+        rememberFilterScrollPosition();
+        window.location.assign(nextUrl.toString());
+        return;
+      }
+
+      if (
+        target.name === "maxPrice" ||
+        target.name === "beds"
+      ) {
+        rememberFilterScrollPosition();
+        heroForm.requestSubmit();
+      }
+    });
     heroForm?.addEventListener("submit", () => {
       const heroPriceSelect =
         heroForm.querySelector('select[name="maxPrice"]');
@@ -3113,7 +3330,8 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
       });
 
       syncDropdown();
-      heroForm.requestSubmit();
+      rememberFilterScrollPosition();
+          heroForm.requestSubmit();
     });
 
     document.addEventListener("click", (event) => {
