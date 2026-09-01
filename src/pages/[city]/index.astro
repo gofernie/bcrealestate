@@ -1128,7 +1128,7 @@ const homepageNeighbourhoodImages = [
     <label class="locus-home-search__field">
       <span>Price</span>
 
-      <select name="maxPrice">
+      <select name="maxPrice" class="hero-native-select" hidden style="display: none !important;">
         <option value="" selected={!maxPrice}>Any Price</option>
 
         {priceBandOptions.map((band) => (
@@ -3067,11 +3067,25 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
     );
   })();
 </script>
+<script
+  id="home-price-bands-data"
+  type="application/json"
+  set:html={JSON.stringify(priceBandOptionsByType)}
+></script>
+
 <script is:inline>
   (() => {
     const heroForm =
       document.getElementById("home-hero-search");
 
+    if (
+      !heroForm ||
+      window.__homePriceControllerForm === heroForm
+    ) {
+      return;
+    }
+
+    window.__homePriceControllerForm = heroForm;
     const filterScrollStorageKey =
       "home-filter-scroll-position";
 
@@ -3105,62 +3119,610 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
       );
     };
 
-    heroForm?.addEventListener("change", (event) => {
-      const target = event.target;
+    const priceBandDataElement =
+      document.getElementById("home-price-bands-data");
 
-      if (!(target instanceof HTMLSelectElement)) {
+    let priceBandsByType = {};
+
+    try {
+      priceBandsByType = JSON.parse(
+        priceBandDataElement?.textContent || "{}"
+      );
+    } catch {
+      priceBandsByType = {};
+    }
+
+    const heroTypeSelect =
+      heroForm?.querySelector('select[name="type"]');
+
+    const heroPriceSelect =
+      heroForm?.querySelector('select[name="maxPrice"]');
+
+    const heroBedsSelect =
+      heroForm?.querySelector('select[name="beds"]');
+
+    const heroMinPriceInput =
+      heroForm?.querySelector('input[name="minPrice"]');
+
+    const resultsForm =
+      document.getElementById("home-filter-form");
+
+    const resultsTypeSelect =
+      resultsForm?.querySelector('select[name="type"]');
+
+    const resultsPriceSelect =
+      resultsForm?.querySelector('select[name="maxPrice"]');
+
+    const resultsBedsSelect =
+      resultsForm?.querySelector('select[name="beds"]');
+
+    const resultsMinPriceInput =
+      resultsForm?.querySelector('input[name="minPrice"]');
+
+    const normalizeInventoryType = (value) => {
+      const normalized = String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "-");
+
+      const aliases = {
+        homes: "house",
+        home: "house",
+        houses: "house",
+        condos: "condo",
+        apartment: "condo",
+        apartments: "condo",
+        townhome: "townhouse",
+        townhomes: "townhouse",
+        mobiles: "mobile",
+        "mobile-home": "mobile",
+        "mobile-homes": "mobile",
+        lots: "land",
+      };
+
+      return aliases[normalized] || normalized || "all";
+    };
+
+    const dispatchResultsChange = () => {
+      resultsForm?.dispatchEvent(
+        new Event("change", {
+          bubbles: true,
+        })
+      );
+    };
+
+    const updateFilterUrl = ({
+      typeValue,
+      priceValue,
+      bedsValue,
+    }) => {
+      const nextUrl = new URL(window.location.href);
+
+      nextUrl.searchParams.delete("type");
+      nextUrl.searchParams.delete("maxPrice");
+      nextUrl.searchParams.delete("minPrice");
+      nextUrl.searchParams.delete("beds");
+
+      if (typeValue) {
+        nextUrl.searchParams.set("type", typeValue);
+      }
+
+      const overMatch =
+        String(priceValue || "").match(/^over-(\d+)$/);
+
+      if (overMatch) {
+        nextUrl.searchParams.set("minPrice", overMatch[1]);
+      } else if (priceValue) {
+        nextUrl.searchParams.set(
+          "maxPrice",
+          String(priceValue)
+        );
+      }
+
+      if (bedsValue) {
+        nextUrl.searchParams.set("beds", bedsValue);
+      }
+
+      window.history.replaceState(
+        {},
+        "",
+        `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
+      );
+    };
+
+    const rebuildSelectOptions = (
+      select,
+      bands,
+      selectedValue = ""
+    ) => {
+      if (!(select instanceof HTMLSelectElement)) {
         return;
       }
 
-      if (target.name === "type") {
-        event.stopImmediatePropagation();
+      select.replaceChildren(
+        new Option("Any Price", "")
+      );
 
-        const nextUrl = new URL(
-          heroForm.action,
-          window.location.origin
+      bands.forEach((band) => {
+        select.add(
+          new Option(
+            String(band.label || ""),
+            String(band.value || "")
+          )
         );
+      });
 
-        const formData = new FormData(heroForm);
+      select.value = selectedValue;
 
-        for (const [key, value] of formData.entries()) {
-          if (
-            key === "type" ||
-            key === "maxPrice" ||
-            key === "minPrice"
-          ) {
-            continue;
-          }
+      if (select.selectedIndex < 0) {
+        select.selectedIndex = 0;
+      }
+    };
 
-          const cleanValue = String(value || "").trim();
+    let priceDropdown = null;
+    let priceTrigger = null;
+    let priceSummary = null;
+    let priceMenu = null;
 
-          if (cleanValue) {
-            nextUrl.searchParams.append(key, cleanValue);
-          }
-        }
-
-        const selectedType =
-          String(target.value || "").trim();
-
-        if (selectedType) {
-          nextUrl.searchParams.set(
-            "type",
-            selectedType
-          );
-        }
-
-        rememberFilterScrollPosition();
-        window.location.assign(nextUrl.toString());
+    const setPriceMenuOpen = (open) => {
+      if (
+        !priceDropdown ||
+        !priceTrigger ||
+        !priceMenu
+      ) {
         return;
+      }
+
+      priceDropdown.classList.toggle(
+        "is-open",
+        open
+      );
+
+      priceMenu.hidden = !open;
+
+      priceTrigger.setAttribute(
+        "aria-expanded",
+        String(open)
+      );
+
+      if (open) {
+        requestAnimationFrame(() => {
+          priceMenu.scrollTop = 0;
+        });
+      }
+    };
+
+    const syncPriceMenuSelection = () => {
+      if (
+        !(heroPriceSelect instanceof HTMLSelectElement) ||
+        !priceMenu ||
+        !priceSummary
+      ) {
+        return;
+      }
+
+      const selectedValue = heroPriceSelect.value;
+
+      priceMenu
+        .querySelectorAll(
+          ".hero-single-dropdown__option"
+        )
+        .forEach((button) => {
+          const selected =
+            button.dataset.value === selectedValue;
+
+          button.classList.toggle(
+            "is-selected",
+            selected
+          );
+
+          button.setAttribute(
+            "aria-selected",
+            String(selected)
+          );
+
+          const check = button.querySelector(
+            ".hero-single-dropdown__check"
+          );
+
+          if (check) {
+            check.textContent =
+              selected ? "\u2713" : "";
+          }
+        });
+
+      priceSummary.textContent =
+        heroPriceSelect
+          .selectedOptions?.[0]
+          ?.textContent?.trim() ||
+        "Any Price";
+    };
+
+    const selectPrice = (value) => {
+      if (
+        !(heroPriceSelect instanceof HTMLSelectElement)
+      ) {
+        return;
+      }
+
+      heroPriceSelect.value = value;
+
+      if (
+        resultsPriceSelect instanceof HTMLSelectElement
+      ) {
+        resultsPriceSelect.value = value;
+      }
+
+      const overMatch =
+        String(value || "").match(/^over-(\d+)$/);
+
+      if (
+        heroMinPriceInput instanceof HTMLInputElement
+      ) {
+        heroMinPriceInput.value =
+          overMatch ? overMatch[1] : "";
       }
 
       if (
-        target.name === "maxPrice" ||
-        target.name === "beds"
+        resultsMinPriceInput instanceof HTMLInputElement
       ) {
-        rememberFilterScrollPosition();
-        heroForm.requestSubmit();
+        resultsMinPriceInput.value =
+          overMatch ? overMatch[1] : "";
       }
-    });
+
+      syncPriceMenuSelection();
+      setPriceMenuOpen(false);
+
+      updateFilterUrl({
+        typeValue:
+          heroTypeSelect instanceof HTMLSelectElement
+            ? heroTypeSelect.value
+            : "",
+        priceValue: value,
+        bedsValue:
+          heroBedsSelect instanceof HTMLSelectElement
+            ? heroBedsSelect.value
+            : "",
+      });
+
+      window.positionHomeResults?.(true);
+      dispatchResultsChange();
+    };
+
+    const renderPriceBands = ({
+      reset = false,
+      open = false,
+    } = {}) => {
+      if (
+        !(heroTypeSelect instanceof HTMLSelectElement) ||
+        !(heroPriceSelect instanceof HTMLSelectElement) ||
+        !priceMenu
+      ) {
+        return;
+      }
+
+      const inventoryType =
+        normalizeInventoryType(
+          heroTypeSelect.value
+        );
+
+      const bands =
+        priceBandsByType[inventoryType] ||
+        priceBandsByType.all ||
+        [];
+
+      const selectedValue =
+        reset ? "" : heroPriceSelect.value;
+
+      rebuildSelectOptions(
+        heroPriceSelect,
+        bands,
+        selectedValue
+      );
+
+      rebuildSelectOptions(
+        resultsPriceSelect,
+        bands,
+        selectedValue
+      );
+
+      priceMenu.replaceChildren();
+
+      [
+        {
+          value: "",
+          label: "Any Price",
+        },
+        ...bands,
+      ].forEach((band) => {
+        const button =
+          document.createElement("button");
+
+        button.type = "button";
+        button.className =
+          "hero-single-dropdown__option";
+
+        button.dataset.value =
+          String(band.value || "");
+
+        button.setAttribute(
+          "role",
+          "option"
+        );
+
+        const label =
+          document.createElement("span");
+
+        label.textContent =
+          String(band.label || "");
+
+        const check =
+          document.createElement("span");
+
+        check.className =
+          "hero-single-dropdown__check";
+
+        check.setAttribute(
+          "aria-hidden",
+          "true"
+        );
+
+        button.append(label, check);
+
+        button.addEventListener(
+          "click",
+          (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            selectPrice(
+              String(button.dataset.value || "")
+            );
+          }
+        );
+
+        priceMenu.appendChild(button);
+      });
+
+      syncPriceMenuSelection();
+
+      if (open) {
+        setPriceMenuOpen(true);
+      }
+    };
+
+    if (
+      heroPriceSelect instanceof HTMLSelectElement
+    ) {
+      heroPriceSelect.classList.add(
+        "hero-native-select"
+      );
+      heroPriceSelect.hidden = true;
+      heroPriceSelect.style.setProperty(
+        "display",
+        "none",
+        "important"
+      );
+
+      heroPriceSelect.parentElement
+        ?.querySelectorAll(".hero-single-dropdown")
+        .forEach((dropdown) => dropdown.remove());
+
+      priceDropdown =
+        document.createElement("div");
+
+      priceDropdown.className =
+        "hero-single-dropdown";
+
+      priceTrigger =
+        document.createElement("button");
+
+      priceTrigger.type = "button";
+      priceTrigger.className =
+        "hero-single-dropdown__trigger";
+
+      priceTrigger.setAttribute(
+        "aria-haspopup",
+        "listbox"
+      );
+
+      priceTrigger.setAttribute(
+        "aria-expanded",
+        "false"
+      );
+
+      priceSummary =
+        document.createElement("span");
+
+      priceSummary.className =
+        "hero-single-dropdown__summary";
+
+      const chevron =
+        document.createElement("span");
+
+      chevron.className =
+        "hero-single-dropdown__chevron";
+
+      chevron.setAttribute(
+        "aria-hidden",
+        "true"
+      );
+
+      chevron.textContent = "\u2304";
+
+      priceMenu =
+        document.createElement("div");
+
+      priceMenu.className =
+        "hero-single-dropdown__menu";
+
+      priceMenu.setAttribute(
+        "role",
+        "listbox"
+      );
+
+      priceMenu.hidden = true;
+
+      priceTrigger.append(
+        priceSummary,
+        chevron
+      );
+
+      priceDropdown.append(
+        priceTrigger,
+        priceMenu
+      );
+
+      heroPriceSelect.insertAdjacentElement(
+        "afterend",
+        priceDropdown
+      );
+
+      heroPriceSelect.parentElement
+        ?.querySelectorAll(".hero-single-dropdown")
+        .forEach((dropdown) => {
+          if (dropdown !== priceDropdown) {
+            dropdown.remove();
+          }
+        });
+
+      const enforceInventoryPriceDropdown = () => {
+        heroPriceSelect.parentElement
+          ?.querySelectorAll(
+            ":scope > .hero-single-dropdown"
+          )
+          .forEach((dropdown) => {
+            dropdown.style.setProperty(
+              "display",
+              dropdown === priceDropdown
+                ? "block"
+                : "none",
+              "important"
+            );
+          });
+      };
+
+      enforceInventoryPriceDropdown();
+
+      const priceDropdownObserver =
+        new MutationObserver(
+          enforceInventoryPriceDropdown
+        );
+
+      priceDropdownObserver.observe(
+        heroPriceSelect.parentElement,
+        {
+          childList: true,
+        }
+      );
+
+      priceTrigger.addEventListener(
+        "click",
+        (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+
+          setPriceMenuOpen(
+            priceMenu.hidden
+          );
+        }
+      );
+
+      renderPriceBands();
+
+      window.setTimeout(() => {
+        const dropdowns = Array.from(
+          heroPriceSelect.parentElement
+            ?.querySelectorAll(
+              ":scope > .hero-single-dropdown"
+            ) || []
+        );
+
+        dropdowns.slice(1).forEach(
+          (dropdown) => dropdown.remove()
+        );
+      }, 100);
+    }
+
+    heroTypeSelect?.addEventListener(
+      "change",
+      () => {
+        if (
+          resultsTypeSelect instanceof HTMLSelectElement
+        ) {
+          resultsTypeSelect.value =
+            heroTypeSelect.value;
+        }
+
+        if (
+          heroMinPriceInput instanceof HTMLInputElement
+        ) {
+          heroMinPriceInput.value = "";
+        }
+
+        if (
+          resultsMinPriceInput instanceof HTMLInputElement
+        ) {
+          resultsMinPriceInput.value = "";
+        }
+
+        renderPriceBands({
+          reset: true,
+          open: true,
+        });
+
+        updateFilterUrl({
+          typeValue: heroTypeSelect.value,
+          priceValue: "",
+          bedsValue:
+            heroBedsSelect instanceof HTMLSelectElement
+              ? heroBedsSelect.value
+              : "",
+        });
+
+        window.positionHomeResults?.(true);
+        dispatchResultsChange();
+      }
+    );
+
+    heroBedsSelect?.addEventListener(
+      "change",
+      () => {
+        if (
+          resultsBedsSelect instanceof HTMLSelectElement
+        ) {
+          resultsBedsSelect.value =
+            heroBedsSelect.value;
+        }
+
+        updateFilterUrl({
+          typeValue:
+            heroTypeSelect instanceof HTMLSelectElement
+              ? heroTypeSelect.value
+              : "",
+          priceValue:
+            heroPriceSelect instanceof HTMLSelectElement
+              ? heroPriceSelect.value
+              : "",
+          bedsValue: heroBedsSelect.value,
+        });
+
+        window.positionHomeResults?.(true);
+        dispatchResultsChange();
+      }
+    );
+
+    document.addEventListener(
+      "click",
+      (event) => {
+        if (
+          priceDropdown &&
+          !priceDropdown.contains(event.target)
+        ) {
+          setPriceMenuOpen(false);
+        }
+      }
+    );
     heroForm?.addEventListener("submit", () => {
       const heroPriceSelect =
         heroForm.querySelector('select[name="maxPrice"]');
@@ -6179,6 +6741,10 @@ document.documentElement.style.visibility = "";
 #home-hero-search .area-multiselect__check {
   color: var(--accent) !important;
 }
+/* Prevent duplicate custom controls when the homepage script initializes twice */
+:global(#home-hero-search .locus-home-search__field > .hero-single-dropdown:not(:last-of-type)) {
+  display: none !important;
+}
 /* Shared custom Property Type, Price and Beds dropdowns */
 :global(#home-hero-search .hero-native-select) {
   display: none !important;
@@ -6528,4 +7094,14 @@ document.documentElement.style.visibility = "";
       font-size: 25px !important;
     }
   }
+</style>
+
+<style is:global>
+/* Only one generated Price dropdown may be visible */
+#home-hero-search
+.locus-home-search__field
+> .hero-single-dropdown
+~ .hero-single-dropdown {
+  display: none !important;
+}
 </style>
