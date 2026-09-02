@@ -167,7 +167,7 @@
     });
   };
 
-  ["type", "beds"].forEach((name) => {
+  ["type", "beds", "baths"].forEach((name) => {
     const select = form.querySelector(`select[name="${name}"]`);
     if (!select || select.dataset.enhanced === "true") return;
 
@@ -307,7 +307,7 @@
       resultsForm.elements.area.value = "";
     }
 
-    ["type", "maxPrice", "beds"].forEach((name) => {
+    ["type", "maxPrice", "beds", "baths"].forEach((name) => {
       const heroControl = form.elements[name];
       const resultsControl = resultsForm.elements[name];
 
@@ -339,7 +339,8 @@
       selectedAreas.length > 0 ||
       Boolean(form.elements.type?.value) ||
       Boolean(form.elements.maxPrice?.value) ||
-      Boolean(form.elements.beds?.value);
+      Boolean(form.elements.beds?.value) ||
+      Boolean(form.elements.baths?.value);
 
     window.positionHomeResults(hasActiveSearch);
     resultsForm.dispatchEvent(
@@ -357,7 +358,7 @@
       return;
     }
 
-    if (!["area", "type", "maxPrice", "beds"].includes(control.name)) {
+    if (!["area", "type", "maxPrice", "beds", "baths"].includes(control.name)) {
       return;
     }
 
@@ -384,7 +385,8 @@
       ).length > 0 ||
       Boolean(form.elements.type?.value) ||
       Boolean(form.elements.maxPrice?.value) ||
-      Boolean(form.elements.beds?.value);
+      Boolean(form.elements.beds?.value) ||
+      Boolean(form.elements.baths?.value);
 
     if (hasInitialFilters) {
       applyHeroFiltersWithoutReload();

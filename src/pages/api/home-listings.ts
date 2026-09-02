@@ -124,6 +124,7 @@ export const GET: APIRoute = async ({ request }) => {
   const minPrice = Number(url.searchParams.get("minPrice") || 0);
   const maxPrice = Number(url.searchParams.get("maxPrice") || 0);
   const beds = Number(url.searchParams.get("beds") || 0);
+  const baths = Number(url.searchParams.get("baths") || 0);
   const planMode = String(url.searchParams.get("planMode") || "").trim().toLowerCase();
   const sort = String(url.searchParams.get("sort") || "newest");
   const oceanViews = url.searchParams.get("oceanViews") === "true";
@@ -193,6 +194,7 @@ export const GET: APIRoute = async ({ request }) => {
     if (minPrice && listing.rawPrice < minPrice) return false;
     if (maxPrice && listing.rawPrice > maxPrice) return false;
     if (beds && Number(listing.beds || 0) < beds) return false;
+    if (baths && Number(listing.baths || 0) < baths) return false;
     if (planMode === "primary-on-main" && !listing.primaryOnMain) return false;
     if (planMode === "three-same-floor" && !listing.threeBedsSameFloor) return false;
     if (planMode === "four-same-floor" && !listing.fourBedsSameFloor) return false;

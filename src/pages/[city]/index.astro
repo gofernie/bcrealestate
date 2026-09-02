@@ -99,6 +99,7 @@ const planMode =
     ? bedsSelection
     : "");
 const beds = /^\d+$/.test(bedsSelection) ? Number(bedsSelection) : 0;
+const baths = Number(url.searchParams.get("baths") || 0);
 const sort = url.searchParams.get("sort") || "newest";
 
 const hasActiveSearch =
@@ -106,7 +107,8 @@ const hasActiveSearch =
   Boolean(type) ||
   minPrice > 0 ||
   maxPrice > 0 ||
-  beds > 0;
+  beds > 0 ||
+  baths > 0;
 
 const navIntentPages = await getNavIntentPages(
   supabase,
@@ -1164,6 +1166,18 @@ const homepageNeighbourhoodImages = [
       </select>
     </label>
 
+    <label class="locus-home-search__field">
+      <span>Baths</span>
+
+      <select name="baths">
+        <option value="" selected={!baths}>Any Baths</option>
+        <option value="1" selected={baths === 1}>1+ Baths</option>
+        <option value="2" selected={baths === 2}>2+ Baths</option>
+        <option value="3" selected={baths === 3}>3+ Baths</option>
+        <option value="4" selected={baths === 4}>4+ Baths</option>
+      </select>
+    </label>
+
     <div class="locus-home-search__popular">
       <span>Popular searches:</span>
 
@@ -1553,6 +1567,14 @@ const homepageNeighbourhoodImages = [
     <option value="three-same-floor" selected={planMode === "three-same-floor"}>3 beds on same floor</option>
     <option value="four-same-floor" selected={planMode === "four-same-floor"}>4 beds on same floor</option>
   </optgroup>
+</select>
+
+<select name="baths" class="filter-select" aria-label="Bathrooms">
+  <option value="" selected={!baths}>Any Baths</option>
+  <option value="1" selected={baths === 1}>1+ Baths</option>
+  <option value="2" selected={baths === 2}>2+ Baths</option>
+  <option value="3" selected={baths === 3}>3+ Baths</option>
+  <option value="4" selected={baths === 4}>4+ Baths</option>
 </select>
 
 <select name="sort" class="filter-select" aria-label="Sort">
@@ -3141,6 +3163,9 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
     const heroBedsSelect =
       heroForm?.querySelector('select[name="beds"]');
 
+    const heroBathsSelect =
+      heroForm?.querySelector('select[name="baths"]');
+
     const heroMinPriceInput =
       heroForm?.querySelector('input[name="minPrice"]');
 
@@ -3155,6 +3180,9 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
 
     const resultsBedsSelect =
       resultsForm?.querySelector('select[name="beds"]');
+
+    const resultsBathsSelect =
+      resultsForm?.querySelector('select[name="baths"]');
 
     const resultsMinPriceInput =
       resultsForm?.querySelector('input[name="minPrice"]');
@@ -3195,6 +3223,10 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
       typeValue,
       priceValue,
       bedsValue,
+      bathsValue =
+        heroBathsSelect instanceof HTMLSelectElement
+          ? heroBathsSelect.value
+          : "",
     }) => {
       const nextUrl = new URL(window.location.href);
 
@@ -3202,6 +3234,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
       nextUrl.searchParams.delete("maxPrice");
       nextUrl.searchParams.delete("minPrice");
       nextUrl.searchParams.delete("beds");
+      nextUrl.searchParams.delete("baths");
 
       if (typeValue) {
         nextUrl.searchParams.set("type", typeValue);
@@ -3221,6 +3254,10 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
 
       if (bedsValue) {
         nextUrl.searchParams.set("beds", bedsValue);
+      }
+
+      if (bathsValue) {
+        nextUrl.searchParams.set("baths", bathsValue);
       }
 
       window.history.replaceState(
@@ -3712,6 +3749,36 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
       }
     );
 
+    heroBathsSelect?.addEventListener(
+      "change",
+      () => {
+        if (
+          resultsBathsSelect instanceof HTMLSelectElement
+        ) {
+          resultsBathsSelect.value =
+            heroBathsSelect.value;
+        }
+
+        updateFilterUrl({
+          typeValue:
+            heroTypeSelect instanceof HTMLSelectElement
+              ? heroTypeSelect.value
+              : "",
+          priceValue:
+            heroPriceSelect instanceof HTMLSelectElement
+              ? heroPriceSelect.value
+              : "",
+          bedsValue:
+            heroBedsSelect instanceof HTMLSelectElement
+              ? heroBedsSelect.value
+              : "",
+          bathsValue: heroBathsSelect.value,
+        });
+
+        window.positionHomeResults?.(true);
+        dispatchResultsChange();
+      }
+    );
     document.addEventListener(
       "click",
       (event) => {
@@ -4012,6 +4079,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
              (form.elements.type?.value || "") !== "" ||
              (form.elements.maxPrice?.value || "") !== "" ||
              (form.elements.beds?.value || "") !== "" ||
+      (form.elements.baths?.value || "") !== "" ||
              Array.from(document.querySelectorAll("#homepage-refine-panel [data-refine].active")).length > 0;
     })();
 
@@ -5021,6 +5089,7 @@ const maxPriceVal = storyBudgetVal
   const bedsVal = /^\d+$/.test(bedsSelectionVal)
     ? Number(bedsSelectionVal)
     : 0;
+  const bathsVal = Number(form.elements.baths?.value || 0);
   const planModeVal = [
     "primary-on-main",
     "three-same-floor",
@@ -5080,6 +5149,7 @@ const selectedFeatures = String(document.querySelector(".story-blank[data-story-
   if (minPriceVal) params.set("minPrice", String(minPriceVal));
   if (maxPriceVal) params.set("maxPrice", String(maxPriceVal));
   if (bedsVal) params.set("beds", String(bedsVal));
+  if (bathsVal) params.set("baths", String(bathsVal));
   if (planModeVal) params.set("planMode", planModeVal);
   if (selectedFeatures.includes("ocean views")) params.set("oceanViews", "true");
 
@@ -5205,6 +5275,7 @@ function syncSaveSearchPrompts() {
     : Number(currentPriceSelection || 0);
 
   const currentBeds = Number(form.elements.beds?.value || 0);
+  const currentBaths = Number(form.elements.baths?.value || 0);
 
   const hasCuratedSearch =
     currentAreas.length > 0 ||
@@ -5213,7 +5284,8 @@ function syncSaveSearchPrompts() {
     currentMinPrice > 0 ||
     currentMaxPrice > 0 ||
     Boolean(currentPriceSelection) ||
-    currentBeds > 0;
+    currentBeds > 0 ||
+    currentBaths > 0;
 
   document
     .querySelectorAll("[data-save-search-prompt]")
@@ -5770,7 +5842,7 @@ document.documentElement.style.visibility = "";
   left: 50%;
   bottom: 0;
   display: grid;
-  grid-template-columns: 1.2fr 1fr .9fr .8fr auto;
+  grid-template-columns: 1.2fr 1fr .9fr .8fr .8fr auto;
   width: min(1360px, calc(100% - 72px));
   padding: 20px 20px 14px;
   border: 1px solid rgba(13,48,73,.08);
@@ -6634,7 +6706,8 @@ document.documentElement.style.visibility = "";
 #home-filter-form select[name="area"],
 #home-filter-form select[name="type"],
 #home-filter-form select[name="maxPrice"],
-#home-filter-form select[name="beds"] {
+#home-filter-form select[name="beds"],
+#home-filter-form select[name="baths"] {
   display: none;
 }
 
