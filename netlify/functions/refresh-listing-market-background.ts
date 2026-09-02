@@ -1,0 +1,371 @@
+import type {
+  Config,
+} from "@netlify/functions";
+
+import {
+  createClient,
+} from "@supabase/supabase-js";
+
+import {
+  refreshListingMarket,
+} from "../../src/lib/listings/refreshListingMarket";
+
+import {
+  processSavedSearches,
+} from "../../src/lib/savedSearches/processSavedSearches";
+
+const CRON_SECRET =
+  process.env.CRON_SECRET;
+
+const supabase =
+  createClient(
+    process.env.PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
+type RefreshRequest = {
+  city?: string;
+  boardId?: string;
+};
+
+function json(
+  body: unknown,
+  status = 200
+) {
+  return new Response(
+    JSON.stringify(body),
+    {
+      status,
+      headers: {
+        "content-type":
+          "application/json; charset=utf-8",
+
+        "cache-control":
+          "no-store",
+      },
+    }
+  );
+}
+
+export default async function handler(
+  request: Request
+) {
+  if (!CRON_SECRET) {
+    console.error(
+      "Missing CRON_SECRET"
+    );
+
+    return json(
+      {
+        ok: false,
+        error:
+          "Missing CRON_SECRET",
+      },
+      500
+    );
+  }
+
+  const authorization =
+    request.headers.get(
+      "authorization"
+    );
+
+  if (
+    authorization !==
+    `Bearer ${CRON_SECRET}`
+  ) {
+    return json(
+      {
+        ok: false,
+        error:
+          "Unauthorized",
+      },
+      401
+    );
+  }
+
+  const requestUrl =
+    new URL(
+      request.url
+    );
+
+  let body:
+    RefreshRequest = {};
+
+  try {
+    const rawBody =
+      await request.text();
+
+    if (rawBody) {
+      body =
+        JSON.parse(
+          rawBody
+        );
+    }
+  } catch (error) {
+    console.warn(
+      "Could not parse worker request body:",
+      error
+    );
+  }
+
+  const city =
+    String(
+      requestUrl.searchParams.get(
+        "city"
+      ) ||
+        body.city ||
+        ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const boardId =
+    String(
+      requestUrl.searchParams.get(
+        "boardId"
+      ) ||
+        body.boardId ||
+        ""
+    ).trim();
+
+  if (!city) {
+    return json(
+      {
+        ok: false,
+        error:
+          "Missing city",
+      },
+      400
+    );
+  }
+
+  console.log(
+    "Starting background listing refresh",
+    {
+      city,
+
+      boardId:
+        boardId || null,
+    }
+  );
+
+  try {
+    const result =
+      await refreshListingMarket({
+        city,
+        boardId,
+
+        trigger:
+          "scheduled-background",
+
+        env: {
+          PUBLIC_SUPABASE_URL:
+            process.env
+              .PUBLIC_SUPABASE_URL,
+
+          SUPABASE_SERVICE_ROLE_KEY:
+            process.env
+              .SUPABASE_SERVICE_ROLE_KEY,
+
+          REPLIERS_API_KEY:
+            process.env
+              .REPLIERS_API_KEY,
+
+          REPLIERS_BASE_URL:
+            process.env
+              .REPLIERS_BASE_URL,
+        },
+      });
+
+    console.log(
+      "Completed background listing refresh",
+      {
+        city,
+
+        boardId:
+          boardId || null,
+
+        result,
+      }
+    );
+
+    try {
+      const savedSearchResult =
+        await processSavedSearches(
+          supabase,
+          {
+            RESEND_API_KEY:
+              process.env
+                .RESEND_API_KEY!,
+
+            TWILIO_ACCOUNT_SID:
+              process.env
+                .TWILIO_ACCOUNT_SID!,
+
+            TWILIO_AUTH_TOKEN:
+              process.env
+                .TWILIO_AUTH_TOKEN!,
+
+            TWILIO_FROM_NUMBER:
+              process.env
+                .TWILIO_FROM_NUMBER!,
+
+            PUBLIC_SITE_URL:
+              process.env
+                .PUBLIC_SITE_URL,
+          },
+          city
+        );
+
+      console.log(
+        "Saved searches processed after listing refresh",
+        {
+          city,
+
+          processed:
+            savedSearchResult.processed,
+
+          results:
+            savedSearchResult.results,
+        }
+      );
+    } catch (
+      savedSearchError
+    ) {
+      console.error(
+        "Saved search processing failed after listing refresh",
+        {
+          city,
+
+          error:
+            savedSearchError instanceof
+            Error
+              ? savedSearchError.message
+              : savedSearchError,
+        }
+      );
+    }
+
+    if (
+      city ===
+      "nanaimo"
+    ) {
+      try {
+        const baseUrl =
+          new URL(
+            request.url
+          ).origin;
+
+        const scanResponse =
+          await fetch(
+            `${baseUrl}/.netlify/functions/scan-floorplans-background?city=nanaimo&limit=50`,
+            {
+              method: "POST",
+
+              headers: {
+                Authorization:
+                  `Bearer ${CRON_SECRET}`,
+
+                "Content-Type":
+                  "application/json",
+              },
+            }
+          );
+
+        console.log(
+          "Floorplan scan dispatched",
+          {
+            city,
+
+            status:
+              scanResponse.status,
+
+            accepted:
+              scanResponse.ok,
+          }
+        );
+      } catch (
+        scanError
+      ) {
+        console.error(
+          "Could not dispatch floorplan scan:",
+          scanError instanceof
+          Error
+            ? scanError.message
+            : scanError
+        );
+      }
+    }
+
+    return json(result);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unknown listing refresh error";
+
+    const status =
+      typeof (
+        error as {
+          status?: unknown;
+        }
+      )?.status ===
+      "number"
+        ? (
+            error as {
+              status: number;
+            }
+          ).status
+        : 500;
+
+    const details =
+      (
+        error as {
+          details?: unknown;
+        }
+      )?.details ||
+      null;
+
+    console.error(
+      "Background listing refresh failed",
+      {
+        city,
+
+        boardId:
+          boardId || null,
+
+        message,
+
+        status,
+
+        details,
+
+        stack:
+          error instanceof Error
+            ? error.stack
+            : null,
+      }
+    );
+
+    return json(
+      {
+        ok: false,
+        city,
+
+        boardId:
+          boardId || null,
+
+        error:
+          message,
+
+        details,
+      },
+      status
+    );
+  }
+}
+
+export const config: Config = {
+  background: true,
+};
