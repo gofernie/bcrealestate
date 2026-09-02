@@ -568,6 +568,13 @@ const { listings = [] } = Astro.props;
 
   <span>Share this listing</span>
 </button>
+<button
+  type="button"
+  class="panel__share-link"
+  id="sheet-brochure-btn"
+>
+  <span>Download property brochure</span>
+</button>
 </div>
         <div
   class="panel__rooms"
@@ -606,6 +613,7 @@ const sheetFloorplanBtn = document.getElementById("sheet-floorplan-btn");
 const sheetFloorplanDownloadBtn =
   document.getElementById("sheet-floorplan-download-btn");
 const sheetShareBtn = document.getElementById("sheet-share-btn");
+const sheetBrochureBtn = document.getElementById("sheet-brochure-btn");
 // move-share-outside-description
 const listingReactionActions =
   document.querySelector(".listing-reaction-actions");
@@ -4661,6 +4669,103 @@ function updatePhotoCounter() {
     }
   }
 }
+// property-brochure-download-handler
+sheetBrochureBtn?.addEventListener("click", async () => {
+  if (!activeCard || !sheetBrochureBtn) return;
+
+  const originalText = sheetBrochureBtn.textContent || "Download property brochure";
+  sheetBrochureBtn.disabled = true;
+  sheetBrochureBtn.textContent = "Building brochure...";
+
+  const parseArray = (value) => {
+    try {
+      const parsed = JSON.parse(value || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const listingId =
+    activeCard.dataset.listingId ||
+    activeCard.dataset.itemId ||
+    activeCard.dataset.mls ||
+    "";
+
+  const listingCity =
+    activeCard.dataset.city ||
+    document.body.dataset.city ||
+    "nanaimo";
+
+  const listingType = String(activeCard.dataset.type || "homes").toLowerCase();
+  const listingTypePath =
+    listingType === "condo" ? "condos" :
+    listingType === "townhouse" ? "townhomes" :
+    listingType === "mobile" ? "mobile-homes" :
+    listingType === "land" ? "land" :
+    "homes";
+
+  const listingUrl =
+    `${window.location.origin}/${listingCity}/${listingTypePath}` +
+    `?listing_id=${encodeURIComponent(listingId)}`;
+
+  try {
+    const response = await fetch("/api/property-brochure-pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        siteId: document.body.dataset.siteId || "",
+        lat: activeCard.dataset.lat || "",
+        lng: activeCard.dataset.lng || "",
+        hostname: ["localhost", "127.0.0.1"].includes(window.location.hostname)
+          ? "bc.realestate"
+          : window.location.hostname,
+        listingId,
+        mls: activeCard.dataset.mls || listingId || "30166546",
+        city: listingCity,
+        area: activeCard.dataset.area || "",
+        propertyType: activeCard.dataset.type || "Home",
+        address: activeCard.dataset.address || "Featured property",
+        price: activeCard.dataset.price || "",
+        beds: activeCard.dataset.beds || "",
+        baths: activeCard.dataset.baths || "",
+        sqft: activeCard.dataset.sqft || "",
+        year: activeCard.dataset.year || "",
+        description: activeCard.dataset.description || "",
+        images: parseArray(activeCard.dataset.images),
+        floorplans: parseArray(activeCard.dataset.floorplans),
+        rooms: parseArray(activeCard.dataset.rooms),
+        listingUrl,
+      }),
+    });
+
+    if (!response.ok) {
+      const failure = await response.json().catch(() => ({}));
+      throw new Error(failure.error || "Brochure creation failed");
+    }
+
+    const blob = await response.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const addressSlug = String(activeCard.dataset.address || `mls-${listingId}`)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    link.href = downloadUrl;
+    link.download = `${addressSlug || `mls-${listingId}`}-property-brochure.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 3000);
+  } catch (error) {
+    console.error("Property brochure download failed:", error);
+    window.alert(error?.message || "Could not build the property brochure.");
+  } finally {
+    sheetBrochureBtn.disabled = false;
+    sheetBrochureBtn.textContent = originalText;
+  }
+});
+
 // floorplan-download-handler
 sheetFloorplanDownloadBtn?.addEventListener("click", async () => {
   if (!activeCard || !sheetFloorplanDownloadBtn) return;
@@ -4710,6 +4815,11 @@ sheetFloorplanDownloadBtn?.addEventListener("click", async () => {
       body: JSON.stringify({
         floorplans,
         siteId: document.body.dataset.siteId || "",
+        lat: activeCard.dataset.lat || "",
+        lng: activeCard.dataset.lng || "",
+        hostname: ["localhost", "127.0.0.1"].includes(window.location.hostname)
+          ? "bc.realestate"
+          : window.location.hostname,
         city: activeCard.dataset.city || document.body.dataset.city || "",
         address: activeCard.dataset.address || "Property floorplan",
         price: activeCard.dataset.price || "",
@@ -5997,13 +6107,135 @@ sheetImage?.addEventListener("touchend", (event) => {
     width: 100% !important;
   }
 
-/* mobile-modal-above-site-nav */
-@media (max-width: 760px) {
-  #sheet-overlay {
-    z-index: 2147482498 !important;
+/* listing-modal-above-site-nav */
+#sheet-overlay {
+  z-index: 2147482498 !important;
+}
+
+#preview-sheet {
+  z-index: 2147482499 !important;
+}</style>
+<!-- grouped-listing-actions-v1 -->
+<style is:global>
+  #preview-sheet .panel__action-suite {
+    box-sizing: border-box;
+    width: auto;
+    margin: 16px 8px 24px;
+    padding: 0;
   }
 
-  #preview-sheet {
-    z-index: 2147482499 !important;
+  #preview-sheet .panel__action-suite #sheet-engage {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
-}</style>
+
+  #preview-sheet .panel__action-suite .panel__engage-copy {
+    display: none !important;
+  }
+
+  #preview-sheet .panel__action-suite .panel__engage-actions,
+  #preview-sheet .panel__utility-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #preview-sheet .panel__utility-actions {
+    margin-top: 8px !important;
+  }
+
+  #preview-sheet .panel__action-suite button {
+    box-sizing: border-box !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 44px !important;
+    margin: 0 !important;
+    padding: 0 16px !important;
+    border-radius: 7px !important;
+    font: inherit !important;
+    font-size: 0.82rem !important;
+    font-weight: 750 !important;
+  }
+
+  #preview-sheet .panel__action-suite #book-showing-btn {
+    border-color: #102333 !important;
+    background: #102333 !important;
+    color: #fff !important;
+  }
+
+  #preview-sheet .panel__action-suite #ask-question-btn,
+  #preview-sheet .panel__action-suite #sheet-brochure-btn,
+  #preview-sheet .panel__action-suite #sheet-share-btn {
+    border: 1px solid rgba(16, 35, 51, 0.2) !important;
+    background: #fff !important;
+    color: #102333 !important;
+  }
+
+  #preview-sheet .panel__action-suite #sheet-brochure-btn {
+    border-color: rgba(21, 112, 118, 0.55) !important;
+    color: #176f75 !important;
+  }
+
+  #preview-sheet .panel__action-suite button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 14px rgba(16, 35, 51, 0.08);
+  }
+
+  #preview-sheet .panel__share-row,
+  #preview-sheet .panel__share-solo {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  @media (max-width: 480px) {
+    #preview-sheet .panel__action-suite {
+      margin: 14px 0 22px;
+    }
+
+    #preview-sheet .panel__action-suite .panel__engage-actions,
+    #preview-sheet .panel__utility-actions {
+      gap: 7px !important;
+    }
+
+    #preview-sheet .panel__action-suite button {
+      padding: 0 9px !important;
+      font-size: 0.76rem !important;
+    }
+  }
+</style>
+
+<script is:inline>
+  document.addEventListener("DOMContentLoaded", () => {
+    const preview = document.getElementById("preview-sheet");
+    const engage = document.getElementById("sheet-engage");
+    const brochure = document.getElementById("sheet-brochure-btn");
+    const share = document.getElementById("sheet-share-btn");
+    if (!preview || !engage || !brochure || !share) return;
+
+    let suite = preview.querySelector(".panel__action-suite");
+    if (!suite) {
+      suite = document.createElement("div");
+      suite.className = "panel__action-suite";
+      engage.parentNode.insertBefore(suite, engage);
+    }
+
+    let utilities = suite.querySelector(".panel__utility-actions");
+    if (!utilities) {
+      utilities = document.createElement("div");
+      utilities.className = "panel__utility-actions";
+    }
+
+    suite.appendChild(engage);
+    utilities.appendChild(brochure);
+    utilities.appendChild(share);
+    suite.appendChild(utilities);
+  });
+</script>
