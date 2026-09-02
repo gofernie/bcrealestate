@@ -10225,6 +10225,7 @@ if (L.Browser.mobile) {
 
               <a
                 href="#type-listings"
+                data-map-listing-id="${point.listingId || ""}"
                 onclick="event.preventDefault();event.stopPropagation();document.querySelector('[data-listing-id=&quot;${point.listingId || ""}&quot;]')?.click();"
                 ontouchend="event.preventDefault();event.stopPropagation();document.querySelector('[data-listing-id=&quot;${point.listingId || ""}&quot;]')?.click();"
                 style="
@@ -10930,6 +10931,7 @@ function buildListingPopup(card) {
 
         <button
           type="button"
+          data-map-listing-id="${listingId}"
           onclick="event.preventDefault();event.stopPropagation();document.querySelector('[data-listing-id=&quot;${listingId}&quot;]')?.click();"
           ontouchend="event.preventDefault();event.stopPropagation();document.querySelector('[data-listing-id=&quot;${listingId}&quot;]')?.click();"
           style="
@@ -15729,4 +15731,51 @@ document.addEventListener("click", (event) => {
       });
     });
 })();
+</script>
+<script is:inline>
+  /* map-listing-modal-bridge-v1 */
+  if (!window["__mapListingModalBridgeReady"]) {
+    window["__mapListingModalBridgeReady"] = true;
+
+    document.addEventListener(
+      "click",
+      (event) => {
+        const trigger =
+          event.target instanceof Element
+            ? event.target.closest("[data-map-listing-id]")
+            : null;
+
+        if (!trigger) return;
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+
+        const listingId = String(
+          trigger.getAttribute("data-map-listing-id") || ""
+        ).trim();
+
+        if (!listingId) return;
+
+        const card = Array.from(
+          document.querySelectorAll(
+            ".original-card[data-listing-id], .refined-card[data-listing-id]"
+          )
+        ).find(
+          (candidate) =>
+            String(candidate.getAttribute("data-listing-id") || "") ===
+            listingId
+        );
+
+        if (card instanceof HTMLElement) {
+          card.click();
+        } else {
+          console.warn(
+            "No modal-enabled listing card found for map listing:",
+            listingId
+          );
+        }
+      },
+      true
+    );
+  }
 </script>
