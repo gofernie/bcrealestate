@@ -48,7 +48,7 @@
 
       #home-hero-search .hero-single-dropdown__menu {
         position: absolute;
-        z-index: 70;
+        z-index: 120;
         top: calc(100% + 18px);
         left: -14px;
         box-sizing: border-box;
@@ -160,14 +160,33 @@
       if (dropdown === except) return;
 
       dropdown.classList.remove("is-open");
-      dropdown.querySelector("[data-single-menu]").hidden = true;
-      dropdown
-        .querySelector("[data-single-trigger]")
-        .setAttribute("aria-expanded", "false");
+
+      const menu = dropdown.querySelector(
+        "[data-single-menu], .hero-single-dropdown__menu"
+      );
+
+      const trigger = dropdown.querySelector(
+        "[data-single-trigger], .hero-single-dropdown__trigger"
+      );
+
+      if (menu instanceof HTMLElement) {
+        menu.hidden = true;
+      }
+
+      if (trigger instanceof HTMLElement) {
+        trigger.setAttribute("aria-expanded", "false");
+      }
     });
   };
 
-  ["type", "beds", "baths"].forEach((name) => {
+  [
+    "type",
+    "beds",
+    "baths",
+    "minSqft",
+    "minYear",
+    "waterfrontType",
+  ].forEach((name) => {
     const select = form.querySelector(`select[name="${name}"]`);
     if (!select || select.dataset.enhanced === "true") return;
 
@@ -288,11 +307,12 @@
 
   const advancedFilterNames = [
     "minSqft",
+    "minYear",
     "primaryOnMain",
     "threeSameFloor",
     "fourSameFloor",
     "oceanViews",
-    "waterfront",
+    "waterfrontType",
   ];
 
   const moreToggle =
@@ -304,12 +324,8 @@
   const moreCount =
     form.querySelector("[data-hero-more-count]");
 
-  const moreClear =
-    form.querySelector("[data-hero-more-clear]");
-
-  const moreApply =
-    form.querySelector("[data-hero-more-apply]");
-
+  const moreClose =
+    form.querySelector("[data-hero-more-close]");
   const getAdvancedFilterCount = () =>
     advancedFilterNames.reduce((count, name) => {
       const control = form.elements[name];
@@ -435,7 +451,22 @@
     const isOpen =
       moreToggle.getAttribute("aria-expanded") === "true";
 
-    setMorePanelOpen(!isOpen);
+    const hadOpenTopDropdown = Boolean(
+      form.querySelector(".hero-single-dropdown.is-open") ||
+      form.querySelector("[data-area-menu]:not([hidden])")
+    );
+
+    closeAll();
+
+    document.dispatchEvent(
+      new CustomEvent("hero-dropdown:opened", {
+        detail: morePanel,
+      })
+    );
+
+    setMorePanelOpen(
+      hadOpenTopDropdown ? true : !isOpen
+    );
   });
 
   morePanel?.addEventListener("click", (event) => {
@@ -444,31 +475,18 @@
 
   morePanel?.addEventListener("change", () => {
     updateMoreFilterCount();
-  });
-
-  moreClear?.addEventListener("click", () => {
-    advancedFilterNames.forEach((name) => {
-      const control = form.elements[name];
-
-      if (control instanceof HTMLInputElement) {
-        control.checked = false;
-      }
-
-      if (control instanceof HTMLSelectElement) {
-        control.value = "";
-      }
-    });
-
-    updateMoreFilterCount();
-  });
-
-  moreApply?.addEventListener("click", () => {
     clearTimeout(automaticFilterTimer);
-    updateMoreFilterCount();
-    applyHeroFiltersWithoutReload();
-    setMorePanelOpen(false);
-  });
 
+    automaticFilterTimer = window.setTimeout(
+      applyHeroFiltersWithoutReload,
+      120
+    );
+  });
+  moreClose?.addEventListener("click", () => {
+    closeAll();
+    setMorePanelOpen(false);
+    moreToggle?.focus();
+  });
   document.addEventListener("click", (event) => {
     if (
       morePanel instanceof HTMLElement &&

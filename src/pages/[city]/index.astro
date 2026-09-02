@@ -22,6 +22,50 @@ const supabase = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+const {
+  data: waterfrontInventoryRows,
+  error: waterfrontInventoryError,
+} = await supabase
+  .from("listing_rows")
+  .select("waterfront_type")
+  .eq("status", "A")
+  .eq("normalized_city", routeCity)
+  .eq("waterfront", true);
+
+if (waterfrontInventoryError) {
+  console.error(
+    "Waterfront inventory lookup failed:",
+    waterfrontInventoryError
+  );
+}
+
+const waterfrontTypeCounts =
+  (waterfrontInventoryRows || []).reduce(
+    (counts: Record<string, number>, row: any) => {
+      const key = String(row?.waterfront_type || "")
+        .trim()
+        .toLowerCase();
+
+      if (key) {
+        counts[key] = (counts[key] || 0) + 1;
+      }
+
+      return counts;
+    },
+    {}
+  );
+
+const waterfrontInventoryTotal =
+  waterfrontInventoryRows?.length || 0;
+
+const waterfrontTypeOptions = [
+  { value: "oceanfront", label: "Oceanfront" },
+  { value: "lakefront", label: "Lakefront" },
+  { value: "riverfront", label: "Riverfront" },
+].filter(
+  (option) =>
+    Number(waterfrontTypeCounts[option.value] || 0) > 0
+);
 const host = Astro.request.headers.get("x-forwarded-host") || Astro.request.headers.get("host") || "";
 const domain = host.split(",")[0].trim().replace(/^www\./, "").split(":")[0];
 const isLocal = domain === "localhost" || domain.startsWith("localhost:");
@@ -101,11 +145,17 @@ const planMode =
 const beds = /^\d+$/.test(bedsSelection) ? Number(bedsSelection) : 0;
 const baths = Number(url.searchParams.get("baths") || 0);
 const minSqft = Number(url.searchParams.get("minSqft") || 0);
+const minYear = Number(url.searchParams.get("minYear") || 0);
 const primaryOnMain = url.searchParams.get("primaryOnMain") === "true";
 const threeSameFloor = url.searchParams.get("threeSameFloor") === "true";
 const fourSameFloor = url.searchParams.get("fourSameFloor") === "true";
 const oceanViews = url.searchParams.get("oceanViews") === "true";
-const waterfrontOnly = url.searchParams.get("waterfront") === "true";
+const waterfrontType = String(
+  url.searchParams.get("waterfrontType") ||
+  (url.searchParams.get("waterfront") === "true" ? "any" : "")
+)
+  .trim()
+  .toLowerCase();
 const sort = url.searchParams.get("sort") || "newest";
 
 const hasActiveSearch =
@@ -114,7 +164,8 @@ const hasActiveSearch =
   minPrice > 0 ||
   maxPrice > 0 ||
   beds > 0 ||
-  baths > 0;
+  baths > 0 ||
+  Boolean(waterfrontType);
 
 const navIntentPages = await getNavIntentPages(
   supabase,
@@ -1164,11 +1215,6 @@ const homepageNeighbourhoodImages = [
           <option value="3" selected={beds === 3}>3+ Beds</option>
           <option value="4" selected={beds === 4}>4+ Beds</option>
         </optgroup>
-        <optgroup label="Plan mode">
-          <option value="primary-on-main" selected={planMode === "primary-on-main"}>Primary on main</option>
-          <option value="three-same-floor" selected={planMode === "three-same-floor"}>3 beds on same floor</option>
-          <option value="four-same-floor" selected={planMode === "four-same-floor"}>4 beds on same floor</option>
-        </optgroup>
       </select>
     </label>
 
@@ -1218,6 +1264,17 @@ const homepageNeighbourhoodImages = [
                 <option value="2500" selected={minSqft === 2500}>2,500+ sq ft</option>
               </select>
             </label>
+            <label>
+              <span>Year built</span>
+              <select name="minYear">
+                <option value="" selected={!minYear}>Any year</option>
+                <option value="1990" selected={minYear === 1990}>1990 or newer</option>
+                <option value="2000" selected={minYear === 2000}>2000 or newer</option>
+                <option value="2010" selected={minYear === 2010}>2010 or newer</option>
+                <option value="2020" selected={minYear === 2020}>2020 or newer</option>
+                <option value="2025" selected={minYear === 2025}>New construction</option>
+              </select>
+            </label>
           </div>
         </section>
 
@@ -1251,21 +1308,39 @@ const homepageNeighbourhoodImages = [
               <span>Ocean view</span>
             </label>
 
-            <label>
-              <input type="checkbox" name="waterfront" value="true" checked={waterfrontOnly} />
-              <span>Waterfront</span>
-            </label>
+            {
+  waterfrontInventoryTotal > 0 && (
+    <label class="locus-home-waterfront-type">
+      <span>Waterfront</span>
+
+      <select name="waterfrontType">
+        <option value="" selected={!waterfrontType}>
+          No preference
+        </option>
+
+        <option value="any" selected={waterfrontType === "any"}>
+          Any waterfront ({waterfrontInventoryTotal})
+        </option>
+
+        {waterfrontTypeOptions.map((option) => (
+          <option
+            value={option.value}
+            selected={waterfrontType === option.value}
+          >
+            {option.label} ({waterfrontTypeCounts[option.value]})
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
           </div>
         </section>
       </div>
 
       <div class="locus-home-more-panel__actions">
-        <button type="button" class="locus-home-more-clear" data-hero-more-clear>
-          Clear
-        </button>
-
-        <button type="button" class="locus-home-more-apply" data-hero-more-apply>
-          Apply filters
+        <button type="button" class="locus-home-more-clear" data-hero-more-close>
+          Close
         </button>
       </div>
     </div>
@@ -1653,11 +1728,6 @@ const homepageNeighbourhoodImages = [
     <option value="4" selected={beds === 4}>4+ Beds</option>
     <option value="5" selected={beds === 5}>5+ Beds</option>
   </optgroup>
-  <optgroup label="Plan mode">
-    <option value="primary-on-main" selected={planMode === "primary-on-main"}>Primary on main</option>
-    <option value="three-same-floor" selected={planMode === "three-same-floor"}>3 beds on same floor</option>
-    <option value="four-same-floor" selected={planMode === "four-same-floor"}>4 beds on same floor</option>
-  </optgroup>
 </select>
 
 <select name="baths" class="filter-select" aria-label="Bathrooms">
@@ -1669,11 +1739,12 @@ const homepageNeighbourhoodImages = [
 </select>
 
 <input type="hidden" name="minSqft" value={minSqft || ""} />
+<input type="hidden" name="minYear" value={minYear || ""} />
 <input type="hidden" name="primaryOnMain" value={primaryOnMain ? "true" : ""} />
 <input type="hidden" name="threeSameFloor" value={threeSameFloor ? "true" : ""} />
 <input type="hidden" name="fourSameFloor" value={fourSameFloor ? "true" : ""} />
 <input type="hidden" name="oceanViews" value={oceanViews ? "true" : ""} />
-<input type="hidden" name="waterfront" value={waterfrontOnly ? "true" : ""} />
+<input type="hidden" name="waterfrontType" value={waterfrontType} />
 <select name="sort" class="filter-select" aria-label="Sort">
   <option value="newest" selected={sort === "newest"}>Newest first</option>
   <option value="price-low" selected={sort === "price-low"}>Price low to high</option>
@@ -3521,6 +3592,25 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
 
       window.positionHomeResults?.(true);
       dispatchResultsChange();
+
+      requestAnimationFrame(() => {
+        const bedsDropdown =
+          heroBedsSelect?.parentElement?.querySelector(
+            ":scope > .hero-single-dropdown"
+          );
+
+        const bedsTrigger =
+          bedsDropdown?.querySelector(
+            ".hero-single-dropdown__trigger"
+          );
+
+        if (
+          bedsTrigger instanceof HTMLButtonElement &&
+          !bedsDropdown.classList.contains("is-open")
+        ) {
+          bedsTrigger.click();
+        }
+      });
     };
 
     const renderPriceBands = ({
@@ -3756,9 +3846,17 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
           event.preventDefault();
           event.stopPropagation();
 
-          setPriceMenuOpen(
-            priceMenu.hidden
-          );
+          const opening = priceMenu.hidden;
+
+          if (opening) {
+            document.dispatchEvent(
+              new CustomEvent("hero-dropdown:opened", {
+                detail: priceDropdown,
+              })
+            );
+          }
+
+          setPriceMenuOpen(opening);
         }
       );
 
@@ -3802,7 +3900,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
 
         renderPriceBands({
           reset: true,
-          open: true,
+          open: false,
         });
 
         updateFilterUrl({
@@ -3816,6 +3914,10 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
 
         window.positionHomeResults?.(true);
         dispatchResultsChange();
+
+        requestAnimationFrame(() => {
+          setPriceMenuOpen(true);
+        });
       }
     );
 
@@ -5188,6 +5290,7 @@ const maxPriceVal = storyBudgetVal
     : 0;
   const bathsVal = Number(form.elements.baths?.value || 0);
   const minSqftVal = Number(form.elements.minSqft?.value || 0);
+  const minYearVal = Number(form.elements.minYear?.value || 0);
   const primaryOnMainVal =
     String(form.elements.primaryOnMain?.value || "") === "true";
   const threeSameFloorVal =
@@ -5196,9 +5299,10 @@ const maxPriceVal = storyBudgetVal
     String(form.elements.fourSameFloor?.value || "") === "true";
   const oceanViewsVal =
     String(form.elements.oceanViews?.value || "") === "true";
-  const waterfrontVal =
-    String(form.elements.waterfront?.value || "") === "true";
-  const planModeVal = [
+  const waterfrontTypeVal =
+    String(form.elements.waterfrontType?.value || "")
+      .trim()
+      .toLowerCase();  const planModeVal = [
     "primary-on-main",
     "three-same-floor",
     "four-same-floor",
@@ -5259,11 +5363,12 @@ const selectedFeatures = String(document.querySelector(".story-blank[data-story-
   if (bedsVal) params.set("beds", String(bedsVal));
   if (bathsVal) params.set("baths", String(bathsVal));
   if (minSqftVal) params.set("minSqft", String(minSqftVal));
+  if (minYearVal) params.set("minYear", String(minYearVal));
   if (primaryOnMainVal) params.set("primaryOnMain", "true");
   if (threeSameFloorVal) params.set("threeSameFloor", "true");
   if (fourSameFloorVal) params.set("fourSameFloor", "true");
   if (oceanViewsVal) params.set("oceanViews", "true");
-  if (waterfrontVal) params.set("waterfront", "true");
+  if (waterfrontTypeVal) params.set("waterfrontType", waterfrontTypeVal);
   if (planModeVal) params.set("planMode", planModeVal);
   if (selectedFeatures.includes("ocean views")) params.set("oceanViews", "true");
 
@@ -7173,7 +7278,7 @@ document.documentElement.style.visibility = "";
   }
 </style>
 
-<script is:inline src="/home-search-dropdowns.js?v=14"></script>
+<script is:inline src="/home-search-dropdowns.js?v=22"></script>
 <style is:global>
   .homepage-save-search-form {
     grid-column: 1 / -1;
@@ -7445,6 +7550,35 @@ document.documentElement.style.visibility = "";
   background: #f7f8f8;
 }
 
+#home-hero-search .locus-home-waterfront-type {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 7px;
+  width: 100%;
+  align-items: start;
+}
+
+#home-hero-search .locus-home-waterfront-type > span {
+  white-space: nowrap;
+  color: #667b8b;
+  font-size: .68rem;
+  font-weight: 850;
+  letter-spacing: .04em;
+}
+
+#home-hero-search .locus-home-waterfront-type select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 34px 0 12px;
+  border: 1px solid #d9dfe2;
+  border-radius: 8px;
+  background: #f8faf9;
+  color: var(--locus-ink, #0d3049);
+  font: inherit;
+  font-size: .82rem;
+}
+
 #home-hero-search .locus-home-more-panel__checks input {
   width: 17px;
   height: 17px;
@@ -7519,9 +7653,18 @@ document.documentElement.style.visibility = "";
   }
 }
 </style>
+
 <style is:global>
-  /* more-filter-single-size-control */
-  .locus-home-more-panel__selects {
-    grid-template-columns: minmax(0, 1fr);
+  /* results-view-button-height-v1 */
+  #list-view-btn,
+  #map-view-btn {
+    display: inline-flex !important;
+    box-sizing: border-box !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
 </style>
