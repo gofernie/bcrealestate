@@ -95,12 +95,36 @@ const canonicalIntentHref = (pageSlug: string) => {
       ? normalizedSlug.slice(citySlug.length + 1)
       : normalizedSlug;
 
-  if (
-    slugWithoutCity === "mobile-homes" ||
-    slugWithoutCity === "mobile-home" ||
-    slugWithoutCity === "mobiles"
-  ) {
-    return `/${citySlug}/mobile-homes`;
+  const canonicalTypeSlugs: Record<string, string> = {
+    home: "homes",
+    homes: "homes",
+    house: "homes",
+    houses: "homes",
+
+    condo: "condos",
+    condos: "condos",
+
+    townhome: "townhomes",
+    townhomes: "townhomes",
+    townhouse: "townhomes",
+    townhouses: "townhomes",
+
+    mobile: "mobile-homes",
+    mobiles: "mobile-homes",
+    "mobile-home": "mobile-homes",
+    "mobile-homes": "mobile-homes",
+
+    lot: "land",
+    lots: "land",
+    land: "land",
+    "lot-land": "land",
+  };
+
+  const canonicalTypeSlug =
+    canonicalTypeSlugs[slugWithoutCity];
+
+  if (canonicalTypeSlug) {
+    return `/${citySlug}/${canonicalTypeSlug}`;
   }
 
   return `/${citySlug}/${normalizedSlug}`;
@@ -133,7 +157,25 @@ const navIntentLinks: NavItem[] = intentPages
     href: canonicalIntentHref(page.slug),
   }));
 
-const finalNavLinks: NavItem[] = navIntentLinks.length ? navIntentLinks : typeLinks;
+const standardTypeLinksByHref = new Map(
+  typeLinks.map((item) => [item.href, item])
+);
+
+const uniqueNavIntentLinks: NavItem[] = Array.from(
+  new Map(
+    navIntentLinks.map((item) => {
+      const normalizedItem =
+        standardTypeLinksByHref.get(item.href) || item;
+
+      return [normalizedItem.href, normalizedItem];
+    })
+  ).values()
+);
+
+const finalNavLinks: NavItem[] =
+  uniqueNavIntentLinks.length
+    ? uniqueNavIntentLinks
+    : typeLinks;
 ---
 
 <nav class="site-nav">
