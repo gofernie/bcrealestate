@@ -1018,6 +1018,51 @@ const propertyTypeMap: Record<string, string> = {
 const normalizedPropertyType =
   propertyTypeMap[String(page.property_type || "").toLowerCase()] ||
   String(page.property_type || "").toLowerCase();
+const dedicatedTypePageSlugs = new Set([
+  "homes",
+  "houses",
+  "condos",
+  "condo",
+  "townhomes",
+  "townhouses",
+  "mobile-homes",
+  "mobiles",
+  "land",
+  "lots",
+]);
+
+const propertyTypeDisplayLabels: Record<string, string> = {
+  house: "Homes",
+  condo: "Condos",
+  townhouse: "Townhomes",
+  mobile: "Mobile Homes",
+  land: "Lot / Land",
+};
+
+const normalizedTypePageSlug =
+  String(slug || "").toLowerCase();
+
+const normalizedTypePageCity =
+  String(city || "").toLowerCase();
+
+const typePageSlugWithoutCity =
+  normalizedTypePageSlug.startsWith(
+    `${normalizedTypePageCity}-`
+  )
+    ? normalizedTypePageSlug.slice(
+        normalizedTypePageCity.length + 1
+      )
+    : normalizedTypePageSlug;
+
+const isDedicatedTypePage =
+  dedicatedTypePageSlugs.has(
+    typePageSlugWithoutCity
+  ) &&
+  Boolean(normalizedPropertyType);
+
+const dedicatedTypeLabel =
+  propertyTypeDisplayLabels[normalizedPropertyType] ||
+  titleCase(normalizedPropertyType);
 
 const sitePrimaryType = String(
   site?.primaryType || ""
@@ -1076,6 +1121,30 @@ switch (filterPrice) {
     query = query.gte("price", 650000);
     break;
 }
+const dynamicUnderPriceMatch =
+  String(filterPrice || "").match(
+    /^under-(\d+)$/
+  );
+
+const dynamicOverPriceMatch =
+  String(filterPrice || "").match(
+    /^over-(\d+)$/
+  );
+
+if (dynamicUnderPriceMatch) {
+  query = query.lte(
+    "price",
+    Number(dynamicUnderPriceMatch[1]) * 1000
+  );
+}
+
+if (dynamicOverPriceMatch) {
+  query = query.gte(
+    "price",
+    Number(dynamicOverPriceMatch[1]) * 1000
+  );
+}
+
 if (pageKind === "intent") {
 
   if (page.price_min) {
@@ -9169,34 +9238,37 @@ Approximate driving times from{" "}
   </section>
 )}
 
-      <div
+      {!isDedicatedTypePage && (
+<div
   class="section-head"
   id="type-listings"
+  hidden={isDedicatedTypePage}
   style="margin:0 0 14px;"
 >
 <h2
   id="dynamic-results-heading"
+  data-fixed-type-label={isDedicatedTypePage ? dedicatedTypeLabel : ""}
   style="margin:0;font-family:var(--serif);font-size:clamp(1.2rem,2vw,1.6rem);font-weight:500;letter-spacing:-0.02em;"
 >
-  {pageKind === "intent"
-  ? `${listingCount} ${page.hero_heading || `${titleCase(city)} Homes`}`
-  : [
-      titleCase(city),
-      page.area ? titleCase(page.area) : "",
-      normalizedPropertyType
-        ? titleCase(
-            normalizedPropertyType === "house"
-              ? "Homes"
-              : `${normalizedPropertyType}s`
-          )
-        : "Homes",
-      page.price_max
-        ? `Under ${formatPrice(page.price_max)}`
-        : "",
-    ].filter(Boolean).join(" ")
-}
+  {isDedicatedTypePage
+    ? `${titleCase(city)} ${dedicatedTypeLabel}`
+    : pageKind === "intent"
+      ? `${listingCount} ${page.hero_heading || `${titleCase(city)} Homes`}`
+      : [
+          titleCase(city),
+          page.area ? titleCase(page.area) : "",
+          normalizedPropertyType
+            ? titleCase(
+                normalizedPropertyType === "house"
+                  ? "Homes"
+                  : `${normalizedPropertyType}s`
+              )
+            : "Homes",
+        ].filter(Boolean).join(" ")
+  }
 </h2>
 </div>
+)}
 
 <div class="property-type-pills" style="display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px;">
   {listingTypeCounts.house > 0 ? (
@@ -9312,7 +9384,7 @@ Approximate driving times from{" "}
 
 
 <!-- intent-type-filter-control -->
-{pageKind !== "type" && (
+{!isDedicatedTypePage && (
   <select
     class="type-filter-select"
     aria-label="Filter by property type"
@@ -10153,7 +10225,8 @@ if (L.Browser.mobile) {
 
               <a
                 href="#type-listings"
-                onclick="event.preventDefault();document.querySelector('[data-listing-id=&quot;${point.listingId || ""}&quot;]')?.click();"
+                onclick="event.preventDefault();event.stopPropagation();document.querySelector('[data-listing-id=&quot;${point.listingId || ""}&quot;]')?.click();"
+                ontouchend="event.preventDefault();event.stopPropagation();document.querySelector('[data-listing-id=&quot;${point.listingId || ""}&quot;]')?.click();"
                 style="
                   display:inline-flex;
                   align-items:center;
@@ -10857,7 +10930,8 @@ function buildListingPopup(card) {
 
         <button
           type="button"
-          onclick="document.querySelector('[data-listing-id=&quot;${listingId}&quot;]')?.click();"
+          onclick="event.preventDefault();event.stopPropagation();document.querySelector('[data-listing-id=&quot;${listingId}&quot;]')?.click();"
+          ontouchend="event.preventDefault();event.stopPropagation();document.querySelector('[data-listing-id=&quot;${listingId}&quot;]')?.click();"
           style="
             display:inline-flex;
             align-items:center;
@@ -11867,6 +11941,16 @@ function updateResultsHeading(filters) {
   const cityLabel = jsTitleCase(
     document.querySelector("[data-city]")?.dataset.city || "Nanaimo"
   );
+  const fixedTypeLabel =
+    String(
+      heading.dataset.fixedTypeLabel || ""
+    ).trim();
+
+  if (fixedTypeLabel) {
+    heading.textContent =
+      `${cityLabel} ${fixedTypeLabel}`;
+    return;
+  }
 
 
   const bedsLabel =
