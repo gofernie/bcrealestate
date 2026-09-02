@@ -125,6 +125,15 @@ export const GET: APIRoute = async ({ request }) => {
   const maxPrice = Number(url.searchParams.get("maxPrice") || 0);
   const beds = Number(url.searchParams.get("beds") || 0);
   const baths = Number(url.searchParams.get("baths") || 0);
+  const minSqft = Number(url.searchParams.get("minSqft") || 0);
+  const primaryOnMain =
+    url.searchParams.get("primaryOnMain") === "true";
+  const threeSameFloor =
+    url.searchParams.get("threeSameFloor") === "true";
+  const fourSameFloor =
+    url.searchParams.get("fourSameFloor") === "true";
+  const waterfrontOnly =
+    url.searchParams.get("waterfront") === "true";
   const planMode = String(url.searchParams.get("planMode") || "").trim().toLowerCase();
   const sort = String(url.searchParams.get("sort") || "newest");
   const oceanViews = url.searchParams.get("oceanViews") === "true";
@@ -195,12 +204,30 @@ export const GET: APIRoute = async ({ request }) => {
     if (maxPrice && listing.rawPrice > maxPrice) return false;
     if (beds && Number(listing.beds || 0) < beds) return false;
     if (baths && Number(listing.baths || 0) < baths) return false;
+    if (minSqft && Number(listing.sqft || 0) < minSqft) return false;
+    if (primaryOnMain && !listing.primaryOnMain) return false;
+    if (threeSameFloor && !listing.threeBedsSameFloor) return false;
+    if (fourSameFloor && !listing.fourBedsSameFloor) return false;
     if (planMode === "primary-on-main" && !listing.primaryOnMain) return false;
     if (planMode === "three-same-floor" && !listing.threeBedsSameFloor) return false;
     if (planMode === "four-same-floor" && !listing.fourBedsSameFloor) return false;
     if (oceanViews) {
       const viewText = `${listing.description} ${listing.oceanView} ${listing.viewType} ${listing.waterfront}`.toLowerCase();
       if (!/(ocean view|ocean views|sea view|water view|ocean)/i.test(viewText)) return false;
+    }
+    if (waterfrontOnly) {
+      const waterfrontText =
+        `${listing.waterfront} ${listing.waterfrontType} ${listing.description}`
+          .trim()
+          .toLowerCase();
+
+      const hasWaterfront =
+        /^(true|yes|y|1)$/i.test(String(listing.waterfront).trim()) ||
+        /\b(waterfront|oceanfront|lakefront|riverfront|beachfront|water frontage)\b/i.test(
+          waterfrontText
+        );
+
+      if (!hasWaterfront) return false;
     }
     return true;
   });

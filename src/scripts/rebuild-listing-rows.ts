@@ -1,4 +1,4 @@
-﻿import "dotenv/config";
+import "dotenv/config";
 
 import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
@@ -1289,6 +1289,42 @@ const normalizeImages = (listing: any) => {
   return images;
 };
 
+const getYearBuilt = (listing: any) => {
+  const candidates = [
+    listing?.yearBuilt,
+    listing?.year_built,
+    listing?.details?.yearBuilt,
+    listing?.details?.year_built,
+    listing?.raw?.yearBuilt,
+    listing?.raw?.year_built,
+    listing?.raw?.details?.yearBuilt,
+    listing?.raw?.details?.year_built,
+  ];
+
+  const maximumReasonableYear =
+    new Date().getFullYear() + 2;
+
+  for (const candidate of candidates) {
+    const match = String(candidate ?? "").match(
+      /\b(1[7-9]\d{2}|20\d{2}|21\d{2})\b/
+    );
+
+    if (!match) continue;
+
+    const year = Number(match[1]);
+
+    if (
+      Number.isInteger(year) &&
+      year >= 1700 &&
+      year <= maximumReasonableYear
+    ) {
+      return year;
+    }
+  }
+
+  return null;
+};
+
 const getSqft = (listing: any) => {
   const direct =
     listing?.sqft ||
@@ -2113,6 +2149,8 @@ baths: numOrNull(
 ),
 
 sqft: getSqft(listing),
+
+year_built: getYearBuilt(listing),
 
 lot_size_sqft:
   normalizedLotSize.lotSizeSqft,

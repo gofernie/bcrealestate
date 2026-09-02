@@ -286,6 +286,71 @@
 
   let automaticFilterTimer;
 
+  const advancedFilterNames = [
+    "minSqft",
+    "primaryOnMain",
+    "threeSameFloor",
+    "fourSameFloor",
+    "oceanViews",
+    "waterfront",
+  ];
+
+  const moreToggle =
+    form.querySelector("[data-hero-more-toggle]");
+
+  const morePanel =
+    form.querySelector("[data-hero-more-panel]");
+
+  const moreCount =
+    form.querySelector("[data-hero-more-count]");
+
+  const moreClear =
+    form.querySelector("[data-hero-more-clear]");
+
+  const moreApply =
+    form.querySelector("[data-hero-more-apply]");
+
+  const getAdvancedFilterCount = () =>
+    advancedFilterNames.reduce((count, name) => {
+      const control = form.elements[name];
+
+      if (control instanceof HTMLInputElement) {
+        return count + (control.checked ? 1 : 0);
+      }
+
+      if (control instanceof HTMLSelectElement) {
+        return count + (control.value ? 1 : 0);
+      }
+
+      return count;
+    }, 0);
+
+  const updateMoreFilterCount = () => {
+    const count = getAdvancedFilterCount();
+
+    if (moreCount instanceof HTMLElement) {
+      moreCount.textContent = String(count);
+      moreCount.hidden = count === 0;
+    }
+
+    moreToggle?.classList.toggle(
+      "has-active-filters",
+      count > 0
+    );
+
+    return count;
+  };
+
+  const setMorePanelOpen = (open) => {
+    if (!(morePanel instanceof HTMLElement)) return;
+
+    morePanel.hidden = !open;
+    moreToggle?.setAttribute(
+      "aria-expanded",
+      String(open)
+    );
+  };
+
   const applyHeroFiltersWithoutReload = () => {
     const resultsForm =
       document.getElementById("home-filter-form");
@@ -316,6 +381,20 @@
       }
     });
 
+    advancedFilterNames.forEach((name) => {
+      const heroControl = form.elements[name];
+      const resultsControl = resultsForm.elements[name];
+
+      if (!heroControl || !resultsControl) return;
+
+      resultsControl.value =
+        heroControl instanceof HTMLInputElement
+          ? heroControl.checked
+            ? "true"
+            : ""
+          : heroControl.value;
+    });
+
     const nextUrl = new URL(window.location.href);
     nextUrl.search = "";
 
@@ -340,13 +419,73 @@
       Boolean(form.elements.type?.value) ||
       Boolean(form.elements.maxPrice?.value) ||
       Boolean(form.elements.beds?.value) ||
-      Boolean(form.elements.baths?.value);
+      Boolean(form.elements.baths?.value) ||
+      getAdvancedFilterCount() > 0;
 
+    updateMoreFilterCount();
     window.positionHomeResults(hasActiveSearch);
     resultsForm.dispatchEvent(
       new Event("change", { bubbles: true })
     );
   };
+
+  moreToggle?.addEventListener("click", (event) => {
+    event.stopPropagation();
+
+    const isOpen =
+      moreToggle.getAttribute("aria-expanded") === "true";
+
+    setMorePanelOpen(!isOpen);
+  });
+
+  morePanel?.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+
+  morePanel?.addEventListener("change", () => {
+    updateMoreFilterCount();
+  });
+
+  moreClear?.addEventListener("click", () => {
+    advancedFilterNames.forEach((name) => {
+      const control = form.elements[name];
+
+      if (control instanceof HTMLInputElement) {
+        control.checked = false;
+      }
+
+      if (control instanceof HTMLSelectElement) {
+        control.value = "";
+      }
+    });
+
+    updateMoreFilterCount();
+  });
+
+  moreApply?.addEventListener("click", () => {
+    clearTimeout(automaticFilterTimer);
+    updateMoreFilterCount();
+    applyHeroFiltersWithoutReload();
+    setMorePanelOpen(false);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (
+      morePanel instanceof HTMLElement &&
+      !morePanel.hidden &&
+      event.target instanceof Node &&
+      !morePanel.contains(event.target) &&
+      !moreToggle?.contains(event.target)
+    ) {
+      setMorePanelOpen(false);
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      setMorePanelOpen(false);
+    }
+  });
 
   form.addEventListener("change", (event) => {
     const control = event.target;
@@ -386,7 +525,10 @@
       Boolean(form.elements.type?.value) ||
       Boolean(form.elements.maxPrice?.value) ||
       Boolean(form.elements.beds?.value) ||
-      Boolean(form.elements.baths?.value);
+      Boolean(form.elements.baths?.value) ||
+      getAdvancedFilterCount() > 0;
+
+    updateMoreFilterCount();
 
     if (hasInitialFilters) {
       applyHeroFiltersWithoutReload();
