@@ -1342,14 +1342,43 @@ if (typeof window.seedAccentColour === "function")
         data.newListingsLimit = data.newListingsLimit || "6";
         data.enabledIntentPageSlugs = Array.from(document.querySelectorAll(".intent-page-checkbox:checked")).map(el => el.value);
 data.savedColours = customColours;
-const res = await fetch("/api/site-settings", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ id: siteId, data })
-});
-        const json = await res.json();
 
-status.textContent = json.ok ? "Saved \u2713" : json.error || "Save failed";        if (!json.ok) status.className = "status is-error";
+        const submitButton = form.querySelector('button[type="submit"]');
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 15000);
+        if (submitButton) submitButton.disabled = true;
+
+        try {
+          const res = await fetch("/api/site-settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: siteId, data }),
+            signal: controller.signal,
+          });
+
+          const responseText = await res.text();
+          let json;
+          try {
+            json = responseText ? JSON.parse(responseText) : {};
+          } catch {
+            throw new Error(`Save endpoint returned ${res.status} instead of JSON.`);
+          }
+
+          if (!res.ok || !json.ok) {
+            throw new Error(json.error || `Save failed (${res.status}).`);
+          }
+
+          status.textContent = "Saved \u2713";
+          status.className = "status";
+        } catch (error) {
+          status.textContent = error?.name === "AbortError"
+            ? "Save timed out. Please try again."
+            : error?.message || "Save failed";
+          status.className = "status is-error";
+        } finally {
+          window.clearTimeout(timeout);
+          if (submitButton) submitButton.disabled = false;
+        }
       });
 
     // ── Sidebar section nav ─────────────────────────────
