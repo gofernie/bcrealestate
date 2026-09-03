@@ -1,0 +1,1895 @@
+---
+import { createClient } from "@supabase/supabase-js";
+import Layout from "../../layouts/Layout.astro";
+import SiteNav from "../../components/SiteNav.astro";
+import { getSite } from "../../lib/getSite";
+import { getNavIntentPages } from "../../lib/getNavIntentPages";
+
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const city = String(Astro.params.city || "nanaimo")
+  .toLowerCase()
+  .trim();
+
+const cityLabel = city
+  .replace(/-/g, " ")
+  .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const site = await getSite(Astro.url.hostname, city);
+const accent = site?.accent_color || "#633a98";
+
+const { data: listings = [], error: listingsError } =
+  await supabase
+    .from("listing_rows")
+    .select("price, normalized_area, normalized_type, listed_at, created_at")
+    .eq("normalized_city", city)
+    .eq("status", "A")
+    .limit(1000);
+
+if (listingsError) {
+  console.error("Market intelligence query failed:", listingsError);
+}
+
+const navAreas = Array.from(
+  new Set(
+    listings
+      .map((listing) => String(listing.normalized_area || "").trim())
+      .filter(Boolean)
+  )
+).sort();
+
+const navTypes = [
+  "house",
+  "condo",
+  "townhouse",
+  "mobile",
+  "land",
+];
+
+const navIntentPages =
+  await getNavIntentPages(supabase, site?.id);
+
+const numericPrice = (listing) => {
+  const value = Number(
+    String(listing?.price ?? "")
+      .replace(/[^0-9.-]/g, "")
+  );
+
+  return Number.isFinite(value) && value >= 50000
+    ? value
+    : 0;
+};
+
+const median = (values) => {
+  const sorted = values
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b);
+
+  if (!sorted.length) return 0;
+
+  const middle = Math.floor(sorted.length / 2);
+
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+};
+
+const formatPrice = (value) =>
+  value >= 1000000
+    ? `$${(value / 1000000).toFixed(2).replace(/\.?0+$/, "")}M`
+    : `$${Math.round(value / 1000).toLocaleString()}K`;
+
+const titleCase = (value) =>
+  String(value || "")
+    .replace(/^pq[\s-]+/i, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const listingPrices = listings
+  .map(numericPrice)
+  .filter((price) => price > 0);
+
+const activeListings = listings.length;
+const medianPrice = median(listingPrices);
+
+const sevenDaysAgo =
+  Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+const newThisWeek = listings.filter((listing) => {
+  const rawDate = listing.listed_at || listing.created_at;
+  if (!rawDate) return false;
+
+  const timestamp = new Date(rawDate).getTime();
+
+  return Number.isFinite(timestamp) &&
+    timestamp >= sevenDaysAgo;
+}).length;
+
+const priceBands = [
+  {
+    label: "Under $500K",
+    href: `/${city}?maxPrice=500000`,
+    count: listingPrices.filter((price) => price < 500000).length,
+  },
+  {
+    label: "$500K–$700K",
+    href: `/${city}?minPrice=500000&maxPrice=700000`,
+    count: listingPrices.filter(
+      (price) => price >= 500000 && price < 700000
+    ).length,
+  },
+  {
+    label: "$700K–$900K",
+    href: `/${city}?minPrice=700000&maxPrice=900000`,
+    count: listingPrices.filter(
+      (price) => price >= 700000 && price < 900000
+    ).length,
+  },
+  {
+    label: "$900K–$1.2M",
+    href: `/${city}?minPrice=900000&maxPrice=1200000`,
+    count: listingPrices.filter(
+      (price) => price >= 900000 && price < 1200000
+    ).length,
+  },
+  {
+    label: "$1.2M+",
+    href: `/${city}?minPrice=1200000`,
+    count: listingPrices.filter((price) => price >= 1200000).length,
+  },
+];
+
+const maxPriceBandCount = Math.max(
+  ...priceBands.map((band) => band.count),
+  1
+);
+
+const typeLabels = {
+  house: "Homes",
+  condo: "Condos",
+  townhouse: "Townhomes",
+  mobile: "Mobile Homes",
+  land: "Lots / Land",
+};
+
+const typeMap = listings.reduce((result, listing) => {
+  const type = String(listing.normalized_type || "other")
+    .toLowerCase()
+    .trim();
+
+  if (!result[type]) {
+    result[type] = {
+      type,
+      count: 0,
+      prices: [],
+    };
+  }
+
+  result[type].count += 1;
+
+  const price = numericPrice(listing);
+  if (price) result[type].prices.push(price);
+
+  return result;
+}, {});
+
+const typeStats = Object.values(typeMap)
+  .map((item) => ({
+    ...item,
+    label: typeLabels[item.type] || titleCase(item.type),
+    medianPrice: median(item.prices),
+  }))
+  .filter((item) => item.count > 0)
+  .sort((a, b) => b.count - a.count)
+  .slice(0, 6);
+
+const areaMap = listings.reduce((result, listing) => {
+  const area = String(listing.normalized_area || "").trim();
+  if (!area) return result;
+
+  if (!result[area]) {
+    result[area] = {
+      area,
+      count: 0,
+      prices: [],
+    };
+  }
+
+  result[area].count += 1;
+
+  const price = numericPrice(listing);
+  if (price) result[area].prices.push(price);
+
+  return result;
+}, {});
+
+const areaStats = Object.values(areaMap)
+  .map((item) => ({
+    ...item,
+    name: titleCase(item.area),
+    medianPrice: median(item.prices),
+  }))
+  .sort((a, b) => b.count - a.count)
+  .slice(0, 10);
+
+const largestType = typeStats[0];
+const largestBand = [...priceBands]
+  .sort((a, b) => b.count - a.count)[0];
+
+const marketSummary = [
+  `${cityLabel} currently has ${activeListings.toLocaleString()} active residential listings.`,
+  medianPrice
+    ? `The median asking price across current inventory is ${formatPrice(medianPrice)}.`
+    : "",
+  largestType
+    ? `${largestType.label} make up the largest property category, with ${largestType.count.toLocaleString()} active listings.`
+    : "",
+  largestBand
+    ? `The largest share of available inventory is currently in the ${largestBand.label} price range.`
+    : "",
+]
+  .filter(Boolean)
+  .join(" ");
+
+const { data: monthlyRows = [], error: monthlyError } =
+  await supabase
+    .from("market_monthly_stats")
+    .select(`
+      month_start,
+      new_listings,
+      sales,
+      median_sold_price,
+      average_sale_to_list_ratio
+    `)
+    .eq("city", city)
+    .order("month_start", { ascending: false })
+    .limit(24);
+
+if (monthlyError) {
+  console.error(
+    "Monthly market history query failed:",
+    monthlyError
+  );
+}
+
+const allMonthlyHistory = [...monthlyRows]
+  .reverse()
+  .map((row) => ({
+    month: String(row.month_start),
+    label: new Intl.DateTimeFormat("en-CA", {
+      month: "short",
+      year: "2-digit",
+      timeZone: "UTC",
+    }).format(new Date(`${row.month_start}T00:00:00Z`)),
+    newListings: Number(row.new_listings || 0),
+    sales: Number(row.sales || 0),
+    medianSoldPrice: Number(row.median_sold_price || 0),
+    saleToList: Number(row.average_sale_to_list_ratio || 0),
+  }));
+
+const listingOnlyMarket = [
+  "fernie",
+  "sparwood",
+  "whistler",
+].includes(city);
+
+const monthlyHistory = listingOnlyMarket
+  ? allMonthlyHistory.slice(-12)
+  : allMonthlyHistory;
+
+const trendWidth = 1000;
+const trendHeight = 360;
+const trendPadding = {
+  top: 25,
+  right: 25,
+  bottom: 48,
+  left: 55,
+};
+
+const trendPlotWidth =
+  trendWidth - trendPadding.left - trendPadding.right;
+
+const trendPlotHeight =
+  trendHeight - trendPadding.top - trendPadding.bottom;
+
+const trendMaximumRaw = Math.max(
+  1,
+  ...monthlyHistory.flatMap((row) => [
+    row.newListings,
+    row.sales,
+  ])
+);
+
+const trendStep =
+  trendMaximumRaw <= 100
+    ? 20
+    : trendMaximumRaw <= 250
+      ? 50
+      : 100;
+
+const trendMaximum =
+  Math.ceil(trendMaximumRaw / trendStep) * trendStep;
+
+const trendX = (index) =>
+  trendPadding.left +
+  (
+    index /
+    Math.max(monthlyHistory.length - 1, 1)
+  ) * trendPlotWidth;
+
+const trendY = (value) =>
+  trendPadding.top +
+  trendPlotHeight -
+  (Number(value || 0) / trendMaximum) * trendPlotHeight;
+
+const trendPath = (key) =>
+  monthlyHistory
+    .map((row, index) => {
+      const x = trendX(index).toFixed(2);
+      const y = trendY(row[key]).toFixed(2);
+
+      return `${index === 0 ? "M" : "L"} ${x} ${y}`;
+    })
+    .join(" ");
+
+const newListingsPath = trendPath("newListings");
+const salesPath = trendPath("sales");
+
+const trendTicks = Array.from(
+  { length: trendMaximum / trendStep + 1 },
+  (_, index) => index * trendStep
+);
+
+const trendLabelIndexes = monthlyHistory
+  .map((_, index) => index)
+  .filter(
+    (index) =>
+      index === 0 ||
+      index === monthlyHistory.length - 1 ||
+      index % 3 === 0
+  );
+const listingHistoryMonths = monthlyHistory.filter(
+  (row) => row.newListings > 0
+).length;
+
+const hasListingHistory =
+  listingHistoryMonths >= 6;
+const reliableSalesMonths = monthlyHistory.filter(
+  (row) =>
+    row.sales > 0 &&
+    row.medianSoldPrice > 0
+).length;
+
+const hasReliableSalesHistory =
+  !listingOnlyMarket &&
+  reliableSalesMonths >= 6;
+const priceHistory = monthlyHistory.filter(
+  (row) => row.medianSoldPrice > 0
+);
+
+const priceValues = priceHistory.map(
+  (row) => row.medianSoldPrice
+);
+
+const priceMinimumRaw = Math.min(
+  ...priceValues,
+  0
+);
+
+const priceMaximumRaw = Math.max(
+  ...priceValues,
+  1
+);
+
+const priceRangeRaw =
+  priceMaximumRaw - priceMinimumRaw;
+
+const priceTickStep =
+  priceRangeRaw <= 300000
+    ? 50000
+    : priceRangeRaw <= 600000
+      ? 100000
+      : 200000;
+
+const priceMinimum = Math.max(
+  0,
+  Math.floor(
+    Math.min(...priceValues) / priceTickStep
+  ) * priceTickStep - priceTickStep
+);
+
+const priceMaximum = Math.ceil(
+  Math.max(...priceValues) / priceTickStep
+) * priceTickStep + priceTickStep;
+
+const priceY = (value) =>
+  trendPadding.top +
+  trendPlotHeight -
+  (
+    (Number(value || 0) - priceMinimum) /
+    Math.max(priceMaximum - priceMinimum, 1)
+  ) * trendPlotHeight;
+
+const pricePath = priceHistory
+  .map((row, index) => {
+    const historyIndex =
+      monthlyHistory.findIndex(
+        (item) => item.month === row.month
+      );
+
+    return `${index === 0 ? "M" : "L"} ${trendX(
+      historyIndex
+    ).toFixed(2)} ${priceY(
+      row.medianSoldPrice
+    ).toFixed(2)}`;
+  })
+  .join(" ");
+
+const priceAreaPath = priceHistory.length
+  ? `${pricePath} L ${trendX(
+      monthlyHistory.findIndex(
+        (item) =>
+          item.month === priceHistory.at(-1)?.month
+      )
+    ).toFixed(2)} ${(
+      trendPadding.top + trendPlotHeight
+    ).toFixed(2)} L ${trendX(
+      monthlyHistory.findIndex(
+        (item) =>
+          item.month === priceHistory[0]?.month
+      )
+    ).toFixed(2)} ${(
+      trendPadding.top + trendPlotHeight
+    ).toFixed(2)} Z`
+  : "";
+
+const priceTicks = Array.from(
+  {
+    length:
+      Math.floor(
+        (priceMaximum - priceMinimum) /
+        priceTickStep
+      ) + 1
+  },
+  (_, index) =>
+    priceMinimum + index * priceTickStep
+);
+
+const firstMedianPrice =
+  priceHistory[0]?.medianSoldPrice || 0;
+
+const latestMedianPrice =
+  priceHistory.at(-1)?.medianSoldPrice || 0;
+
+const medianPriceChange =
+  firstMedianPrice > 0
+    ? (
+        (
+          latestMedianPrice -
+          firstMedianPrice
+        ) /
+        firstMedianPrice
+      ) * 100
+    : 0;
+
+const highestMedianMonth = [...priceHistory]
+  .sort(
+    (a, b) =>
+      b.medianSoldPrice - a.medianSoldPrice
+  )[0];
+
+const lowestMedianMonth = [...priceHistory]
+  .sort(
+    (a, b) =>
+      a.medianSoldPrice - b.medianSoldPrice
+  )[0];
+const updatedLabel = new Intl.DateTimeFormat("en-CA", {
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+}).format(new Date());
+---
+
+<Layout
+  title={`${cityLabel} Real Estate Market Intelligence`}
+  description={`Explore active inventory, asking prices, property types, and neighbourhood trends in ${cityLabel}.`}
+  accentColor={accent}
+  city={city}
+>
+  <SiteNav
+    city={city}
+    site={site}
+    areas={navAreas}
+    types={navTypes}
+    intentPages={navIntentPages}
+    showAreaNav={false}
+  />
+
+  <main
+    class="market-page"
+    style={
+      site?.hero_image_url
+        ? `--market-hero-image:url("${String(site.hero_image_url).replace(/"/g, "%22")}")`
+        : undefined
+    }
+  >
+    <section class="market-hero">
+      <div>
+        <p class="eyebrow">Market intelligence</p>
+        <h1>See the {cityLabel} market more clearly.</h1>
+        <p class="market-hero__copy">
+          A live view of active inventory, asking-price ranges,
+          property types, and neighbourhood activity.
+        </p>
+      </div>
+
+      <div class="market-hero__stamp">
+        <span>Current snapshot</span>
+        <strong>{updatedLabel}</strong>
+        <small>Updated from active listing data</small>
+      </div>
+    </section>
+
+    <section class="snapshot-grid" aria-label="Market snapshot">
+      <article>
+        <span>Active listings</span>
+        <strong>{activeListings.toLocaleString()}</strong>
+        <small>Currently available</small>
+      </article>
+
+      <article>
+        <span>New this week</span>
+        <strong>{newThisWeek.toLocaleString()}</strong>
+        <small>Listed in the last 7 days</small>
+      </article>
+
+      <article>
+        <span>Median price</span>
+        <strong>{medianPrice ? formatPrice(medianPrice) : "—"}</strong>
+        <small>Median active asking price</small>
+      </article>
+
+      <article>
+        <span>Neighbourhoods</span>
+        <strong>{Object.keys(areaMap).length.toLocaleString()}</strong>
+        <small>With active inventory</small>
+      </article>
+    </section>
+
+    <section class="market-section market-overview">
+      <div>
+        <p class="eyebrow">What the numbers say</p>
+        <h2>The market at a glance</h2>
+      </div>
+
+      <p>{marketSummary}</p>
+    </section>
+
+    <section class="market-section market-trend">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Two years in view</p>
+          <h2>
+            {hasReliableSalesHistory
+              ? "Sales and new listings over time"
+              : "New listings recorded by month"}
+          </h2>
+        </div>
+
+        <div class="market-trend__legend">
+          <span class="is-listings">New listings</span>
+          {hasReliableSalesHistory && (
+            <span class="is-sales">Sales</span>
+          )}
+        </div>
+      </div>
+
+      {hasListingHistory ? (
+        <>
+          <div class="market-trend__scroll">
+            <svg
+              class="market-trend__chart"
+              viewBox={`0 0 ${trendWidth} ${trendHeight}`}
+              role="img"
+              aria-labelledby="market-trend-title"
+            >
+              <title id="market-trend-title">
+                {cityLabel} monthly new listings and sales
+              </title>
+
+              {trendTicks.map((tick) => (
+                <g>
+                  <line
+                    x1={trendPadding.left}
+                    x2={trendWidth - trendPadding.right}
+                    y1={trendY(tick)}
+                    y2={trendY(tick)}
+                    class="market-trend__gridline"
+                  />
+
+                  <text
+                    x={trendPadding.left - 12}
+                    y={trendY(tick) + 4}
+                    class="market-trend__axis-number"
+                    text-anchor="end"
+                  >
+                    {tick}
+                  </text>
+                </g>
+              ))}
+
+              {trendLabelIndexes.map((index) => (
+                <text
+                  x={trendX(index)}
+                  y={trendHeight - 15}
+                  class="market-trend__axis-label"
+                  text-anchor="middle"
+                >
+                  {monthlyHistory[index].label}
+                </text>
+              ))}
+
+              <path
+                d={newListingsPath}
+                class="market-trend__line market-trend__line--listings"
+              />
+
+              <path
+                d={hasReliableSalesHistory ? salesPath : ""}
+                class="market-trend__line market-trend__line--sales"
+              />
+
+              {monthlyHistory.map((row, index) => (
+                <>
+                  <circle
+                    cx={trendX(index)}
+                    cy={trendY(row.newListings)}
+                    r="4"
+                    class="market-trend__point market-trend__point--listings"
+                  >
+                    <title>
+                      {`${row.label}: ${row.newListings} new listings`}
+                    </title>
+                  </circle>
+
+                  <circle
+                    cx={trendX(index)}
+                    cy={trendY(row.sales)}
+                    r={hasReliableSalesHistory ? 4 : 0}
+                    class="market-trend__point market-trend__point--sales"
+                  >
+                    <title>
+                      {`${row.label}: ${row.sales} sales`}
+                    </title>
+                  </circle>
+                </>
+              ))}
+            </svg>
+          </div>
+
+          <div class="market-trend__latest">
+            <p>
+              <span>Latest settled month</span>
+              <strong>
+                {monthlyHistory.at(-1)?.label}
+              </strong>
+            </p>
+
+            <p>
+              <span>New listings</span>
+              <strong>
+                {monthlyHistory.at(-1)?.newListings.toLocaleString()}
+              </strong>
+            </p>
+
+            <p hidden={!hasReliableSalesHistory}>
+              <span>Sales</span>
+              <strong>
+                {monthlyHistory.at(-1)?.sales.toLocaleString()}
+              </strong>
+            </p>
+
+            <p hidden={!hasReliableSalesHistory}>
+              <span>Median sold price</span>
+              <strong>
+                {monthlyHistory.at(-1)?.medianSoldPrice
+                  ? formatPrice(monthlyHistory.at(-1).medianSoldPrice)
+                  : "—"}
+              </strong>
+            </p>
+          </div>
+
+          <p class="market-trend__note">
+            {hasReliableSalesHistory
+              ? "Residential and condominium sales and listing records from Repliers."
+
+              : "Residential and condominium new-listing records from Repliers."}
+            Recent unsettled months are excluded because sold-status
+            reporting can continue after month-end.
+          </p>
+        </>
+      ) : (
+        <p class="market-trend__empty">
+          Historical sold-market reporting is not available for this market.
+        </p>
+      )}
+    </section>
+
+    <section class="market-section sold-price-trend">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">What happened to prices</p>
+          <h2>Median sold price over time</h2>
+        </div>
+
+        {firstMedianPrice > 0 && (
+          <div
+            class:list={[
+              "sold-price-trend__change",
+              {
+                "is-up": medianPriceChange > 0,
+                "is-down": medianPriceChange < 0,
+              },
+            ]}
+          >
+            <span>24-month change</span>
+            <strong>
+              {medianPriceChange > 0 ? "+" : ""}
+              {medianPriceChange.toFixed(1)}%
+            </strong>
+          </div>
+        )}
+      </div>
+
+      {hasReliableSalesHistory ? (
+        <>
+          <div class="market-trend__scroll">
+            <svg
+              class="market-trend__chart"
+              viewBox={`0 0 ${trendWidth} ${trendHeight}`}
+              role="img"
+              aria-labelledby="sold-price-title"
+            >
+              <title id="sold-price-title">
+                {cityLabel} monthly median sold price
+              </title>
+
+              <defs>
+                <linearGradient
+                  id="sold-price-fill"
+                  x1="0"
+                  x2="0"
+                  y1="0"
+                  y2="1"
+                >
+                  <stop
+                    offset="0%"
+                    stop-color="var(--accent, #633a98)"
+                    stop-opacity=".20"
+                  />
+                  <stop
+                    offset="100%"
+                    stop-color="var(--accent, #633a98)"
+                    stop-opacity="0"
+                  />
+                </linearGradient>
+              </defs>
+
+              {priceTicks.map((tick) => (
+                <g>
+                  <line
+                    x1={trendPadding.left}
+                    x2={trendWidth - trendPadding.right}
+                    y1={priceY(tick)}
+                    y2={priceY(tick)}
+                    class="market-trend__gridline"
+                  />
+
+                  <text
+                    x={trendPadding.left - 12}
+                    y={priceY(tick) + 4}
+                    class="market-trend__axis-number"
+                    text-anchor="end"
+                  >
+                    {formatPrice(tick)}
+                  </text>
+                </g>
+              ))}
+
+              {trendLabelIndexes.map((index) => (
+                <text
+                  x={trendX(index)}
+                  y={trendHeight - 15}
+                  class="market-trend__axis-label"
+                  text-anchor="middle"
+                >
+                  {monthlyHistory[index].label}
+                </text>
+              ))}
+
+              <path
+                d={priceAreaPath}
+                class="sold-price-trend__area"
+              />
+
+              <path
+                d={pricePath}
+                class="sold-price-trend__line"
+              />
+
+              {priceHistory.map((row) => {
+                const index = monthlyHistory.findIndex(
+                  (item) => item.month === row.month
+                );
+
+                return (
+                  <circle
+                    cx={trendX(index)}
+                    cy={priceY(row.medianSoldPrice)}
+                    r="4"
+                    class="sold-price-trend__point"
+                  >
+                    <title>
+                      {`${row.label}: ${formatPrice(
+                        row.medianSoldPrice
+                      )} median sold price`}
+                    </title>
+                  </circle>
+                );
+              })}
+            </svg>
+          </div>
+
+          <div class="market-trend__latest">
+            <p>
+              <span>Starting median</span>
+              <strong>
+                {formatPrice(firstMedianPrice)}
+              </strong>
+            </p>
+
+            <p>
+              <span>Latest median</span>
+              <strong>
+                {formatPrice(latestMedianPrice)}
+              </strong>
+            </p>
+
+            <p>
+              <span>Period high</span>
+              <strong>
+                {formatPrice(
+                  highestMedianMonth.medianSoldPrice
+                )}
+              </strong>
+              <small>{highestMedianMonth.label}</small>
+            </p>
+
+            <p>
+              <span>Period low</span>
+              <strong>
+                {formatPrice(
+                  lowestMedianMonth.medianSoldPrice
+                )}
+              </strong>
+              <small>{lowestMedianMonth.label}</small>
+            </p>
+          </div>
+
+          <p class="market-trend__note">
+            Monthly median sold prices can move with the mix of
+            properties sold. A change does not necessarily mean every
+            individual property gained or lost the same amount.
+          </p>
+        </>
+      ) : (
+        <p class="market-trend__empty">
+          Historical sold-price data is not yet available.
+        </p>
+      )}
+    </section>
+
+    <section class="market-section">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Price distribution</p>
+          <h2>Where current inventory sits</h2>
+        </div>
+
+        <a href={`/${city}`}>Browse all listings →</a>
+      </div>
+
+      <div class="price-chart">
+        {priceBands.map((band) => (
+          <a href={band.href} class="price-row">
+            <span>{band.label}</span>
+
+            <div class="price-row__track">
+              <i
+                style={`--bar-width:${Math.max(
+                  (band.count / maxPriceBandCount) * 100,
+                  band.count ? 4 : 0
+                )}%`}
+              ></i>
+            </div>
+
+            <strong>{band.count.toLocaleString()}</strong>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <section class="market-section">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Property types</p>
+          <h2>Inventory by home type</h2>
+        </div>
+      </div>
+
+      <div class="type-grid">
+        {typeStats.map((item) => (
+          <a
+            class="type-card"
+            href={`/${city}?type=${encodeURIComponent(item.type)}`}
+          >
+            <span>{item.label}</span>
+            <strong>{item.count.toLocaleString()}</strong>
+            <small>
+              {item.medianPrice
+                ? `${formatPrice(item.medianPrice)} median`
+                : "Price data unavailable"}
+            </small>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <section class="market-section">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Neighbourhood activity</p>
+          <h2>Where buyers have the most choice</h2>
+        </div>
+
+        <a href={`/${city}/areas`}>Explore all areas →</a>
+      </div>
+
+      <div class="area-table">
+        <div class="area-table__head">
+          <span>Neighbourhood</span>
+          <span>Active listings</span>
+          <span>Median asking price</span>
+          <span></span>
+        </div>
+
+        {areaStats.map((area) => (
+          <a
+            class="area-table__row"
+            href={`/${city}/${String(area.area)
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-+|-+$/g, "")}`}
+          >
+            <strong>{area.name}</strong>
+            <span>{area.count.toLocaleString()}</span>
+            <span>
+              {area.medianPrice
+                ? formatPrice(area.medianPrice)
+                : "—"}
+            </span>
+            <span>View area →</span>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <section class="market-note">
+      <div>
+        <p class="eyebrow">About this data</p>
+        <h2>A current-inventory view</h2>
+      </div>
+
+      <p>
+        These figures describe active listing inventory and asking
+        prices. They are not sold-price statistics or a formal market
+        appraisal. Contact a local REALTOR® for advice based on your
+        property, timing, and neighbourhood.
+      </p>
+    </section>
+  </main>
+</Layout>
+
+<style>
+  .market-page {
+    --market-ink: #17131c;
+    --market-muted: #6d6872;
+    --market-line: rgba(45, 35, 55, .11);
+    overflow: hidden;
+    background: #fff;
+    color: var(--market-ink);
+  }
+
+  .market-hero {
+    position: relative;
+    display: grid;
+    min-height: 590px;
+    grid-template-columns: minmax(0, 680px) 240px;
+    gap: 70px;
+    align-content: center;
+    align-items: end;
+    padding: 72px max(40px, calc((100vw - 1400px) / 2));
+    background-image:
+      linear-gradient(
+        90deg,
+        rgba(247, 249, 251, .99) 0%,
+        rgba(247, 249, 251, .96) 28%,
+        rgba(247, 249, 251, .76) 48%,
+        rgba(247, 249, 251, .16) 76%,
+        rgba(247, 249, 251, .02) 100%
+      ),
+      var(
+        --market-hero-image,
+        url("https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=2200&q=90")
+      );
+    background-position: center;
+    background-size: cover;
+  }
+
+  .eyebrow {
+    margin: 0 0 15px;
+    color: var(--accent, #633a98);
+    font-size: .72rem;
+    font-weight: 850;
+    letter-spacing: .17em;
+    text-transform: uppercase;
+  }
+
+  .market-hero h1 {
+    max-width: 760px;
+    margin: 0;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(4rem, 7.2vw, 7.2rem);
+    font-weight: 500;
+    line-height: .9;
+    letter-spacing: -.055em;
+  }
+
+  .market-hero__copy {
+    max-width: 560px;
+    margin: 27px 0 0;
+    color: #3f4a45;
+    font-size: clamp(1rem, 1.3vw, 1.13rem);
+    line-height: 1.6;
+  }
+
+  .market-hero__stamp {
+    padding: 19px 0 2px 24px;
+    border-left: 1px solid rgba(45, 35, 55, .16);
+  }
+
+  .market-hero__stamp span,
+  .market-hero__stamp small {
+    display: block;
+    color: var(--market-muted);
+  }
+
+  .market-hero__stamp strong {
+    display: block;
+    margin: 7px 0;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.2rem;
+    font-weight: 500;
+  }
+
+  .market-hero__stamp small {
+    font-size: .72rem;
+  }
+
+  .snapshot-grid,
+  .market-section,
+  .market-note {
+    width: min(1400px, calc(100% - 80px));
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .snapshot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    margin-top: 52px;
+    padding: 30px 0;
+    border-top: 1px solid var(--market-line);
+    border-bottom: 1px solid var(--market-line);
+  }
+
+  .snapshot-grid article {
+    padding: 0 32px;
+    border-right: 1px solid var(--market-line);
+  }
+
+  .snapshot-grid article:first-child {
+    padding-left: 0;
+  }
+
+  .snapshot-grid article:last-child {
+    border-right: 0;
+  }
+
+  .snapshot-grid span,
+  .snapshot-grid small {
+    display: block;
+    color: var(--market-muted);
+  }
+
+  .snapshot-grid span {
+    font-size: .69rem;
+    font-weight: 850;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+
+  .snapshot-grid strong {
+    display: block;
+    margin: 9px 0 5px;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 2.15rem;
+    font-weight: 500;
+  }
+
+  .snapshot-grid small {
+    font-size: .74rem;
+  }
+
+  .market-section,
+  .market-note {
+    margin-top: 90px;
+  }
+
+  .market-overview,
+  .market-note {
+    display: grid;
+    grid-template-columns: minmax(260px, .65fr) minmax(0, 1.35fr);
+    gap: 90px;
+    align-items: start;
+  }
+
+  h2 {
+    margin: 0;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(2.4rem, 4vw, 4rem);
+    font-weight: 500;
+    line-height: .95;
+    letter-spacing: -.052em;
+  }
+
+  .market-overview > p,
+  .market-note > p {
+    max-width: 760px;
+    margin: 3px 0 0;
+    color: var(--market-muted);
+    font-size: .95rem;
+    line-height: 1.8;
+  }
+
+  .section-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 40px;
+    align-items: end;
+    margin-bottom: 34px;
+  }
+
+  .section-heading a {
+    color: var(--accent, #633a98);
+    font-size: .78rem;
+    font-weight: 850;
+    text-decoration: none;
+  }
+
+  .market-trend__legend {
+    display: flex;
+    gap: 22px;
+    align-items: center;
+  }
+
+  .market-trend__legend span {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    color: var(--market-muted);
+    font-size: .78rem;
+    font-weight: 750;
+  }
+
+  .market-trend__legend span::before {
+    width: 24px;
+    height: 3px;
+    background: currentColor;
+    content: "";
+  }
+
+  .market-trend__legend .is-listings {
+    color: var(--accent, #633a98);
+  }
+
+  .market-trend__legend .is-sales {
+    color: #75aa93;
+  }
+
+  .market-trend__scroll {
+    overflow-x: auto;
+    padding: 30px 20px 8px 0;
+    border-top: 1px solid var(--market-line);
+    border-bottom: 1px solid var(--market-line);
+  }
+
+  .market-trend__chart {
+    display: block;
+    width: 100%;
+    min-width: 760px;
+    height: auto;
+  }
+
+  .market-trend__gridline {
+    stroke: rgba(45, 35, 55, .11);
+    stroke-width: 1;
+  }
+
+  .market-trend__axis-number,
+  .market-trend__axis-label {
+    fill: var(--market-muted);
+    font-family: inherit;
+    font-size: 11px;
+  }
+
+  .market-trend__line {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 4;
+  }
+
+  .market-trend__line--listings {
+    stroke: var(--accent, #633a98);
+  }
+
+  .market-trend__line--sales {
+    stroke: #75aa93;
+  }
+
+  .market-trend__point {
+    stroke: white;
+    stroke-width: 2;
+  }
+
+  .market-trend__point--listings {
+    fill: var(--accent, #633a98);
+  }
+
+  .market-trend__point--sales {
+    fill: #75aa93;
+  }
+
+  .market-trend__latest {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    margin-top: 26px;
+  }
+
+  .market-trend__latest p {
+    margin: 0;
+    padding: 0 24px;
+    border-right: 1px solid var(--market-line);
+  }
+
+  .market-trend__latest p:first-child {
+    padding-left: 0;
+  }
+
+  .market-trend__latest p:last-child {
+    border-right: 0;
+  }
+
+  .market-trend__latest span,
+  .market-trend__latest strong {
+    display: block;
+  }
+
+  .market-trend__latest span {
+    color: var(--market-muted);
+    font-size: .68rem;
+    font-weight: 850;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+
+  .market-trend__latest strong {
+    margin-top: 8px;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.4rem;
+    font-weight: 500;
+  }
+
+  .market-trend__note,
+  .market-trend__empty {
+    max-width: 760px;
+    margin: 22px 0 0;
+    color: var(--market-muted);
+    font-size: .76rem;
+    line-height: 1.6;
+  }
+  .sold-price-trend__change {
+    min-width: 145px;
+    padding-left: 22px;
+    border-left: 1px solid var(--market-line);
+  }
+
+  .sold-price-trend__change span,
+  .sold-price-trend__change strong {
+    display: block;
+  }
+
+  .sold-price-trend__change span {
+    color: var(--market-muted);
+    font-size: .68rem;
+    font-weight: 850;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+
+  .sold-price-trend__change strong {
+    margin-top: 7px;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.8rem;
+    font-weight: 500;
+  }
+
+  .sold-price-trend__change.is-up strong {
+    color: #4f8c72;
+  }
+
+  .sold-price-trend__change.is-down strong {
+    color: #a65353;
+  }
+
+  .sold-price-trend__area {
+    fill: url("#sold-price-fill");
+  }
+
+  .sold-price-trend__line {
+    fill: none;
+    stroke: var(--accent, #633a98);
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .sold-price-trend__point {
+    fill: var(--accent, #633a98);
+    stroke: white;
+    stroke-width: 2;
+  }
+
+  .sold-price-trend .market-trend__latest small {
+    display: block;
+    margin-top: 4px;
+    color: var(--market-muted);
+    font-size: .7rem;
+  }
+  .price-chart {
+    padding: 42px;
+    background: #2c1b3e;
+    color: white;
+  }
+
+  .price-row {
+    display: grid;
+    grid-template-columns: 140px minmax(0, 1fr) 48px;
+    gap: 20px;
+    align-items: center;
+    padding: 12px 0;
+    color: white;
+    text-decoration: none;
+  }
+
+  .price-row > span {
+    font-size: .82rem;
+    font-weight: 750;
+  }
+
+  .price-row__track {
+    height: 8px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, .13);
+  }
+
+  .price-row__track i {
+    display: block;
+    width: var(--bar-width);
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      #9fcab7,
+      color-mix(in srgb, var(--accent, #633a98) 58%, white)
+    );
+  }
+
+  .price-row > strong {
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1rem;
+    font-weight: 500;
+    text-align: right;
+  }
+
+  .type-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .type-card {
+    min-height: 145px;
+    padding: 26px;
+    border: 1px solid var(--market-line);
+    background: #fbf9fc;
+    color: var(--market-ink);
+    text-decoration: none;
+    transition:
+      transform .18s ease,
+      border-color .18s ease;
+  }
+
+  .type-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent, #633a98);
+  }
+
+  .type-card span,
+  .type-card small {
+    display: block;
+  }
+
+  .type-card span {
+    color: var(--accent, #633a98);
+    font-size: .68rem;
+    font-weight: 850;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+  }
+
+  .type-card strong {
+    display: block;
+    margin: 15px 0 5px;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 2.3rem;
+    font-weight: 500;
+  }
+
+  .type-card small {
+    color: var(--market-muted);
+    font-size: .76rem;
+  }
+
+  .area-table {
+    border-top: 1px solid var(--market-line);
+  }
+
+  .area-table__head,
+  .area-table__row {
+    display: grid;
+    grid-template-columns: 1.5fr .75fr .9fr .55fr;
+    gap: 22px;
+    align-items: center;
+    padding: 18px 16px;
+  }
+
+  .area-table__head {
+    color: var(--market-muted);
+    background: #f6f3f7;
+    font-size: .67rem;
+    font-weight: 850;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+
+  .area-table__row {
+    border-bottom: 1px solid var(--market-line);
+    color: #40394a;
+    font-size: .84rem;
+    text-decoration: none;
+  }
+
+  .area-table__row strong {
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.12rem;
+    font-weight: 500;
+  }
+
+  .area-table__row > span:last-child {
+    color: var(--accent, #633a98);
+    font-weight: 850;
+    text-align: right;
+  }
+
+  .market-note {
+    margin-bottom: 90px;
+    padding: 48px;
+    background: #f4f1f6;
+  }
+
+  @media (max-width: 900px) {
+    .market-hero {
+      grid-template-columns: 1fr;
+      gap: 35px;
+      padding-right: 40px;
+      padding-left: 40px;
+    }
+
+    .market-hero__stamp {
+      max-width: 280px;
+    }
+
+    .type-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 760px) {
+    .market-hero {
+      min-height: 620px;
+      padding: 52px 16px 60px;
+      background-image:
+        linear-gradient(
+          90deg,
+          rgba(247, 249, 251, .97),
+          rgba(247, 249, 251, .78)
+        ),
+        var(
+          --market-hero-image,
+          url("https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=86")
+        );
+    }
+
+    .market-hero h1 {
+      font-size: clamp(3.4rem, 16vw, 5.5rem);
+    }
+
+    .market-hero__stamp {
+      padding: 20px 0 0;
+      border-top: 1px solid var(--market-line);
+      border-left: 0;
+    }
+
+    .snapshot-grid,
+    .market-section,
+    .market-note {
+      width: calc(100% - 32px);
+    }
+
+    .snapshot-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-top: 38px;
+      gap: 24px 0;
+    }
+
+    .snapshot-grid article {
+      padding: 0 18px;
+    }
+
+    .snapshot-grid article:nth-child(odd) {
+      padding-left: 0;
+    }
+
+    .snapshot-grid article:nth-child(2) {
+      border-right: 0;
+    }
+
+    .market-section,
+    .market-note {
+      margin-top: 70px;
+    }
+
+    .market-overview,
+    .market-note {
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+
+    .section-heading {
+      grid-template-columns: 1fr;
+      gap: 15px;
+    }
+
+    .market-trend__legend {
+      margin-top: 4px;
+    }
+
+    .market-trend__scroll {
+      margin-right: -16px;
+      padding-right: 16px;
+    }
+
+    .market-trend__latest {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px 0;
+    }
+
+    .market-trend__latest p:nth-child(2) {
+      border-right: 0;
+    }
+
+    .market-trend__latest p:nth-child(3) {
+      padding-left: 0;
+    }
+    .market-trend__legend {
+    display: flex;
+    gap: 22px;
+    align-items: center;
+  }
+
+  .market-trend__legend span {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    color: var(--market-muted);
+    font-size: .78rem;
+    font-weight: 750;
+  }
+
+  .market-trend__legend span::before {
+    width: 24px;
+    height: 3px;
+    background: currentColor;
+    content: "";
+  }
+
+  .market-trend__legend .is-listings {
+    color: var(--accent, #633a98);
+  }
+
+  .market-trend__legend .is-sales {
+    color: #75aa93;
+  }
+
+  .market-trend__scroll {
+    overflow-x: auto;
+    padding: 30px 20px 8px 0;
+    border-top: 1px solid var(--market-line);
+    border-bottom: 1px solid var(--market-line);
+  }
+
+  .market-trend__chart {
+    display: block;
+    width: 100%;
+    min-width: 760px;
+    height: auto;
+  }
+
+  .market-trend__gridline {
+    stroke: rgba(45, 35, 55, .11);
+    stroke-width: 1;
+  }
+
+  .market-trend__axis-number,
+  .market-trend__axis-label {
+    fill: var(--market-muted);
+    font-family: inherit;
+    font-size: 11px;
+  }
+
+  .market-trend__line {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 4;
+  }
+
+  .market-trend__line--listings {
+    stroke: var(--accent, #633a98);
+  }
+
+  .market-trend__line--sales {
+    stroke: #75aa93;
+  }
+
+  .market-trend__point {
+    stroke: white;
+    stroke-width: 2;
+  }
+
+  .market-trend__point--listings {
+    fill: var(--accent, #633a98);
+  }
+
+  .market-trend__point--sales {
+    fill: #75aa93;
+  }
+
+  .market-trend__latest {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    margin-top: 26px;
+  }
+
+  .market-trend__latest p {
+    margin: 0;
+    padding: 0 24px;
+    border-right: 1px solid var(--market-line);
+  }
+
+  .market-trend__latest p:first-child {
+    padding-left: 0;
+  }
+
+  .market-trend__latest p:last-child {
+    border-right: 0;
+  }
+
+  .market-trend__latest span,
+  .market-trend__latest strong {
+    display: block;
+  }
+
+  .market-trend__latest span {
+    color: var(--market-muted);
+    font-size: .68rem;
+    font-weight: 850;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+
+  .market-trend__latest strong {
+    margin-top: 8px;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.4rem;
+    font-weight: 500;
+  }
+
+  .market-trend__note,
+  .market-trend__empty {
+    max-width: 760px;
+    margin: 22px 0 0;
+    color: var(--market-muted);
+    font-size: .76rem;
+    line-height: 1.6;
+  }
+  .sold-price-trend__change {
+    min-width: 145px;
+    padding-left: 22px;
+    border-left: 1px solid var(--market-line);
+  }
+
+  .sold-price-trend__change span,
+  .sold-price-trend__change strong {
+    display: block;
+  }
+
+  .sold-price-trend__change span {
+    color: var(--market-muted);
+    font-size: .68rem;
+    font-weight: 850;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+
+  .sold-price-trend__change strong {
+    margin-top: 7px;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.8rem;
+    font-weight: 500;
+  }
+
+  .sold-price-trend__change.is-up strong {
+    color: #4f8c72;
+  }
+
+  .sold-price-trend__change.is-down strong {
+    color: #a65353;
+  }
+
+  .sold-price-trend__area {
+    fill: url("#sold-price-fill");
+  }
+
+  .sold-price-trend__line {
+    fill: none;
+    stroke: var(--accent, #633a98);
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .sold-price-trend__point {
+    fill: var(--accent, #633a98);
+    stroke: white;
+    stroke-width: 2;
+  }
+
+  .sold-price-trend .market-trend__latest small {
+    display: block;
+    margin-top: 4px;
+    color: var(--market-muted);
+    font-size: .7rem;
+  }
+  .price-chart {
+      margin-right: -16px;
+      margin-left: -16px;
+      padding: 30px 16px;
+    }
+
+    .price-row {
+      grid-template-columns: 100px minmax(0, 1fr) 34px;
+      gap: 10px;
+    }
+
+    .type-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .area-table__head {
+      display: none;
+    }
+
+    .area-table__row {
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 7px 16px;
+      padding-right: 4px;
+      padding-left: 4px;
+    }
+
+    .area-table__row strong {
+      grid-column: 1;
+    }
+
+    .area-table__row span:nth-child(2) {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    .area-table__row span:nth-child(3) {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .area-table__row span:last-child {
+      grid-column: 2;
+      grid-row: 2;
+    }
+
+    .market-note {
+      padding: 30px 24px;
+    }
+  }
+  :global(.sold-price-trend__area) {
+    fill: #633a98 !important;
+    fill-opacity: .11 !important;
+    stroke: none !important;
+  }
+
+  :global(.sold-price-trend__line) {
+    fill: none !important;
+    stroke: #633a98 !important;
+    stroke-width: 4 !important;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  :global(.sold-price-trend__point) {
+    fill: #633a98 !important;
+    stroke: #fff !important;
+    stroke-width: 2 !important;
+  }
+  .market-trend [hidden] {
+    display: none !important;
+  }
+  .market-trend [hidden] {
+    display: none !important;
+  }
+</style>
