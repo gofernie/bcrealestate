@@ -161,14 +161,34 @@ const effectiveSiteDomain =
     ? requestedLocalDomain
     : domain;
 
-const siteQuery = supabase
+const {
+  data: exactSiteRow,
+  error: exactSiteError
+} = await supabase
   .from("sites")
   .select("*")
   .eq("city", routeCity)
-  .eq("domain", effectiveSiteDomain);
+  .eq("domain", effectiveSiteDomain)
+  .maybeSingle();
 
-const { data: siteRow, error: siteError } =
-  await siteQuery.maybeSingle();
+let siteRow = exactSiteRow;
+let siteError = exactSiteError;
+
+if (!siteRow && !siteError) {
+  const {
+    data: domainSiteRow,
+    error: domainSiteError
+  } = await supabase
+    .from("sites")
+    .select("*")
+    .eq("domain", effectiveSiteDomain)
+    .order("city")
+    .limit(1)
+    .maybeSingle();
+
+  siteRow = domainSiteRow;
+  siteError = domainSiteError;
+}
 
 if (siteError) {
   console.error(
@@ -193,11 +213,30 @@ const siteCity = site.city;
 const siteName = site.site_name;
 const accentColor = site.accent_color;
 
-const secondaryMarkets = (
-  Array.isArray(siteRow?.secondary_markets)
-    ? siteRow.secondary_markets
-    : []
-)
+const clientPrimaryCity = String(siteRow?.city || routeCity)
+  .trim()
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, "-")
+  .replace(/^-+|-+$/g, "");
+
+const configuredMarkets = [
+  {
+    city: clientPrimaryCity,
+    label: clientPrimaryCity
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (character: string) => character.toUpperCase()),
+    imageUrl: String(siteRow?.hero_image_url || "").trim(),
+  },
+  ...(
+    Array.isArray(siteRow?.secondary_markets)
+      ? siteRow.secondary_markets
+      : []
+  ),
+];
+
+const seenMarketCities = new Set<string>();
+
+const secondaryMarkets = configuredMarkets
   .map((market: any) => {
     const marketCity = String(market?.city || "")
       .trim()
@@ -217,13 +256,23 @@ const secondaryMarkets = (
         market?.image_url ||
         ""
       ).trim(),
+      href: marketCity === clientPrimaryCity
+        ? "/"
+        : `/${marketCity}`,
     };
   })
-  .filter(
-    (market: any) =>
-      market.city &&
-      market.city !== routeCity
-  )
+  .filter((market: any) => {
+    if (
+      !market.city ||
+      market.city === routeCity ||
+      seenMarketCities.has(market.city)
+    ) {
+      return false;
+    }
+
+    seenMarketCities.add(market.city);
+    return true;
+  })
   .slice(0, 3);
 
 const nanaimoHomepageHeroImages = [
@@ -1679,7 +1728,7 @@ const homepageNeighbourhoodImages = [
             "locus-market-strip__card",
             !market.imageUrl && "locus-market-strip__card--no-image"
           ]}
-          href={`/${market.city}`}
+          href={market.href}
           style={
             market.imageUrl
               ? `--market-image: url("${market.imageUrl.replace(/["\\]/g, "")}")`
