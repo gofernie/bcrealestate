@@ -442,7 +442,7 @@ export async function scanNewFloorplans({
       "id, address, image_url, images, normalized_city, status, listed_at"
     )
     .eq("normalized_city", city)
-    .eq("status", "A")
+    .in("status", ["I", "A"])
     .not("images", "is", null)
     .not("listed_at", "is", null)
     .gte("listed_at", cutoff)
