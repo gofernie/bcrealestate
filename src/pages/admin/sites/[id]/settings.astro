@@ -575,6 +575,7 @@ const siteId = String(Astro.params.id || "");
         <a href="#s-social">Social</a>
         <a href="#s-sections">Listing sections</a>
         <a href="#s-live">Live listings</a>
+        <a href="#s-markets">Markets</a>
         <a href="#s-city">City</a>
         <a href="#s-bio">Bio</a>
       </nav>
@@ -917,6 +918,61 @@ const siteId = String(Astro.params.id || "");
             </div>
           </div>
 
+          <!-- Secondary markets -->
+          <div class="section" id="s-markets">
+            <button type="button" class="section__trigger" data-toggle>
+              <div class="section__trigger-left">
+                <div class="section__icon">MKT</div>
+                <div>
+                  <div class="section__title">Secondary markets</div>
+                  <div class="section__subtitle">Show up to three additional areas on the homepage</div>
+                </div>
+              </div>
+              <svg class="section__chevron" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M5 7.5l5 5 5-5"/>
+              </svg>
+            </button>
+
+            <div class="section__body">
+              <p class="hint" style="margin-top:0;">
+                Your primary market remains the homepage. These markets appear in the “Also serving these areas” strip.
+              </p>
+
+              {[1, 2, 3].map((num) => (
+                <div style="padding:16px 0;border-bottom:1px solid var(--border);">
+                  <div class="grid-2">
+                    <div class="field">
+                      <label>{`Market ${num}`}</label>
+                      <select
+                        name={`secondaryMarket${num}City`}
+                        class="secondary-market-select"
+                      >
+                        <option value="">Do not show</option>
+                      </select>
+                    </div>
+
+                    <div class="field">
+                      <label>Display name</label>
+                      <input
+                        name={`secondaryMarket${num}Label`}
+                        placeholder="Defaults to the market name"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="field">
+                    <label>Card image URL</label>
+                    <input
+                      type="url"
+                      name={`secondaryMarket${num}ImageUrl`}
+                      placeholder="https://images.example.com/market.jpg"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <!-- City -->
           <div class="section" id="s-city">
             <button type="button" class="section__trigger" data-toggle>
@@ -996,6 +1052,7 @@ const siteId = window.location.pathname.split("/").filter(Boolean)[2];
         newListingsCity: "", newListingsArea: "", newListingsType: "",
         newListingsMinPrice: "", newListingsMaxPrice: "", newListingsSort: "newest", newListingsLimit: "6",
         enabledIntentPageSlugs: [],
+        secondaryMarkets: [],
         groups: [
           { title: "Condos", kicker: "Low-maintenance living", text: "Explore condo options from the latest listing data.", city: "", area: "", type: "condo", minPrice: "", maxPrice: "", sort: "newest" },
           { title: "Single-family homes", kicker: "Room to grow", text: "Detached homes from the latest listing data.", city: "", area: "", type: "house", minPrice: "", maxPrice: "", sort: "newest" },
@@ -1253,7 +1310,32 @@ rmv.style.cssText = "position:absolute;top:-6px;right:-6px;width:20px;height:20p
         });
       }
 
-      function populateDropdowns() { populateCitySelects(); populateTypeSelects(); populateAreaSelects(); }
+      function populateSecondaryMarketSelects() {
+        document.querySelectorAll(".secondary-market-select").forEach(select => {
+          const current = nv(select.dataset.savedValue || select.value);
+          const primary = nv(form.elements.city?.value);
+
+          const options = filterOptions.cities
+            .filter(city => city.value !== primary)
+            .map(city =>
+              `<option value="${city.value}" ${city.value === current ? "selected" : ""}>${city.label}</option>`
+            );
+
+          select.innerHTML = [
+            `<option value="">Do not show</option>`,
+            ...options
+          ].join("");
+
+          select.dataset.savedValue = "";
+        });
+      }
+
+      function populateDropdowns() {
+        populateCitySelects();
+        populateTypeSelects();
+        populateAreaSelects();
+        populateSecondaryMarketSelects();
+      }
 
       // ── Fill form ──────────────────────────────────────────
       function fillForm(data) {
@@ -1288,7 +1370,29 @@ rmv.style.cssText = "position:absolute;top:-6px;right:-6px;width:20px;height:20p
           form.elements[`group${num}MaxPrice`].value = g.maxPrice || "";
         });
 
-customColours = Array.isArray(merged.savedColours)
+        const savedSecondaryMarkets = Array.isArray(
+          data?.secondary_markets || data?.secondaryMarkets
+        )
+          ? (data.secondary_markets || data.secondaryMarkets).slice(0, 3)
+          : [];
+
+        [1, 2, 3].forEach(num => {
+          const market = savedSecondaryMarkets[num - 1] || {};
+          const cityField = form.elements[`secondaryMarket${num}City`];
+
+          if (cityField) {
+            cityField.dataset.savedValue = nv(market.city);
+            cityField.value = nv(market.city);
+          }
+
+          form.elements[`secondaryMarket${num}Label`].value =
+            market.label || "";
+
+          form.elements[`secondaryMarket${num}ImageUrl`].value =
+            market.imageUrl || market.image_url || "";
+        });
+
+        customColours = Array.isArray(merged.savedColours)
   ? merged.savedColours
   : [];
 
@@ -1331,6 +1435,20 @@ if (typeof window.seedAccentColour === "function")
         data.newListingsType = nv(data.newListingsType);
         data.template = data.template || "brutal";
         data.accentColor = data.accentColor || "#2f6f73";
+
+        data.secondaryMarkets = [1, 2, 3]
+          .map(num => ({
+            city: nv(data[`secondaryMarket${num}City`]),
+            label: String(data[`secondaryMarket${num}Label`] || "").trim(),
+            imageUrl: String(data[`secondaryMarket${num}ImageUrl`] || "").trim()
+          }))
+          .filter(market => market.city);
+
+        [1, 2, 3].forEach(num => {
+          delete data[`secondaryMarket${num}City`];
+          delete data[`secondaryMarket${num}Label`];
+          delete data[`secondaryMarket${num}ImageUrl`];
+        });
 
         data.groups = [1,2,3,4].map(num => {
           const g = { kicker: data[`group${num}Kicker`]||"", title: data[`group${num}Title`]||"", text: data[`group${num}Text`]||"", city: nv(data[`group${num}City`]), area: nv(data[`group${num}Area`]), type: nv(data[`group${num}Type`]), minPrice: data[`group${num}MinPrice`]||"", maxPrice: data[`group${num}MaxPrice`]||"", sort: data[`group${num}Sort`]||"newest" };

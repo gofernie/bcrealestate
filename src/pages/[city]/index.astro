@@ -193,6 +193,39 @@ const siteCity = site.city;
 const siteName = site.site_name;
 const accentColor = site.accent_color;
 
+const secondaryMarkets = (
+  Array.isArray(siteRow?.secondary_markets)
+    ? siteRow.secondary_markets
+    : []
+)
+  .map((market: any) => {
+    const marketCity = String(market?.city || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+
+    const fallbackLabel = marketCity
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (character: string) => character.toUpperCase());
+
+    return {
+      city: marketCity,
+      label: String(market?.label || fallbackLabel).trim(),
+      imageUrl: String(
+        market?.imageUrl ||
+        market?.image_url ||
+        ""
+      ).trim(),
+    };
+  })
+  .filter(
+    (market: any) =>
+      market.city &&
+      market.city !== routeCity
+  )
+  .slice(0, 3);
+
 const nanaimoHomepageHeroImages = [
   "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6",
   "https://images.unsplash.com/photo-1649083048770-82e8ffd80431",
@@ -1626,6 +1659,171 @@ const homepageNeighbourhoodImages = [
 
 </section>
 
+
+{secondaryMarkets.length > 0 && (
+  <section
+    class="locus-market-strip"
+    aria-labelledby="locus-market-strip-title"
+  >
+    <div class="locus-market-strip__copy">
+      <span>Also serving these areas</span>
+      <h2 id="locus-market-strip-title">
+        We help buyers and sellers across these great communities.
+      </h2>
+    </div>
+
+    <div class="locus-market-strip__markets">
+      {secondaryMarkets.map((market: any) => (
+        <a
+          class:list={[
+            "locus-market-strip__card",
+            !market.imageUrl && "locus-market-strip__card--no-image"
+          ]}
+          href={`/${market.city}`}
+          style={
+            market.imageUrl
+              ? `--market-image: url("${market.imageUrl.replace(/["\\]/g, "")}")`
+              : undefined
+          }
+        >
+          <strong>{market.label}</strong>
+          <span aria-hidden="true">&rarr;</span>
+        </a>
+      ))}
+    </div>
+  </section>
+)}
+
+<style>
+  .locus-market-strip {
+    display: grid;
+    grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.8fr);
+    gap: clamp(22px, 4vw, 54px);
+    align-items: center;
+    margin: 22px 0 54px;
+    padding: clamp(18px, 2.5vw, 28px);
+    border: 1px solid rgba(35, 82, 61, 0.1);
+    border-radius: 18px;
+    background: linear-gradient(
+      105deg,
+      rgba(242, 247, 239, 0.98),
+      rgba(247, 248, 242, 0.94)
+    );
+    box-shadow: 0 12px 32px rgba(28, 55, 42, 0.05);
+  }
+
+  .locus-market-strip__copy span {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--accent, #397340);
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .locus-market-strip__copy h2 {
+    max-width: 310px;
+    margin: 0;
+    color: #132238;
+    font-size: clamp(1.05rem, 1.7vw, 1.35rem);
+    line-height: 1.15;
+    letter-spacing: -0.035em;
+  }
+
+  .locus-market-strip__markets {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .locus-market-strip__card {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    min-height: 72px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    overflow: hidden;
+    padding: 14px;
+    border-radius: 12px;
+    color: #fff;
+    text-decoration: none;
+    background:
+      linear-gradient(
+        90deg,
+        rgba(10, 23, 35, 0.76),
+        rgba(10, 23, 35, 0.18)
+      ),
+      var(--market-image) center / cover no-repeat;
+    box-shadow: 0 5px 16px rgba(14, 25, 35, 0.13);
+    transition:
+      transform 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .locus-market-strip__card--no-image {
+    background: linear-gradient(
+      135deg,
+      var(--accent, #397340),
+      #173b35
+    );
+  }
+
+  .locus-market-strip__card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 9px 22px rgba(14, 25, 35, 0.2);
+  }
+
+  .locus-market-strip__card strong {
+    position: relative;
+    z-index: 1;
+    font-size: 0.92rem;
+    line-height: 1.15;
+    text-shadow: 0 1px 7px rgba(0, 0, 0, 0.42);
+  }
+
+  .locus-market-strip__card span {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    place-items: center;
+    border-radius: 999px;
+    color: #122331;
+    background: rgba(255, 255, 255, 0.95);
+    transition: transform 160ms ease;
+  }
+
+  .locus-market-strip__card:hover span {
+    transform: translateX(2px);
+  }
+
+  @media (max-width: 820px) {
+    .locus-market-strip {
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-bottom: 38px;
+    }
+
+    .locus-market-strip__copy h2 {
+      max-width: 440px;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .locus-market-strip__markets {
+      grid-template-columns: 1fr;
+    }
+
+    .locus-market-strip__card {
+      min-height: 78px;
+    }
+  }
+</style>
 
 <section class="locus-home-neighbourhoods">
 

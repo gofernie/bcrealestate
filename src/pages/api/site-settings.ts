@@ -63,6 +63,50 @@ export const POST: APIRoute = async ({ request }) => {
       return json({ ok: false, error: "Accent colour must be a six-digit hex colour." }, 400);
     }
 
+    const rawSecondaryMarkets = Array.isArray(data.secondaryMarkets)
+      ? data.secondaryMarkets
+      : [];
+
+    const secondaryMarkets = rawSecondaryMarkets
+      .map((market: any) => ({
+        city: String(market?.city || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, ""),
+        label: String(market?.label || "").trim().slice(0, 80),
+        imageUrl: String(market?.imageUrl || "").trim().slice(0, 1000),
+      }))
+      .filter((market: any) => market.city)
+      .slice(0, 3);
+
+    const uniqueCities = new Set(
+      secondaryMarkets.map((market: any) => market.city)
+    );
+
+    if (uniqueCities.size !== secondaryMarkets.length) {
+      return json(
+        { ok: false, error: "Each secondary market can only be selected once." },
+        400
+      );
+    }
+
+    if (
+      data.city &&
+      secondaryMarkets.some(
+        (market: any) =>
+          market.city === String(data.city).trim().toLowerCase()
+      )
+    ) {
+      return json(
+        {
+          ok: false,
+          error: "The primary market cannot also be a secondary market.",
+        },
+        400
+      );
+    }
+
     const { error } = await supabase
       .from("sites")
       .update({
@@ -74,6 +118,7 @@ export const POST: APIRoute = async ({ request }) => {
         hero_copy: data.heroIntro,
         intro_copy: data.cityIntro,
         bio: data.agentBio,
+        secondary_markets: secondaryMarkets,
       })
       .eq("id", siteId);
 
