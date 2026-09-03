@@ -13,7 +13,54 @@ const supabase = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const site = await getSite(Astro.url.hostname);
+const forwardedHost =
+  Astro.request.headers.get("x-forwarded-host") ||
+  Astro.request.headers.get("host") ||
+  Astro.url.hostname;
+
+const requestDomain = forwardedHost
+  .split(",")[0]
+  .trim()
+  .replace(/^www\./, "")
+  .split(":")[0]
+  .toLowerCase();
+
+const isLocalRequest =
+  requestDomain === "localhost" ||
+  requestDomain === "127.0.0.1";
+
+const previewDomain = String(
+  Astro.url.searchParams.get("siteDomain") || ""
+)
+  .trim()
+  .toLowerCase()
+  .replace(/^www\./, "");
+
+const effectiveDomain =
+  isLocalRequest && previewDomain
+    ? previewDomain
+    : requestDomain;
+
+const site = await getSite(effectiveDomain);
+
+const isDirectoryDomain =
+  effectiveDomain === "bc.realestate" ||
+  effectiveDomain.endsWith(".netlify.app");
+
+const shouldShowClientHomepage =
+  Boolean(site?.city) &&
+  !isDirectoryDomain &&
+  (!isLocalRequest || Boolean(previewDomain));
+
+if (shouldShowClientHomepage) {
+  const homepageUrl = new URL(`/${site.city}`, Astro.url);
+
+  if (isLocalRequest && previewDomain) {
+    homepageUrl.searchParams.set("siteDomain", previewDomain);
+  }
+
+  return Astro.rewrite(homepageUrl);
+}
 
 const { data: sites = [] } = await supabase
   .from("sites")
