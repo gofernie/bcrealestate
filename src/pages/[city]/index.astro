@@ -58,6 +58,80 @@ const waterfrontTypeCounts =
 const waterfrontInventoryTotal =
   waterfrontInventoryRows?.length || 0;
 
+const normalizeViewCategory = (value: unknown) => {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+
+  const aliases: Record<string, string> = {
+    "mountain": "mountain",
+    "mountain view": "mountain",
+    "mountain(s)": "mountain",
+    "ocean": "ocean",
+    "ocean view": "ocean",
+    "valley": "valley",
+    "valley view": "valley",
+    "lake": "lake",
+    "lake view": "lake",
+    "river": "river",
+    "river view": "river",
+    "city": "city",
+    "city view": "city",
+    "panoramic": "panoramic",
+    "panoramic view": "panoramic",
+    "view (panoramic)": "panoramic",
+  };
+
+  return aliases[normalized] || "";
+};
+
+const {
+  data: viewInventoryRows,
+  error: viewInventoryError,
+} = await supabase
+  .from("listing_rows")
+  .select("view_type")
+  .eq("status", "A")
+  .eq("normalized_city", routeCity)
+  .not("view_type", "is", null);
+
+if (viewInventoryError) {
+  console.error(
+    "View inventory lookup failed:",
+    viewInventoryError
+  );
+}
+
+const viewTypeCounts = (viewInventoryRows || []).reduce(
+  (counts: Record<string, number>, row: any) => {
+    const categories = new Set(
+      String(row?.view_type || "")
+        .split(/[,;/|]+/)
+        .map(normalizeViewCategory)
+        .filter(Boolean)
+    );
+
+    categories.forEach((category) => {
+      counts[category] = Number(counts[category] || 0) + 1;
+    });
+
+    return counts;
+  },
+  {}
+);
+
+const viewTypeOptions = [
+  { value: "mountain", label: "Mountain view" },
+  { value: "ocean", label: "Ocean view" },
+  { value: "valley", label: "Valley view" },
+  { value: "lake", label: "Lake view" },
+  { value: "river", label: "River view" },
+  { value: "city", label: "City view" },
+  { value: "panoramic", label: "Panoramic view" },
+].filter(
+  (option) =>
+    Number(viewTypeCounts[option.value] || 0) > 0
+);
 const waterfrontTypeOptions = [
   { value: "oceanfront", label: "Oceanfront" },
   { value: "lakefront", label: "Lakefront" },
@@ -150,6 +224,13 @@ const primaryOnMain = url.searchParams.get("primaryOnMain") === "true";
 const threeSameFloor = url.searchParams.get("threeSameFloor") === "true";
 const fourSameFloor = url.searchParams.get("fourSameFloor") === "true";
 const oceanViews = url.searchParams.get("oceanViews") === "true";
+
+const viewType = String(
+  url.searchParams.get("viewType") ||
+  (oceanViews ? "ocean" : "")
+)
+  .trim()
+  .toLowerCase();
 const waterfrontType = String(
   url.searchParams.get("waterfrontType") ||
   (url.searchParams.get("waterfront") === "true" ? "any" : "")
@@ -165,7 +246,8 @@ const hasActiveSearch =
   maxPrice > 0 ||
   beds > 0 ||
   baths > 0 ||
-  Boolean(waterfrontType);
+  Boolean(waterfrontType) ||
+  Boolean(viewType);
 
 const navIntentPages = await getNavIntentPages(
   supabase,
@@ -901,7 +983,7 @@ const homepageFeaturedListings = listings
   .slice(0, 4);
 
 const homepageListingPrices = listings
-  .map((listing: any) => Number(getListingPrice(listing) || 0))
+  .map((listing: any) => Number(String(listing.price ?? listing.listPrice ?? listing.priceNumber ?? listing.raw?.price ?? listing.raw?.listPrice ?? 0).replace(/[^0-9.-]/g, "")))
   .filter((price: number) => Number.isFinite(price) && price > 0)
   .sort((a: number, b: number) => a - b);
 
@@ -1303,10 +1385,28 @@ const homepageNeighbourhoodImages = [
           <h3>Lifestyle</h3>
 
           <div class="locus-home-more-panel__checks">
-            <label>
-              <input type="checkbox" name="oceanViews" value="true" checked={oceanViews} />
-              <span>Ocean view</span>
-            </label>
+            {
+              viewTypeOptions.length > 0 && (
+                <label class="locus-home-waterfront-type">
+                  <span>View</span>
+
+                  <select name="viewType">
+                    <option value="" selected={!viewType}>
+                      No preference
+                    </option>
+
+                    {viewTypeOptions.map((option) => (
+                      <option
+                        value={option.value}
+                        selected={viewType === option.value}
+                      >
+                        {option.label} ({viewTypeCounts[option.value]})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )
+            }
 
             {
   waterfrontInventoryTotal > 0 && (
@@ -1347,7 +1447,7 @@ const homepageNeighbourhoodImages = [
     <div class="locus-home-search__popular">
       <span>Popular searches:</span>
 
-      <a href={`/${city || "nanaimo"}/areas`}>Neighbourhoods</a>
+      <a href={`/${city || "nanaimo"}/market-intelligence`}>Neighbourhoods</a>
       <a href={`/${city || "nanaimo"}/homes`}>Family Homes</a>
       <a href={`/${city || "nanaimo"}/condos`}>Condos</a>
       <a href={`/${city || "nanaimo"}/townhomes`}>Townhomes</a>
@@ -1573,7 +1673,7 @@ const homepageNeighbourhoodImages = [
         and local market context.
       </p>
 
-      <a href={`/${city || "nanaimo"}/areas`}>
+      <a href={`/${city || "nanaimo"}/market-intelligence`}>
         Explore market intel &rarr;
       </a>
     </div>
@@ -1743,7 +1843,8 @@ const homepageNeighbourhoodImages = [
 <input type="hidden" name="primaryOnMain" value={primaryOnMain ? "true" : ""} />
 <input type="hidden" name="threeSameFloor" value={threeSameFloor ? "true" : ""} />
 <input type="hidden" name="fourSameFloor" value={fourSameFloor ? "true" : ""} />
-<input type="hidden" name="oceanViews" value={oceanViews ? "true" : ""} />
+<input type="hidden" name="oceanViews" value="" />
+<input type="hidden" name="viewType" value={viewType} />
 <input type="hidden" name="waterfrontType" value={waterfrontType} />
 <select name="sort" class="filter-select" aria-label="Sort">
   <option value="newest" selected={sort === "newest"}>Newest first</option>
@@ -5299,6 +5400,10 @@ const maxPriceVal = storyBudgetVal
     String(form.elements.fourSameFloor?.value || "") === "true";
   const oceanViewsVal =
     String(form.elements.oceanViews?.value || "") === "true";
+  const viewTypeVal =
+    String(form.elements.viewType?.value || "")
+      .trim()
+      .toLowerCase();
   const waterfrontTypeVal =
     String(form.elements.waterfrontType?.value || "")
       .trim()
@@ -5368,9 +5473,12 @@ const selectedFeatures = String(document.querySelector(".story-blank[data-story-
   if (threeSameFloorVal) params.set("threeSameFloor", "true");
   if (fourSameFloorVal) params.set("fourSameFloor", "true");
   if (oceanViewsVal) params.set("oceanViews", "true");
+  if (viewTypeVal) params.set("viewType", viewTypeVal);
   if (waterfrontTypeVal) params.set("waterfrontType", waterfrontTypeVal);
   if (planModeVal) params.set("planMode", planModeVal);
-  if (selectedFeatures.includes("ocean views")) params.set("oceanViews", "true");
+  if (selectedFeatures.includes("ocean views")) {
+    params.set("viewType", "ocean");
+  }
 
   homeLoading = true;
   updateLoadMoreBtn();
@@ -6517,6 +6625,9 @@ document.documentElement.style.visibility = "";
   border-right: 1px solid var(--locus-line);
 }
 
+.locus-home-market__numbers > div + div {
+  padding-left: 15px;
+}
 .locus-home-market__numbers > div:last-child {
   border-right: 0;
 }

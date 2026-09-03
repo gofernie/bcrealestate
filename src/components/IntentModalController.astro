@@ -572,6 +572,7 @@ const { listings = [] } = Astro.props;
   type="button"
   class="panel__share-link"
   id="sheet-brochure-btn"
+  style="display:flex !important; width:min(100%, 300px) !important; max-width:300px !important; margin:0 auto !important;"
 >
   <span>Download property brochure</span>
 </button>
@@ -4673,9 +4674,51 @@ function updatePhotoCounter() {
 sheetBrochureBtn?.addEventListener("click", async () => {
   if (!activeCard || !sheetBrochureBtn) return;
 
-  const originalText = sheetBrochureBtn.textContent || "Download property brochure";
+  const originalHtml = sheetBrochureBtn.innerHTML;
   sheetBrochureBtn.disabled = true;
-  sheetBrochureBtn.textContent = "Building brochure...";
+  sheetBrochureBtn.classList.add("is-building");
+  sheetBrochureBtn.setAttribute("aria-busy", "true");
+  sheetBrochureBtn.innerHTML = `
+    <span>Building brochure</span>
+    <span
+      aria-hidden="true"
+      style="display:inline-flex;align-items:center;gap:4px;min-width:24px;"
+    >
+      <i style="display:block;width:5px;height:5px;border-radius:999px;background:currentColor;"></i>
+      <i style="display:block;width:5px;height:5px;border-radius:999px;background:currentColor;"></i>
+      <i style="display:block;width:5px;height:5px;border-radius:999px;background:currentColor;"></i>
+    </span>
+  `;
+
+  if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    sheetBrochureBtn
+      .querySelectorAll("i")
+      .forEach((dot, index) => {
+        dot.animate(
+          [
+            {
+              transform: "translateY(0)",
+              opacity: 0.4,
+            },
+            {
+              transform: "translateY(-5px)",
+              opacity: 1,
+              offset: 0.35,
+            },
+            {
+              transform: "translateY(0)",
+              opacity: 0.4,
+            },
+          ],
+          {
+            duration: 800,
+            delay: index * 120,
+            iterations: Infinity,
+            easing: "ease-in-out",
+          }
+        );
+      });
+  }
 
   const parseArray = (value) => {
     try {
@@ -4762,7 +4805,9 @@ sheetBrochureBtn?.addEventListener("click", async () => {
     window.alert(error?.message || "Could not build the property brochure.");
   } finally {
     sheetBrochureBtn.disabled = false;
-    sheetBrochureBtn.textContent = originalText;
+    sheetBrochureBtn.classList.remove("is-building");
+    sheetBrochureBtn.removeAttribute("aria-busy");
+    sheetBrochureBtn.innerHTML = originalHtml;
   }
 });
 
@@ -6210,7 +6255,86 @@ sheetImage?.addEventListener("touchend", (event) => {
       font-size: 0.76rem !important;
     }
   }
-</style>
+
+  /* Centred brochure action with visible build feedback */
+  :global(#preview-sheet .panel__utility-actions) {
+    grid-template-columns: 1fr !important;
+    justify-items: center !important;
+  }
+
+  :global(#preview-sheet .panel__utility-actions #sheet-brochure-btn) {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    justify-self: center !important;
+    gap: 10px;
+    width: min(100%, 368px) !important;
+    min-width: 230px !important;
+    margin-right: auto !important;
+    margin-left: auto !important;
+    text-align: center;
+  }
+
+  :global(#preview-sheet #sheet-brochure-btn.is-building) {
+    cursor: wait;
+    opacity: .82;
+  }
+
+  :global(.brochure-build-dots) {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 28px;
+  }
+
+  :global(.brochure-build-dots i) {
+    display: block;
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: currentColor;
+    animation: brochure-dot-bounce .8s ease-in-out infinite;
+  }
+
+  :global(.brochure-build-dots i:nth-child(2)) {
+    animation-delay: .12s;
+  }
+
+  :global(.brochure-build-dots i:nth-child(3)) {
+    animation-delay: .24s;
+  }
+
+  @keyframes brochure-dot-bounce {
+    0%,
+    60%,
+    100% {
+      transform: translateY(0);
+      opacity: .45;
+    }
+
+    30% {
+      transform: translateY(-5px);
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.brochure-build-dots i) {
+      animation: none;
+      opacity: 1;
+    }
+  }
+  :global(#preview-sheet .panel__brochure-row) {
+    display: flex !important;
+    justify-content: center !important;
+    width: 100% !important;
+    margin: 8px 0 0 !important;
+  }
+
+  :global(#preview-sheet .panel__brochure-row #sheet-brochure-btn) {
+    width: min(100%, 368px) !important;
+    margin: 0 auto !important;
+  }</style>
 
 <script is:inline>
   document.addEventListener("DOMContentLoaded", () => {
@@ -6234,7 +6358,11 @@ sheetImage?.addEventListener("touchend", (event) => {
     }
 
     suite.appendChild(engage);
-    utilities.appendChild(brochure);
+    const brochureRow = document.createElement("div");
+    brochureRow.className = "panel__brochure-row";
+    brochureRow.appendChild(brochure);
+
+    suite.appendChild(brochureRow);
     utilities.appendChild(share);
     suite.appendChild(utilities);
   });
