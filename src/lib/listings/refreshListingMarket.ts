@@ -147,6 +147,9 @@ function getListingId(listing: any) {
 
 const OCEANSIDE_FETCH_CITIES = [
   "Parksville",
+  "Errington",
+  "Coombs",
+  "Hilliers",
   "Nanoose Bay",
   "Qualicum Beach",
   "Qualicum North",
