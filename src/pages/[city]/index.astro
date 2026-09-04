@@ -17,6 +17,12 @@ const cityLabel = routeCity
   .replace(/-/g, " ")
   .replace(/\b\w/g, (c) => c.toUpperCase());
 
+const cityDatabaseKeys = Array.from(
+  new Set([
+    routeCity,
+    routeCity.replace(/-/g, " "),
+  ])
+);
 const supabase = createClient(
   import.meta.env.PUBLIC_SUPABASE_URL,
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
@@ -29,7 +35,7 @@ const {
   .from("listing_rows")
   .select("waterfront_type")
   .eq("status", "A")
-  .eq("normalized_city", routeCity)
+  .in("normalized_city", cityDatabaseKeys)
   .eq("waterfront", true);
 
 if (waterfrontInventoryError) {
@@ -92,7 +98,7 @@ const {
   .from("listing_rows")
   .select("view_type")
   .eq("status", "A")
-  .eq("normalized_city", routeCity)
+  .in("normalized_city", cityDatabaseKeys)
   .not("view_type", "is", null);
 
 if (viewInventoryError) {
@@ -719,7 +725,7 @@ try {
     .from("listing_rows")
     .select("lat,lng")
     .eq("status", "A")
-    .eq("normalized_city", clean(city || "nanaimo"))
+    .in("normalized_city", cityDatabaseKeys)
     .not("lat", "is", null)
     .not("lng", "is", null);
 
@@ -827,7 +833,7 @@ let listings: any[] = [];
 let errorMessage = "";
 
 try {
-let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(1000);  if (city) query = query.eq("normalized_city", clean(city));
+let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(1000);  if (city) query = query.in("normalized_city", cityDatabaseKeys);
 
   // Homepage discovery preloads a broad pool.
   // Filters are applied client-side for instant UX.

@@ -64,6 +64,16 @@ const slug = isInternalRootRewrite
   ? rootPathSlug
   : Astro.params.slug || "";
 
+const normalizedRouteCity = String(city)
+  .trim()
+  .toLowerCase();
+
+const cityDatabaseKeys = Array.from(
+  new Set([
+    normalizedRouteCity,
+    normalizedRouteCity.replace(/-/g, " "),
+  ])
+);
 const requestHostname = Astro.url.hostname
   .toLowerCase()
   .replace(/^www\./, "");
@@ -242,9 +252,11 @@ if (!page) {
   if (typePage) {
     pageKind = "intent";
 
-    const cityLabel =
-      city.charAt(0).toUpperCase() +
-      city.slice(1).toLowerCase();
+    const cityLabel = String(city)
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (character) =>
+        character.toUpperCase()
+      );
 
     page = {
       id: `type-${city}-${slug}`,
@@ -892,7 +904,7 @@ href: buildContentHref(areaSlug, "area"),
 const { data: navRows = [] } = await supabase
   .from("listing_rows")
   .select("normalized_type")
-  .eq("normalized_city", city)
+  .in("normalized_city", cityDatabaseKeys)
   .not("normalized_type", "is", null);
 
 const propertyTypes = [...new Set(
@@ -984,7 +996,7 @@ let query = supabase
       : listingCardFields
   )
   .eq("status", "A")
-  .eq("normalized_city", city)
+  .in("normalized_city", cityDatabaseKeys)
   .neq("property_type", "Lease");
 
 if (page.area && !hasPolygonSearch) {
