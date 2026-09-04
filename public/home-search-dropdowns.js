@@ -312,6 +312,7 @@
     "threeSameFloor",
     "fourSameFloor",
     "oceanViews",
+    "viewType",
     "waterfrontType",
   ];
 
@@ -326,6 +327,50 @@
 
   const moreClose =
     form.querySelector("[data-hero-more-close]");
+
+  // hero-more-results-count-v1
+  const moreResultsCount =
+    form.querySelector("[data-hero-more-results-count]");
+
+  const moreResultsLabel =
+    form.querySelector("[data-hero-more-results-label]");
+
+  const resultsCount =
+    document.getElementById("results-count");
+
+  const syncMoreResultsCount = () => {
+    if (
+      !(moreResultsCount instanceof HTMLElement) ||
+      !(resultsCount instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    const count =
+      Number(resultsCount.textContent || 0);
+
+    moreResultsCount.textContent =
+      String(count);
+
+    if (moreResultsLabel instanceof HTMLElement) {
+      moreResultsLabel.textContent =
+        count === 1
+          ? "matching listing"
+          : "matching listings";
+    }
+  };
+
+  syncMoreResultsCount();
+
+  if (resultsCount instanceof HTMLElement) {
+    new MutationObserver(
+      syncMoreResultsCount
+    ).observe(resultsCount, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+  }
   const getAdvancedFilterCount = () =>
     advancedFilterNames.reduce((count, name) => {
       const control = form.elements[name];

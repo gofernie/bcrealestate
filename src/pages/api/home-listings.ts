@@ -133,6 +133,13 @@ export const GET: APIRoute = async ({ request }) => {
     url.searchParams.get("threeSameFloor") === "true";
   const fourSameFloor =
     url.searchParams.get("fourSameFloor") === "true";
+  // view-type-api-filter-v1
+  const viewType = String(
+    url.searchParams.get("viewType") || ""
+  )
+    .trim()
+    .toLowerCase();
+
   const waterfrontType = String(
     url.searchParams.get("waterfrontType") ||
     (url.searchParams.get("waterfront") === "true" ? "any" : "")
@@ -220,6 +227,48 @@ export const GET: APIRoute = async ({ request }) => {
       const viewText = `${listing.description} ${listing.oceanView} ${listing.viewType} ${listing.waterfront}`.toLowerCase();
       if (!/(ocean view|ocean views|sea view|water view|ocean)/i.test(viewText)) return false;
     }
+    if (viewType) {
+      const viewAliases: Record<string, string> = {
+        mountain: "mountain",
+        "mountain view": "mountain",
+        "mountain views": "mountain",
+        "mountain(s)": "mountain",
+        ocean: "ocean",
+        "ocean view": "ocean",
+        "ocean views": "ocean",
+        sea: "ocean",
+        "sea view": "ocean",
+        valley: "valley",
+        "valley view": "valley",
+        lake: "lake",
+        "lake view": "lake",
+        river: "river",
+        "river view": "river",
+        city: "city",
+        "city view": "city",
+        panoramic: "panoramic",
+        "panoramic view": "panoramic",
+        "view (panoramic)": "panoramic",
+      };
+
+      const listingViewTypes = String(
+        listing.viewType || ""
+      )
+        .split(/[,;/|]+/)
+        .map((value) =>
+          value
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, " ")
+        )
+        .map((value) => viewAliases[value] || value)
+        .filter(Boolean);
+
+      if (!listingViewTypes.includes(viewType)) {
+        return false;
+      }
+    }
+
     if (waterfrontType) {
       const hasWaterfront =
         ["true", "yes", "y", "1"].includes(
