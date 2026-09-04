@@ -1095,12 +1095,73 @@ const priceBandOptionsByType = Object.fromEntries(
   ])
 );
 
+// inventory-bedroom-options-v1
+const bedroomThresholds = [2, 3, 4, 5];
+
+// price-aware-bedroom-options-v1
+const bedroomInventoryData = listings.map(
+  (listing: any) => ({
+    type: getInventoryType(listing),
+    price: Number(
+      listing?.price ??
+      listing?.listPrice ??
+      listing?.priceNumber ??
+      0
+    ),
+    beds: Number(
+      listing?.beds ??
+      listing?.bedrooms ??
+      listing?.details?.bedrooms ??
+      0
+    ),
+  })
+);
+
+const bedroomOptionsByType = Object.fromEntries(
+  inventoryTypes.map((inventoryType) => {
+    const inventoryBeds = listings
+      .filter(
+        (listing: any) =>
+          inventoryType === "all" ||
+          getInventoryType(listing) === inventoryType
+      )
+      .map((listing: any) =>
+        Number(
+          listing?.beds ??
+          listing?.bedrooms ??
+          listing?.details?.bedrooms ??
+          0
+        )
+      )
+      .filter(
+        (bedCount: number) =>
+          Number.isFinite(bedCount) &&
+          bedCount > 0
+      );
+
+    return [
+      inventoryType,
+      bedroomThresholds.filter(
+        (threshold) =>
+          inventoryBeds.some(
+            (bedCount) => bedCount >= threshold
+          )
+      ),
+    ];
+  })
+);
+
 const activeInventoryType =
   normalizeInventoryType(type) || "all";
 
 const priceBandOptions =
   priceBandOptionsByType[activeInventoryType] ||
   priceBandOptionsByType.all;
+
+const bedroomOptions =
+  bedroomOptionsByType[activeInventoryType] ||
+  bedroomOptionsByType.all ||
+  [];
 
 // Homepage presentation data
 const homepageFeaturedResidentialTypes = new Set([
@@ -1490,9 +1551,14 @@ const homepageNeighbourhoodImages = [
       <select name="beds">
         <option value="" selected={!beds && !planMode}>Any Beds</option>
         <optgroup label="Bedroom count">
-          <option value="2" selected={beds === 2}>2+ Beds</option>
-          <option value="3" selected={beds === 3}>3+ Beds</option>
-          <option value="4" selected={beds === 4}>4+ Beds</option>
+          {bedroomOptions.map((bedCount) => (
+            <option
+              value={String(bedCount)}
+              selected={beds === bedCount}
+            >
+              {bedCount}+ Beds
+            </option>
+          ))}
         </optgroup>
       </select>
     </label>
@@ -2146,12 +2212,16 @@ const homepageNeighbourhoodImages = [
 
 <select name="beds" class="filter-select" aria-label="Bedrooms and floor plan">
   <option value="" selected={!beds && !planMode}>Any Beds</option>
-  <optgroup label="Bedroom count">
-    <option value="2" selected={beds === 2}>2+ Beds</option>
-    <option value="3" selected={beds === 3}>3+ Beds</option>
-    <option value="4" selected={beds === 4}>4+ Beds</option>
-    <option value="5" selected={beds === 5}>5+ Beds</option>
-  </optgroup>
+        <optgroup label="Bedroom count">
+          {bedroomOptions.map((bedCount) => (
+            <option
+              value={String(bedCount)}
+              selected={beds === bedCount}
+            >
+              {bedCount}+ Beds
+            </option>
+          ))}
+        </optgroup>
 </select>
 
 <select name="baths" class="filter-select" aria-label="Bathrooms">
@@ -3687,6 +3757,14 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
   type="application/json"
   set:html={JSON.stringify(priceBandOptionsByType)}
 ></script>
+<script
+  id="home-bedroom-options-data"
+  type="application/json"
+  set:html={JSON.stringify({
+    byType: bedroomOptionsByType,
+    inventory: bedroomInventoryData,
+  })}
+></script>
 
 <script is:inline>
   (() => {
@@ -3745,6 +3823,31 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
       );
     } catch {
       priceBandsByType = {};
+    }
+
+    const bedroomDataElement =
+      document.getElementById(
+        "home-bedroom-options-data"
+      );
+
+    let bedroomOptionsByType = {};
+    let bedroomInventoryData = [];
+
+    try {
+      const bedroomPayload = JSON.parse(
+        bedroomDataElement?.textContent || "{}"
+      );
+
+      bedroomOptionsByType =
+        bedroomPayload?.byType || bedroomPayload || {};
+
+      bedroomInventoryData =
+        Array.isArray(bedroomPayload?.inventory)
+          ? bedroomPayload.inventory
+          : [];
+    } catch {
+      bedroomOptionsByType = {};
+      bedroomInventoryData = [];
     }
 
     const heroTypeSelect =
@@ -3889,6 +3992,261 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
       }
     };
 
+    const refreshBedroomOptions = ({
+      resetInvalid = false,
+    } = {}) => {
+      if (
+        !(heroTypeSelect instanceof HTMLSelectElement) ||
+        !(heroBedsSelect instanceof HTMLSelectElement)
+      ) {
+        return;
+      }
+
+      const inventoryType =
+        normalizeInventoryType(
+          heroTypeSelect.value
+        );
+
+      const priceValue =
+        heroPriceSelect instanceof HTMLSelectElement
+          ? String(heroPriceSelect.value || "")
+          : "";
+
+      const overMatch =
+        priceValue.match(/^over-(\d+)$/);
+
+      const toListingPrice = (value) => {
+        const numericValue =
+          Number(value || 0);
+
+        return (
+          numericValue > 0 &&
+          numericValue < 10000
+        )
+          ? numericValue * 1000
+          : numericValue;
+      };
+
+      const maximumPrice =
+        !overMatch && priceValue
+          ? toListingPrice(priceValue)
+          : 0;
+
+      const minimumPrice =
+        overMatch
+          ? toListingPrice(overMatch[1])
+          : 0;
+
+      const matchingInventory =
+        bedroomInventoryData.filter((listing) => {
+          if (
+            inventoryType !== "all" &&
+            listing.type !== inventoryType
+          ) {
+            return false;
+          }
+
+          if (
+            maximumPrice > 0 &&
+            listing.price > maximumPrice
+          ) {
+            return false;
+          }
+
+          if (
+            minimumPrice > 0 &&
+            listing.price < minimumPrice
+          ) {
+            return false;
+          }
+
+          return true;
+        });
+
+      const availableBeds =
+        [2, 3, 4, 5].filter(
+          (threshold) =>
+            matchingInventory.some(
+              (listing) =>
+                Number(listing.beds) >= threshold
+            )
+        );
+
+      let selectedValue =
+        heroBedsSelect.value;
+
+      if (
+        resetInvalid &&
+        selectedValue &&
+        !availableBeds.includes(
+          Number(selectedValue)
+        )
+      ) {
+        const previousSelection =
+          Number(selectedValue);
+
+        const nextLowerAvailable =
+          [...availableBeds]
+            .filter(
+              (bedCount) =>
+                bedCount < previousSelection
+            )
+            .sort(
+              (a, b) => b - a
+            )[0];
+
+        selectedValue =
+          nextLowerAvailable
+            ? String(nextLowerAvailable)
+            : "";
+      }
+
+      [heroBedsSelect, resultsBedsSelect]
+        .filter(
+          (select) =>
+            select instanceof HTMLSelectElement
+        )
+        .forEach((select) => {
+          select.replaceChildren(
+            new Option("Any Beds", "")
+          );
+
+          availableBeds.forEach((bedCount) => {
+            select.add(
+              new Option(
+                `${bedCount}+ Beds`,
+                String(bedCount)
+              )
+            );
+          });
+
+          select.value = selectedValue;
+
+          if (select.selectedIndex < 0) {
+            select.selectedIndex = 0;
+          }
+        });
+
+      const dropdown =
+        heroBedsSelect.parentElement
+          ?.querySelector(
+            ":scope > .hero-single-dropdown"
+          );
+
+      const menu =
+        dropdown?.querySelector(
+          ".hero-single-dropdown__menu"
+        );
+
+      const summary =
+        dropdown?.querySelector(
+          ".hero-single-dropdown__summary"
+        );
+
+      if (!menu || !summary) {
+        return;
+      }
+
+      menu.replaceChildren();
+
+      [
+        {
+          value: "",
+          label: "Any Beds",
+        },
+        ...availableBeds.map((bedCount) => ({
+          value: String(bedCount),
+          label: `${bedCount}+ Beds`,
+        })),
+      ].forEach((option) => {
+        const button =
+          document.createElement("button");
+
+        button.type = "button";
+        button.className =
+          "hero-single-dropdown__option";
+
+        button.dataset.value = option.value;
+        button.setAttribute("role", "option");
+
+        const label =
+          document.createElement("span");
+
+        label.textContent = option.label;
+
+        const check =
+          document.createElement("span");
+
+        check.className =
+          "hero-single-dropdown__check";
+
+        check.setAttribute(
+          "aria-hidden",
+          "true"
+        );
+
+        const selected =
+          option.value === selectedValue;
+
+        button.classList.toggle(
+          "is-selected",
+          selected
+        );
+
+        button.setAttribute(
+          "aria-selected",
+          String(selected)
+        );
+
+        check.textContent =
+          selected ? "\u2713" : "";
+
+        button.append(label, check);
+
+        button.addEventListener(
+          "click",
+          (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            heroBedsSelect.value =
+              option.value;
+
+            if (
+              resultsBedsSelect instanceof
+                HTMLSelectElement
+            ) {
+              resultsBedsSelect.value =
+                option.value;
+            }
+
+            summary.textContent =
+              option.label;
+
+            dropdown.classList.remove(
+              "is-open"
+            );
+
+            menu.hidden = true;
+
+            heroBedsSelect.dispatchEvent(
+              new Event("change", {
+                bubbles: true,
+              })
+            );
+          }
+        );
+
+        menu.appendChild(button);
+      });
+
+      summary.textContent =
+        heroBedsSelect
+          .selectedOptions?.[0]
+          ?.textContent?.trim() ||
+        "Any Beds";
+    };
+
     let priceDropdown = null;
     let priceTrigger = null;
     let priceSummary = null;
@@ -3999,6 +4357,10 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
         resultsMinPriceInput.value =
           overMatch ? overMatch[1] : "";
       }
+
+      refreshBedroomOptions({
+        resetInvalid: true,
+      });
 
       syncPriceMenuSelection();
       setPriceMenuOpen(false);
@@ -4322,6 +4684,10 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
         ) {
           resultsMinPriceInput.value = "";
         }
+
+        refreshBedroomOptions({
+          resetInvalid: true,
+        });
 
         renderPriceBands({
           reset: true,
@@ -8455,6 +8821,75 @@ intro h2,
     background: #fff !important;
     opacity: 1 !important;
     isolation: isolate;
+  }
+}
+</style>
+<style is:global>
+/* desktop-hero-dropdown-top-layer-v1 */
+@media (min-width: 900px) {
+  html body
+  #home-hero-search.locus-home-search:has(
+    .hero-single-dropdown.is-open
+  ) {
+    position: absolute !important;
+    z-index: 5000 !important;
+    overflow: visible !important;
+  }
+
+  html body
+  #home-hero-search
+  .locus-home-search__field:has(
+    .hero-single-dropdown.is-open
+  ) {
+    position: relative !important;
+    z-index: 5001 !important;
+  }
+
+  html body
+  #home-hero-search
+  .hero-single-dropdown.is-open {
+    position: relative !important;
+    z-index: 5002 !important;
+  }
+
+  html body
+  #home-hero-search
+  .hero-single-dropdown.is-open
+  > .hero-single-dropdown__menu {
+    z-index: 5003 !important;
+  }
+}
+</style>
+<style is:global>
+/* desktop-hero-dropdown-no-layout-shift-v1 */
+@media (min-width: 900px) {
+  html body
+  #home-hero-search
+  .locus-home-search__field {
+    position: relative !important;
+    overflow: visible !important;
+  }
+
+  html body
+  #home-hero-search
+  .hero-single-dropdown {
+    position: relative !important;
+    width: 100% !important;
+  }
+
+  html body
+  #home-hero-search
+  .hero-single-dropdown.is-open
+  > .hero-single-dropdown__menu {
+    position: absolute !important;
+    z-index: 5003 !important;
+    top: calc(100% + 8px) !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: -10px !important;
+    width: calc(100% + 20px) !important;
+    margin: 0 !important;
+    transform: none !important;
   }
 }
 </style>

@@ -1904,17 +1904,14 @@ let normalized_area =
 
 normalized_area = clean(normalized_area).replace(/-/g, " ");
 
-// canonical-errington-area-v1
-// Polygon names and MLS aliases must resolve to the same public area.
-if (
-  normalized_city === "parksville" &&
-  normalized_area
+// canonical-parksville-area-v2
+// Remove Matrix's internal PQ prefix and normalize slash-separated names.
+if (normalized_city === "parksville") {
+  normalized_area = normalized_area
     .replace(/^pq\s+/i, "")
     .replace(/\//g, " ")
     .replace(/\s+/g, " ")
-    .trim() === "errington coombs hilliers"
-) {
-  normalized_area = "errington coombs hilliers";
+    .trim();
 }
 
 if (normalized_city === "duncan" && normalized_area === "unknown") {
