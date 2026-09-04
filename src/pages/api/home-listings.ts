@@ -171,7 +171,10 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   let listings = (data || []).map(normalizeListing).filter((listing) => {
-    const searchable = `${listing.type} ${listing.propertyType} ${listing.description}`.toLowerCase();
+    // Classify from structured type fields only. Marketing remarks
+    // commonly mention offices, businesses, or nearby retail.
+    const searchable =
+      `${listing.type} ${listing.propertyType}`.toLowerCase();
     const commercial = /\b(lease|commercial|business|industrial|retail|office)\b/i.test(searchable);
     if (commercial || (listing.rawPrice > 0 && listing.rawPrice < 50000)) return false;
     if (id && listing.id !== id && listing.mls !== id) return false;
