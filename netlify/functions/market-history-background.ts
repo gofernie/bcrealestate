@@ -144,7 +144,7 @@ async function getMonthlySales(
   baseParams.set("resultsPerPage", "100");
   baseParams.set(
     "fields",
-    "mlsNumber,soldDate,soldPrice,listPrice"
+    "mlsNumber,soldDate,soldPrice,listPrice,class"
   );
 
   const listings: any[] = [];
@@ -190,6 +190,20 @@ async function getMonthlySales(
     ).values()
   );
 
+  const singleFamilySales = uniqueSales.filter(
+    (listing: any) =>
+      String(listing.class || "")
+        .trim()
+        .toLowerCase() === "residential"
+  );
+
+  const singleFamilySoldPrices =
+    singleFamilySales
+      .map((listing: any) =>
+        Number(listing.soldPrice || 0)
+      )
+      .filter((price) => price > 0);
+
   const soldPrices = uniqueSales
     .map((listing: any) =>
       Number(listing.soldPrice || 0)
@@ -213,6 +227,8 @@ async function getMonthlySales(
   return {
     sales: uniqueSales.length,
     medianSoldPrice: median(soldPrices),
+    medianSingleFamilySoldPrice:
+      median(singleFamilySoldPrices),
     averageSoldPrice: average(soldPrices),
     saleToList: average(ratios),
   };
@@ -234,7 +250,12 @@ async function refreshMarket(city: string) {
       count: "exact",
       head: true,
     })
-    .eq("city", marketKey);
+    .eq("city", marketKey)
+    .not(
+      "median_single_family_sold_price",
+      "is",
+      null
+    );
 
   if (countError) {
     throw new Error(
@@ -313,6 +334,12 @@ async function refreshMarket(city: string) {
           ? null
           : Math.round(
               sales.medianSoldPrice
+            ),
+      median_single_family_sold_price:
+        sales.medianSingleFamilySoldPrice == null
+          ? null
+          : Math.round(
+              sales.medianSingleFamilySoldPrice
             ),
       average_sold_price:
         sales.averageSoldPrice == null
