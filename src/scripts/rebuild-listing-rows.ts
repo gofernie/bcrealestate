@@ -1892,9 +1892,30 @@ const polygonArea =
 
 // Prefer drawn polygons when available.
 // This prevents building/complex names from becoming fake areas.
-let normalized_area = polygonArea || normalizeArea(listing, normalized_city);
+// parksville-mls-area-first-v1
+// VIREB subareas are authoritative for the Parksville market.
+const normalizedMlsArea =
+  normalizeArea(listing, normalized_city);
+
+let normalized_area =
+  normalized_city === "parksville"
+    ? normalizedMlsArea || polygonArea
+    : polygonArea || normalizedMlsArea;
 
 normalized_area = clean(normalized_area).replace(/-/g, " ");
+
+// canonical-errington-area-v1
+// Polygon names and MLS aliases must resolve to the same public area.
+if (
+  normalized_city === "parksville" &&
+  normalized_area
+    .replace(/^pq\s+/i, "")
+    .replace(/\//g, " ")
+    .replace(/\s+/g, " ")
+    .trim() === "errington coombs hilliers"
+) {
+  normalized_area = "errington coombs hilliers";
+}
 
 if (normalized_city === "duncan" && normalized_area === "unknown") {
   const sourceCityArea = AREA_ALIASES.duncan?.[clean(listing?.source_city)];

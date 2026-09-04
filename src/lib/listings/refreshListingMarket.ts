@@ -137,8 +137,8 @@ const cleanKey = (value: unknown) =>
 
 function getListingId(listing: any) {
   return clean(
-    listing?.id ||
-      listing?.mlsNumber ||
+    listing?.mlsNumber ||
+      listing?.id ||
       listing?.ml_num ||
       listing?.listingId ||
       listing?.mls_number
@@ -221,6 +221,11 @@ export async function refreshListingMarket(
   );
 
   const searchKey = cleanKey(rawCity);
+  // parksville-vireb-board-v1
+  // Board 25 is the authoritative VIREB/Matrix feed.
+  const effectiveBoardId =
+    boardId ||
+    (searchKey === "parksville" ? "25" : "");
 
   const citiesToFetch =
     CITY_FETCH_GROUPS[searchKey] || [rawCity];
@@ -361,8 +366,11 @@ export async function refreshListingMarket(
         );
         params.set("status", "A");
 
-        if (boardId) {
-          params.set("boardId", boardId);
+        if (effectiveBoardId) {
+          params.set(
+            "boardId",
+            effectiveBoardId
+          );
         }
 
         console.log(
