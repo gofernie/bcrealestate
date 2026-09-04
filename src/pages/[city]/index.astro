@@ -940,14 +940,38 @@ const normalizeInventoryType = (value: unknown) => {
   return aliases[normalized] || normalized;
 };
 
-const getInventoryType = (listing: any) =>
-  normalizeInventoryType(
+const getInventoryType = (listing: any) => {
+  const normalizedType = normalizeInventoryType(
     listing?.normalized_type ??
     listing?.property_type ??
     listing?.propertyType ??
     listing?.details?.propertyType ??
     ""
   );
+
+  const bedCount = Number(getListingBeds(listing));
+
+  const classificationText = [
+    listing?.description,
+    listing?.details?.description,
+    listing?.raw?.description,
+    listing?.raw?.details?.description,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  const isMisclassifiedEstate =
+    normalizedType === "condo" &&
+    bedCount >= 8 &&
+    /\b(estate|single family|single-family|duplex)\b/.test(
+      classificationText
+    );
+
+  return isMisclassifiedEstate
+    ? "house"
+    : normalizedType;
+};
 
 const getInventoryPrices = (inventoryType = "") =>
   listings
@@ -2314,7 +2338,7 @@ const homepageNeighbourhoodImages = [
                     data-sqft={String(sqft)}
                     data-description={description}
                     data-property-type={propertyType}
-                    data-type={String(listing?.normalized_type || listing?.property_type || type || "Home")}
+                    data-type={getInventoryType(listing)}
                     data-year={String(getListingYearBuilt(listing))}
                     data-lot-size={String(getListingLotSize(listing))}
                    data-area={String(getListingArea(listing))}
@@ -4031,7 +4055,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
           : "";
 
       const overMatch =
-        priceValue.match(/^over-(\d+)$/);
+        priceValue.match(/^over[-_](\d+)$/);
 
       const toListingPrice = (value) => {
         const numericValue =
@@ -4191,6 +4215,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
         button.className =
           "hero-single-dropdown__option";
 
+        button.dataset.singleOption = "";
         button.dataset.value = option.value;
         button.setAttribute("role", "option");
 
@@ -4295,6 +4320,11 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
         resetInvalid: false,
       });
     };
+
+    document.addEventListener(
+      "home-search-dropdowns:ready",
+      initializeBedroomOptions
+    );
 
     requestAnimationFrame(() => {
       requestAnimationFrame(
@@ -6766,6 +6796,7 @@ document.documentElement.style.visibility = "";
   gap: 80px;
   width: min(1400px, calc(100% - 32px));
   min-height: 620px;
+  box-sizing: border-box;
   margin: 0 auto;
   padding: 72px 0 128px;
 }
@@ -9002,5 +9033,14 @@ intro h2,
 
 #home-hero-search [data-hero-more-close] {
   margin-left: auto !important;
+}
+</style>
+<style is:global>
+/* shorter-desktop-home-hero-v1 */
+@media (min-width: 901px) {
+  .locus-home-hero,
+  .locus-home-hero__inner {
+    min-height: 650px !important;
+  }
 }
 </style>

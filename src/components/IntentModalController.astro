@@ -208,11 +208,11 @@ const { listings = [] } = Astro.props;
 }
 .panel__mini-map-wrap {
   position: relative;
-  width: min(100%, 768px);
+  width: 100%;
 }
 
 .panel__mini-map {
-  width: min(100%, 768px);
+  width: 100%;
   transition:
     height 260ms ease,
     min-height 260ms ease;
@@ -4475,10 +4475,28 @@ try {
   }).addTo(sheetMiniMapInstance)
     .bindPopup(activeCard.dataset.address || "Listing", { closeButton: false });
 
-  setTimeout(() => {
-    sheetMiniMapInstance.invalidateSize();
-    sheetMiniMapInstance.setView([point.lat, point.lng], 15);
-  }, 150);
+  const resizeModalMap = () => {
+    if (!sheetMiniMapInstance) return;
+
+    sheetMiniMapInstance.invalidateSize({
+      animate: false,
+      pan: false,
+    });
+
+    sheetMiniMapInstance.setView(
+      [point.lat, point.lng],
+      15,
+      { animate: false }
+    );
+  };
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(resizeModalMap);
+  });
+
+  [150, 350, 700].forEach((delay) => {
+    setTimeout(resizeModalMap, delay);
+  });
 } catch (error) {
   console.error("Map failed to load:", error);
   sheetMiniMap.innerHTML = `<p style='padding:16px;color:#6b6560;font-size:12px;'>Map could not load: ${error?.message}</p>`;

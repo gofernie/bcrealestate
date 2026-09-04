@@ -296,6 +296,10 @@
     sync();
   });
 
+  document.dispatchEvent(
+    new CustomEvent("home-search-dropdowns:ready")
+  );
+
   document.addEventListener("click", () => closeAll());
   document.addEventListener("hero-dropdown:opened", () => closeAll());
 
