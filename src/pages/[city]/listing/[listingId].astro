@@ -127,6 +127,187 @@ const listingBrowserUrl =
     listingId
   )}`;
 
+const listingPrice = Number(listing?.price || 0);
+const listingArea = String(
+  listing?.normalized_area ||
+  listing?.area ||
+  ""
+).toLowerCase();
+
+let similarListings: any[] = [];
+
+if (listing) {
+  let similarQuery = supabase
+    .from("listing_rows")
+    .select(`
+      id,
+      mls_number,
+      address,
+      price,
+      beds,
+      baths,
+      sqft,
+      normalized_city,
+      normalized_area,
+      normalized_type,
+      image_url,
+      images
+    `)
+    .eq("status", "A")
+    .eq("normalized_city", city)
+    .limit(80);
+
+  if (normalizedType) {
+    similarQuery = similarQuery.eq(
+      "normalized_type",
+      normalizedType
+    );
+  }
+
+  const similarResult = await similarQuery;
+  const currentKey = String(
+    listing.mls_number ||
+    listing.id ||
+    ""
+  );
+
+  similarListings = (similarResult.data || [])
+    .filter((candidate) => {
+      const candidateKey = String(
+        candidate.mls_number ||
+        candidate.id ||
+        ""
+      );
+
+      return candidateKey !== currentKey;
+    })
+    .map((candidate) => {
+      const candidatePrice = Number(candidate.price || 0);
+      const candidateArea = String(
+        candidate.normalized_area ||
+        candidate.area ||
+        ""
+      ).toLowerCase();
+
+      const sameArea =
+        Boolean(listingArea) &&
+        candidateArea === listingArea;
+
+      const priceDifference =
+        listingPrice > 0 && candidatePrice > 0
+          ? Math.abs(candidatePrice - listingPrice) /
+            listingPrice
+          : 1;
+
+      return {
+        ...candidate,
+        similarityScore:
+          (sameArea ? 100 : 0) -
+          Math.min(priceDifference, 2) * 40,
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.similarityScore -
+        a.similarityScore
+    )
+    .slice(0, isActive ? 4 : 6);
+}
+
+const getListingKey = (item: any) =>
+  String(
+    item?.mls_number ||
+    item?.id ||
+    ""
+  );
+
+const getListingUrl = (item: any) =>
+  `/${String(
+    item?.normalized_city ||
+    city
+  )
+    .toLowerCase()
+    .replace(/\s+/g, "-")}/listing/${encodeURIComponent(
+      getListingKey(item)
+    )}`;
+
+const getListingImage = (item: any) => {
+  const firstImage =
+    item?.image_url ||
+    item?.images?.[0]?.highRes ||
+    item?.images?.[0]?.mediumRes ||
+    item?.images?.[0]?.lowRes ||
+    item?.images?.[0]?.url ||
+    item?.images?.[0] ||
+    "";
+
+  return normalizeImage(firstImage);
+};
+
+const cleanedDescription = String(
+  listing?.description ||
+  ""
+)
+  .replace(/<[^>]*>/g, " ")
+  .replace(/\s+/g, " ")
+  .trim();
+
+const hasMeaningfulAddress =
+  String(address || "").trim().length >= 5;
+
+const hasMeaningfulDescription =
+  cleanedDescription.length >= 80;
+
+const hasListingImage =
+  images.length > 0;
+
+const isThinListing =
+  !listing ||
+  !hasMeaningfulAddress ||
+  !hasMeaningfulDescription ||
+  !hasListingImage;
+
+const inactiveReferenceDate = new Date(
+  listing?.updated_at ||
+  listing?.listed_at ||
+  listing?.created_at ||
+  0
+);
+
+const inactiveCutoffTime =
+  Date.now() -
+  180 * 24 * 60 * 60 * 1000;
+
+const inactiveTooOld =
+  !isActive &&
+  (
+    !Number.isFinite(
+      inactiveReferenceDate.getTime()
+    ) ||
+    inactiveReferenceDate.getTime() <
+      inactiveCutoffTime
+  );
+
+const shouldNoIndex =
+  isThinListing ||
+  inactiveTooOld;
+
+const browserCacheSeconds =
+  isActive ? 900 : 86400;
+
+const staleSeconds =
+  isActive ? 3600 : 604800;
+
+Astro.response.headers.set(
+  "Cache-Control",
+  `public, max-age=0, s-maxage=${browserCacheSeconds}, stale-while-revalidate=${staleSeconds}`
+);
+
+Astro.response.headers.set(
+  "Netlify-CDN-Cache-Control",
+  `public, durable, max-age=${browserCacheSeconds}, stale-while-revalidate=${staleSeconds}`
+);
+
 const canonicalUrl =
   `${Astro.url.origin}/${city}/listing/` +
   encodeURIComponent(
@@ -135,10 +316,7 @@ const canonicalUrl =
     listingId
   );
 
-const plainDescription = String(listing?.description || "")
-  .replace(/<[^>]*>/g, " ")
-  .replace(/\s+/g, " ")
-  .trim();
+const plainDescription = cleanedDescription;
 
 const metaDescription = listing
   ? `${formatPrice(listing.price)} — ${address}, ${cityLabel}, BC. ` +
@@ -199,6 +377,16 @@ const accentColor = site?.accent_color || "#2f6f73";
 <Layout title={pageTitle} city={city} accentColor={accentColor}>
   <Fragment slot="head">
     <meta name="description" content={metaDescription} />
+
+    <meta
+      name="robots"
+      content={
+        shouldNoIndex
+          ? "noindex, follow"
+          : "index, follow, max-image-preview:large"
+      }
+    />
+
     <link rel="canonical" href={canonicalUrl} />
 
     {images[0] && (
@@ -235,7 +423,26 @@ const accentColor = site?.accent_color || "#2f6f73";
         </nav>
 
         <article>
-          <header class="listing-heading">
+          {!isActive && (
+            <section class="listing-status-banner">
+              <div>
+                <p class="listing-kicker">Listing update</p>
+                <h2>This home is no longer available—but similar homes are.</h2>
+              </div>
+
+              <a
+                href="#similar-listings"
+                data-listing-event="inactive_similar_top"
+              >
+                See similar homes
+              </a>
+            </section>
+          )}
+
+          <header class:list={[
+            "listing-heading",
+            !isActive && "listing-heading--inactive"
+          ]}>
             <div>
               <p class="listing-kicker">
                 {isActive ? "For sale" : "No longer active"}
@@ -249,7 +456,15 @@ const accentColor = site?.accent_color || "#2f6f73";
             </div>
 
             <div class="listing-price">
-              {formatPrice(listing.price)}
+              <span class:list={[
+                !isActive && "listing-price--historical"
+              ]}>
+                {formatPrice(listing.price)}
+              </span>
+
+              {!isActive && (
+                <small>Previous list price</small>
+              )}
             </div>
           </header>
 
@@ -305,18 +520,169 @@ const accentColor = site?.accent_color || "#2f6f73";
               )}
             </div>
 
-            <aside class="listing-contact">
-              <p class="listing-kicker">Interested in this home?</p>
-              <h2>Get the full details</h2>
-              <p>
-                Ask a question, request additional information or arrange
-                a private showing.
-              </p>
-              <a href={listingBrowserUrl}>
-                View in listing browser
-              </a>
+            <aside class:list={[
+              "listing-contact",
+              !isActive && "listing-contact--inactive"
+            ]}>
+              {isActive ? (
+                <>
+                  <p class="listing-kicker">Want to see more?</p>
+                  <h2>Explore the complete listing</h2>
+                  <p>
+                    Open the full photo gallery, map, nearby amenities
+                    and detailed property experience.
+                  </p>
+
+                  <a
+                    class="listing-contact__primary"
+                    href={listingBrowserUrl}
+                    data-listing-event="active_open_browser"
+                  >
+                    View all photos, map & details
+                  </a>
+
+                  <a
+                    class="listing-contact__secondary"
+                    href={`${listingBrowserUrl}&action=question`}
+                    data-listing-event="active_ask_question"
+                  >
+                    Ask about this property
+                  </a>
+                </>
+              ) : (
+                <>
+                  <p class="listing-kicker">Keep your search moving</p>
+                  <h2>Find a similar home</h2>
+                  <p>
+                    See active properties with a similar location,
+                    property type and price range.
+                  </p>
+
+                  <a
+                    class="listing-contact__primary"
+                    href="#similar-listings"
+                    data-listing-event="inactive_similar_sidebar"
+                  >
+                    See similar homes for sale
+                  </a>
+
+                  <a
+                    class="listing-contact__secondary"
+                    href={`/${city}`}
+                    data-listing-event="inactive_browse_city"
+                  >
+                    Browse all {cityLabel} listings
+                  </a>
+                </>
+              )}
             </aside>
           </section>
+
+          {similarListings.length > 0 && (
+            <section
+              class="similar-listings"
+              id="similar-listings"
+            >
+              <div class="similar-listings__heading">
+                <div>
+                  <p class="listing-kicker">
+                    {isActive
+                      ? "You may also like"
+                      : "Available now"}
+                  </p>
+
+                  <h2>
+                    {isActive
+                      ? `Similar ${cityLabel} properties`
+                      : `Homes similar to ${address}`}
+                  </h2>
+                </div>
+
+                <a
+                  href={`/${city}/${listingTypePath}`}
+                  data-listing-event="browse_all_similar"
+                >
+                  View all →
+                </a>
+              </div>
+
+              <div class:list={[
+                "similar-listings__grid",
+                !isActive &&
+                  "similar-listings__grid--six"
+              ]}>
+                {similarListings.map((similar) => {
+                  const similarImage =
+                    getListingImage(similar);
+
+                  return (
+                    <a
+                      class="similar-card"
+                      href={getListingUrl(similar)}
+                      data-listing-event={
+                        isActive
+                          ? "active_similar_listing"
+                          : "inactive_similar_listing"
+                      }
+                      data-listing-id={getListingKey(similar)}
+                    >
+                      <div class="similar-card__image">
+                        {similarImage ? (
+                          <img
+                            src={similarImage}
+                            alt={String(
+                              similar.address ||
+                              "Similar property"
+                            )}
+                            width="640"
+                            height="440"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div class="similar-card__placeholder">
+                            Property photo
+                          </div>
+                        )}
+                      </div>
+
+                      <div class="similar-card__body">
+                        <strong>
+                          {formatPrice(similar.price)}
+                        </strong>
+
+                        <h3>
+                          {String(
+                            similar.address ||
+                            "Property listing"
+                          )}
+                        </h3>
+
+                        <p>
+                          {[
+                            similar.beds
+                              ? `${similar.beds} bd`
+                              : "",
+                            similar.baths
+                              ? `${similar.baths} ba`
+                              : "",
+                            similar.sqft
+                              ? `${Number(
+                                  similar.sqft
+                                ).toLocaleString(
+                                  "en-CA"
+                                )} sq ft`
+                              : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           <footer class="listing-disclaimer">
             <p>
@@ -328,6 +694,46 @@ const accentColor = site?.accent_color || "#2f6f73";
       </>
     )}
   </main>
+  <script is:inline>
+    document.addEventListener("click", (event) => {
+      const target = event.target.closest(
+        "[data-listing-event]"
+      );
+
+      if (!target) return;
+
+      const eventName =
+        target.dataset.listingEvent;
+
+      const eventData = {
+        event_category: "listing_page",
+        listing_id:
+          target.dataset.listingId ||
+          window.location.pathname
+            .split("/")
+            .filter(Boolean)
+            .pop() ||
+          "",
+        destination_url:
+          target.getAttribute("href") ||
+          "",
+      };
+
+      if (typeof window.gtag === "function") {
+        window.gtag(
+          "event",
+          eventName,
+          eventData
+        );
+      }
+
+      if (typeof window.plausible === "function") {
+        window.plausible(eventName, {
+          props: eventData,
+        });
+      }
+    });
+  </script>
 </Layout>
 
 <style>
@@ -457,6 +863,192 @@ const accentColor = site?.accent_color || "#2f6f73";
     text-decoration: none;
   }
 
+  .listing-status-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 28px;
+    margin-bottom: 26px;
+    padding: 22px 24px;
+    border-radius: 14px;
+    background: color-mix(
+      in srgb,
+      var(--accent) 9%,
+      white
+    );
+    border: 1px solid color-mix(
+      in srgb,
+      var(--accent) 20%,
+      #ddd
+    );
+  }
+
+  .listing-status-banner h2 {
+    margin: 5px 0 0;
+    font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+    letter-spacing: -.035em;
+  }
+
+  .listing-status-banner a {
+    flex: 0 0 auto;
+    padding: 12px 18px;
+    border-radius: 9px;
+    background: var(--accent);
+    color: white;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .listing-heading--inactive {
+    opacity: .82;
+  }
+
+  .listing-price small {
+    display: block;
+    margin-top: 3px;
+    color: #6b767e;
+    font-size: .72rem;
+    font-weight: 650;
+    letter-spacing: .02em;
+    text-align: right;
+  }
+
+  .listing-price--historical {
+    color: #536069;
+  }
+
+  .listing-contact__primary,
+  .listing-contact__secondary {
+    display: block;
+    margin-top: 14px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    font-weight: 800;
+    text-align: center;
+    text-decoration: none;
+  }
+
+  .listing-contact__primary {
+    background: var(--accent);
+    color: white;
+  }
+
+  .listing-contact__secondary {
+    border: 1px solid color-mix(
+      in srgb,
+      var(--accent) 35%,
+      #ddd
+    );
+    background: white;
+    color: var(--accent);
+  }
+
+  .listing-contact--inactive {
+    background: #f7f8f7;
+  }
+
+  .similar-listings {
+    margin-top: 68px;
+    padding-top: 42px;
+    border-top: 1px solid #dfe5e2;
+    scroll-margin-top: 30px;
+  }
+
+  .similar-listings__heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 22px;
+  }
+
+  .similar-listings__heading h2 {
+    margin: 5px 0 0;
+    font-size: clamp(1.6rem, 3vw, 2.35rem);
+    letter-spacing: -.045em;
+  }
+
+  .similar-listings__heading > a {
+    flex: 0 0 auto;
+    color: var(--accent);
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .similar-listings__grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .similar-listings__grid--six {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .similar-card {
+    overflow: hidden;
+    border: 1px solid #dfe5e2;
+    border-radius: 13px;
+    background: white;
+    color: #152536;
+    text-decoration: none;
+    transition:
+      transform 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .similar-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 30px rgba(20, 38, 52, .11);
+  }
+
+  .similar-card__image {
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    background: #edf0ee;
+  }
+
+  .similar-card__image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 240ms ease;
+  }
+
+  .similar-card:hover img {
+    transform: scale(1.025);
+  }
+
+  .similar-card__placeholder {
+    display: grid;
+    height: 100%;
+    place-items: center;
+    color: #7b858b;
+    font-size: .8rem;
+  }
+
+  .similar-card__body {
+    padding: 15px;
+  }
+
+  .similar-card__body > strong {
+    display: block;
+    color: var(--accent);
+    font-size: 1.05rem;
+  }
+
+  .similar-card__body h3 {
+    margin: 5px 0 7px;
+    font-size: .95rem;
+    line-height: 1.25;
+  }
+
+  .similar-card__body p {
+    margin: 0;
+    color: #68737b;
+    font-size: .78rem;
+  }
+
   .listing-disclaimer {
     margin-top: 50px;
     color: #68737b;
@@ -505,6 +1097,46 @@ const accentColor = site?.accent_color || "#2f6f73";
 
     .listing-contact {
       margin-top: 32px;
+    }
+
+    .listing-status-banner {
+      display: block;
+    }
+
+    .listing-status-banner a {
+      display: block;
+      margin-top: 16px;
+      text-align: center;
+    }
+
+    .listing-price small {
+      text-align: left;
+    }
+
+    .similar-listings {
+      margin-top: 46px;
+    }
+
+    .similar-listings__heading {
+      display: block;
+    }
+
+    .similar-listings__heading > a {
+      display: inline-block;
+      margin-top: 10px;
+    }
+
+    .similar-listings__grid,
+    .similar-listings__grid--six {
+      display: flex;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      padding-bottom: 8px;
+    }
+
+    .similar-card {
+      flex: 0 0 82%;
+      scroll-snap-align: start;
     }
   }
 </style>

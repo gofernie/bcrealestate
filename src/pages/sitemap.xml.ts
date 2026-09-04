@@ -23,6 +23,100 @@ const escapeXml = (value: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 
+async function fetchListingRows(
+  supabase: any,
+  statuses: string[],
+  updatedAfter?: string
+) {
+  const batchSize = 1000;
+
+  const makeCountQuery = () => {
+    let query = supabase
+      .from("listing_rows")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .in("status", statuses);
+
+    if (updatedAfter) {
+      query = query.gte(
+        "updated_at",
+        updatedAfter
+      );
+    }
+
+    return query;
+  };
+
+  const countResult = await makeCountQuery();
+
+  if (countResult.error) {
+    console.error(
+      "Sitemap listing count failed:",
+      countResult.error
+    );
+    return [];
+  }
+
+  const count = Number(countResult.count || 0);
+  const pageCount = Math.ceil(count / batchSize);
+
+  const pageRequests = Array.from(
+    { length: pageCount },
+    (_, pageIndex) => {
+      const from = pageIndex * batchSize;
+
+      let query = supabase
+        .from("listing_rows")
+        .select(`
+          id,
+          mls_number,
+          normalized_city,
+          status,
+          updated_at,
+          address,
+          image_url
+        `)
+        .in("status", statuses)
+        .order("id", { ascending: true })
+        .range(
+          from,
+          from + batchSize - 1
+        );
+
+      if (updatedAfter) {
+        query = query.gte(
+          "updated_at",
+          updatedAfter
+        );
+      }
+
+      return query;
+    }
+  );
+
+  const results = await Promise.all(
+    pageRequests
+  );
+
+  const rows: any[] = [];
+
+  for (const result of results) {
+    if (result.error) {
+      console.error(
+        "Sitemap listing page failed:",
+        result.error
+      );
+      continue;
+    }
+
+    rows.push(...(result.data || []));
+  }
+
+  return rows;
+}
+
 export const GET: APIRoute = async () => {
   const supabase = createClient(
     import.meta.env.PUBLIC_SUPABASE_URL,
@@ -44,6 +138,30 @@ export const GET: APIRoute = async () => {
       .from("area_boundaries")
       .select("city,area_slug,area_name"),
   ]);
+
+  const inactiveCutoff = new Date(
+    Date.now() - 180 * 24 * 60 * 60 * 1000
+  ).toISOString();
+
+  const [
+    activeListingRows,
+    recentInactiveListingRows,
+  ] = await Promise.all([
+    fetchListingRows(
+      supabase,
+      ["A", "I"]
+    ),
+    fetchListingRows(
+      supabase,
+      ["inactive"],
+      inactiveCutoff
+    ),
+  ]);
+
+  const listingRows = [
+    ...activeListingRows,
+    ...recentInactiveListingRows,
+  ];
 
   if (sitesResult.error) {
     console.error("Sitemap sites query failed:", sitesResult.error);
@@ -102,6 +220,45 @@ export const GET: APIRoute = async () => {
 
     if (city && slug && cities.includes(city)) {
       urls.add(`${BASE_URL}/${city}/${slug}`);
+    }
+  }
+
+  for (const listing of listingRows) {
+    const city = slugify(
+      listing.normalized_city
+    );
+
+    const listingId = String(
+      listing.mls_number ||
+      listing.id ||
+      ""
+    ).trim();
+
+    const address = String(
+      listing.address ||
+      ""
+    ).trim();
+
+    /*
+     * Keep sitemap generation lightweight.
+     * The listing page itself performs the stricter
+     * description and image indexing check.
+     */
+    const isCompleteEnough =
+      city &&
+      listingId &&
+      address.length >= 5 &&
+      Boolean(listing.image_url);
+
+    if (
+      isCompleteEnough &&
+      cities.includes(city)
+    ) {
+      urls.add(
+        `${BASE_URL}/${city}/listing/${encodeURIComponent(
+          listingId
+        )}`
+      );
     }
   }
 
