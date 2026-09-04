@@ -144,7 +144,7 @@ async function getMonthlySales(
   baseParams.set("resultsPerPage", "100");
   baseParams.set(
     "fields",
-    "mlsNumber,soldDate,soldPrice,listPrice,class"
+    "mlsNumber,soldDate,soldPrice,listPrice,class,details.style"
   );
 
   const listings: any[] = [];
@@ -192,9 +192,10 @@ async function getMonthlySales(
 
   const singleFamilySales = uniqueSales.filter(
     (listing: any) =>
-      String(listing.class || "")
+      String(listing?.details?.style || "")
         .trim()
-        .toLowerCase() === "residential"
+        .toLowerCase() ===
+      "single family residence"
   );
 
   const singleFamilySoldPrices =
