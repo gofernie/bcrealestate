@@ -1551,12 +1551,17 @@ const homepageNeighbourhoodImages = [
       <select name="beds">
         <option value="" selected={!beds && !planMode}>Any Beds</option>
         <optgroup label="Bedroom count">
-          {bedroomOptions.map((bedCount) => (
+          {/* inventory-bed-notify-labels-v2 */}
+          {[2, 3, 4, 5].map((bedCount) => (
             <option
               value={String(bedCount)}
               selected={beds === bedCount}
             >
-              {bedCount}+ Beds
+              {bedCount}+ Beds{
+                bedroomOptions.includes(bedCount)
+                  ? ""
+                  : " - notify me"
+              }
             </option>
           ))}
         </optgroup>
@@ -2213,12 +2218,17 @@ const homepageNeighbourhoodImages = [
 <select name="beds" class="filter-select" aria-label="Bedrooms and floor plan">
   <option value="" selected={!beds && !planMode}>Any Beds</option>
         <optgroup label="Bedroom count">
-          {bedroomOptions.map((bedCount) => (
+          {/* inventory-bed-notify-labels-v2 */}
+          {[2, 3, 4, 5].map((bedCount) => (
             <option
               value={String(bedCount)}
               selected={beds === bedCount}
             >
-              {bedCount}+ Beds
+              {bedCount}+ Beds{
+                bedroomOptions.includes(bedCount)
+                  ? ""
+                  : " - notify me"
+              }
             </option>
           ))}
         </optgroup>
@@ -4111,10 +4121,15 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
             new Option("Any Beds", "")
           );
 
-          availableBeds.forEach((bedCount) => {
+          [2, 3, 4, 5].forEach((bedCount) => {
+            const isAvailable =
+              availableBeds.includes(bedCount);
+
             select.add(
               new Option(
-                `${bedCount}+ Beds`,
+                isAvailable
+                  ? `${bedCount}+ Beds`
+                  : `${bedCount}+ Beds - notify me`,
                 String(bedCount)
               )
             );
@@ -4154,9 +4169,11 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
           value: "",
           label: "Any Beds",
         },
-        ...availableBeds.map((bedCount) => ({
+        ...[2, 3, 4, 5].map((bedCount) => ({
           value: String(bedCount),
-          label: `${bedCount}+ Beds`,
+          label: availableBeds.includes(bedCount)
+            ? `${bedCount}+ Beds`
+            : `${bedCount}+ Beds - notify me`,
         })),
       ].forEach((option) => {
         const button =
@@ -4234,6 +4251,22 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
                 bubbles: true,
               })
             );
+
+            // notify-bed-opens-save-search-v1
+            if (
+              option.value &&
+              !availableBeds.includes(
+                Number(option.value)
+              )
+            ) {
+              window.setTimeout(() => {
+                document
+                  .getElementById(
+                    "hero-save-search-btn"
+                  )
+                  ?.click();
+              }, 150);
+            }
           }
         );
 
@@ -4246,6 +4279,25 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
           ?.textContent?.trim() ||
         "Any Beds";
     };
+
+    // initialize-price-aware-bedrooms-v1
+    // Rebuild after the generic custom selects have been created.
+    const initializeBedroomOptions = () => {
+      refreshBedroomOptions({
+        resetInvalid: false,
+      });
+    };
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(
+        initializeBedroomOptions
+      );
+    });
+
+    window.setTimeout(
+      initializeBedroomOptions,
+      250
+    );
 
     let priceDropdown = null;
     let priceTrigger = null;
