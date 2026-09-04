@@ -1940,6 +1940,52 @@ if (sheetFloorplanBtn) {
 
 queueMicrotask(syncMobileMediaNav);
 let modalHistoryPushed = false;
+let modalReturnUrl = window.location.href;
+
+function getListingUrl(card) {
+  if (!card) return "";
+
+  const city = String(
+    card.dataset.city ||
+    document.body.dataset.city ||
+    "nanaimo"
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+
+  const listingId = String(
+    card.dataset.mls ||
+    card.dataset.listingId ||
+    card.dataset.itemId ||
+    ""
+  ).trim();
+
+  return listingId
+    ? `/${city}/listing/${encodeURIComponent(listingId)}`
+    : "";
+}
+
+function syncListingUrl(card, mode = "replace") {
+  const listingUrl = getListingUrl(card);
+  if (!listingUrl) return;
+
+  const state = {
+    ...(history.state || {}),
+    intentModalOpen: true,
+    listingId:
+      card.dataset.mls ||
+      card.dataset.listingId ||
+      "",
+    modalReturnUrl,
+  };
+
+  if (mode === "push") {
+    history.pushState(state, "", listingUrl);
+  } else {
+    history.replaceState(state, "", listingUrl);
+  }
+}
 let totalIntentReactions = 0;
 let positiveIntentReactions = 0;
 let hasShownIntentSummary = false;
@@ -2297,8 +2343,11 @@ sheet.removeAttribute("inert");
 document.body.style.overflow = "hidden";
 
 if (!modalHistoryPushed) {
+  modalReturnUrl = window.location.href;
   modalHistoryPushed = true;
-  history.pushState({ intentModalOpen: true }, "", window.location.href);
+  syncListingUrl(card, "push");
+} else {
+  syncListingUrl(card, "replace");
 }
 
 window.requestAnimationFrame(() => {
@@ -2413,12 +2462,7 @@ if (
 
 if (modalHistoryPushed && !options.fromPopState) {
   modalHistoryPushed = false;
-
-  history.replaceState(
-    { ...(history.state || {}), intentModalOpen: false },
-    "",
-    window.location.href
-  );
+  history.back();
 } else {
   modalHistoryPushed = false;
 }
@@ -4064,6 +4108,7 @@ if (index >= cards.length - 1) {
 }
 
        activeCard = cards[index + 1];
+syncListingUrl(activeCard, "replace");
 renderCard(activeCard);
 fetchListingDetailIfNeeded(activeCard).then((wasUpdated) => {
   if (!wasUpdated || !activeCard) return;
@@ -4115,6 +4160,7 @@ requestAnimationFrame(() => {
           if (index <= 0) return;
 
        activeCard = cards[index - 1];
+syncListingUrl(activeCard, "replace");
 renderCard(activeCard);
 fetchListingDetailIfNeeded(activeCard).then((wasUpdated) => {
   if (!wasUpdated || !activeCard) return;
@@ -4267,9 +4313,7 @@ sheetShareBtn?.addEventListener("click", async (event) => {
       ? "land"
       : "homes";
 
-  const shareUrl =
-    `${window.location.origin}/${city}/${typePath}` +
-    `?listing_id=${encodeURIComponent(listingId)}`;
+  const shareUrl = `${window.location.origin}${getListingUrl(activeCard)}`;
 
   try {
     if (navigator.share) {

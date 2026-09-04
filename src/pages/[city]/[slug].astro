@@ -97,38 +97,43 @@ const sharedListingId =
 let sharedListing = null;
 
 if (sharedListingId) {
-  const {
-    data,
-    error: sharedListingError,
-  } = await supabase
+  const byMls = await supabase
     .from("listing_rows")
-    .select(`
-      id,
-      mls_number,
-      address,
-      price,
-      beds,
-      baths,
-      sqft,
-      normalized_city,
-      normalized_type,
-      image_url,
-      images
-    `)
-    .or(
-      `id.eq.${sharedListingId},mls_number.eq.${sharedListingId}`
-    )
+    .select("*")
+    .eq("mls_number", sharedListingId)
     .eq("status", "A")
     .maybeSingle();
 
-  if (sharedListingError) {
+  if (byMls.error) {
     console.error(
-      "Could not load shared listing metadata:",
-      sharedListingError
+      "Could not load shared listing by MLS number:",
+      byMls.error
     );
   }
 
-  sharedListing = data || null;
+  sharedListing = byMls.data || null;
+
+  const looksLikeUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(sharedListingId);
+
+  if (!sharedListing && looksLikeUuid) {
+    const byId = await supabase
+      .from("listing_rows")
+      .select("*")
+      .eq("id", sharedListingId)
+      .eq("status", "A")
+      .maybeSingle();
+
+    if (byId.error) {
+      console.error(
+        "Could not load shared listing by internal ID:",
+        byId.error
+      );
+    }
+
+    sharedListing = byId.data || null;
+  }
 }
 const isMobileHomeSite =
   site?.template === "mobile-homes" ||
@@ -1490,6 +1495,34 @@ if (hasPolygonSearch && listings.length > 0) {
       ).toFixed(1)
     }ms | ids=${orderedPolygonIds.length} | rows=${listings.length}`
   );
+}
+
+/*
+ * A deep-linked listing may sit outside the first paginated batch.
+ * Prepend it so the modal controller has a real card to open.
+ */
+if (sharedListing) {
+  const sharedKey = String(
+    sharedListing.mls_number ||
+    sharedListing.id ||
+    ""
+  ).trim();
+
+  const alreadyIncluded = listings.some((listing) =>
+    [
+      listing?.mls_number,
+      listing?.id,
+    ]
+      .map((value) => String(value || "").trim())
+      .includes(sharedKey)
+  );
+
+  if (!alreadyIncluded) {
+    listings = [
+      sharedListing,
+      ...listings,
+    ];
+  }
 }
 
 const debugLinyard = listings.find(
@@ -9536,6 +9569,7 @@ class="card original-card"
                 data-card-id={String(listing?.id || listing?.mls_number || index)}
                 data-listing-id={String(listing?.id || listing?.mls_number || "")}
             data-mls={String(listing?.mls_number || listing?.id || "")}
+data-listing-url={`/${String(listing?.normalized_city || listing?.city || city).toLowerCase().replace(/\s+/g, "-")}/listing/${encodeURIComponent(String(listing?.mls_number || listing?.id || ""))}`}
 data-image={image}
 
 data-floorplans={JSON.stringify(
@@ -9592,7 +9626,15 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
 
 <div class="card-body">
   <div class="price">{formatPrice(listing.price)}</div>
-  <div class="address">{formatAddress(listing.address)}</div>
+  <div class="address">
+  <a
+    class="listing-address-link"
+    href={`/${String(listing?.normalized_city || listing?.city || city).toLowerCase().replace(/\s+/g, "-")}/listing/${encodeURIComponent(String(listing?.mls_number || listing?.id || ""))}`}
+    style="color:inherit;text-decoration:none;"
+  >
+    {formatAddress(listing.address)}
+  </a>
+</div>
   <div class="card-city">
     {city.charAt(0).toUpperCase() + city.slice(1)}, BC
   </div>
@@ -12402,6 +12444,7 @@ class="card refined-card" style="border-radius:6px;overflow:hidden;transition:tr
             data-card-id="${listing.id || listing.mls_number || ""}"
             data-listing-id="${listing.id || listing.mls_number || ""}"
             data-mls="${listing.mls_number || listing.id || ""}"
+data-listing-url="/${String(listing.normalized_city || listing.city || 'nanaimo').toLowerCase().replace(/\s+/g, '-')}/listing/${encodeURIComponent(String(listing.mls_number || listing.id || ''))}"
             data-image="${image}"
             data-images='${JSON.stringify(listing.images || [])}'
             data-price="${refinedPrice}"
