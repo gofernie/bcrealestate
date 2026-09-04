@@ -1,4 +1,4 @@
-﻿import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 import { rebuildListingRows } from "../../scripts/rebuild-listing-rows";
 
 const PAGE_SIZE = 50;
@@ -145,21 +145,21 @@ function getListingId(listing: any) {
   );
 }
 
+const OCEANSIDE_FETCH_CITIES = [
+  "Parksville",
+  "Nanoose Bay",
+  "Qualicum Beach",
+  "Qualicum North",
+  "French Creek",
+  "Fairwinds",
+  "Little Qualicum River Village",
+  "Bowser/Deep Bay"
+];
+
 const CITY_FETCH_GROUPS: Record<string, string[]> = {
-  parksville: [
-    "Parksville",
-    "Nanoose Bay"
-  ],
+  parksville: OCEANSIDE_FETCH_CITIES,
 
-  "qualicum beach": [
-    "Qualicum Beach",
-    "Qualicum North",
-    "French Creek",
-    "Fairwinds",
-    "Little Qualicum River Village",
-    "Bowser/Deep Bay"
-  ],
-
+  "qualicum beach": OCEANSIDE_FETCH_CITIES,
   duncan: [
     "Duncan",
     "Chemainus",
