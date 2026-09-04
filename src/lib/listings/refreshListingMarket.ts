@@ -362,7 +362,7 @@ export async function refreshListingMarket(
         );
         params.set(
           "include",
-         "details,address,images,rooms,lot"
+         "details,address,images,rooms,lot,map"
         );
         params.set("status", "A");
 
