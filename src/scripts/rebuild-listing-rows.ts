@@ -543,7 +543,6 @@ const DUNCAN_MARKET_CITIES = new Set([
   "crofton",
   "east duncan",
   "honeymoon bay",
-  "ladysmith",
   "lake cowichan",
   "saltair",
   "west duncan",
