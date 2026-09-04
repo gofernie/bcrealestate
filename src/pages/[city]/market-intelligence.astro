@@ -19,6 +19,13 @@ const cityLabel = city
   .replace(/-/g, " ")
   .replace(/\b\w/g, (character) => character.toUpperCase());
 
+const cityDatabaseKeys = Array.from(
+  new Set([
+    city,
+    city.replace(/-/g, " "),
+  ])
+);
+
 const site = await getSite(Astro.url.hostname, city);
 const accent = site?.accent_color || "#633a98";
 
@@ -26,7 +33,7 @@ const { data: listings = [], error: listingsError } =
   await supabase
     .from("listing_rows")
     .select("price, normalized_area, normalized_type, listed_at, created_at")
-    .eq("normalized_city", city)
+    .in("normalized_city", cityDatabaseKeys)
     .eq("status", "A")
     .limit(1000);
 
@@ -247,7 +254,7 @@ const { data: monthlyRows = [], error: monthlyError } =
       median_sold_price,
       average_sale_to_list_ratio
     `)
-    .eq("city", city)
+    .in("city", cityDatabaseKeys)
     .order("month_start", { ascending: false })
     .limit(24);
 
