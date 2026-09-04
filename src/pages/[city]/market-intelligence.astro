@@ -253,7 +253,8 @@ const { data: monthlyRows = [], error: monthlyError } =
       sales,
       median_sold_price,
       median_single_family_sold_price,
-      average_sale_to_list_ratio
+      average_sale_to_list_ratio,
+      median_days_on_market
     `)
     .in("city", cityDatabaseKeys)
     .order("month_start", { ascending: false })
@@ -279,6 +280,7 @@ const allMonthlyHistory = [...monthlyRows]
     sales: Number(row.sales || 0),
     medianSoldPrice: Number(row.median_single_family_sold_price || 0),
     saleToList: Number(row.average_sale_to_list_ratio || 0),
+    medianDaysOnMarket: Number(row.median_days_on_market || 0),
   }));
 
 const listingOnlyMarket = [
@@ -377,6 +379,42 @@ const reliableSalesMonths = monthlyHistory.filter(
 const hasReliableSalesHistory =
   !listingOnlyMarket &&
   reliableSalesMonths >= 6;
+const latestMonth = monthlyHistory.at(-1);
+
+const latestSalesToNewListings =
+  latestMonth?.newListings > 0
+    ? (
+        latestMonth.sales /
+        latestMonth.newListings
+      ) * 100
+    : 0;
+
+const marketBehaviourSummary = latestMonth
+  ? [
+      latestSalesToNewListings > 0
+        ? `Sales represented ${latestSalesToNewListings.toFixed(
+            0
+          )}% of new listings in ${latestMonth.label}. ${
+            latestSalesToNewListings < 40
+              ? "New supply substantially outpaced completed sales, indicating more buyer choice and stronger competition between sellers."
+              : latestSalesToNewListings < 60
+                ? "New supply and completed sales were relatively balanced."
+                : "Sales kept pace closely with new supply, indicating firmer demand."
+          }`
+        : "",
+      latestMonth.medianDaysOnMarket > 0
+        ? `The median sold listing spent ${latestMonth.medianDaysOnMarket.toLocaleString()} days on market.`
+        : "",
+      latestMonth.saleToList > 0
+        ? `Properties sold for ${latestMonth.saleToList.toFixed(
+            1
+          )}% of asking price on average.`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+  : "";
+
 const priceHistory = monthlyHistory.filter(
   (row) => row.medianSoldPrice > 0
 );
@@ -572,7 +610,7 @@ const updatedLabel = new Intl.DateTimeFormat("en-CA", {
         <h2>The market at a glance</h2>
       </div>
 
-      <p>{marketSummary}</p>
+      <p>{marketSummary} {marketBehaviourSummary}</p>
     </section>
 
     <section class="market-section market-trend">
@@ -704,6 +742,32 @@ const updatedLabel = new Intl.DateTimeFormat("en-CA", {
               <strong>
                 {monthlyHistory.at(-1)?.medianSoldPrice
                   ? formatPrice(monthlyHistory.at(-1).medianSoldPrice)
+                  : "—"}
+              </strong>
+            </p>
+            <p hidden={!hasReliableSalesHistory}>
+              <span>Median days on market</span>
+              <strong>
+                {latestMonth?.medianDaysOnMarket
+                  ? `${latestMonth.medianDaysOnMarket} days`
+                  : "—"}
+              </strong>
+            </p>
+
+            <p hidden={!hasReliableSalesHistory}>
+              <span>Sale-to-list ratio</span>
+              <strong>
+                {latestMonth?.saleToList
+                  ? `${latestMonth.saleToList.toFixed(1)}%`
+                  : "—"}
+              </strong>
+            </p>
+
+            <p hidden={!hasReliableSalesHistory}>
+              <span>Sales / new listings</span>
+              <strong>
+                {latestSalesToNewListings
+                  ? `${latestSalesToNewListings.toFixed(0)}%`
                   : "—"}
               </strong>
             </p>

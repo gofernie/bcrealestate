@@ -144,7 +144,7 @@ async function getMonthlySales(
   baseParams.set("resultsPerPage", "100");
   baseParams.set(
     "fields",
-    "mlsNumber,soldDate,soldPrice,listPrice,class,details.style"
+    "mlsNumber,listDate,soldDate,soldPrice,listPrice,class,details.style"
   );
 
   const listings: any[] = [];
@@ -211,6 +211,35 @@ async function getMonthlySales(
     )
     .filter((price) => price > 0);
 
+  const daysOnMarket = uniqueSales
+    .map((listing: any) => {
+      const listedAt = Date.parse(
+        String(listing.listDate || "")
+      );
+
+      const soldAt = Date.parse(
+        String(listing.soldDate || "")
+      );
+
+      if (
+        !Number.isFinite(listedAt) ||
+        !Number.isFinite(soldAt) ||
+        soldAt < listedAt
+      ) {
+        return null;
+      }
+
+      return Math.round(
+        (soldAt - listedAt) / 86400000
+      );
+    })
+    .filter(
+      (days): days is number =>
+        days != null &&
+        days >= 0 &&
+        days <= 3650
+    );
+
   const ratios = uniqueSales
     .map((listing: any) => {
       const soldPrice =
@@ -232,6 +261,7 @@ async function getMonthlySales(
       median(singleFamilySoldPrices),
     averageSoldPrice: average(soldPrices),
     saleToList: average(ratios),
+    medianDaysOnMarket: median(daysOnMarket),
   };
 }
 
@@ -253,7 +283,7 @@ async function refreshMarket(city: string) {
     })
     .eq("city", marketKey)
     .not(
-      "median_single_family_sold_price",
+      "median_days_on_market",
       "is",
       null
     );
@@ -347,6 +377,12 @@ async function refreshMarket(city: string) {
           ? null
           : Math.round(
               sales.averageSoldPrice
+            ),
+      median_days_on_market:
+        sales.medianDaysOnMarket == null
+          ? null
+          : Math.round(
+              sales.medianDaysOnMarket
             ),
       average_sale_to_list_ratio:
         sales.saleToList == null
