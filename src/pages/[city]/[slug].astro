@@ -946,10 +946,46 @@ const areaFilterOptions = areaBoundaryRows
   .sort((a, b) => a.label.localeCompare(b.label));
 const { data: navRows = [] } = await supabase
   .from("listing_rows")
-  .select("normalized_type")
+  .select("normalized_type, normalized_area")
   .in("normalized_city", cityDatabaseKeys)
   .not("normalized_type", "is", null);
 
+const navAreaCounts = new Map<string, number>();
+
+(navRows || []).forEach((row) => {
+  const areaKey = String(row.normalized_area || "")
+    .replace(/-/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  if (!areaKey) return;
+
+  navAreaCounts.set(
+    areaKey,
+    (navAreaCounts.get(areaKey) || 0) + 1
+  );
+});
+
+const rankedNavAreas = [...areas].sort((a, b) => {
+  const aKey = String(a)
+    .replace(/-/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  const bKey = String(b)
+    .replace(/-/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  return (
+    (navAreaCounts.get(bKey) || 0) -
+      (navAreaCounts.get(aKey) || 0) ||
+    String(a).localeCompare(String(b))
+  );
+});
 const propertyTypes = [...new Set(
   navRows
     .map((row) => String(row.normalized_type || "").trim())
@@ -2868,7 +2904,7 @@ const socialUrl =
     page={page}
     listings={listings}
     navIntentPages={navIntentPages}
-    areas={areas}
+    areas={rankedNavAreas}
   />
 ) : (
   <>
@@ -8217,7 +8253,7 @@ grid-template-columns: 30px minmax(0, 1fr);
 <SiteNav
   city={city}
   site={site}
-  areas={areas}
+  areas={rankedNavAreas}
   intentPages={navIntentPages}
 />
 <main
