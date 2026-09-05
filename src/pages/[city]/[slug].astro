@@ -12,6 +12,21 @@ import RelatedIntentCards from "../../components/RelatedIntentCards.astro";
 import { getNavIntentPages } from "../../lib/getNavIntentPages";
 import MobileHomeAreaPage from "../../components/sites/MobileHomeAreaPage.astro";
 export const prerender = false;
+
+/*
+ * Keep dedicated area/type pages server-rendered for SEO, while allowing
+ * Netlify to serve a recent response immediately and refresh it behind
+ * the scenes.
+ */
+Astro.response.headers.set(
+  "Cache-Control",
+  "public, max-age=0, must-revalidate"
+);
+
+Astro.response.headers.set(
+  "Netlify-CDN-Cache-Control",
+  "public, s-maxage=300, stale-while-revalidate=3600"
+);
 const supabase = createClient(
   import.meta.env.PUBLIC_SUPABASE_URL,
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
@@ -901,6 +916,34 @@ href: buildContentHref(areaSlug, "area"),
   })
   .filter((a) => a.label && a.href);
 
+/* dedicated-type-page-area-filter */
+const areaFilterOptions = areaBoundaryRows
+  .map((row) => {
+    const value = String(
+      row.area_name ||
+      row.area_slug ||
+      ""
+    )
+      .replace(/-/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+
+    const label = String(
+      row.area_name ||
+      row.area_slug ||
+      ""
+    )
+      .replace(/^pq\s+/i, "")
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (character) =>
+        character.toUpperCase()
+      );
+
+    return { value, label };
+  })
+  .filter((item) => item.value && item.label)
+  .sort((a, b) => a.label.localeCompare(b.label));
 const { data: navRows = [] } = await supabase
   .from("listing_rows")
   .select("normalized_type")
@@ -9405,6 +9448,23 @@ Approximate driving times from{" "}
 )}
 
 
+{isDedicatedTypePage && areaFilterOptions.length > 0 && (
+  <select
+    class="area-filter-select"
+    aria-label="Filter by area"
+  >
+    <option value="all">Any area</option>
+
+    {areaFilterOptions.map((item) => (
+      <option
+        value={item.value}
+        selected={filterAreas.includes(item.value)}
+      >
+        {item.label}
+      </option>
+    ))}
+  </select>
+)}
   <select class="price-filter-select" aria-label="Filter by price">
     <option value="all">Any Price</option>
 
@@ -11817,6 +11877,7 @@ this.classList.add("active");
 </script>
 
   <script is:inline>
+const areaSelect = document.querySelector(".area-filter-select");
 const priceSelect = document.querySelector(".price-filter-select");
 const typeSelect = document.querySelector(".type-filter-select");
 const sortSelect = document.querySelector(".sort-filter-select");
@@ -11824,6 +11885,10 @@ const bedsSelect = document.querySelector(".beds-filter-select");
 const initialParams = new URLSearchParams(window.location.search);
 
 
+if (areaSelect && initialParams.get("area")) {
+  areaSelect.value =
+    String(initialParams.get("area") || "all").toLowerCase();
+}
 if (priceSelect && initialParams.get("price")) {
   priceSelect.value = initialParams.get("price");
 }
@@ -11897,7 +11962,8 @@ function jsTitleCase(value = "") {
   }
 function getCurrentFilters() {
   return {
-    price: priceSelect?.value || "all",
+        area: String(areaSelect?.value || "all").toLowerCase(),
+price: priceSelect?.value || "all",
     type: String(typeSelect?.value || "all").toLowerCase(),
     beds: String(bedsSelect?.value || "all").toLowerCase(),
   };
@@ -12143,6 +12209,7 @@ showFilterLoadingState();
 window.location.search = params.toString();
 }
 
+areaSelect?.addEventListener("change", updateSearchFromFilters);
 priceSelect?.addEventListener("change", updateSearchFromFilters);
 
 typeSelect?.addEventListener("change", () => {
@@ -15304,6 +15371,12 @@ document.addEventListener("click", (event) => {
 <script is:inline>
 (function () {
   const configs = [
+    {
+      selector: ".area-filter-select",
+      label: "Area",
+      title: "Select area",
+      className: "filter-dd--area"
+    },
     {
       selector: ".price-filter-select",
       label: "Price",
