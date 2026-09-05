@@ -11921,9 +11921,18 @@ const bedsSelect = document.querySelector(".beds-filter-select");
 const initialParams = new URLSearchParams(window.location.search);
 
 
-if (areaSelect && initialParams.get("area")) {
-  areaSelect.value =
-    String(initialParams.get("area") || "all").toLowerCase();
+if (areaSelect) {
+  const initialAreas = initialParams
+    .getAll("area")
+    .map((area) => String(area).trim().toLowerCase());
+
+  Array.from(areaSelect.options).forEach((option) => {
+    option.selected =
+      option.value !== "all" &&
+      initialAreas.includes(
+        String(option.value).trim().toLowerCase()
+      );
+  });
 }
 if (priceSelect && initialParams.get("price")) {
   priceSelect.value = initialParams.get("price");
@@ -12220,7 +12229,15 @@ function updateSearchFromFilters() {
     }
   };
 
-  setOrDelete("area", filters.area);
+  params.delete("area");
+
+  if (areaSelect instanceof HTMLSelectElement) {
+    Array.from(areaSelect.selectedOptions)
+      .filter((option) => option.value !== "all")
+      .forEach((option) => {
+        params.append("area", option.value);
+      });
+  }
   setOrDelete("type", filters.type);
   setOrDelete("beds", filters.beds);
   setOrDelete("price", filters.price);
@@ -15055,7 +15072,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
     const clear = document.createElement("button");
     clear.type = "button";
     clear.className = "type-area-multi__clear";
-    clear.textContent = "Clear";
+    clear.textContent = "All areas";
 
     head.append(title, clear);
     menu.appendChild(head);
@@ -15149,8 +15166,12 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
     });
 
     let automaticAreaTimer;
+    let areaSelectionDirty = false;
 
     const applyAreas = () => {
+      areaSelectionDirty = false;
+      window.clearTimeout(automaticAreaTimer);
+
       const nextUrl = new URL(window.location.href);
 
       nextUrl.searchParams.delete("area");
@@ -15176,12 +15197,14 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
     };
 
     const scheduleAreaApply = () => {
-      window.clearTimeout(automaticAreaTimer);
+      areaSelectionDirty = true;
+    };
 
-      automaticAreaTimer = window.setTimeout(
-        applyAreas,
-        650
-      );
+    const finishPendingAreaSelection = () => {
+      if (!areaSelectionDirty) return;
+
+      window.clearTimeout(automaticAreaTimer);
+      applyAreas();
     };
 
     clear.addEventListener("click", () => {
@@ -15208,15 +15231,44 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
         "aria-expanded",
         String(opening)
       );
+
+      if (!opening) {
+        finishPendingAreaSelection();
+      }
     });
 
     menu.addEventListener("click", (event) => {
       event.stopPropagation();
     });
 
-    document.addEventListener("click", () => {
+    document.addEventListener(
+      "click",
+      (event) => {
+        if (
+          menu.hidden ||
+          wrapper.contains(event.target)
+        ) {
+          return;
+        }
+
+        menu.hidden = true;
+        trigger.setAttribute("aria-expanded", "false");
+
+        if (areaSelectionDirty) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          finishPendingAreaSelection();
+        }
+      },
+      true
+    );
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || menu.hidden) return;
+
       menu.hidden = true;
       trigger.setAttribute("aria-expanded", "false");
+      finishPendingAreaSelection();
     });
 
 
@@ -15840,7 +15892,7 @@ document.addEventListener("click", (event) => {
     const clear = document.createElement("button");
     clear.type = "button";
     clear.className = "filter-dd__clear";
-    clear.textContent = "Clear";
+    clear.textContent = "All areas";
 
     head.append(title, clear);
     menu.appendChild(head);
