@@ -9450,7 +9450,7 @@ Approximate driving times from{" "}
 
 {isDedicatedTypePage && areaFilterOptions.length > 0 && (
   <select
-    class="area-filter-select"
+    class="area-filter-select" multiple
     aria-label="Filter by area"
   >
     <option value="all">Any area</option>
@@ -14822,7 +14822,370 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
 }
 
 </style>
-</Layout>
+
+<!-- type-area-multiselect-v1 -->
+<style is:global>
+  .area-filter-select[hidden] {
+    display: none !important;
+  }
+
+  .type-area-multi {
+    position: relative;
+    align-self: stretch;
+    flex: 0 0 155px;
+    width: 155px;
+    min-width: 155px;
+    box-sizing: border-box;
+    border-right: 1px solid var(--line);
+  }
+
+  .type-area-multi__trigger {
+    width: 100%;
+  }
+
+  .intent-controls .type-area-multi__trigger {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 18px !important;
+    grid-template-rows: auto auto !important;
+    grid-template-areas:
+      "label arrow"
+      "value arrow" !important;
+    gap: 3px 8px !important;
+    align-items: center;
+    align-content: center !important;
+    height: 100%;
+    padding: 0 14px;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .type-area-multi__label,
+  .type-area-multi__value {
+    justify-self: start;
+    width: 100%;
+    text-align: left;
+  }
+
+  .type-area-multi__label {
+    grid-area: label;
+    color: var(--ink);
+    font-size: .68rem;
+    font-weight: 850;
+    line-height: 1;
+  }
+
+  .type-area-multi__value {
+    grid-area: value;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: .78rem;
+    font-weight: 400;
+  }
+
+  .type-area-multi__menu {
+    position: absolute;
+    z-index: 500;
+    top: calc(100% + 8px);
+    left: 0;
+    width: min(360px, calc(100vw - 32px));
+    max-height: 430px;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: white;
+    box-shadow: 0 20px 45px rgba(25, 20, 35, .16);
+  }
+
+  .type-area-multi__menu[hidden] {
+    display: none;
+  }
+
+  .type-area-multi__head,
+  .type-area-multi__footer {
+    position: sticky;
+    z-index: 2;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 13px 16px;
+    background: white;
+  }
+
+  .type-area-multi__head {
+    top: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .type-area-multi__footer {
+    bottom: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .type-area-multi__clear {
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .type-area-multi__option {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 22px;
+    align-items: center;
+    width: 100%;
+    min-height: 48px;
+    padding: 11px 16px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: white;
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .type-area-multi__option.is-selected {
+    background: color-mix(in srgb, var(--accent) 9%, white);
+    color: var(--accent);
+    font-weight: 750;
+  }
+
+  .type-area-multi__check {
+    color: var(--accent);
+    font-weight: 900;
+    text-align: right;
+  }
+
+  .type-area-multi__apply {
+    width: 100%;
+    padding: 11px 16px;
+    border: 0;
+    border-radius: 7px;
+    background: var(--accent);
+    color: white;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+  }
+</style>
+
+<script is:inline>
+  (() => {
+    const select =
+      document.querySelector(".area-filter-select");
+
+    if (!(select instanceof HTMLSelectElement)) return;
+
+    select.hidden = true;
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "type-area-multi";
+
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "type-area-multi__trigger";
+    trigger.setAttribute("aria-expanded", "false");
+
+    const fieldLabel = document.createElement("span");
+    fieldLabel.className = "type-area-multi__label";
+    fieldLabel.textContent = "Area";
+
+    const value = document.createElement("span");
+    value.className = "type-area-multi__value";
+
+    const chevron = document.createElement("span");
+    chevron.style.gridArea = "arrow";
+    chevron.textContent = "⌄";
+    chevron.setAttribute("aria-hidden", "true");
+
+    trigger.append(fieldLabel, value, chevron);
+
+    const menu = document.createElement("div");
+    menu.className = "type-area-multi__menu";
+    menu.hidden = true;
+
+    const head = document.createElement("div");
+    head.className = "type-area-multi__head";
+
+    const title = document.createElement("strong");
+    title.textContent = "Select areas";
+
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.className = "type-area-multi__clear";
+    clear.textContent = "Clear";
+
+    head.append(title, clear);
+    menu.appendChild(head);
+
+    const areaOptions = Array.from(select.options)
+      .filter((option) => option.value !== "all");
+
+    const sortSelectedAreasFirst = () => {
+      const buttons = Array.from(
+        menu.querySelectorAll(".type-area-multi__option")
+      );
+
+      buttons
+        .sort((a, b) => {
+          const aOption = areaOptions.find(
+            (option) => option.value === a.dataset.value
+          );
+
+          const bOption = areaOptions.find(
+            (option) => option.value === b.dataset.value
+          );
+
+          if (
+            Boolean(aOption?.selected) !==
+            Boolean(bOption?.selected)
+          ) {
+            return aOption?.selected ? -1 : 1;
+          }
+
+          return String(a.textContent || "").localeCompare(
+            String(b.textContent || "")
+          );
+        })
+        .forEach((button) => {
+          menu.insertBefore(button, footer);
+        });
+    };
+    const sync = () => {
+      const selected = areaOptions.filter(
+        (option) => option.selected
+      );
+
+      value.textContent =
+        selected.length === 0
+          ? "Any area"
+          : selected.length === 1
+            ? selected[0].textContent
+            : `${selected.length} areas`;
+
+      menu
+        .querySelectorAll(".type-area-multi__option")
+        .forEach((button) => {
+          const option = areaOptions.find(
+            (item) => item.value === button.dataset.value
+          );
+
+          const isSelected = Boolean(option?.selected);
+
+          button.classList.toggle(
+            "is-selected",
+            isSelected
+          );
+
+          button.querySelector(
+            ".type-area-multi__check"
+          ).textContent = isSelected ? "✓" : "";
+        });
+    };
+
+    areaOptions.forEach((option) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "type-area-multi__option";
+      button.dataset.value = option.value;
+
+      const label = document.createElement("span");
+      label.textContent = option.textContent;
+
+      const check = document.createElement("span");
+      check.className = "type-area-multi__check";
+
+      button.append(label, check);
+
+      button.addEventListener("click", () => {
+        option.selected = !option.selected;
+        sync();
+      });
+
+      menu.appendChild(button);
+    });
+
+    const footer = document.createElement("div");
+    footer.className = "type-area-multi__footer";
+
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.className = "type-area-multi__apply";
+    apply.textContent = "Apply areas";
+
+    apply.addEventListener("click", () => {
+      const nextUrl = new URL(window.location.href);
+
+      nextUrl.searchParams.delete("area");
+
+      areaOptions
+        .filter((option) => option.selected)
+        .forEach((option) => {
+          nextUrl.searchParams.append(
+            "area",
+            option.value
+          );
+        });
+
+      sessionStorage.setItem(
+        "listingFilterScrollY",
+        String(window.scrollY)
+      );
+
+      window.location.href =
+        nextUrl.pathname +
+        nextUrl.search +
+        nextUrl.hash;
+    });
+
+    clear.addEventListener("click", () => {
+      areaOptions.forEach((option) => {
+        option.selected = false;
+      });
+
+      sync();
+    });
+
+    trigger.addEventListener("click", (event) => {
+      event.stopPropagation();
+
+      const opening = menu.hidden;
+
+      if (opening) {
+        sortSelectedAreasFirst();
+        menu.scrollTop = 0;
+      }
+
+      menu.hidden = !opening;
+      trigger.setAttribute(
+        "aria-expanded",
+        String(opening)
+      );
+    });
+
+    menu.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+
+    document.addEventListener("click", () => {
+      menu.hidden = true;
+      trigger.setAttribute("aria-expanded", "false");
+    });
+
+    footer.appendChild(apply);
+    menu.appendChild(footer);
+    wrapper.append(trigger, menu);
+    select.insertAdjacentElement("afterend", wrapper);
+
+    sync();
+  })();
+</script></Layout>
 
 <style>
 /* NUMBERED AMENITY LIST / MAP PAIRING */
@@ -15371,12 +15734,6 @@ document.addEventListener("click", (event) => {
 <script is:inline>
 (function () {
   const configs = [
-    {
-      selector: ".area-filter-select",
-      label: "Area",
-      title: "Select area",
-      className: "filter-dd--area"
-    },
     {
       selector: ".price-filter-select",
       label: "Price",

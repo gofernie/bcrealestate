@@ -4930,6 +4930,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
     }
 
     function openMenu() {
+      sortSelectedAreasFirst();
       document.dispatchEvent(
         new CustomEvent("hero-dropdown:opened", { detail: multiselect })
       );
@@ -4944,6 +4945,26 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
       trigger.setAttribute("aria-expanded", "true");
     }
 
+    function sortSelectedAreasFirst() {
+      const selectedSet = new Set(checkedOptions());
+
+      options()
+        .sort((a, b) => {
+          const aSelected = selectedSet.has(a);
+          const bSelected = selectedSet.has(b);
+
+          if (aSelected !== bSelected) {
+            return aSelected ? -1 : 1;
+          }
+
+          return labelText(a).localeCompare(labelText(b));
+        })
+        .forEach((option) => menu.appendChild(option));
+
+      if (clearButton) {
+        menu.prepend(clearButton);
+      }
+    }
     function syncDropdown() {
       const selected = checkedOptions();
       const selectedSet = new Set(selected);
@@ -4964,19 +4985,6 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
           check.textContent = input?.checked ? "✓" : "";
         }
       });
-
-      options()
-        .sort((a, b) => {
-          const aSelected = selectedSet.has(a);
-          const bSelected = selectedSet.has(b);
-
-          if (aSelected !== bSelected) {
-            return aSelected ? -1 : 1;
-          }
-
-          return labelText(a).localeCompare(labelText(b));
-        })
-        .forEach((option) => menu.appendChild(option));
 
       clearButton?.classList.toggle(
         "is-selected",
