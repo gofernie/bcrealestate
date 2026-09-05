@@ -283,6 +283,273 @@ const allMonthlyHistory = [...monthlyRows]
     medianDaysOnMarket: Number(row.median_days_on_market || 0),
   }));
 
+/* island-market-comparison-v1 */
+const islandMarketKeys = [
+  "campbell river",
+  "colwood",
+  "comox",
+  "duncan",
+  "french creek",
+  "ladysmith",
+  "lantzville",
+  "nanaimo",
+  "parksville",
+  "port alberni",
+  "qualicum beach",
+  "saanich",
+  "tofino",
+];
+
+const {
+  data: islandMonthlyRows = [],
+  error: islandMonthlyError,
+} = await supabase
+  .from("market_monthly_stats")
+  .select(`
+    city,
+    month_start,
+    new_listings,
+    sales,
+    median_single_family_sold_price,
+    median_days_on_market,
+    average_sale_to_list_ratio
+  `)
+  .in("city", islandMarketKeys)
+  .not("median_days_on_market", "is", null)
+  .order("month_start", { ascending: false })
+  .limit(96);
+
+if (islandMonthlyError) {
+  console.error(
+    "Island market comparison query failed:",
+    islandMonthlyError
+  );
+}
+
+const percentChange = (
+  currentValue: number,
+  previousValue: number
+) =>
+  currentValue > 0 && previousValue > 0
+    ? (
+        (currentValue - previousValue) /
+        previousValue
+      ) * 100
+    : null;
+
+const movementSignal = (
+  value: number | null,
+  threshold: number,
+  inverse = false
+) => {
+  if (value == null) return 0;
+
+  const signal =
+    value >= threshold
+      ? 1
+      : value <= -threshold
+        ? -1
+        : 0;
+
+  return inverse ? signal * -1 : signal;
+};
+
+const marketSlug = (value: string) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const marketLabel = (value: string) =>
+  String(value || "")
+    .replace(/\b\w/g, (character) =>
+      character.toUpperCase()
+    );
+
+const islandRowsByMarket = new Map<
+  string,
+  any[]
+>();
+
+for (const row of islandMonthlyRows || []) {
+  const marketKey = String(row.city || "")
+    .trim()
+    .toLowerCase();
+
+  if (!marketKey) continue;
+
+  const rows =
+    islandRowsByMarket.get(marketKey) || [];
+
+  rows.push({
+    month: String(row.month_start || ""),
+    newListings:
+      Number(row.new_listings || 0),
+    sales:
+      Number(row.sales || 0),
+    medianSoldPrice:
+      Number(
+        row.median_single_family_sold_price ||
+        0
+      ),
+    medianDaysOnMarket:
+      Number(row.median_days_on_market || 0),
+    saleToList:
+      Number(
+        row.average_sale_to_list_ratio || 0
+      ),
+  });
+
+  islandRowsByMarket.set(marketKey, rows);
+}
+
+const islandMarketComparisons =
+  islandMarketKeys
+    .map((marketKey) => {
+      const history = [
+        ...(islandRowsByMarket.get(marketKey) ||
+          []),
+      ]
+        .sort((a, b) =>
+          a.month.localeCompare(b.month)
+        )
+        .slice(-4);
+
+      if (history.length < 4) return null;
+
+      const baseline = history[0];
+      const latest = history.at(-1);
+
+      if (!latest) return null;
+
+      const baselineAbsorption =
+        baseline.newListings > 0
+          ? (
+              baseline.sales /
+              baseline.newListings
+            ) * 100
+          : 0;
+
+      const latestAbsorption =
+        latest.newListings > 0
+          ? (
+              latest.sales /
+              latest.newListings
+            ) * 100
+          : 0;
+
+      const priceChange = percentChange(
+        latest.medianSoldPrice,
+        baseline.medianSoldPrice
+      );
+
+      const domChange =
+        latest.medianDaysOnMarket -
+        baseline.medianDaysOnMarket;
+
+      const saleToListChange =
+        latest.saleToList -
+        baseline.saleToList;
+
+      const absorptionChange =
+        latestAbsorption -
+        baselineAbsorption;
+
+      const signals = [
+        movementSignal(priceChange, 2),
+        movementSignal(domChange, 5, true),
+        movementSignal(
+          saleToListChange,
+          0.5
+        ),
+        movementSignal(
+          absorptionChange,
+          5
+        ),
+      ];
+
+      const positiveSignals =
+        signals.filter(
+          (signal) => signal > 0
+        ).length;
+
+      const negativeSignals =
+        signals.filter(
+          (signal) => signal < 0
+        ).length;
+
+      const score = signals.reduce(
+        (total, signal) => total + signal,
+        0
+      );
+
+      let classification = "Mixed";
+
+      if (
+        positiveSignals >= 2 &&
+        score >= 2
+      ) {
+        classification = "Heating Up";
+      } else if (
+        negativeSignals >= 2 &&
+        score <= -2
+      ) {
+        classification = "Slowing Down";
+      } else if (
+        positiveSignals <= 1 &&
+        negativeSignals <= 1
+      ) {
+        classification = "Steady";
+      }
+
+      const totalSales = history.reduce(
+        (total, row) =>
+          total + row.sales,
+        0
+      );
+
+      const thinSample =
+        totalSales < 30 ||
+        history.filter(
+          (row) =>
+            row.medianSoldPrice > 0
+        ).length < 3;
+
+      const interpretation =
+        classification === "Heating Up"
+          ? "Multiple demand indicators strengthened over the latest three-month period."
+          : classification === "Slowing Down"
+            ? "Multiple indicators softened, pointing to more buyer choice and slower market pressure."
+            : classification === "Steady"
+              ? "Most indicators stayed within a relatively narrow range."
+              : "The indicators moved in different directions, without one clear market trend.";
+
+      return {
+        key: marketKey,
+        slug: marketSlug(marketKey),
+        label: marketLabel(marketKey),
+        href:
+          `/${marketSlug(marketKey)}/market-intelligence`,
+        isCurrent:
+          marketSlug(marketKey) === city,
+        classification,
+        interpretation,
+        thinSample,
+        score,
+        priceChange,
+        domChange,
+        latestSaleToList:
+          latest.saleToList,
+        latestAbsorption,
+        totalSales,
+      };
+    })
+    .filter(Boolean)
+    .sort((a: any, b: any) =>
+      b.score - a.score ||
+      a.label.localeCompare(b.label)
+    );
 const listingOnlyMarket = [
   "fernie",
   "sparwood",
@@ -1188,6 +1455,227 @@ const marketSeoSchema = {
       </div>
     </section>
 
+    <!-- island-market-comparison-ui-v1 -->
+    {islandMarketComparisons.length > 0 && (
+      <section
+        class="market-section island-comparison"
+        aria-labelledby="island-comparison-title"
+      >
+        <div class="section-heading island-comparison__heading">
+          <div>
+            <p class="eyebrow">Across Vancouver Island</p>
+            <h2 id="island-comparison-title">
+              Which markets are heating up or slowing down?
+            </h2>
+          </div>
+
+          <p>
+            The latest settled month is compared with three months
+            earlier using prices, days on market, sale-to-list ratios,
+            and sales relative to new listings.
+          </p>
+        </div>
+
+        <div class="island-comparison__summary">
+          {["Heating Up", "Steady", "Mixed", "Slowing Down"].map(
+            (classification) => (
+              <span
+                class={`island-status island-status--${classification
+                  .toLowerCase()
+                  .replace(/\s+/g, "-")}`}
+              >
+                <strong>
+                  {islandMarketComparisons.filter(
+                    (market: any) =>
+                      market.classification === classification
+                  ).length}
+                </strong>
+                {classification}
+              </span>
+            )
+          )}
+        </div>
+
+        <div class="island-comparison__mobile-sort">
+          <label for="island-market-sort">
+            Rank markets by
+          </label>
+
+          <select id="island-market-sort">
+            <option value="default">
+              Overall market view
+            </option>
+            <option value="momentum:desc">
+              Strongest momentum
+            </option>
+            <option value="price:desc">
+              Largest price increase
+            </option>
+            <option value="dom:asc">
+              Fastest-selling markets
+            </option>
+            <option value="sale-list:desc">
+              Highest sale-to-list ratio
+            </option>
+            <option value="sales-new:desc">
+              Strongest sales activity
+            </option>
+            <option value="market:asc">
+              Market name
+            </option>
+          </select>
+        </div>
+
+        <div class="island-market-table">
+          <div class="island-market-table__head">
+            <button
+              type="button"
+              data-island-sort="market"
+              data-default-direction="asc"
+            >
+              Market <i aria-hidden="true"></i>
+            </button>
+
+            <button
+              type="button"
+              data-island-sort="momentum"
+              data-default-direction="desc"
+            >
+              Momentum <i aria-hidden="true"></i>
+            </button>
+
+            <button
+              type="button"
+              data-island-sort="price"
+              data-default-direction="desc"
+            >
+              3-month price <i aria-hidden="true"></i>
+            </button>
+
+            <button
+              type="button"
+              data-island-sort="dom"
+              data-default-direction="asc"
+            >
+              3-month DOM <i aria-hidden="true"></i>
+            </button>
+
+            <button
+              type="button"
+              data-island-sort="sale-list"
+              data-default-direction="desc"
+            >
+              Sale to list <i aria-hidden="true"></i>
+            </button>
+
+            <button
+              type="button"
+              data-island-sort="sales-new"
+              data-default-direction="desc"
+            >
+              Sales / new <i aria-hidden="true"></i>
+            </button>
+
+            <span aria-hidden="true"></span>
+          </div>
+
+          {islandMarketComparisons.map((market: any) => {
+            const statusClass =
+              market.classification
+                .toLowerCase()
+                .replace(/\s+/g, "-");
+
+            const priceDisplay =
+              market.priceChange == null
+                ? "—"
+                : `${market.priceChange >= 0 ? "+" : ""}${market.priceChange.toFixed(1)}%`;
+
+            const domDisplay =
+              `${market.domChange > 0 ? "+" : ""}${market.domChange} days`;
+
+            return (
+              <a
+                href={market.href}
+                data-island-market-row
+                data-sort-market={market.label.toLowerCase()}
+                data-sort-momentum={market.score}
+                data-sort-price={market.priceChange ?? -9999}
+                data-sort-dom={market.domChange}
+                data-sort-sale-list={market.latestSaleToList}
+                data-sort-sales-new={market.latestAbsorption}
+                class:list={[
+                  "island-market-row",
+                  {
+                    "is-current": market.isCurrent,
+                    "is-thin-sample": market.thinSample,
+                  },
+                ]}
+              >
+                <span class="island-market-row__market">
+                  <strong>{market.label}</strong>
+
+                  <span class="island-market-row__badges">
+                    {market.isCurrent && (
+                      <em>Current market</em>
+                    )}
+
+                    {market.thinSample && (
+                      <small>Smaller sample</small>
+                    )}
+                  </span>
+                </span>
+
+                <span
+                  class={`island-status island-status--${statusClass}`}
+                >
+                  {market.classification}
+                </span>
+
+                <span data-label="3-month price">
+                  {priceDisplay}
+                </span>
+
+                <span data-label="3-month DOM">
+                  {domDisplay}
+                </span>
+
+                <span data-label="Sale to list">
+                  {market.latestSaleToList > 0
+                    ? `${market.latestSaleToList.toFixed(1)}%`
+                    : "—"}
+                </span>
+
+                <span data-label="Sales / new">
+                  {market.latestAbsorption > 0
+                    ? `${market.latestAbsorption.toFixed(0)}%`
+                    : "—"}
+                </span>
+
+                <span
+                  class="island-market-row__arrow"
+                  aria-hidden="true"
+                >
+                  →
+                </span>
+
+                <small class="island-market-row__summary">
+                  {market.interpretation}
+                  {market.thinSample
+                    ? " This market has a smaller sales sample, so month-to-month movement should be read cautiously."
+                    : ""}
+                </small>
+              </a>
+            );
+          })}
+        </div>
+
+        <p class="island-comparison__method">
+          Momentum describes recent direction, not whether a market is
+          expensive or inexpensive. Median prices can also move when the
+          mix of homes sold changes.
+        </p>
+      </section>
+    )}
     <section class="market-note">
       <div>
         <p class="eyebrow">About this data</p>
@@ -1203,6 +1691,272 @@ const marketSeoSchema = {
     </section>
   </main>
 </Layout>
+<!-- island-market-sorting-style-repair-v1 -->
+<style is:global>
+  .island-market-table__head button {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    justify-content: flex-start;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    line-height: inherit;
+    text-align: left;
+    text-transform: inherit;
+    cursor: pointer;
+    appearance: none;
+  }
+
+  .island-market-table__head button:hover,
+  .island-market-table__head button:focus-visible,
+  .island-market-table__head button.is-active {
+    background: transparent;
+    color: var(--accent, #633a98);
+  }
+
+  .island-market-table__head button:focus-visible {
+    border-radius: 3px;
+    outline: 2px solid var(--accent, #633a98);
+    outline-offset: 4px;
+  }
+
+  .island-market-table__head button i {
+    flex: 0 0 auto;
+    min-width: 10px;
+    color: currentColor;
+    font-size: .75rem;
+    font-style: normal;
+    opacity: .45;
+  }
+
+  .island-market-table__head button.is-active i {
+    opacity: 1;
+  }
+
+  .island-comparison__mobile-sort {
+    display: none;
+    margin: 18px 0 14px;
+  }
+
+  .island-comparison__mobile-sort label {
+    display: block;
+    color: var(--market-muted);
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+  }
+
+  .island-comparison__mobile-sort select {
+    width: 100%;
+    min-height: 46px;
+    margin-top: 8px;
+    padding: 0 40px 0 14px;
+    border: 1px solid var(--market-line);
+    border-radius: 10px;
+    background-color: white;
+    color: var(--market-ink);
+    font: inherit;
+  }
+
+  @media (max-width: 920px) {
+    .island-comparison__mobile-sort {
+      display: block;
+    }
+  }
+</style>
+<!-- island-market-sorting-v1 -->
+<script is:inline>
+  (() => {
+    const tables =
+      document.querySelectorAll(".island-market-table");
+
+    tables.forEach((table) => {
+      const rows = Array.from(
+        table.querySelectorAll("[data-island-market-row]")
+      );
+
+      const headerButtons = Array.from(
+        table.querySelectorAll("[data-island-sort]")
+      );
+
+      const mobileSelect =
+        table.previousElementSibling?.querySelector(
+          "#island-market-sort"
+        );
+
+      rows.forEach((row, index) => {
+        row.dataset.originalOrder = String(index);
+      });
+
+      let activeKey = "";
+      let activeDirection = "";
+
+      const getValue = (row, key) => {
+        const value =
+          row.dataset[
+            `sort${key
+              .split("-")
+              .map(
+                (part) =>
+                  part.charAt(0).toUpperCase() +
+                  part.slice(1)
+              )
+              .join("")}`
+          ];
+
+        if (key === "market") {
+          return String(value || "");
+        }
+
+        const numericValue = Number(value);
+
+        return Number.isFinite(numericValue)
+          ? numericValue
+          : -9999;
+      };
+
+      const updateButtons = () => {
+        headerButtons.forEach((button) => {
+          const isActive =
+            button.dataset.islandSort === activeKey;
+
+          button.classList.toggle(
+            "is-active",
+            isActive
+          );
+
+          button.setAttribute(
+            "aria-sort",
+            !isActive
+              ? "none"
+              : activeDirection === "asc"
+              ? "ascending"
+              : "descending"
+          );
+
+          const indicator =
+            button.querySelector("i");
+
+          if (indicator) {
+            indicator.textContent =
+              isActive
+                ? activeDirection === "asc"
+                  ? "↑"
+                  : "↓"
+                : "↕";
+          }
+        });
+      };
+
+      const sortRows = (key, direction) => {
+        activeKey = key;
+        activeDirection = direction;
+
+        const sortedRows = [...rows].sort(
+          (first, second) => {
+            const firstValue =
+              getValue(first, key);
+
+            const secondValue =
+              getValue(second, key);
+
+            let result = 0;
+
+            if (key === "market") {
+              result = firstValue.localeCompare(
+                secondValue
+              );
+            } else {
+              result = firstValue - secondValue;
+            }
+
+            if (result === 0) {
+              result =
+                Number(first.dataset.originalOrder) -
+                Number(second.dataset.originalOrder);
+            }
+
+            return direction === "asc"
+              ? result
+              : -result;
+          }
+        );
+
+        sortedRows.forEach((row) => {
+          table.appendChild(row);
+        });
+
+        updateButtons();
+
+        if (mobileSelect) {
+          mobileSelect.value =
+            `${key}:${direction}`;
+        }
+      };
+
+      const restoreDefault = () => {
+        [...rows]
+          .sort(
+            (first, second) =>
+              Number(first.dataset.originalOrder) -
+              Number(second.dataset.originalOrder)
+          )
+          .forEach((row) => {
+            table.appendChild(row);
+          });
+
+        activeKey = "";
+        activeDirection = "";
+        updateButtons();
+      };
+
+      headerButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const key =
+            button.dataset.islandSort;
+
+          const defaultDirection =
+            button.dataset.defaultDirection ||
+            "desc";
+
+          const direction =
+            activeKey === key
+              ? activeDirection === "asc"
+                ? "desc"
+                : "asc"
+              : defaultDirection;
+
+          sortRows(key, direction);
+        });
+      });
+
+      mobileSelect?.addEventListener(
+        "change",
+        () => {
+          if (mobileSelect.value === "default") {
+            restoreDefault();
+            return;
+          }
+
+          const [key, direction] =
+            mobileSelect.value.split(":");
+
+          sortRows(key, direction);
+        }
+      );
+
+      updateButtons();
+    });
+  })();
+</script>
 
 <style>
   .market-page {
@@ -1216,6 +1970,7 @@ const marketSeoSchema = {
 
   .market-hero {
     position: relative;
+    box-sizing: border-box;
     display: grid;
     min-height: 590px;
     grid-template-columns: minmax(0, 680px) 240px;
@@ -1741,7 +2496,7 @@ const marketSeoSchema = {
 
   @media (max-width: 760px) {
     .market-hero {
-      min-height: 620px;
+      min-height: auto;
       padding: 52px 16px 60px;
       background-image:
         linear-gradient(
@@ -2201,6 +2956,343 @@ const marketSeoSchema = {
     .market-trend__latest--behaviour {
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 24px 0;
+    }
+  }
+
+  /* island-market-comparison-styles-v1 */
+  .island-comparison__heading {
+    align-items: end;
+  }
+
+  .island-comparison__heading > p {
+    max-width: 560px;
+    margin: 0;
+    color: var(--market-muted);
+    line-height: 1.65;
+  }
+
+  .island-comparison__summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 28px 0 18px;
+  }
+
+  .island-comparison__summary .island-status {
+    gap: 7px;
+  }
+
+  .island-comparison__summary strong {
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.15rem;
+    font-weight: 500;
+  }
+
+  .island-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: max-content;
+    min-height: 30px;
+    padding: 6px 10px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .055em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .island-status--heating-up {
+    border-color: rgba(45, 139, 82, .2);
+    background: rgba(45, 139, 82, .1);
+    color: #247044;
+  }
+
+  .island-status--steady {
+    border-color: rgba(40, 91, 133, .18);
+    background: rgba(40, 91, 133, .09);
+    color: #285b85;
+  }
+
+  .island-status--mixed {
+    border-color: rgba(155, 112, 33, .2);
+    background: rgba(180, 131, 40, .1);
+    color: #835e1f;
+  }
+
+  .island-status--slowing-down {
+    border-color: rgba(164, 74, 69, .2);
+    background: rgba(164, 74, 69, .09);
+    color: #9a4944;
+  }
+
+  .island-market-table {
+    overflow: hidden;
+    border: 1px solid var(--market-line);
+    border-radius: 16px;
+  }
+
+  .island-market-table__head,
+  .island-market-row {
+    display: grid;
+    grid-template-columns:
+      minmax(155px, 1.25fr)
+      minmax(120px, .9fr)
+      repeat(4, minmax(88px, .72fr))
+      24px;
+    column-gap: 18px;
+    align-items: center;
+  }
+
+  .island-market-table__head {
+    padding: 13px 20px;
+    background: #f6f4f7;
+    color: var(--market-muted);
+    font-size: .65rem;
+    font-weight: 800;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+  }
+
+  .island-market-row {
+    position: relative;
+    padding: 18px 20px;
+    border-top: 1px solid var(--market-line);
+    color: var(--market-ink);
+    text-decoration: none;
+    transition:
+      background-color 160ms ease,
+      transform 160ms ease;
+  }
+
+  .island-market-row:hover {
+    background: #faf9fb;
+  }
+
+  .island-market-row.is-current {
+    background:
+      color-mix(
+        in srgb,
+        var(--accent, #633a98) 7%,
+        white
+      );
+    box-shadow:
+      inset 4px 0 0
+      var(--accent, #633a98);
+  }
+
+  .island-market-row__market {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .island-market-row__market > strong {
+    font-size: .95rem;
+  }
+
+  .island-market-row__badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .island-market-row__badges em,
+  .island-market-row__badges small {
+    width: max-content;
+    font-size: .61rem;
+    font-style: normal;
+    font-weight: 800;
+    letter-spacing: .045em;
+    text-transform: uppercase;
+  }
+
+  .island-market-row__badges em {
+    color: var(--accent, #633a98);
+  }
+
+  .island-market-row__badges small {
+    color: #8a6a2f;
+  }
+
+  .island-market-row > span:not(
+    .island-market-row__market,
+    .island-status,
+    .island-market-row__arrow
+  ) {
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.05rem;
+  }
+
+  .island-market-row__arrow {
+    font-size: 1.1rem;
+    transition: transform 160ms ease;
+  }
+
+  .island-market-row:hover
+  .island-market-row__arrow {
+    transform: translateX(3px);
+  }
+
+  .island-market-row__summary {
+    grid-column: 1 / -1;
+    margin-top: 11px;
+    color: var(--market-muted);
+    font-size: .75rem;
+    line-height: 1.5;
+  }
+
+  .island-comparison__method {
+    max-width: 900px;
+    margin: 16px 0 0;
+    color: var(--market-muted);
+    font-size: .75rem;
+    line-height: 1.6;
+  }
+
+  @media (max-width: 920px) {
+    .island-market-table__head {
+      display: none;
+    }
+
+    .island-market-table {
+      display: grid;
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      overflow: visible;
+      border: 0;
+      border-radius: 0;
+    }
+
+    .island-market-row {
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+      gap: 15px 12px;
+      align-items: start;
+      border: 1px solid var(--market-line);
+      border-radius: 14px;
+    }
+
+    .island-market-row__market {
+      grid-column: 1 / -1;
+    }
+
+    .island-market-row > .island-status {
+      grid-column: 1 / -1;
+    }
+
+    .island-market-row > span[data-label] {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .island-market-row > span[data-label]::before {
+      content: attr(data-label);
+      color: var(--market-muted);
+      font-family: var(--f-sans, Arial, sans-serif);
+      font-size: .59rem;
+      font-weight: 800;
+      letter-spacing: .055em;
+      text-transform: uppercase;
+    }
+
+    .island-market-row__arrow {
+      position: absolute;
+      top: 20px;
+      right: 18px;
+    }
+
+    .island-market-row__summary {
+      margin-top: 0;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .island-comparison__heading {
+      align-items: start;
+    }
+
+    .island-comparison__summary {
+      display: grid;
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+    }
+
+    .island-comparison__summary
+    .island-status {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .island-market-table {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* island-market-sorting-styles-v1 */
+  .island-market-table__head button {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-align: left;
+    text-transform: inherit;
+    cursor: pointer;
+  }
+
+  .island-market-table__head button:hover,
+  .island-market-table__head button.is-active {
+    color: var(--accent, #633a98);
+  }
+
+  .island-market-table__head button i {
+    min-width: 10px;
+    font-size: .75rem;
+    font-style: normal;
+    opacity: .55;
+  }
+
+  .island-market-table__head button.is-active i {
+    opacity: 1;
+  }
+
+  .island-comparison__mobile-sort {
+    display: none;
+    margin: 18px 0 14px;
+  }
+
+  .island-comparison__mobile-sort label {
+    color: var(--market-muted);
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+  }
+
+  .island-comparison__mobile-sort select {
+    width: 100%;
+    min-height: 46px;
+    margin-top: 8px;
+    padding: 0 40px 0 14px;
+    border: 1px solid var(--market-line);
+    border-radius: 10px;
+    background: white;
+    color: var(--market-ink);
+    font: inherit;
+  }
+
+  @media (max-width: 920px) {
+    .island-comparison__mobile-sort {
+      display: block;
     }
   }
 </style>
