@@ -19,6 +19,32 @@ const cityLabel = String(city)
   .replace(/-/g, " ")
   .replace(/\b\w/g, (char) => char.toUpperCase());
 
+// Agent-owned domains retain the agent's identity across every market.
+// The central platform remains branded by the current market.
+const hostname = Astro.url.hostname
+  .toLowerCase()
+  .replace(/^www\./, "");
+
+const localAgentMatch =
+  hostname.match(/^([a-z0-9-]+)\.localhost$/);
+
+const effectiveBrandHostname =
+  localAgentMatch
+    ? `${localAgentMatch[1]}.bc.realestate`
+    : hostname;
+
+const isCentralPlatform =
+  effectiveBrandHostname === "bc.realestate" ||
+  effectiveBrandHostname === "localhost" ||
+  effectiveBrandHostname === "127.0.0.1";
+
+const configuredSiteName =
+  String(site?.site_name || "").trim();
+
+const navBrandLabel =
+  !isCentralPlatform && configuredSiteName
+    ? configuredSiteName
+    : `${cityLabel} Homes`;
 const slugify = (value: string) =>
   String(value || "")
     .toLowerCase()
@@ -180,9 +206,13 @@ const finalNavLinks: NavItem[] =
 
 <nav class="site-nav">
   <div class="shell site-nav__inner">
-   <a class="site-nav__brand" href={`/${slugify(city)}/`}>
-  {cityLabel} Homes
-</a>
+   <a
+    class="site-nav__brand"
+    href={`/${slugify(city)}/`}
+    aria-label={`${navBrandLabel} home`}
+  >
+    {navBrandLabel}
+  </a>
 
     <button
       class="site-nav__toggle"

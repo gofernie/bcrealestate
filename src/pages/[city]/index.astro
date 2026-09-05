@@ -148,11 +148,22 @@ const waterfrontTypeOptions = [
 );
 const host = Astro.request.headers.get("x-forwarded-host") || Astro.request.headers.get("host") || "";
 const domain = host.split(",")[0].trim().replace(/^www\./, "").split(":")[0];
-const isLocal = domain === "localhost" || domain.startsWith("localhost:");
+const localSubdomainMatch =
+  domain.match(/^([a-z0-9-]+)\.localhost$/);
+
+const isLocal =
+  domain === "localhost" ||
+  domain === "127.0.0.1" ||
+  Boolean(localSubdomainMatch);
+
+const inferredLocalDomain =
+  localSubdomainMatch
+    ? `${localSubdomainMatch[1]}.bc.realestate`
+    : "bc.realestate";
 
 const requestedLocalDomain = String(
   Astro.url.searchParams.get("siteDomain") ||
-  "bc.realestate"
+  inferredLocalDomain
 )
   .trim()
   .toLowerCase()
@@ -8227,7 +8238,403 @@ document.documentElement.style.visibility = "";
     }
   }
 </style>
-</Layout>
+
+<!-- sticky-listing-filter-v1 -->
+<style is:global>
+  .listing-filter-rail {
+    position: fixed;
+    right: 0;
+    left: 0;
+    z-index: 9000;
+    display: none;
+    border-bottom: 1px solid rgba(7, 31, 52, .12);
+    min-height: 72px;
+    padding: 4px 0;
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(7, 31, 52, .16);
+    backdrop-filter: none;
+  }
+
+  .listing-filter-rail.is-visible {
+    display: block;
+  }
+
+  .listing-filter-rail .locus-home-search {
+    position: relative !important;
+    inset: auto !important;
+    transform: none !important;
+    box-sizing: border-box;
+    width: min(1400px, calc(100% - 80px));
+    min-height: 64px;
+    margin: 0 auto;
+    padding: 8px 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .listing-filter-rail
+  .locus-home-search
+  > div:not(.area-multiselect):not(.locus-home-more-panel) {
+    display: none !important;
+  }
+
+  .listing-filter-rail .locus-home-search__field {
+    min-height: 48px;
+  }
+
+  .listing-filter-rail .locus-home-more-panel {
+    top: calc(100% + 1px);
+    max-height: calc(100vh - 150px);
+    overflow-y: auto;
+  }
+
+  .listing-filter-rail__mobile-bar,
+  .listing-filter-rail__mobile-close {
+    display: none;
+  }
+
+  @media (max-width: 900px) {
+    .listing-filter-rail {
+      padding: 8px 16px;
+    }
+
+    .listing-filter-rail__mobile-bar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .listing-filter-rail__mobile-open {
+      display: flex;
+      flex: 1;
+      min-height: 46px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent, #2f6f73);
+      color: white;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .listing-filter-rail__mobile-count {
+      display: none;
+      min-width: 23px;
+      min-height: 23px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: white;
+      color: var(--accent, #2f6f73);
+      font-size: .72rem;
+    }
+
+    .listing-filter-rail__mobile-count.has-filters {
+      display: inline-flex;
+    }
+
+    .listing-filter-rail > .locus-home-search {
+      display: none;
+    }
+
+    .listing-filter-rail.is-mobile-open {
+      bottom: 0;
+      padding: 0;
+      overflow-y: auto;
+      background: white;
+    }
+
+    .listing-filter-rail.is-mobile-open
+    .listing-filter-rail__mobile-bar {
+      display: none;
+    }
+
+    .listing-filter-rail.is-mobile-open
+    .listing-filter-rail__mobile-close {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      display: flex;
+      width: 100%;
+      min-height: 56px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+      border: 0;
+      border-bottom: 1px solid rgba(7, 31, 52, .12);
+      background: white;
+      color: #071f34;
+      font: inherit;
+      font-weight: 850;
+      cursor: pointer;
+    }
+
+    .listing-filter-rail.is-mobile-open
+    > .locus-home-search {
+      display: grid;
+      width: 100%;
+      min-height: 0;
+      padding: 18px 16px 40px;
+      border-radius: 0;
+    }
+
+    .listing-filter-rail.is-mobile-open
+    .locus-home-search
+    > div:not(.area-multiselect):not(.locus-home-more-panel) {
+      display: initial !important;
+    }
+
+    body.has-mobile-filter-open {
+      overflow: hidden;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .listing-filter-rail .locus-home-search {
+      width: 100%;
+    }
+  }
+</style>
+
+<script is:inline>
+  (() => {
+    const initializeStickyListingFilter = () => {
+      const form =
+        document.getElementById("home-hero-search");
+
+      const listingSection =
+        document.getElementById("homepage-listings");
+
+      const siteNav =
+        document.querySelector(".site-nav");
+
+      if (
+        !form ||
+        !listingSection ||
+        !siteNav ||
+        form.dataset.stickyFilterReady === "true"
+      ) {
+        return;
+      }
+
+      form.dataset.stickyFilterReady = "true";
+
+      const marker =
+        document.createElement("div");
+
+      marker.className =
+        "listing-filter-original-position";
+
+      marker.setAttribute("aria-hidden", "true");
+
+      form.before(marker);
+
+      const rail =
+        document.createElement("div");
+
+      rail.className = "listing-filter-rail";
+
+      rail.innerHTML = `
+        <div class="listing-filter-rail__mobile-bar">
+          <button
+            class="listing-filter-rail__mobile-open"
+            type="button"
+          >
+            <span>Filter listings</span>
+            <span
+              class="listing-filter-rail__mobile-count"
+              aria-label="Active filters"
+            ></span>
+          </button>
+        </div>
+
+        <button
+          class="listing-filter-rail__mobile-close"
+          type="button"
+        >
+          <span>Listing filters</span>
+          <span aria-hidden="true">Close ×</span>
+        </button>
+      `;
+
+      document.body.appendChild(rail);
+
+      const mobileOpen =
+        rail.querySelector(
+          ".listing-filter-rail__mobile-open"
+        );
+
+      const mobileClose =
+        rail.querySelector(
+          ".listing-filter-rail__mobile-close"
+        );
+
+      const mobileCount =
+        rail.querySelector(
+          ".listing-filter-rail__mobile-count"
+        );
+
+      let isDocked = false;
+
+      const activeFilterCount = () => {
+        const values =
+          new FormData(form);
+
+        let count = 0;
+
+        for (const [key, value] of values.entries()) {
+          if (
+            key !== "sort" &&
+            String(value || "").trim()
+          ) {
+            count += 1;
+          }
+        }
+
+        return count;
+      };
+
+      const updateFilterCount = () => {
+        if (!mobileCount) return;
+
+        const count = activeFilterCount();
+
+        mobileCount.textContent =
+          String(count);
+
+        mobileCount.classList.toggle(
+          "has-filters",
+          count > 0
+        );
+      };
+
+      const navBottom = () =>
+        Math.max(
+          0,
+          siteNav.getBoundingClientRect().bottom
+        );
+
+      const updateRailTop = () => {
+        rail.style.top =
+          `${navBottom()}px`;
+      };
+
+      const dockForm = () => {
+        if (isDocked) return;
+
+        marker.style.height =
+          `${form.getBoundingClientRect().height}px`;
+
+        rail.appendChild(form);
+        rail.classList.add("is-visible");
+        isDocked = true;
+
+        updateFilterCount();
+        updateRailTop();
+      };
+
+      const restoreForm = () => {
+        if (!isDocked) return;
+
+        marker.after(form);
+        marker.style.height = "";
+        rail.classList.remove(
+          "is-visible",
+          "is-mobile-open"
+        );
+
+        document.body.classList.remove(
+          "has-mobile-filter-open"
+        );
+
+        isDocked = false;
+      };
+
+      const updateDocking = () => {
+        updateRailTop();
+
+        const markerRect =
+          marker.getBoundingClientRect();
+
+        const listingRect =
+          listingSection.getBoundingClientRect();
+
+        const top =
+          navBottom();
+
+        const shouldDock =
+          markerRect.top <= top;
+
+        if (shouldDock) {
+          dockForm();
+        } else {
+          restoreForm();
+        }
+      };
+
+      mobileOpen?.addEventListener(
+        "click",
+        () => {
+          rail.classList.add(
+            "is-mobile-open"
+          );
+
+          document.body.classList.add(
+            "has-mobile-filter-open"
+          );
+        }
+      );
+
+      mobileClose?.addEventListener(
+        "click",
+        () => {
+          rail.classList.remove(
+            "is-mobile-open"
+          );
+
+          document.body.classList.remove(
+            "has-mobile-filter-open"
+          );
+        }
+      );
+
+      form.addEventListener(
+        "change",
+        updateFilterCount
+      );
+
+      window.addEventListener(
+        "scroll",
+        updateDocking,
+        { passive: true }
+      );
+
+      window.addEventListener(
+        "resize",
+        updateDocking,
+        { passive: true }
+      );
+
+      updateDocking();
+      updateFilterCount();
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener(
+        "DOMContentLoaded",
+        initializeStickyListingFilter,
+        { once: true }
+      );
+    } else {
+      initializeStickyListingFilter();
+    }
+  })();
+</script></Layout>
 
 
 
