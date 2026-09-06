@@ -26,8 +26,68 @@ const cityDatabaseKeys = Array.from(
   ])
 );
 
-const site = await getSite(Astro.url.hostname, city);
-const accent = site?.accent_color || "#633a98";
+const requestHost =
+  Astro.request.headers.get("x-forwarded-host") ||
+  Astro.request.headers.get("host") ||
+  "";
+
+const requestDomain = requestHost
+  .split(",")[0]
+  .trim()
+  .replace(/^www\./, "")
+  .split(":")[0];
+
+const localSubdomainMatch =
+  requestDomain.match(/^([a-z0-9-]+)\.localhost$/);
+
+const isLocalRequest =
+  requestDomain === "localhost" ||
+  requestDomain === "127.0.0.1" ||
+  Boolean(localSubdomainMatch);
+
+const inferredLocalDomain = localSubdomainMatch
+  ? `${localSubdomainMatch[1]}.bc.realestate`
+  : "bc.realestate";
+
+const requestedLocalDomain = String(
+  Astro.url.searchParams.get("siteDomain") ||
+  inferredLocalDomain
+)
+  .trim()
+  .toLowerCase()
+  .replace(/^www\./, "");
+
+const isNetlifyProjectDomain =
+  requestDomain === "bc-realestate.netlify.app" ||
+  requestDomain.endsWith("--bc-realestate.netlify.app");
+
+const effectiveSiteDomain =
+  isLocalRequest || isNetlifyProjectDomain
+    ? requestedLocalDomain
+    : requestDomain;
+
+const { data: exactSite } = await supabase
+  .from("sites")
+  .select("*")
+  .eq("city", city)
+  .eq("domain", effectiveSiteDomain)
+  .maybeSingle();
+
+let site = exactSite;
+
+if (!site) {
+  const { data: domainSite } = await supabase
+    .from("sites")
+    .select("*")
+    .eq("domain", effectiveSiteDomain)
+    .order("city")
+    .limit(1)
+    .maybeSingle();
+
+  site = domainSite;
+}
+
+const accent = site?.accent_color || "#2f6f73";
 
 const { data: listings = [], error: listingsError } =
   await supabase
@@ -904,6 +964,7 @@ const marketSeoSchema = {
   description={seoDescription}
   accentColor={accent}
   city={city}
+  site={site}
 >
   <meta
     name="description"

@@ -1,0 +1,228 @@
+---
+import { getAgentForSite } from "../lib/getAgentForSite";
+
+const { site = null, city = "nanaimo" } = Astro.props;
+const agent = await getAgentForSite(site);
+
+const first = (...values) =>
+  values.find((value) => String(value || "").trim()) || "";
+
+const cityLabel = String(city || "nanaimo")
+  .replace(/-/g, " ")
+  .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const agentName = first(
+  agent?.name,
+  site?.agent_name,
+  site?.realtor_name,
+  site?.owner_name,
+  site?.site_name,
+  `${cityLabel} Homes`
+);
+
+const brokerage = first(
+  agent?.brokerage,
+  site?.brokerage,
+  site?.brokerage_name
+);
+
+const phone = first(
+  agent?.phone,
+  site?.agent_phone,
+  site?.phone,
+  site?.contact_phone
+);
+
+const email = first(
+  agent?.email,
+  site?.agent_email,
+  site?.email,
+  site?.contact_email
+);
+
+const secondaryMarkets =
+  Array.isArray(site?.secondary_markets)
+    ? site.secondary_markets
+        .map((market) =>
+          typeof market === "string"
+            ? market
+            : market?.city
+        )
+        .filter(Boolean)
+    : [];
+
+const markets = Array.from(
+  new Set([city, ...secondaryMarkets].filter(Boolean))
+).slice(0, 4);
+
+const year = new Date().getFullYear();
+---
+
+<footer class="site-footer">
+  <div class="site-footer__inner">
+    <div class="site-footer__brand">
+      <strong>{agentName}</strong>
+      <span>{brokerage || `${cityLabel} real estate`}</span>
+      <p>
+        Local listings and practical market guidance, without the runaround.
+      </p>
+    </div>
+
+    <nav class="site-footer__markets" aria-label="Markets">
+      <span>EXPLORE</span>
+
+      {markets.map((market) => {
+        const slug = String(market)
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+
+        const label = String(market)
+          .replace(/-/g, " ")
+          .replace(/\b\w/g, (character) => character.toUpperCase());
+
+        return <a href={`/${slug}`}>{label}</a>;
+      })}
+    </nav>
+
+    <div class="site-footer__contact">
+      <span>CONTACT</span>
+      {phone && (
+        <a href={`tel:${String(phone).replace(/[^\d+]/g, "")}`}>
+          {phone}
+        </a>
+      )}
+      {email && <a href={`mailto:${email}`}>{email}</a>}
+      {!phone && !email && <a href={`/${city}`}>Browse homes</a>}
+    </div>
+  </div>
+
+  <div class="site-footer__legal">
+    <span>&copy; {year} {agentName}</span>
+
+    <div>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+    </div>
+
+    <p>
+      Listing information is provided for consumers' personal,
+      non-commercial use and is deemed reliable but not guaranteed.
+    </p>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    margin-top: 72px;
+    padding: 54px max(24px, calc((100vw - 1180px) / 2)) 28px;
+    border-top: 1px solid var(--line-warm);
+    background: color-mix(in srgb, var(--accent) 5%, #faf9f7);
+    color: var(--ink);
+  }
+
+  .site-footer__inner {
+    display: grid;
+    grid-template-columns: minmax(280px, 1.5fr) 1fr 1fr;
+    gap: 56px;
+  }
+
+  .site-footer__brand strong {
+    display: block;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.55rem;
+  }
+
+  .site-footer__brand > span {
+    display: block;
+    margin-top: 6px;
+    color: var(--accent);
+    font-size: .78rem;
+    font-weight: 800;
+  }
+
+  .site-footer__brand p {
+    max-width: 400px;
+    margin: 16px 0 0;
+    color: var(--muted);
+    font-size: .88rem;
+    line-height: 1.6;
+  }
+
+  .site-footer__markets,
+  .site-footer__contact {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .site-footer__markets > span,
+  .site-footer__contact > span {
+    margin-bottom: 4px;
+    color: var(--muted);
+    font-size: .66rem;
+    font-weight: 850;
+    letter-spacing: .15em;
+  }
+
+  .site-footer a {
+    color: inherit;
+    font-size: .86rem;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .site-footer a:hover {
+    color: var(--accent);
+  }
+
+  .site-footer__legal {
+    margin-top: 42px;
+    padding-top: 20px;
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    gap: 24px;
+    align-items: start;
+    border-top: 1px solid var(--line-warm);
+    color: var(--muted);
+    font-size: .71rem;
+  }
+
+  .site-footer__legal div {
+    display: flex;
+    gap: 16px;
+  }
+
+  .site-footer__legal p {
+    margin: 0;
+    text-align: right;
+    line-height: 1.5;
+  }
+
+  @media (max-width: 760px) {
+    .site-footer {
+      margin-top: 44px;
+      padding: 36px 22px 86px;
+    }
+
+    .site-footer__inner {
+      grid-template-columns: 1fr 1fr;
+      gap: 30px 24px;
+    }
+
+    .site-footer__brand {
+      grid-column: 1 / -1;
+    }
+
+    .site-footer__legal {
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .site-footer__legal p {
+      text-align: left;
+    }
+  }
+</style>
