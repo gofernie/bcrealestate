@@ -11983,15 +11983,39 @@ const savedFilterScrollY = Number(
 
 if (savedFilterScrollY > 0) {
   sessionStorage.removeItem("listingFilterScrollY");
+  history.scrollRestoration = "manual";
 
-  requestAnimationFrame(() => {
+  const reducedMotion =
+    window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+
+  if (reducedMotion) {
     window.scrollTo({
       top: savedFilterScrollY,
       behavior: "auto",
     });
-  });
-}
+  } else {
+    /*
+     * Land immediately near the saved position so the
+     * visitor never sees the page travel from the top.
+     * Then ease through only the final short distance.
+     */
+    window.scrollTo({
+      top: Math.max(0, savedFilterScrollY - 56),
+      behavior: "auto",
+    });
 
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({
+          top: savedFilterScrollY,
+          behavior: "smooth",
+        });
+      });
+    });
+  }
+}
 let activePriceFilter = "all";
 
 function jsTitleCase(value = "") {
@@ -15278,7 +15302,44 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
 
     sync();
   })();
-</script></Layout>
+</script>
+<style is:global>
+/* smooth-filter-return-v1 */
+@view-transition {
+  navigation: auto;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root) {
+    animation: 110ms ease-out both filter-page-out;
+  }
+
+  ::view-transition-new(root) {
+    animation: 220ms ease-out both filter-page-in;
+  }
+
+  @keyframes filter-page-out {
+    from {
+      opacity: 1;
+    }
+
+    to {
+      opacity: 0.88;
+    }
+  }
+
+  @keyframes filter-page-in {
+    from {
+      opacity: 0.88;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+}
+</style>
+</Layout>
 
 <style>
 /* NUMBERED AMENITY LIST / MAP PAIRING */
