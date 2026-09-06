@@ -9464,7 +9464,7 @@ Approximate driving times from{" "}
     )
   }
 
-<section class="intent-controls" style="margin-bottom:20px;"> {pageKind !== "area" && (
+<section id="listing-results-anchor" class="intent-controls" style="margin-bottom:20px;"> {pageKind !== "area" && (
   <div class="view-toggle">
     <button
       type="button"
@@ -11977,45 +11977,7 @@ if (savedFilterViewMode === "map") {
   sessionStorage.removeItem("listingFilterViewMode");
 }
 
-const savedFilterScrollY = Number(
-  sessionStorage.getItem("listingFilterScrollY") || "0"
-);
-
-if (savedFilterScrollY > 0) {
-  sessionStorage.removeItem("listingFilterScrollY");
-  history.scrollRestoration = "manual";
-
-  const reducedMotion =
-    window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-
-  if (reducedMotion) {
-    window.scrollTo({
-      top: savedFilterScrollY,
-      behavior: "auto",
-    });
-  } else {
-    /*
-     * Land immediately near the saved position so the
-     * visitor never sees the page travel from the top.
-     * Then ease through only the final short distance.
-     */
-    window.scrollTo({
-      top: Math.max(0, savedFilterScrollY - 56),
-      behavior: "auto",
-    });
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        window.scrollTo({
-          top: savedFilterScrollY,
-          behavior: "smooth",
-        });
-      });
-    });
-  }
-}
+sessionStorage.removeItem("listingFilterScrollY");
 let activePriceFilter = "all";
 
 function jsTitleCase(value = "") {
@@ -12278,13 +12240,14 @@ function updateSearchFromFilters() {
     document.body.classList.contains("is-map-mode") ? "map" : "list"
   );
 
-sessionStorage.setItem(
-  "listingFilterScrollY",
-  String(window.scrollY)
-);
-
 showFilterLoadingState();
-window.location.search = params.toString();
+const nextSearch = params.toString();
+
+window.location.assign(
+  `${window.location.pathname}${
+    nextSearch ? `?${nextSearch}` : ""
+  }#listing-results-anchor`
+);
 }
 
 areaSelect?.addEventListener("change", updateSearchFromFilters);
@@ -15210,11 +15173,6 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
           );
         });
 
-      sessionStorage.setItem(
-        "listingFilterScrollY",
-        String(window.scrollY)
-      );
-
       window.location.href =
         nextUrl.pathname +
         nextUrl.search +
@@ -15337,6 +15295,13 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
       opacity: 1;
     }
   }
+}
+</style>
+
+<style is:global>
+/* listing-results-anchor-v1 */
+#listing-results-anchor {
+  scroll-margin-top: 82px;
 }
 </style>
 </Layout>
