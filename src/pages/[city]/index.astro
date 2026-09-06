@@ -3832,28 +3832,44 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
 
     if (savedFilterScrollPosition !== null) {
       sessionStorage.removeItem(filterScrollStorageKey);
+      history.scrollRestoration = "manual";
 
-      const scrollPosition =
-        Number(savedFilterScrollPosition);
+      window.setTimeout(() => {
+        const listingAnchor =
+          document.getElementById("homepage-listings");
 
-      if (Number.isFinite(scrollPosition)) {
-        history.scrollRestoration = "manual";
+        const siteNav =
+          document.querySelector(".site-nav");
 
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            window.scrollTo({
-              top: scrollPosition,
-              behavior: "instant",
-            });
-          });
+        if (!listingAnchor) return;
+
+        const navHeight =
+          siteNav?.getBoundingClientRect().height || 0;
+
+        const filterHeight =
+          heroForm.getBoundingClientRect().height || 0;
+
+        const anchorTop =
+          listingAnchor.getBoundingClientRect().top +
+          window.scrollY;
+
+        window.scrollTo({
+          top: Math.max(
+            0,
+            anchorTop -
+            navHeight -
+            filterHeight -
+            18
+          ),
+          behavior: "instant",
         });
-      }
+      }, 100);
     }
 
     const rememberFilterScrollPosition = () => {
       sessionStorage.setItem(
         filterScrollStorageKey,
-        String(window.scrollY)
+        "listings"
       );
     };
 
@@ -4001,11 +4017,24 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
         nextUrl.searchParams.set("baths", bathsValue);
       }
 
+      nextUrl.hash = "homepage-listings";
+
       window.history.replaceState(
         {},
         "",
         `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
       );
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          document
+            .getElementById("homepage-listings")
+            ?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            });
+        });
+      });
     };
 
     const rebuildSelectOptions = (
@@ -4873,7 +4902,10 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
         }
       }
     );
-    heroForm?.addEventListener("submit", () => {
+    heroForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      rememberFilterScrollPosition();
+
       const heroPriceSelect =
         heroForm.querySelector('select[name="maxPrice"]');
 
@@ -4898,6 +4930,35 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
           heroPriceSelect.disabled = false;
         }
       }
+
+      const currentUrl =
+        new URL(window.location.href);
+
+      const siteDomain =
+        currentUrl.searchParams.get("siteDomain");
+
+      const nextUrl =
+        new URL(currentUrl.pathname, currentUrl.origin);
+
+      if (siteDomain) {
+        nextUrl.searchParams.set(
+          "siteDomain",
+          siteDomain
+        );
+      }
+
+      const formData = new FormData(heroForm);
+
+      for (const [key, rawValue] of formData.entries()) {
+        const value = String(rawValue || "").trim();
+
+        if (value) {
+          nextUrl.searchParams.append(key, value);
+        }
+      }
+
+      nextUrl.hash = "homepage-listings";
+      window.location.assign(nextUrl.toString());
     });
 
     const multiselect =
@@ -4936,10 +4997,19 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
         )?.textContent || ""
       ).trim();
 
+    let areaSelectionDirty = false;
+
     function closeMenu() {
+      const wasOpen = !menu.hidden;
+
       menu.hidden = true;
       multiselect.classList.remove("is-open");
       trigger.setAttribute("aria-expanded", "false");
+
+      if (wasOpen && areaSelectionDirty) {
+        areaSelectionDirty = false;
+        heroForm.requestSubmit();
+      }
     }
 
     function openMenu() {
@@ -5036,6 +5106,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
         event.target.name === "area"
       ) {
         syncDropdown();
+        areaSelectionDirty = true;
       }
     });
 
@@ -5050,6 +5121,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
       });
 
       syncDropdown();
+      areaSelectionDirty = false;
       rememberFilterScrollPosition();
           heroForm.requestSubmit();
     });
@@ -8656,7 +8728,13 @@ document.documentElement.style.visibility = "";
       initializeStickyListingFilter();
     }
   })();
-</script></Layout>
+</script>
+<style is:global>
+/* stable-home-listings-anchor-v1 */
+#homepage-listings {
+  scroll-margin-top: 155px;
+}
+</style></Layout>
 
 
 
@@ -9341,7 +9419,6 @@ intro h2,
   #home-hero-search.locus-home-search:has(
     .hero-single-dropdown.is-open
   ) {
-    position: absolute !important;
     z-index: 5000 !important;
     overflow: visible !important;
   }
