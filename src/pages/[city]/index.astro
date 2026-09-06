@@ -8734,7 +8734,83 @@ document.documentElement.style.visibility = "";
 #homepage-listings {
   scroll-margin-top: 155px;
 }
-</style></Layout>
+</style>
+<style is:global>
+/* subtle-home-hero-drift-v1 */
+@media (min-width: 900px) and (prefers-reduced-motion: no-preference) {
+  .locus-home-hero {
+    background-position:
+      center calc(50% + var(--hero-drift-y, 0px)) !important;
+  }
+}
+</style>
+
+<script is:inline>
+  (() => {
+    const hero =
+      document.querySelector(".locus-home-hero");
+
+    const motionAllowed =
+      window.matchMedia(
+        "(min-width: 900px) and (prefers-reduced-motion: no-preference)"
+      );
+
+    if (!(hero instanceof HTMLElement)) return;
+
+    let frameRequested = false;
+
+    const updateHeroDrift = () => {
+      frameRequested = false;
+
+      if (!motionAllowed.matches) {
+        hero.style.removeProperty("--hero-drift-y");
+        return;
+      }
+
+      const heroHeight =
+        hero.getBoundingClientRect().height || 1;
+
+      const progress = Math.min(
+        1,
+        Math.max(0, window.scrollY / heroHeight)
+      );
+
+      const drift = -36 + progress * 72;
+
+      hero.style.setProperty(
+        "--hero-drift-y",
+        `${drift.toFixed(2)}px`
+      );
+    };
+
+    const requestHeroDriftUpdate = () => {
+      if (frameRequested) return;
+
+      frameRequested = true;
+      requestAnimationFrame(updateHeroDrift);
+    };
+
+    window.addEventListener(
+      "scroll",
+      requestHeroDriftUpdate,
+      { passive: true }
+    );
+
+    window.addEventListener(
+      "resize",
+      requestHeroDriftUpdate,
+      { passive: true }
+    );
+
+    motionAllowed.addEventListener?.(
+      "change",
+      requestHeroDriftUpdate
+    );
+
+    updateHeroDrift();
+  })();
+</script>
+</Layout>
 
 
 
