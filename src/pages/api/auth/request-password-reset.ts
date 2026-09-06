@@ -1,23 +1,40 @@
 import type { APIRoute } from "astro";
-import { createSupabaseServerClient } from "../../../lib/supabaseServer";
+import { createClient } from "@supabase/supabase-js";
 
 export const POST: APIRoute = async ({
   request,
-  cookies,
   redirect,
 }) => {
-  const formData = await request.formData();
-  const email = String(formData.get("email") || "").trim();
+  const formData =
+    await request.formData();
+
+  const email =
+    String(
+      formData.get("email") || ""
+    ).trim();
 
   if (!email) {
     return redirect(
       "/forgot-password?error=" +
-        encodeURIComponent("Enter your email address.")
+        encodeURIComponent(
+          "Enter your email address."
+        )
     );
   }
 
   const supabase =
-    createSupabaseServerClient(cookies);
+    createClient(
+      import.meta.env.PUBLIC_SUPABASE_URL,
+      import.meta.env.PUBLIC_SUPABASE_ANON_KEY,
+      {
+        auth: {
+          flowType: "implicit",
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+        },
+      }
+    );
 
   const origin =
     new URL(request.url).origin;
@@ -34,7 +51,9 @@ export const POST: APIRoute = async ({
   if (error) {
     return redirect(
       "/forgot-password?error=" +
-        encodeURIComponent(error.message)
+        encodeURIComponent(
+          error.message
+        )
     );
   }
 
