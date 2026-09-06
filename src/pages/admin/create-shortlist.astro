@@ -1,0 +1,356 @@
+---
+import AdminSidebar from "../../components/AdminSidebar.astro";
+import { createSupabaseServerClient } from "../../lib/supabaseServer";
+import { createClient } from "@supabase/supabase-js";
+
+export const prerender = false;
+
+const supabaseAuth = createSupabaseServerClient(Astro.cookies);
+const { data: { user } } = await supabaseAuth.auth.getUser();
+if (!user) return Astro.redirect("/login");
+
+const agentId = user.id;
+
+const supabaseAdmin = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+let errorMessage = "";
+
+function makeSlug(name: string) {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 42);
+
+  return `${base || "shortlist"}-${Date.now().toString(36)}`;
+}
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+
+  const clientName = String(form.get("client_name") || "").trim();
+  const phone = String(form.get("phone") || "").trim();
+  const selectedIds = String(form.get("selected_ids") || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  if (!clientName) {
+    errorMessage = "Client name is required.";
+  } else if (selectedIds.length === 0) {
+    errorMessage = "Select at least one listing.";
+  } else {
+    const { data: client, error: clientError } = await supabaseAdmin
+      .from("clients")
+      .insert({
+        agent_id: agentId,
+        name: clientName,
+        phone,
+      })
+      .select("id")
+      .single();
+
+    if (clientError) {
+      errorMessage = clientError.message;
+    } else {
+      const slug = makeSlug(clientName);
+      const shortlistUrl = `/shortlists/${slug}`;
+
+      const { data: shortlist, error: shortlistError } = await supabaseAdmin
+        .from("shortlist_sends")
+        .insert({
+          agent_id: agentId,
+          client_id: client.id,
+          client_name: clientName,
+          shortlist_slug: slug,
+          shortlist_url: shortlistUrl,
+        })
+        .select("id")
+        .single();
+
+      if (shortlistError) {
+        errorMessage = shortlistError.message;
+      } else {
+        const items = selectedIds.map((listingId) => ({
+          shortlist_send_id: shortlist.id,
+          listing_id: listingId,
+        }));
+
+        const { error: itemsError } = await supabaseAdmin
+          .from("shortlist_items")
+          .insert(items);
+
+        if (itemsError) {
+          errorMessage = itemsError.message;
+        } else {
+          return Astro.redirect(`/shortlists/${slug}?agent=1`);
+        }
+      }
+    }
+  }
+}
+
+const { data: listings = [] } = await supabaseAdmin
+  .from("listing_rows")
+  .select("id, address, price, beds, baths, normalized_city, normalized_area, image_url, status")
+  .eq("status", "A")
+  .order("listed_at", { ascending: false })
+  .limit(80);
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Create shortlist</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <style>
+      :root {
+        --bg:#f7f4ef;
+        --surface:#fff;
+        --ink:#181614;
+        --muted:rgba(24,22,20,.55);
+        --border:rgba(24,22,20,.12);
+      }
+
+      * { box-sizing:border-box; }
+
+      body {
+        margin:0;
+        font-family:system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:var(--bg);
+        color:var(--ink);
+      }
+
+      .page {
+        display:grid;
+        grid-template-columns:220px 1fr;
+        min-height:100vh;
+      }
+
+      main {
+        padding:40px 48px 80px;
+        max-width:1200px;
+      }
+
+      h1 {
+        font-size:2rem;
+        margin:0 0 6px;
+        letter-spacing:-.04em;
+      }
+
+      .desc {
+        margin:0 0 28px;
+        color:var(--muted);
+      }
+
+      .form-card {
+        background:var(--surface);
+        border:1px solid var(--border);
+        border-radius:16px;
+        padding:20px;
+        margin-bottom:22px;
+      }
+
+      .form-grid {
+        display:grid;
+        grid-template-columns:1fr 1fr auto;
+        gap:12px;
+        align-items:end;
+      }
+
+      label {
+        display:block;
+        font-size:.8rem;
+        font-weight:700;
+        margin-bottom:6px;
+      }
+
+      input {
+        width:100%;
+        border:1px solid var(--border);
+        border-radius:8px;
+        padding:11px 12px;
+        font:inherit;
+        background:#fff;
+      }
+
+      button {
+        border:0;
+        border-radius:8px;
+        padding:12px 18px;
+        background:#181614;
+        color:#fff;
+        font-weight:700;
+        cursor:pointer;
+      }
+
+      .error {
+        background:#fff4f4;
+        border:1px solid #e5baba;
+        color:#9f2222;
+        padding:12px 14px;
+        border-radius:10px;
+        margin-bottom:16px;
+      }
+
+      .toolbar {
+        margin-bottom:14px;
+        color:var(--muted);
+        font-size:.9rem;
+      }
+
+      .grid {
+        display:grid;
+        grid-template-columns:repeat(4, minmax(0, 1fr));
+        gap:14px;
+      }
+
+      .card {
+        background:#fff;
+        border:1px solid var(--border);
+        border-radius:14px;
+        overflow:hidden;
+        cursor:pointer;
+      }
+
+      .card.selected {
+        outline:3px solid #181614;
+      }
+
+      .card img {
+        width:100%;
+        aspect-ratio:4/3;
+        object-fit:cover;
+        background:#eee;
+        display:block;
+      }
+
+      .card-body {
+        padding:12px;
+      }
+
+      .price {
+        font-weight:800;
+        margin-bottom:4px;
+      }
+
+      .address {
+        font-size:.9rem;
+        line-height:1.35;
+      }
+
+      .meta {
+        margin-top:6px;
+        color:var(--muted);
+        font-size:.82rem;
+      }
+
+      @media (max-width:900px) {
+        .page { grid-template-columns:1fr; }
+        main { padding:24px 16px 60px; }
+        .form-grid { grid-template-columns:1fr; }
+        .grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="page">
+      <AdminSidebar active="shortlists" />
+
+      <main>
+        <h1>Create shortlist.</h1>
+        <p class="desc">Choose listings, add client details, and generate a private shortlist link.</p>
+
+        {errorMessage && <div class="error">{errorMessage}</div>}
+
+        <form method="POST" id="shortlistForm">
+          <input type="hidden" name="selected_ids" id="selectedIds" />
+
+          <div class="form-card">
+            <div class="form-grid">
+              <div>
+                <label for="client_name">Client name</label>
+                <input id="client_name" name="client_name" placeholder="Jane Buyer" required />
+              </div>
+
+              <div>
+                <label for="phone">Phone</label>
+                <input id="phone" name="phone" placeholder="250..." />
+              </div>
+
+              <button type="submit">Create shortlist</button>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <strong id="selectedCount">0</strong> listings selected.
+          </div>
+
+          <div class="grid">
+            {listings.map((listing: any) => (
+              <article class="card" data-id={listing.id}>
+                {listing.image_url ? (
+                  <img src={listing.image_url} alt={listing.address || "Listing"} loading="lazy" />
+                ) : (
+                  <img src="/placeholder-listing.jpg" alt="" loading="lazy" />
+                )}
+
+                <div class="card-body">
+                  <div class="price">
+                    {listing.price ? `$${Number(listing.price).toLocaleString()}` : "Price unavailable"}
+                  </div>
+                  <div class="address">{listing.address}</div>
+                  <div class="meta">
+                    {listing.beds || 0} bed · {listing.baths || 0} bath · {listing.normalized_area || listing.normalized_city}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </form>
+      </main>
+    </div>
+
+    <script>
+      const selected = new Set();
+      const selectedInput = document.getElementById("selectedIds");
+      const selectedCount = document.getElementById("selectedCount");
+
+      function syncSelected() {
+        selectedInput.value = Array.from(selected).join(",");
+        selectedCount.textContent = String(selected.size);
+      }
+
+      document.querySelectorAll(".card[data-id]").forEach((card) => {
+        card.addEventListener("click", () => {
+          const id = card.getAttribute("data-id");
+          if (!id) return;
+
+          if (selected.has(id)) {
+            selected.delete(id);
+            card.classList.remove("selected");
+          } else {
+            selected.add(id);
+            card.classList.add("selected");
+          }
+
+          syncSelected();
+        });
+      });
+
+      document.getElementById("shortlistForm")?.addEventListener("submit", (event) => {
+        syncSelected();
+
+        if (selected.size === 0) {
+          event.preventDefault();
+          alert("Select at least one listing.");
+        }
+      });
+    </script>
+  </body>
+</html>
