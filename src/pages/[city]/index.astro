@@ -448,6 +448,15 @@ const homepageHeroImageSrcSet =
         .join(", ")
     : undefined;
 
+const isNanaimoMobilesSite =
+  effectiveSiteDomain === "nanaimomobiles.com" &&
+  routeCity === "nanaimo";
+
+const nicheDefaultPropertyType =
+  isNanaimoMobilesSite
+    ? "mobile"
+    : "";
+
 const url = Astro.url;
 
 const city = routeCity;
@@ -457,7 +466,10 @@ const areas = url.searchParams
   .filter(Boolean);
 
 const area = areas[0] || "";
-const type = url.searchParams.get("type") || "";
+const type =
+  url.searchParams.get("type") ||
+  nicheDefaultPropertyType ||
+  "";
 const minPrice = Number(url.searchParams.get("minPrice") || 0);
 const maxPrice = Number(url.searchParams.get("maxPrice") || 0);
 const bedsSelection = String(url.searchParams.get("beds") || "").trim();
@@ -596,12 +608,39 @@ const pageSubject = selectedAreaName
   : `${cityName} Real Estate`;
 
 const propertyLabel = type
-  ? titleCase(type === "house" ? "homes" : `${type}s`)
+  ? type === "house"
+    ? "Homes"
+    : type === "mobile"
+      ? "Mobile Homes"
+      : titleCase(`${type}s`)
   : "Homes";
+const seoTitle = isNanaimoMobilesSite
+  ? "Nanaimo Mobile Homes for Sale | Nanaimo, BC"
+  : `${pageSubject} & ${propertyLabel} For Sale | MLS® Listings`;
 
-const seoTitle = `${pageSubject} & ${propertyLabel} For Sale | MLS® Listings`;
+const seoDescription = isNanaimoMobilesSite
+  ? "Browse Nanaimo mobile homes for sale. View active manufactured and mobile home listings with prices, photos, neighbourhoods, maps, and local market details."
+  : `Browse ${pageSubject.toLowerCase()} including ${propertyLabel.toLowerCase()} for sale. View active MLS® listings with photos, prices, maps, and local search details.`;
 
-const seoDescription = `Browse ${pageSubject.toLowerCase()} including ${propertyLabel.toLowerCase()} for sale. View active MLS® listings with photos, prices, maps, and local search details.`;
+const canonicalUrl = isNanaimoMobilesSite
+  ? "https://nanaimomobiles.com/"
+  : `${Astro.url.origin}${Astro.url.pathname}`;
+
+const homepageHeroKicker = isNanaimoMobilesSite
+  ? "Nanaimo mobile home real estate"
+  : `${cityName} Real Estate`;
+
+const homepageHeroLineOne = isNanaimoMobilesSite
+  ? "Nanaimo mobile homes"
+  : `Find a ${cityName} home.`;
+
+const homepageHeroLineTwo = isNanaimoMobilesSite
+  ? "for sale."
+  : "Love where you live.";
+
+const homepageHeroCopy = isNanaimoMobilesSite
+  ? "Explore active manufactured and mobile homes across Nanaimo communities, parks, and neighbourhoods."
+  : "Real estate insights, beautiful listings, and neighbourhood knowledge - all in one place.";
 
 const heroHeading =
   site?.hero_heading ||
@@ -1022,6 +1061,13 @@ const getInventoryType = (listing: any) => {
     : normalizedType;
 };
 
+if (isNanaimoMobilesSite) {
+  listings = listings.filter(
+    (listing: any) =>
+      getInventoryType(listing) === "mobile"
+  );
+}
+
 const getInventoryPrices = (inventoryType = "") =>
   listings
     .filter(
@@ -1436,16 +1482,15 @@ const homepageNeighbourhoodImages = [
   <div class="locus-home-hero__inner">
 
     <div class="locus-home-hero__copy">
-      <p class="locus-home-kicker">{cityName} Real Estate</p>
+      <p class="locus-home-kicker">{homepageHeroKicker}</p>
 
       <h1>
-        Find a {cityName} home.<br />
-        Love where you live.
+        {homepageHeroLineOne}<br />
+        {homepageHeroLineTwo}
       </h1>
 
       <p class="locus-home-hero__lede">
-        Real estate insights, beautiful listings, and neighbourhood
-        knowledge - all in one place.
+        {homepageHeroCopy}
       </p>
 
       <div class="locus-home-hero__actions">
@@ -8775,7 +8820,7 @@ document.documentElement.style.visibility = "";
         Math.max(0, window.scrollY / heroHeight)
       );
 
-      const drift = -48 + progress * 96;
+      const drift = -32 + progress * 64;
 
       hero.style.setProperty(
         "--hero-drift-y",

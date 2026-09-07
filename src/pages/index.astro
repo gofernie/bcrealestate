@@ -52,6 +52,10 @@ const shouldShowClientHomepage =
 if (shouldShowClientHomepage) {
   const homepageUrl = new URL(`/${site.city}`, Astro.url);
 
+  if (effectiveDomain === "nanaimomobiles.com") {
+    homepageUrl.searchParams.set("type", "mobile");
+  }
+
   if (isLocalRequest && previewDomain) {
     homepageUrl.searchParams.set("siteDomain", previewDomain);
   }
@@ -386,9 +390,60 @@ const bcHomepageHeroImage =
   optimizeBcHomepageHeroImage(
     bcHomepageHeroImageOriginal
   );
-const pageTitle = "BC Real Estate | Homes for Sale Across British Columbia";
+const pageTitle = "BC Real Estate: Homes for Sale Across British Columbia";
 const pageDescription =
-  "Explore British Columbia homes for sale by city, region, neighbourhood, and property type. Browse live real estate listings across BC.";
+  "Browse homes for sale across British Columbia. Explore live BC real estate listings by city, region, neighbourhood, and property type.";
+
+const canonicalUrl = "https://bc.realestate/";
+
+const seoStructuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": `${canonicalUrl}#website`,
+      url: canonicalUrl,
+      name: "BC Real Estate",
+      description: pageDescription,
+      inLanguage: "en-CA",
+    },
+    {
+      "@type": "CollectionPage",
+      "@id": `${canonicalUrl}#webpage`,
+      url: canonicalUrl,
+      name: pageTitle,
+      description: pageDescription,
+      isPartOf: {
+        "@id": `${canonicalUrl}#website`,
+      },
+      primaryImageOfPage: {
+        "@type": "ImageObject",
+        url: bcHomepageHeroImage,
+      },
+      mainEntity: {
+        "@id": `${canonicalUrl}#markets`,
+      },
+      inLanguage: "en-CA",
+    },
+    {
+      "@type": "ItemList",
+      "@id": `${canonicalUrl}#markets`,
+      name: "British Columbia real estate markets",
+      numberOfItems: cityCards.length,
+      itemListElement: cityCards.map(
+        (city: any, index: number) => ({
+          "@type": "ListItem",
+          position: index + 1,
+          name: `${city.label} real estate`,
+          url: new URL(
+            city.href,
+            canonicalUrl
+          ).toString(),
+        })
+      ),
+    },
+  ],
+};
 ---
 
 <Layout
@@ -397,6 +452,110 @@ const pageDescription =
   accentColor="#176b68"
   city="bc"
 >
+  <link
+    rel="canonical"
+    href={canonicalUrl}
+    slot="head"
+  />
+
+  <meta
+    name="description"
+    content={pageDescription}
+    slot="head"
+  />
+
+  <meta
+    name="robots"
+    content="index, follow, max-image-preview:large"
+    slot="head"
+  />
+
+  <meta
+    property="og:type"
+    content="website"
+    slot="head"
+  />
+
+  <meta
+    property="og:locale"
+    content="en_CA"
+    slot="head"
+  />
+
+  <meta
+    property="og:site_name"
+    content="BC Real Estate"
+    slot="head"
+  />
+
+  <meta
+    property="og:title"
+    content={pageTitle}
+    slot="head"
+  />
+
+  <meta
+    property="og:description"
+    content={pageDescription}
+    slot="head"
+  />
+
+  <meta
+    property="og:url"
+    content={canonicalUrl}
+    slot="head"
+  />
+
+  <meta
+    property="og:image"
+    content={bcHomepageHeroImage}
+    slot="head"
+  />
+
+  <meta
+    property="og:image:alt"
+    content="British Columbia landscape"
+    slot="head"
+  />
+
+  <meta
+    name="twitter:card"
+    content="summary_large_image"
+    slot="head"
+  />
+
+  <meta
+    name="twitter:title"
+    content={pageTitle}
+    slot="head"
+  />
+
+  <meta
+    name="twitter:description"
+    content={pageDescription}
+    slot="head"
+  />
+
+  <meta
+    name="twitter:image"
+    content={bcHomepageHeroImage}
+    slot="head"
+  />
+
+  <link
+    rel="preload"
+    as="image"
+    href={bcHomepageHeroImage}
+    fetchpriority="high"
+    slot="head"
+  />
+
+  <script
+    type="application/ld+json"
+    set:html={JSON.stringify(seoStructuredData)}
+    slot="head"
+  />
+
   <header class="directory-nav">
     <a class="directory-brand" href="/" aria-label="BC Real Estate home">
       <span class="directory-brand__mark">BC</span>
@@ -422,11 +581,11 @@ const pageDescription =
         <div class="bc-hero__content">
           <p class="eyebrow eyebrow--light">British Columbia real estate</p>
 
-          <h1>Find your place<br />in British Columbia.</h1>
+          <h1>Homes for sale<br />across British Columbia.</h1>
 
           <p class="bc-hero__copy">
-            Search real homes in distinctive BC communities—from the coast
-            and islands to mountain towns and growing cities.
+            Explore live BC real estate listings in distinctive communities—from
+            Vancouver Island and the coast to mountain towns and growing cities.
           </p>
 
           <form class="market-jump" id="market-jump">
@@ -1467,6 +1626,7 @@ const pageDescription =
   }
 
   .path-card h3 {
+    min-height: 2rem;
     margin: 0 0 13px;
     font-family: var(--f-display, Georgia, serif);
     font-size: 2rem;
@@ -1476,6 +1636,7 @@ const pageDescription =
   }
 
   .path-card > p:not(.eyebrow) {
+    min-height: 5.15rem;
     margin: 0 0 24px;
     color: #58625c;
     font-size: 0.83rem;
@@ -2310,4 +2471,10 @@ const pageDescription =
   .bc-hero__shade {
     opacity: 0.72 !important;
   }
-</style>
+
+  @media (max-width: 560px) {
+    .path-card h3,
+    .path-card > p:not(.eyebrow) {
+      min-height: 0;
+    }
+  }</style>

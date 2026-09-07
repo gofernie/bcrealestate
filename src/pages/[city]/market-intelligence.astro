@@ -178,40 +178,130 @@ const newThisWeek = listings.filter((listing) => {
     timestamp >= sevenDaysAgo;
 }).length;
 
-const priceBands = [
+const sortedListingPrices = [
+  ...listingPrices
+].sort((a, b) => a - b);
+
+const percentilePrice = (ratio) => {
+  if (!sortedListingPrices.length) return 0;
+
+  const position =
+    (sortedListingPrices.length - 1) * ratio;
+
+  const lowerIndex = Math.floor(position);
+  const upperIndex = Math.ceil(position);
+  const weight = position - lowerIndex;
+
+  const lower =
+    sortedListingPrices[lowerIndex];
+
+  const upper =
+    sortedListingPrices[upperIndex];
+
+  return lower + (upper - lower) * weight;
+};
+
+const priceBandStep =
+  medianPrice >= 2500000
+    ? 500000
+    : medianPrice >= 1200000
+      ? 250000
+      : medianPrice >= 700000
+        ? 100000
+        : 50000;
+
+const roundPriceBand = (value) =>
+  Math.max(
+    priceBandStep,
+    Math.round(value / priceBandStep) *
+      priceBandStep
+  );
+
+const priceBreaks = [
+  percentilePrice(0.2),
+  percentilePrice(0.4),
+  percentilePrice(0.6),
+  percentilePrice(0.8),
+].reduce((breaks, value) => {
+  const rounded = roundPriceBand(value);
+  const previous =
+    breaks[breaks.length - 1] || 0;
+
+  breaks.push(
+    rounded > previous
+      ? rounded
+      : previous + priceBandStep
+  );
+
+  return breaks;
+}, []);
+
+const priceBandDefinitions = [
   {
-    label: "Under $500K",
-    href: `/${city}?maxPrice=500000`,
-    count: listingPrices.filter((price) => price < 500000).length,
+    min: 0,
+    max: priceBreaks[0],
   },
   {
-    label: "$500K–$700K",
-    href: `/${city}?minPrice=500000&maxPrice=700000`,
-    count: listingPrices.filter(
-      (price) => price >= 500000 && price < 700000
-    ).length,
+    min: priceBreaks[0],
+    max: priceBreaks[1],
   },
   {
-    label: "$700K–$900K",
-    href: `/${city}?minPrice=700000&maxPrice=900000`,
-    count: listingPrices.filter(
-      (price) => price >= 700000 && price < 900000
-    ).length,
+    min: priceBreaks[1],
+    max: priceBreaks[2],
   },
   {
-    label: "$900K–$1.2M",
-    href: `/${city}?minPrice=900000&maxPrice=1200000`,
-    count: listingPrices.filter(
-      (price) => price >= 900000 && price < 1200000
-    ).length,
+    min: priceBreaks[2],
+    max: priceBreaks[3],
   },
   {
-    label: "$1.2M+",
-    href: `/${city}?minPrice=1200000`,
-    count: listingPrices.filter((price) => price >= 1200000).length,
+    min: priceBreaks[3],
+    max: null,
   },
 ];
 
+const priceBands = priceBandDefinitions.map(
+  (band) => {
+    const label = band.max === null
+      ? `${formatPrice(band.min)}+`
+      : band.min === 0
+        ? `Under ${formatPrice(band.max)}`
+        : `${formatPrice(band.min)}–${formatPrice(
+            band.max
+          )}`;
+
+    const params =
+      new URLSearchParams();
+
+    if (band.min > 0) {
+      params.set(
+        "minPrice",
+        String(band.min)
+      );
+    }
+
+    if (band.max !== null) {
+      params.set(
+        "maxPrice",
+        String(band.max)
+      );
+    }
+
+    const count = listingPrices.filter(
+      (price) =>
+        price >= band.min &&
+        (
+          band.max === null ||
+          price < band.max
+        )
+    ).length;
+
+    return {
+      label,
+      href: `/${city}?${params.toString()}`,
+      count,
+    };
+  }
+);
 const maxPriceBandCount = Math.max(
   ...priceBands.map((band) => band.count),
   1
@@ -2423,9 +2513,25 @@ const marketSeoSchema = {
     grid-template-columns: 140px minmax(0, 1fr) 48px;
     gap: 20px;
     align-items: center;
-    padding: 12px 0;
+    margin: 0 -14px;
+    padding: 12px 14px;
+    border-radius: 5px;
     color: white;
     text-decoration: none;
+    transition:
+      background .2s ease,
+      transform .2s ease;
+  }
+
+  .price-row:hover,
+  .price-row:focus-visible {
+    background: rgba(255, 255, 255, .075);
+    transform: translateX(5px);
+  }
+
+  .price-row:focus-visible {
+    outline: 2px solid #b9e4d2;
+    outline-offset: 2px;
   }
 
   .price-row > span {
@@ -2445,9 +2551,34 @@ const marketSeoSchema = {
     height: 100%;
     background: linear-gradient(
       90deg,
-      #9fcab7,
-      color-mix(in srgb, var(--accent, #633a98) 58%, white)
+      #9fcab7 0%,
+      color-mix(in srgb, var(--accent, #633a98) 48%, white) 55%,
+      #d8f1e5 100%
     );
+    background-size: 160% 100%;
+    background-position: 0 0;
+    transform-origin: left center;
+    transition:
+      background-position .38s ease,
+      filter .2s ease;
+  }
+
+  .price-row:hover .price-row__track i,
+  .price-row:focus-visible .price-row__track i {
+    background-position: 100% 0;
+    filter: brightness(1.16);
+  }
+
+  .price-row > span {
+    transition:
+      color .2s ease,
+      transform .2s ease;
+  }
+
+  .price-row:hover > span,
+  .price-row:focus-visible > span {
+    color: #d8f1e5;
+    transform: translateX(2px);
   }
 
   .price-row > strong {
@@ -2455,6 +2586,29 @@ const marketSeoSchema = {
     font-size: 1rem;
     font-weight: 500;
     text-align: right;
+    transition:
+      color .2s ease,
+      transform .2s ease;
+  }
+
+  .price-row:hover > strong,
+  .price-row:focus-visible > strong {
+    color: #d8f1e5;
+    transform: scale(1.14);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .price-row,
+    .price-row > span,
+    .price-row > strong,
+    .price-row__track i {
+      transition: none;
+    }
+
+    .price-row:hover,
+    .price-row:focus-visible {
+      transform: none;
+    }
   }
 
   .type-grid {
@@ -2529,10 +2683,64 @@ const marketSeoSchema = {
   }
 
   .area-table__row {
+    position: relative;
     border-bottom: 1px solid var(--market-line);
     color: #40394a;
     font-size: .84rem;
     text-decoration: none;
+    box-shadow: inset 0 0 0 var(--accent, #633a98);
+    transition:
+      background .2s ease,
+      box-shadow .2s ease,
+      transform .2s ease;
+  }
+
+  .area-table__row:hover,
+  .area-table__row:focus-visible {
+    background: color-mix(
+      in srgb,
+      var(--accent, #633a98) 5%,
+      white
+    );
+    box-shadow:
+      inset 4px 0 0 var(--accent, #633a98);
+    transform: translateX(4px);
+  }
+
+  .area-table__row:focus-visible {
+    outline: 2px solid var(--accent, #633a98);
+    outline-offset: 2px;
+  }
+
+  .area-table__row strong,
+  .area-table__row > span:last-child {
+    transition:
+      color .2s ease,
+      transform .2s ease;
+  }
+
+  .area-table__row:hover strong,
+  .area-table__row:focus-visible strong {
+    color: var(--accent, #633a98);
+  }
+
+  .area-table__row:hover > span:last-child,
+  .area-table__row:focus-visible > span:last-child {
+    color: var(--accent, #633a98);
+    transform: translateX(5px);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .area-table__row,
+    .area-table__row strong,
+    .area-table__row > span:last-child {
+      transition: none;
+    }
+
+    .area-table__row:hover,
+    .area-table__row:focus-visible {
+      transform: none;
+    }
   }
 
   .area-table__row strong {
