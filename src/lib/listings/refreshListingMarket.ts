@@ -221,11 +221,10 @@ export async function refreshListingMarket(
   );
 
   const searchKey = cleanKey(rawCity);
-  // parksville-vireb-board-v1
-  // Board 25 is the authoritative VIREB/Matrix feed.
-  const effectiveBoardId =
-    boardId ||
-    (searchKey === "parksville" ? "25" : "");
+  // Use a board restriction only when the caller explicitly requests one.
+  // The forced Parksville board filter omitted valid active VIREB land
+  // and residential listings returned by the unrestricted feed.
+  const effectiveBoardId = boardId || "";
 
   const citiesToFetch =
     CITY_FETCH_GROUPS[searchKey] || [rawCity];

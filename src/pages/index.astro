@@ -67,7 +67,7 @@ const { data: sites = [] } = await supabase
 
 const { data: listings = [] } = await supabase
   .from("listing_rows")
-  .select("normalized_city, status")
+  .select("normalized_city, status, normalized_type, property_type")
   .eq("status", "A");
 
 const cityCounts = listings.reduce((acc: Record<string, number>, row: any) => {
@@ -78,11 +78,113 @@ const cityCounts = listings.reduce((acc: Record<string, number>, row: any) => {
   return acc;
 }, {});
 
+
+const normalizeInventoryType = (value: unknown) => {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+
+  const aliases: Record<string, string> = {
+    homes: "house",
+    home: "house",
+    houses: "house",
+    condos: "condo",
+    apartment: "condo",
+    apartments: "condo",
+    townhome: "townhouse",
+    townhomes: "townhouse",
+    mobiles: "mobile",
+    "mobile-home": "mobile",
+    "mobile-homes": "mobile",
+    lots: "land",
+  };
+
+  return aliases[normalized] || normalized;
+};
+
+const cityTypeCounts = listings.reduce(
+  (
+    acc: Record<string, Record<string, number>>,
+    listing: any
+  ) => {
+    const city = String(
+      listing.normalized_city || ""
+    )
+      .toLowerCase()
+      .trim();
+
+    const inventoryType = normalizeInventoryType(
+      listing.normalized_type ??
+      listing.property_type ??
+      ""
+    );
+
+    if (!city || !inventoryType) {
+      return acc;
+    }
+
+    if (!acc[city]) {
+      acc[city] = {};
+    }
+
+    acc[city][inventoryType] =
+      (acc[city][inventoryType] || 0) + 1;
+
+    return acc;
+  },
+  {}
+);
 const titleCase = (value = "") =>
   String(value)
     .replace(/-/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
+
+const MARKET_CITY_GROUPS: Record<string, string[]> = {
+  parksville: [
+    "parksville",
+    "errington",
+    "coombs",
+    "hilliers",
+    "nanoose bay",
+    "qualicum beach",
+    "qualicum north",
+    "french creek",
+    "fairwinds",
+    "little qualicum river village",
+    "bowser/deep bay",
+  ],
+};
+
+const getMarketCities = (city: string) =>
+  MARKET_CITY_GROUPS[city] || [city];
+
+const getMarketListingCount = (city: string) =>
+  getMarketCities(city).reduce(
+    (total, marketCity) =>
+      total + (cityCounts[marketCity] || 0),
+    0
+  );
+
+const getMarketTypeCounts = (city: string) =>
+  getMarketCities(city).reduce(
+    (totals: Record<string, number>, marketCity) => {
+      const cityTypes =
+        cityTypeCounts[marketCity] || {};
+
+      Object.entries(cityTypes).forEach(
+        ([type, count]) => {
+          totals[type] =
+            (totals[type] || 0) +
+            Number(count || 0);
+        }
+      );
+
+      return totals;
+    },
+    {}
+  );
 const cityCards = Object.values(
   sites.reduce((acc: Record<string, any>, row: any) => {
     const city = String(row.city || "").toLowerCase().trim();
@@ -95,7 +197,8 @@ const cityCards = Object.values(
         city,
         label,
         href: `/${city}`,
-        count: cityCounts[city] || 0,
+        count: getMarketListingCount(city),
+        typeCounts: getMarketTypeCounts(city),
         accent: row.accent_color || "#176b68",
       };
     }
@@ -111,23 +214,40 @@ const totalListings = cityCards.reduce(
 
 const marketCount = cityCards.length;
 
+const normalizeCityKey = (value = "") =>
+  String(value)
+    .toLowerCase()
+    .trim()
+    .replace(/[\s_]+/g, "-");
+
 const getCity = (city: string) =>
-  cityCards.find((item: any) => item.city === city);
+  cityCards.find(
+    (item: any) =>
+      normalizeCityKey(item.city) === normalizeCityKey(city)
+  );
 
 const regionDefinitions = [
   {
     kicker: "Vancouver Island",
-    title: "Island living",
-    copy: "Coastal cities, oceanfront communities, and room to breathe.",
-    cities: ["nanaimo", "parksville", "comox", "campbell-river"],
+    title: "Island communities",
+    copy: "Coastal cities, smaller communities, and relaxed Island living.",
+    cities: [
+      "nanaimo",
+      "parksville",
+      "comox",
+      "campbell-river",
+      "duncan",
+      "ladysmith",
+      "port-alberni"
+    ],
     fallback: "/nanaimo",
     tone: "coast",
   },
   {
-    kicker: "Sea to Sky",
+    kicker: "Mountain Markets",
     title: "Mountain country",
     copy: "Four-season communities shaped by mountains, trails, and snow.",
-    cities: ["whistler"],
+    cities: ["whistler", "fernie", "sparwood"],
     fallback: "/whistler",
     tone: "alpine",
   },
@@ -140,11 +260,17 @@ const regionDefinitions = [
     tone: "harbour",
   },
   {
-    kicker: "Southern Interior",
-    title: "Valleys and peaks",
-    copy: "Mountain towns, larger properties, and distinct local markets.",
-    cities: ["fernie", "sparwood", "duncan"],
-    fallback: "/fernie",
+    kicker: "More BC Markets",
+    title: "Places worth exploring",
+    copy: "Distinct local markets beyond the province's largest centres.",
+    cities: [
+      "tofino",
+      "lantzville",
+      "qualicum-beach",
+      "nanoose-bay",
+      "elkford"
+    ],
+    fallback: "/tofino",
     tone: "valley",
   },
 ];
@@ -156,8 +282,7 @@ const regions = regionDefinitions.map((region) => {
 
   return {
     ...region,
-    href: availableCities[0]?.href || region.fallback,
-    cityLabels: availableCities.map((city: any) => city.label),
+    availableCities,
     count: availableCities.reduce(
       (total: number, city: any) => total + city.count,
       0
@@ -211,8 +336,8 @@ const pageDescription =
 
     <nav class="directory-links" aria-label="Primary navigation">
       <a href="#regions">Regions</a>
-      <a href="#markets">Markets</a>
       <a href="#property-types">Property types</a>
+      <a href="#markets">Markets</a>
       <a class="directory-links__agent" href="/login">Agent login</a>
     </nav>
   </header>
@@ -287,10 +412,7 @@ const pageDescription =
 
       <div class="region-grid">
         {regions.map((region, index) => (
-          <a
-            class={`region-card region-card--${region.tone}`}
-            href={region.href}
-          >
+          <article class={`region-card region-card--${region.tone}`}>
             <span class="region-card__number">
               {String(index + 1).padStart(2, "0")}
             </span>
@@ -300,10 +422,18 @@ const pageDescription =
               <h3>{region.title}</h3>
               <span class="region-card__copy">{region.copy}</span>
 
-              {region.cityLabels.length > 0 && (
-                <span class="region-card__cities">
-                  {region.cityLabels.join(" · ")}
-                </span>
+              {region.availableCities.length > 0 && (
+                <nav
+                  class="region-card__links"
+                  aria-label={`${region.title} markets`}
+                >
+                  {region.availableCities.map((city: any) => (
+                    <a href={city.href}>
+                      {city.label}
+                      <span aria-hidden="true">→</span>
+                    </a>
+                  ))}
+                </nav>
               )}
             </div>
 
@@ -311,11 +441,48 @@ const pageDescription =
               <span>
                 {region.count > 0
                   ? `${region.count.toLocaleString()} active listings`
-                  : "Explore the region"}
+                  : "More markets coming soon"}
               </span>
-              <strong aria-hidden="true">↗</strong>
             </div>
-          </a>
+          </article>
+        ))}
+      </div>
+    </section>
+
+    <section class="page-section" id="property-types">
+      <div class="section-heading">
+        <p class="eyebrow">Find your way in</p>
+        <h2>Start with the property.</h2>
+        <p>
+          Choose a market first, or begin with the kind of home
+          you are looking for.
+        </p>
+      </div>
+
+      <div class="path-grid">
+        {featuredPaths.map((path, index) => (
+          <article
+            class="path-card"
+            data-property-card
+            tabindex="0"
+            role="button"
+          >
+            <span class="path-card__number">
+              {String(index + 1).padStart(2, "0")}
+            </span>
+
+            <p class="eyebrow">{path.eyebrow}</p>
+            <h3>{path.title}</h3>
+            <p>{path.copy}</p>
+
+            <button
+              class="path-card__action"
+              type="button"
+              data-property-query={path.query}
+            >
+              Choose a market first <span aria-hidden="true">→</span>
+            </button>
+          </article>
         ))}
       </div>
     </section>
@@ -324,7 +491,7 @@ const pageDescription =
       <div class="market-section__inner">
         <div class="section-heading section-heading--market">
           <p class="eyebrow">Browse by city</p>
-          <h2>Choose a BC market.</h2>
+          <h2 id="market-heading">Choose a BC market.</h2>
           <p>
             Browse current listings, neighbourhoods, property types,
             and local market information.
@@ -352,6 +519,11 @@ const pageDescription =
               href={city.href}
               data-market-card
               data-market-name={city.label.toLowerCase()}
+              data-count-house={city.typeCounts.house || 0}
+              data-count-condo={city.typeCounts.condo || 0}
+              data-count-townhouse={city.typeCounts.townhouse || 0}
+              data-count-mobile={city.typeCounts.mobile || 0}
+              data-count-land={city.typeCounts.land || 0}
               style={`--market-accent:${city.accent};`}
             >
               <span class="market-card__index">
@@ -360,10 +532,16 @@ const pageDescription =
 
               <div>
                 <h3>{city.label}</h3>
-                <p>
-                  {city.count === 1
-                    ? "1 active listing"
-                    : `${city.count.toLocaleString()} active listings`}
+                <p
+                  data-market-count
+                  data-default-count={`${city.count.toLocaleString()} active listings`}
+                >
+                  <strong class="market-count-number">{city.count.toLocaleString()}</strong>
+                  <span class="market-count-label">
+                    {city.count === 1
+                      ? "active listing"
+                      : "active listings"}
+                  </span>
                 </p>
               </div>
 
@@ -375,39 +553,6 @@ const pageDescription =
         <p class="market-empty" id="market-empty" hidden>
           That market is not in the directory yet.
         </p>
-      </div>
-    </section>
-
-    <section class="page-section" id="property-types">
-      <div class="section-heading">
-        <p class="eyebrow">Find your way in</p>
-        <h2>Start with the property.</h2>
-        <p>
-          Choose a market first, or begin with the kind of home
-          you are looking for.
-        </p>
-      </div>
-
-      <div class="path-grid">
-        {featuredPaths.map((path, index) => (
-          <article class="path-card">
-            <span class="path-card__number">
-              {String(index + 1).padStart(2, "0")}
-            </span>
-
-            <p class="eyebrow">{path.eyebrow}</p>
-            <h3>{path.title}</h3>
-            <p>{path.copy}</p>
-
-            <button
-              class="path-card__action"
-              type="button"
-              data-property-query={path.query}
-            >
-              Choose a market first <span aria-hidden="true">→</span>
-            </button>
-          </article>
-        ))}
       </div>
     </section>
 
@@ -451,6 +596,12 @@ const pageDescription =
       document.querySelectorAll("[data-market-card]")
     );
     const marketEmpty = document.getElementById("market-empty");
+    const marketHeading = document.getElementById("market-heading");
+    const propertyButtons = Array.from(
+      document.querySelectorAll("[data-property-query]")
+    );
+
+    let selectedPropertyQuery = "";
 
     marketForm?.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -458,7 +609,13 @@ const pageDescription =
       const destination = marketSelect?.value || "";
 
       if (destination) {
-        window.location.href = destination;
+        const url = new URL(destination, window.location.origin);
+
+        if (selectedPropertyQuery) {
+          url.search = selectedPropertyQuery;
+        }
+
+        window.location.href = `${url.pathname}${url.search}#homepage-listings`;
         return;
       }
 
@@ -486,19 +643,159 @@ const pageDescription =
       }
     });
 
-    document
-      .querySelectorAll("[data-property-query]")
-      .forEach((button) => {
-        button.addEventListener("click", () => {
-          document
-            .getElementById("markets")
-            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    propertyButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        selectedPropertyQuery =
+          button.dataset.propertyQuery || "";
 
-          window.setTimeout(() => {
-            marketSearch?.focus();
-          }, 500);
+        const selectedType =
+          new URLSearchParams(
+            selectedPropertyQuery
+          ).get("type") || "";
+
+        const typeLabels = {
+          house: {
+            heading: "homes",
+            singular: "home for sale",
+            plural: "homes for sale"
+          },
+          condo: {
+            heading: "condos",
+            singular: "condo for sale",
+            plural: "condos for sale"
+          },
+          townhouse: {
+            heading: "townhomes",
+            singular: "townhome for sale",
+            plural: "townhomes for sale"
+          },
+          mobile: {
+            heading: "mobile homes",
+            singular: "mobile home for sale",
+            plural: "mobile homes for sale"
+          },
+          land: {
+            heading: "land",
+            singular: "land listing",
+            plural: "land listings"
+          }
+        };
+
+        const selectedLabel =
+          typeLabels[selectedType];
+
+        if (marketHeading && selectedLabel) {
+          marketHeading.textContent =
+            `Choose a BC market for ${selectedLabel.heading}.`;
+        }
+
+        marketCards.forEach((card) => {
+          const countElement =
+            card.querySelector("[data-market-count]");
+
+          if (!countElement || !selectedLabel) {
+            return;
+          }
+
+          const attributeName =
+            `count${selectedType
+              .charAt(0)
+              .toUpperCase()}${selectedType.slice(1)}`;
+
+          const count = Number(
+            card.dataset[attributeName] || 0
+          );
+
+          const countLabel =
+            count === 1
+              ? selectedLabel.singular
+              : selectedLabel.plural;
+
+          countElement.innerHTML =
+            `<strong class="market-count-number">${count.toLocaleString()}</strong>` +
+            `<span class="market-count-label">${countLabel}</span>`;
         });
+
+        propertyButtons.forEach((candidate) => {
+          const isSelected = candidate === button;
+
+          candidate
+            .closest(".path-card")
+            ?.classList.toggle("is-selected", isSelected);
+
+          candidate.setAttribute(
+            "aria-pressed",
+            String(isSelected)
+          );
+        });
+
+        marketCards.forEach((card) => {
+          const originalHref =
+            card.dataset.originalHref ||
+            card.getAttribute("href") ||
+            "";
+
+          card.dataset.originalHref = originalHref;
+
+          const url = new URL(
+            originalHref,
+            window.location.origin
+          );
+
+          url.search = selectedPropertyQuery;
+
+          card.setAttribute(
+            "href",
+            `${url.pathname}${url.search}#homepage-listings`
+          );
+        });
+
+        document
+          .getElementById("markets")
+          ?.scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+          });
+
+        window.setTimeout(() => {
+          marketSearch?.focus();
+        }, 500);
       });
+    });
+
+    const propertyCards = Array.from(
+      document.querySelectorAll("[data-property-card]")
+    );
+
+    propertyCards.forEach((card) => {
+      const activateCard = () => {
+        const action = card.querySelector(
+          "[data-property-query]"
+        );
+
+        action?.click();
+      };
+
+      card.addEventListener("click", (event) => {
+        if (event.target.closest("[data-property-query]")) {
+          return;
+        }
+
+        activateCard();
+      });
+
+      card.addEventListener("keydown", (event) => {
+        if (
+          event.key !== "Enter" &&
+          event.key !== " "
+        ) {
+          return;
+        }
+
+        event.preventDefault();
+        activateCard();
+      });
+    });
   })();
 </script>
 
@@ -596,14 +893,14 @@ const pageDescription =
     background:
       linear-gradient(
         90deg,
-        rgba(8, 22, 18, 0.9) 0%,
-        rgba(8, 22, 18, 0.68) 43%,
-        rgba(8, 22, 18, 0.2) 75%,
-        rgba(8, 22, 18, 0.12) 100%
+        rgba(8, 22, 18, 0.82) 0%,
+        rgba(8, 22, 18, 0.58) 43%,
+        rgba(8, 22, 18, 0.15) 75%,
+        rgba(8, 22, 18, 0.07) 100%
       ),
       linear-gradient(
         0deg,
-        rgba(7, 18, 15, 0.72) 0%,
+        rgba(7, 18, 15, 0.6) 0%,
         transparent 48%
       );
   }
@@ -817,7 +1114,6 @@ const pageDescription =
     overflow: hidden;
     border-radius: 4px;
     color: white;
-    text-decoration: none;
     isolation: isolate;
     transition: transform 0.2s ease;
   }
@@ -899,11 +1195,36 @@ const pageDescription =
     line-height: 1.55;
   }
 
-  .region-card__cities {
-    display: block;
-    margin-top: 14px;
-    color: rgba(255, 255, 255, 0.58);
-    font-size: 0.72rem;
+  .region-card__links {
+    margin-top: 22px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .region-card__links a {
+    padding: 8px 11px;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 999px;
+    color: white;
+    text-decoration: none;
+    font-size: 0.71rem;
+    font-weight: 800;
+    backdrop-filter: blur(4px);
+    transition:
+      background 0.18s ease,
+      border-color 0.18s ease,
+      transform 0.18s ease;
+  }
+
+  .region-card__links a:hover {
+    background: white;
+    border-color: white;
+    color: #14221c;
+    transform: translateY(-1px);
   }
 
   .region-card__footer {
@@ -1343,5 +1664,578 @@ const pageDescription =
       grid-template-columns: 1fr;
       gap: 18px;
     }
+  }
+
+  /* Softer regional collection cards */
+  .region-grid {
+    gap: 16px;
+  }
+
+  .region-card {
+    min-height: 350px;
+    padding: 30px;
+    color: #17231e;
+    border: 1px solid rgba(26, 48, 39, 0.1);
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(28, 42, 35, 0.045);
+  }
+
+  .region-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 34px rgba(28, 42, 35, 0.08);
+  }
+
+  .region-card::after {
+    display: none;
+  }
+
+  .region-card--coast::before {
+    background: linear-gradient(145deg, #e3efea, #d4e4de);
+  }
+
+  .region-card--alpine::before {
+    background: linear-gradient(145deg, #e7eceb, #d9e2e1);
+  }
+
+  .region-card--harbour::before {
+    background: linear-gradient(145deg, #edf0e8, #dfe6dc);
+  }
+
+  .region-card--valley::before {
+    background: linear-gradient(145deg, #f0ebe0, #e4dfd2);
+  }
+
+  .region-card__number {
+    color: rgba(25, 47, 38, 0.48);
+    opacity: 1;
+  }
+
+  .region-card__content {
+    width: 100%;
+    max-width: none;
+  }
+
+  .region-card__content > p {
+    color: #176b68;
+  }
+
+  .region-card h3 {
+    margin-bottom: 12px;
+    color: #17231e;
+  }
+
+  .region-card__copy {
+    color: #5d6963;
+  }
+
+  .region-card__links {
+    margin-top: 24px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .region-card__links a {
+    min-height: 43px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: #1b332a;
+    background: rgba(255, 255, 255, 0.58);
+    border: 1px solid rgba(25, 55, 43, 0.12);
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 0.75rem;
+    font-weight: 800;
+    backdrop-filter: none;
+    transition:
+      background 0.18s ease,
+      border-color 0.18s ease,
+      transform 0.18s ease;
+  }
+
+  .region-card__links a:hover {
+    color: #114f4d;
+    background: white;
+    border-color: rgba(23, 107, 104, 0.34);
+    transform: translateY(-1px);
+  }
+
+  .region-card__links a span {
+    color: #176b68;
+  }
+
+  .region-card__footer {
+    color: #647069;
+    border-top-color: rgba(25, 47, 38, 0.14);
+  }
+
+  @media (max-width: 560px) {
+    .region-card {
+      min-height: 0;
+      padding: 24px;
+    }
+
+    .region-card__links {
+      grid-template-columns: 1fr;
+    }
+  }
+  /* Softer regional collection cards */
+  .region-grid {
+    gap: 16px;
+  }
+
+  .region-card {
+    min-height: 350px;
+    padding: 30px;
+    color: #17231e;
+    border: 1px solid rgba(26, 48, 39, 0.1);
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(28, 42, 35, 0.045);
+  }
+
+  .region-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 34px rgba(28, 42, 35, 0.08);
+  }
+
+  .region-card::after {
+    display: none;
+  }
+
+  .region-card--coast::before {
+    background: linear-gradient(145deg, #e3efea, #d4e4de);
+  }
+
+  .region-card--alpine::before {
+    background: linear-gradient(145deg, #e7eceb, #d9e2e1);
+  }
+
+  .region-card--harbour::before {
+    background: linear-gradient(145deg, #edf0e8, #dfe6dc);
+  }
+
+  .region-card--valley::before {
+    background: linear-gradient(145deg, #f0ebe0, #e4dfd2);
+  }
+
+  .region-card__number {
+    color: rgba(25, 47, 38, 0.48);
+    opacity: 1;
+  }
+
+  .region-card__content {
+    width: 100%;
+    max-width: none;
+  }
+
+  .region-card__content > p {
+    color: #176b68;
+  }
+
+  .region-card h3 {
+    margin-bottom: 12px;
+    color: #17231e;
+  }
+
+  .region-card__copy {
+    color: #5d6963;
+  }
+
+  .region-card__links {
+    margin-top: 24px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .region-card__links a {
+    min-height: 43px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: #1b332a;
+    background: rgba(255, 255, 255, 0.58);
+    border: 1px solid rgba(25, 55, 43, 0.12);
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 0.75rem;
+    font-weight: 800;
+    backdrop-filter: none;
+    transition:
+      background 0.18s ease,
+      border-color 0.18s ease,
+      transform 0.18s ease;
+  }
+
+  .region-card__links a:hover {
+    color: #114f4d;
+    background: white;
+    border-color: rgba(23, 107, 104, 0.34);
+    transform: translateY(-1px);
+  }
+
+  .region-card__links a span {
+    color: #176b68;
+  }
+
+  .region-card__footer {
+    color: #647069;
+    border-top-color: rgba(25, 47, 38, 0.14);
+  }
+
+  @media (max-width: 560px) {
+    .region-card {
+      min-height: 0;
+      padding: 24px;
+    }
+
+    .region-card__links {
+      grid-template-columns: 1fr;
+    }
+  }
+  /* Regional collection alignment */
+  .region-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+
+  .region-card__number {
+    position: absolute;
+    top: 28px;
+    right: 28px;
+  }
+
+  .region-card__content {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    margin-top: 8px;
+  }
+
+  .region-card__content > p {
+    min-height: 16px;
+    margin: 0 52px 9px 0;
+  }
+
+  .region-card h3 {
+    min-height: 58px;
+    margin: 0 52px 10px 0;
+    display: flex;
+    align-items: flex-start;
+    font-size: clamp(2.35rem, 3.7vw, 3.45rem);
+    line-height: 0.98;
+  }
+
+  .region-card__copy {
+    min-height: 46px;
+    max-width: 470px;
+  }
+
+  .region-card__links {
+    margin-top: 18px;
+    align-content: start;
+  }
+
+  .region-card__footer {
+    margin-top: 24px;
+    flex: 0 0 auto;
+  }
+
+  @media (max-width: 760px) {
+    .region-card__number {
+      top: 22px;
+      right: 22px;
+    }
+
+    .region-card__content {
+      margin-top: 0;
+    }
+
+    .region-card h3 {
+      min-height: 0;
+      margin-right: 35px;
+    }
+
+    .region-card__copy {
+      min-height: 0;
+    }
+  }
+  /* Selected property type before market choice */
+  .path-card {
+    transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease,
+      border-color 0.18s ease;
+  }
+
+  .path-card.is-selected {
+    border-top-color: #0d504d;
+    box-shadow:
+      0 0 0 2px #176b68,
+      0 14px 34px rgba(23, 107, 104, 0.14);
+    transform: translateY(-3px);
+  }
+
+  .path-card.is-selected .path-card__action {
+    color: #176b68;
+  }
+
+  .path-card.is-selected .path-card__action::before {
+    content: "Selected · ";
+  }
+  /* Homepage property-to-market selection */
+  .path-card {
+    transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease,
+      border-color 0.18s ease;
+  }
+
+  .path-card.is-selected {
+    border-top-color: #0d504d;
+    box-shadow:
+      0 0 0 2px #176b68,
+      0 14px 34px rgba(23, 107, 104, 0.14);
+    transform: translateY(-3px);
+  }
+
+  .path-card.is-selected .path-card__action {
+    color: #176b68;
+  }
+
+  .path-card.is-selected .path-card__action::before {
+    content: "Selected · ";
+  }
+  /* Fully clickable property cards */
+  .path-card[data-property-card] {
+    cursor: pointer;
+  }
+
+  .path-card[data-property-card]:hover {
+    border-top-color: #0f5e5b;
+    box-shadow: 0 13px 28px rgba(25, 48, 39, 0.11);
+    transform: translateY(-4px);
+  }
+
+  .path-card[data-property-card]:hover
+  .path-card__action span {
+    transform: translateX(4px);
+  }
+
+  .path-card[data-property-card]:focus-visible {
+    outline: 3px solid rgba(23, 107, 104, 0.32);
+    outline-offset: 4px;
+  }
+
+  .path-card__action span {
+    transition: transform 0.18s ease;
+  }
+
+  .path-card.is-selected:hover {
+    transform: translateY(-3px);
+  }
+  /* Prominent market inventory counts */
+  .market-card [data-market-count] {
+    margin-top: 10px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    color: #176b68;
+  }
+
+  .market-card [data-market-count] strong {
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.18rem;
+    line-height: 1;
+    letter-spacing: -0.025em;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .market-card [data-market-count] span {
+    color: #66716a;
+    font-size: 0.72rem;
+    font-weight: 650;
+  }
+
+  .market-card:hover [data-market-count] strong {
+    color: var(--market-accent, #176b68);
+  }
+  /* Large formatted market counts */
+  .market-card [data-market-count] {
+    margin: 13px 0 0;
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    color: #176b68;
+    line-height: 1;
+  }
+
+  .market-card :global(.market-count-number) {
+    display: inline-block;
+    color: #176b68;
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.65rem;
+    line-height: 0.9;
+    letter-spacing: -0.045em;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .market-card :global(.market-count-label) {
+    display: inline-block;
+    margin-left: 1px;
+    color: #59655e;
+    font-size: 0.76rem;
+    line-height: 1.15;
+    font-weight: 650;
+  }
+
+  .market-card:hover :global(.market-count-number) {
+    color: var(--market-accent, #176b68);
+  }
+
+  @media (max-width: 600px) {
+    .market-card :global(.market-count-number) {
+      font-size: 1.45rem;
+    }
+  }</style>
+<style is:global>
+  /* Identical default and dynamic market counts */
+  .market-card [data-market-count] {
+    margin: 13px 0 0 !important;
+    display: flex !important;
+    align-items: baseline !important;
+    gap: 9px !important;
+    line-height: 1 !important;
+  }
+
+  .market-card .market-count-number {
+    display: inline-block !important;
+    color: #176b68 !important;
+    font-family: var(--f-display, Georgia, serif) !important;
+    font-size: 1.65rem !important;
+    line-height: 0.9 !important;
+    letter-spacing: -0.045em !important;
+    font-weight: 700 !important;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .market-card .market-count-label {
+    display: inline-block !important;
+    margin: 0 !important;
+    color: #59655e !important;
+    font-size: 0.76rem !important;
+    line-height: 1.15 !important;
+    font-weight: 650 !important;
+  }
+
+  .market-card:hover .market-count-number {
+    color: var(--market-accent, #176b68) !important;
+  }
+
+  @media (max-width: 600px) {
+    .market-card .market-count-number {
+      font-size: 1.45rem !important;
+    }
+  }
+</style>
+<style is:global>
+  /* subtle-bc-hero-drift-v2 */
+  @media (min-width: 900px) and (prefers-reduced-motion: no-preference) {
+    .bc-hero {
+      isolation: isolate;
+      background-image: none !important;
+    }
+
+    .bc-hero::before {
+      content: "";
+      position: absolute;
+      z-index: 0;
+      inset: -12%;
+      background:
+        url("https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=2000&q=88")
+        center 48% / cover no-repeat;
+      transform:
+        translate3d(
+          0,
+          var(--bc-hero-drift-y, -48px),
+          0
+        );
+      will-change: transform;
+      pointer-events: none;
+    }
+
+    .bc-hero__shade {
+      z-index: 1;
+    }
+  }
+</style>
+
+<script is:inline>
+  (() => {
+    const hero = document.querySelector(".bc-hero");
+
+    const motionAllowed = window.matchMedia(
+      "(min-width: 900px) and (prefers-reduced-motion: no-preference)"
+    ).matches;
+
+    if (!hero || !motionAllowed) {
+      return;
+    }
+
+    let frameRequested = false;
+
+    const updateBcHeroDrift = () => {
+      frameRequested = false;
+
+      const heroHeight =
+        hero.getBoundingClientRect().height || 1;
+
+      const progress = Math.min(
+        1,
+        Math.max(0, window.scrollY / heroHeight)
+      );
+
+      const drift = -48 + progress * 96;
+
+      hero.style.setProperty(
+        "--bc-hero-drift-y",
+        `${drift.toFixed(2)}px`
+      );
+    };
+
+    const requestBcHeroDriftUpdate = () => {
+      if (frameRequested) return;
+
+      frameRequested = true;
+      requestAnimationFrame(updateBcHeroDrift);
+    };
+
+    window.addEventListener(
+      "scroll",
+      requestBcHeroDriftUpdate,
+      { passive: true }
+    );
+
+    window.addEventListener(
+      "resize",
+      requestBcHeroDriftUpdate
+    );
+
+    updateBcHeroDrift();
+  })();
+</script>
+<style is:global>
+  /* lighter-bc-hero-overlay-v1 */
+  .bc-hero__shade {
+    opacity: 0.72 !important;
   }
 </style>
