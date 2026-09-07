@@ -485,6 +485,20 @@ function ideaHref(template: string) {
                     >
                       Edit
                     </a>
+<button
+  type="button"
+  class="small-button small-button--danger"
+  data-delete-intent-page
+  data-page-id={customPage.id}
+  data-site-id={siteId}
+  data-page-name={
+    customPage.hero_heading ||
+    customPage.nav_label ||
+    customPage.slug
+  }
+>
+  Delete
+</button>
                   </div>
                 </article>
               ))}
@@ -650,6 +664,77 @@ function ideaHref(template: string) {
               }, 1800);
 
               button.disabled = false;
+            }
+          });
+        });
+
+      // delete-custom-intent-page
+      document
+        .querySelectorAll("[data-delete-intent-page]")
+        .forEach((button) => {
+          button.addEventListener("click", async () => {
+            const pageId =
+              button.getAttribute("data-page-id") || "";
+
+            const siteId =
+              button.getAttribute("data-site-id") || "";
+
+            const pageName =
+              button.getAttribute("data-page-name") ||
+              "this page";
+
+            const confirmed = window.confirm(
+              `Delete "${pageName}" permanently? ` +
+              "Its public URL will become a 404 page."
+            );
+
+            if (!confirmed) {
+              return;
+            }
+
+            const originalText =
+              button.textContent || "Delete";
+
+            button.disabled = true;
+            button.textContent = "Deleting...";
+
+            try {
+              const response = await fetch(
+                "/api/admin/delete-intent-page",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    page_id: pageId,
+                    site_id: siteId,
+                  }),
+                }
+              );
+
+              const result = await response.json();
+
+              if (!response.ok) {
+                throw new Error(
+                  result?.error ||
+                  "The page could not be deleted."
+                );
+              }
+
+              window.location.reload();
+            } catch (error) {
+              console.error(error);
+
+              button.textContent =
+                error instanceof Error
+                  ? error.message
+                  : "Delete failed";
+
+              window.setTimeout(() => {
+                button.textContent = originalText;
+                button.disabled = false;
+              }, 2200);
             }
           });
         });
@@ -1075,3 +1160,18 @@ function ideaHref(template: string) {
     </style>
   </body>
 </html>
+
+<style is:global>
+  /* custom-page-delete-button */
+  .small-button--danger {
+    border-color: #d9aaa5 !important;
+    background: #fff8f7 !important;
+    color: #a53228 !important;
+  }
+
+  .small-button--danger:hover {
+    border-color: #a53228 !important;
+    background: #a53228 !important;
+    color: #fff !important;
+  }
+</style>
