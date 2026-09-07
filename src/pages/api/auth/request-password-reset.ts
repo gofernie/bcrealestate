@@ -36,8 +36,13 @@ export const POST: APIRoute = async ({
       }
     );
 
-  const origin =
-    new URL(request.url).origin;
+  const requestOrigin =
+  new URL(request.url).origin;
+
+const origin =
+  requestOrigin.includes("localhost")
+    ? requestOrigin
+    : "https://bc.realestate";
 
   const { error } =
     await supabase.auth.resetPasswordForEmail(
