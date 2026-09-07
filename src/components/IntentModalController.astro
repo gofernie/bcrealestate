@@ -477,8 +477,7 @@ const { listings = [] } = Astro.props;
   id="sheet-prev-top-btn"
   type="button"
 >
-    <span aria-hidden="true">&larr;</span>
-    <span class="btn-label-full">Previous</span>
+    Prev
   </button>
 
   <button
@@ -486,8 +485,7 @@ const { listings = [] } = Astro.props;
     id="sheet-next-top-btn"
     type="button"
   >
-    <span class="btn-label-full">Next</span>
-    <span aria-hidden="true">&rarr;</span>
+    Next
   </button>
 </div>
 
@@ -693,6 +691,17 @@ const sheetMiniMap = document.getElementById("sheet-mini-map");
 const sheetMiniMapWrap = document.getElementById("sheet-mini-map-wrap");
 const sheetMapExpandBtn = document.getElementById("sheet-map-expand-btn");
 const sheetImageStage = document.querySelector(".panel__image-stage");
+
+// Keep whichever primary media is open above the reaction buttons.
+if (
+  sheetImageStage &&
+  sheetMiniMapWrap
+) {
+  sheetImageStage.insertAdjacentElement(
+    "afterend",
+    sheetMiniMapWrap
+  );
+}
 
 // redesign-listing-utilities
 const redesignListingUtilities = () => {
@@ -1181,11 +1190,18 @@ function refreshFloorplanButtonVisibility() {
   const floorplans = getCurrentFloorplanUrls();
   const hasFloorplans = floorplans.length > 0;
 
-  sheetFloorplanBtn.hidden = !hasFloorplans;
+  const showTopFloorplanButton =
+    hasFloorplans &&
+    !window.matchMedia("(max-width: 600px)").matches;
+
+  sheetFloorplanBtn.hidden =
+    !showTopFloorplanButton;
 
   sheetFloorplanBtn.style.setProperty(
     "display",
-    hasFloorplans ? "inline-flex" : "none",
+    showTopFloorplanButton
+      ? "inline-flex"
+      : "none",
     "important"
   );
 
@@ -1512,9 +1528,9 @@ function ensureLandscapeFullscreen() {
 
   const target = document.documentElement;
 
-  if (target.requestFullscreen) {
+  if (target.locusNativeFullscreenDisabled) {
     target
-      .requestFullscreen({ navigationUI: "hide" })
+      .locusNativeFullscreenDisabled({ navigationUI: "hide" })
       .catch(() => {});
   }
 }
@@ -1530,9 +1546,9 @@ function restoreFullscreenAfterWake() {
 
   const target = document.documentElement;
 
-  if (target.requestFullscreen) {
+  if (target.locusNativeFullscreenDisabled) {
     target
-      .requestFullscreen({ navigationUI: "hide" })
+      .locusNativeFullscreenDisabled({ navigationUI: "hide" })
       .then(() => {
         landscapeFullscreenNeedsRefresh = false;
       })
@@ -1571,10 +1587,10 @@ function updateLandscapeGalleryMode() {
 
     if (
       !document.fullscreenElement &&
-      fullscreenTarget.requestFullscreen
+      fullscreenTarget.locusNativeFullscreenDisabled
     ) {
       fullscreenTarget
-        .requestFullscreen({ navigationUI: "hide" })
+        .locusNativeFullscreenDisabled({ navigationUI: "hide" })
         .catch(() => {
           // Browser may require another user gesture.
         });
@@ -1640,6 +1656,33 @@ window.addEventListener(
   () => {
     window.setTimeout(updateLandscapeGalleryMode, 120);
   }
+);
+
+// robust-landscape-orientation-settling
+function settleLandscapeGalleryAfterRotation() {
+  [0, 50, 120, 250, 450, 750].forEach(
+    (delay) => {
+      window.setTimeout(() => {
+        updateLandscapeGalleryMode();
+        syncLandscapeViewport();
+      }, delay);
+    }
+  );
+}
+
+landscapeMediaQuery.addEventListener?.(
+  "change",
+  settleLandscapeGalleryAfterRotation
+);
+
+window.addEventListener(
+  "orientationchange",
+  settleLandscapeGalleryAfterRotation
+);
+
+screen.orientation?.addEventListener?.(
+  "change",
+  settleLandscapeGalleryAfterRotation
 );
 
 function refreshLandscapeAfterBrowserChange() {
@@ -1807,6 +1850,36 @@ const syncMobileMediaNav = () => {
   const hasFloorplans =
     getCurrentFloorplanUrls().length > 0;
 
+  // centred-mobile-nav-inline
+  if (mobileMediaNav) {
+    mobileMediaNav.style.setProperty(
+      "grid-template-columns",
+      `repeat(
+        ${hasFloorplans ? 3 : 2},
+        minmax(0, 108px)
+      )`,
+      "important"
+    );
+
+    mobileMediaNav.style.setProperty(
+      "justify-content",
+      "center",
+      "important"
+    );
+
+    mobileMediaNav.style.setProperty(
+      "padding-top",
+      "0",
+      "important"
+    );
+
+    mobileMediaNav.style.setProperty(
+      "border-top",
+      "1px solid rgba(16, 35, 49, 0.14)",
+      "important"
+    );
+  }
+
   if (mobileMediaFloorplan) {
     mobileMediaFloorplan.hidden =
       !hasFloorplans;
@@ -1819,13 +1892,16 @@ const syncMobileMediaNav = () => {
       sheetMiniMap.style.display !== "none"
     );
 
-  if (mobileMediaMap) {
-    mobileMediaMap.textContent =
-      mapIsExpanded
-        ? "Collapse"
-        : mapIsOpen
-          ? "Expand"
-          : "Map";
+    // remove-map-to-nav-gap
+  if (mobileMediaNav) {
+    mobileMediaNav.style.setProperty(
+      "padding-top",
+      "9px",
+      "important"
+    );
+  }
+if (mobileMediaMap) {
+    mobileMediaMap.textContent = "Map";
   }
 
   if (mapIsOpen) {
@@ -1850,13 +1926,7 @@ mobileMediaMap?.addEventListener(
       );
 
     if (mapIsOpen) {
-      sheetMapExpandBtn?.click();
-
-      window.setTimeout(
-        syncMobileMediaNav,
-        50
-      );
-
+      setMobileMediaMode("map");
       return;
     }
 
@@ -2482,6 +2552,11 @@ document.body.classList.remove(
 sheet.setAttribute("aria-hidden", "true");
 sheet.setAttribute("inert", "");
 document.body.style.overflow = "";
+  
+if (mobileMediaNav) {
+  mobileMediaNav.hidden = true;
+  setMobileMediaMode("photos");
+}
 
 if (
   document.fullscreenElement &&
@@ -2859,7 +2934,12 @@ if (sheetFloorplanBtn) {
     Array.isArray(floorplanUrls) &&
     floorplanUrls.length > 0;
 
-  sheetFloorplanBtn.hidden = !hasFloorplan;
+  const showTopFloorplanButton =
+    hasFloorplan &&
+    !window.matchMedia("(max-width: 600px)").matches;
+
+  sheetFloorplanBtn.hidden =
+    !showTopFloorplanButton;
 
 if (hasFloorplan) {
   const floorplanCount = floorplanUrls.length;
@@ -3007,6 +3087,11 @@ const activeCats = Object.entries(catMeta).filter(([k]) => (cats[k]||[]).length)
               if (!miniMap) return;
 
              // show map
+              
+// OSM cards must leave floorplan mode before opening the map.
+if (isFloorplanMode) {
+  returnToRegularPhotos();
+}
 // show map at exactly the same height as the listing images
 const imgStageHeight = imageStage
   ? (imageStage.offsetHeight || imageStage.getBoundingClientRect().height)
@@ -6805,9 +6890,10 @@ sheetImage?.addEventListener("touchend", (event) => {
         calc(9px + env(safe-area-inset-bottom));
 
       border-top: 1px solid rgba(16, 35, 51, .14);
-      background: rgba(255, 255, 255, .97);
-      box-shadow: 0 -8px 24px rgba(16, 35, 51, .12);
-      backdrop-filter: blur(14px);
+      background: #fff;
+      box-shadow: none !important;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
     }
 
     body .mobile-media-nav button {
@@ -6870,21 +6956,249 @@ sheetImage?.addEventListener("touchend", (event) => {
 <style is:global>
   /* mobile-map-collapse-clearance */
   @media (max-width: 768px) {
+    /* Slimmer bottom media navigation. */
+    body .mobile-media-nav {
+      gap: 6px !important;
+      padding:
+        6px 10px
+        calc(6px + env(safe-area-inset-bottom)) !important;
+    }
+
+    body .mobile-media-nav button {
+      min-height: 38px !important;
+      padding: 5px 8px !important;
+      font-size: 0.74rem !important;
+    }
+
+    #preview-sheet {
+      padding-bottom:
+        calc(58px + env(safe-area-inset-bottom)) !important;
+    }
+
+    /* Soft control centred within the regular map. */
     #preview-sheet .panel__map-expand-btn {
-      position: fixed !important;
-      z-index: 2147483647 !important;
-      right: 16px !important;
-      bottom:
-        calc(78px + env(safe-area-inset-bottom)) !important;
-      left: auto !important;
-      transform: none !important;
+      position: absolute !important;
+      left: 50% !important;
+      right: auto !important;
+      bottom: 12px !important;
+      transform: translateX(-50%) !important;
+      z-index: 1000 !important;
+
       width: auto !important;
-      min-width: 126px;
-      box-shadow: 0 8px 24px rgba(16, 35, 51, .22);
+      min-width: 102px !important;
+      min-height: 36px !important;
+      padding: 0 14px !important;
+
+      background: rgba(255, 255, 255, 0.92) !important;
+      border: 1px solid rgba(16, 35, 49, 0.11) !important;
+      border-radius: 999px !important;
+      color: #22302d !important;
+      font-size: 0.76rem !important;
+      box-shadow: 0 5px 16px rgba(16, 35, 49, 0.14) !important;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    /* Keep Collapse visible when the map fills the viewport. */
+    #preview-sheet
+      .panel__map-expand-btn[aria-expanded="true"] {
+      position: fixed !important;
+      left: 50% !important;
+      right: auto !important;
+      bottom:
+        calc(58px + env(safe-area-inset-bottom)) !important;
+      transform: translateX(-50%) !important;
+      z-index: 2147483647 !important;
     }
 
     #preview-sheet .panel__map-expand-btn:active {
-      transform: scale(.97) !important;
+      transform:
+        translateX(-50%)
+        scale(0.97) !important;
+    }
+  }
+</style>
+<style is:global>
+  /* mobile-header-navigation-only */
+  @media (max-width: 600px) {
+    #preview-sheet #sheet-map-btn,
+    #preview-sheet #sheet-floorplan-btn,
+    #preview-sheet #sheet-floorplan-download-btn {
+      display: none !important;
+    }
+  }
+</style>
+<style is:global>
+  /* mobile-prev-next-labels */
+  @media (max-width: 600px) {
+    #sheet-prev-top-btn > span[aria-hidden="true"],
+    #sheet-next-top-btn > span[aria-hidden="true"] {
+      display: none !important;
+    }
+
+    #sheet-prev-top-btn .btn-label-full,
+    #sheet-next-top-btn .btn-label-full {
+      display: inline !important;
+    }
+
+    #sheet-prev-top-btn .btn-label-full {
+      font-size: 0 !important;
+    }
+
+    #sheet-prev-top-btn .btn-label-full::after {
+      content: "Prev";
+      font-size: 0.78rem;
+    }
+  }
+</style>
+<script is:inline>
+  // mobile-top-floorplan-visibility-guard
+  (() => {
+    const button =
+      document.getElementById("sheet-floorplan-btn");
+
+    const mobileQuery =
+      window.matchMedia("(max-width: 600px)");
+
+    if (!button) return;
+
+    const enforceVisibility = () => {
+      if (!mobileQuery.matches) return;
+
+      if (
+        !button.hidden ||
+        button.style.getPropertyValue("display") !== "none"
+      ) {
+        button.hidden = true;
+        button.style.setProperty(
+          "display",
+          "none",
+          "important"
+        );
+      }
+    };
+
+    enforceVisibility();
+
+    new MutationObserver(enforceVisibility).observe(
+      button,
+      {
+        attributes: true,
+        attributeFilter: [
+          "hidden",
+          "style",
+          "class"
+        ]
+      }
+    );
+
+    mobileQuery.addEventListener?.(
+      "change",
+      enforceVisibility
+    );
+  })();
+</script>
+<style is:global>
+  /* centred-map-expand-control */
+  @media (max-width: 768px) {
+    #preview-sheet .panel__map-expand-btn {
+      position: absolute !important;
+      left: 50% !important;
+      right: auto !important;
+      bottom: 16px !important;
+      transform: translateX(-50%) !important;
+
+      width: auto !important;
+      min-width: 118px;
+      min-height: 42px;
+      padding: 0 18px;
+
+      background: rgba(255, 255, 255, 0.92) !important;
+      border: 1px solid rgba(16, 35, 49, 0.12) !important;
+      box-shadow: 0 6px 20px rgba(16, 35, 49, 0.14) !important;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    #preview-sheet .panel__map-expand-btn:active {
+      transform:
+        translateX(-50%)
+        scale(0.97) !important;
+    }
+  }
+</style>
+<style is:global>
+  /* opaque-mobile-nav-fade */
+  @media (max-width: 768px) {
+    body .mobile-media-nav {
+      background:
+        rgba(255, 255, 255, 0.94) !important;
+      border-top:
+        1px solid rgba(16, 35, 49, 0.10) !important;
+      box-shadow:
+        0 -8px 20px
+        rgba(16, 35, 49, 0.08) !important;
+      backdrop-filter: blur(8px) !important;
+      -webkit-backdrop-filter: blur(8px) !important;
+    }
+
+    body .mobile-media-nav::before {
+      content: none !important;
+      display: none !important;
+    }
+
+    body .mobile-media-nav > button {
+      background: #fff !important;
+    }
+
+    body .mobile-media-nav > button.is-active {
+      background: #e8f3f3 !important;
+    }
+
+    /*
+     * The content scrolls above the fixed navigation instead
+     * of being covered by it.
+     */
+    #preview-sheet .panel__content.open {
+      padding-bottom:
+        calc(76px + env(safe-area-inset-bottom)) !important;
+      box-sizing: border-box !important;
+    }
+  }
+</style>
+<style is:global>
+  /* centred-mobile-media-buttons */
+  @media (max-width: 768px) {
+    body .mobile-media-nav {
+      grid-template-columns:
+        repeat(3, minmax(0, 128px)) !important;
+      justify-content: center !important;
+      align-items: center !important;
+
+      padding-top: 6px !important;
+      border-top:
+        1px solid rgba(16, 35, 49, 0.12) !important;
+    }
+
+    body .mobile-media-nav:has(
+      #mobile-media-floorplan[hidden]
+    ) {
+      grid-template-columns:
+        repeat(2, minmax(0, 128px)) !important;
+    }
+  }
+</style>
+<style is:global>
+  /* stable-mobile-modal-width */
+  @media (max-width: 768px) {
+    #preview-sheet .panel__view {
+      overflow-y: scroll !important;
+      scrollbar-gutter: stable !important;
+    }
+
+    #preview-sheet .panel__content {
+      width: 100% !important;
+      box-sizing: border-box !important;
     }
   }
 </style>
