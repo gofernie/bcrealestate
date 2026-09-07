@@ -90,13 +90,57 @@ const TYPE_PAGE_MAP: Record<string, string> = {
   land: "land",
 };
 
-const typeLinks: NavItem[] = [
-  { label: "Homes", href: `/${slugify(city)}/homes` },
-  { label: "Condos", href: `/${slugify(city)}/condos` },
-  { label: "Townhomes", href: `/${slugify(city)}/townhomes` },
-  { label: "Mobile Homes", href: `/${slugify(city)}/mobile-homes` },
-  { label: "Lot / Land", href: `/${slugify(city)}/land` },
+// ordered-core-navigation
+const defaultTypeOrder = [
+  "house",
+  "condo",
+  "townhouse",
+  "mobile",
+  "land",
 ];
+
+const typeLinkMap: Record<
+  string,
+  NavItem
+> = {
+  house: {
+    label: "Homes",
+    href: `/${slugify(city)}/homes`,
+  },
+  condo: {
+    label: "Condos",
+    href: `/${slugify(city)}/condos`,
+  },
+  townhouse: {
+    label: "Townhomes",
+    href: `/${slugify(city)}/townhomes`,
+  },
+  mobile: {
+    label: "Mobile Homes",
+    href: `/${slugify(city)}/mobile-homes`,
+  },
+  land: {
+    label: "Lot / Land",
+    href: `/${slugify(city)}/land`,
+  },
+};
+
+const configuredTypeOrder =
+  Array.isArray(site?.nav_property_types)
+    ? site.nav_property_types
+        .map((value: unknown) =>
+          String(value).trim().toLowerCase()
+        )
+        .filter((value: string) =>
+          Boolean(typeLinkMap[value])
+        )
+    : defaultTypeOrder;
+
+const typeLinks: NavItem[] =
+  configuredTypeOrder.map(
+    (propertyType: string) =>
+      typeLinkMap[propertyType]
+  );
 
 const cleanAreaLabel = (value: string) =>
   String(value || "")
@@ -201,14 +245,23 @@ const uniqueNavIntentLinks: NavItem[] = Array.from(
 const isNanaimoMobilesSite =
   effectiveBrandHostname === "nanaimomobiles.com";
 
+const combinedNavLinks: NavItem[] =
+  Array.from(
+    new Map(
+      [
+        ...typeLinks,
+        ...uniqueNavIntentLinks,
+      ].map((item) => [item.href, item])
+    ).values()
+  );
+
 const finalNavLinks: NavItem[] =
   isNanaimoMobilesSite
     ? typeLinks.filter(
-        (item) => item.label === "Mobile Homes"
+        (item) =>
+          item.label === "Mobile Homes"
       )
-    : uniqueNavIntentLinks.length
-      ? uniqueNavIntentLinks
-      : typeLinks;
+    : combinedNavLinks;
 ---
 
 <nav class="site-nav">

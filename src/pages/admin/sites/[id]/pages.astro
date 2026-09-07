@@ -109,6 +109,38 @@ const corePages = [
     visibleCoreTypes.includes(page.propertyType),
 }));
 
+// order-core-pages-from-site-setting
+const coreTypeOrder = new Map(
+  visibleCoreTypes.map(
+    (propertyType: string, index: number) => [
+      propertyType,
+      index,
+    ]
+  )
+);
+
+corePages.sort((a, b) => {
+  if (!a.propertyType && !b.propertyType) {
+    return 0;
+  }
+
+  if (!a.propertyType) {
+    return -1;
+  }
+
+  if (!b.propertyType) {
+    return 1;
+  }
+
+  const aRank =
+    coreTypeOrder.get(a.propertyType) ?? 999;
+
+  const bRank =
+    coreTypeOrder.get(b.propertyType) ?? 999;
+
+  return aRank - bRank;
+});
+
 const pageIdeas = [
   {
     label: "Waterfront",
@@ -291,9 +323,34 @@ function ideaHref(template: string) {
             </div>
           </div>
 
-          <div class="page-grid">
+          <div class="core-nav-tools">
+  <span>
+    Drag visible pages into the order you want.
+  </span>
+
+  <button
+    type="button"
+    class="small-button small-button--dark"
+    data-save-core-nav-order
+  >
+    Save nav order
+  </button>
+</div>
+<div class="page-grid" data-core-nav-sort-list data-site-id={siteId}>
             {corePages.map((corePage) => (
-              <article class="website-page-card">
+              <article
+  class="website-page-card"
+  draggable={Boolean(
+    corePage.propertyType &&
+    corePage.isVisible
+  )}
+  data-core-nav-item={
+    corePage.propertyType || undefined
+  }
+  data-core-nav-visible={
+    String(corePage.isVisible)
+  }
+>
                 <div class="page-card-copy">
                   <div class="page-title-row">
                     <h3>{corePage.label}</h3>
@@ -740,6 +797,166 @@ function ideaHref(template: string) {
             }
           });
         });
+
+      // sortable-core-navigation
+      const coreNavList =
+        document.querySelector(
+          "[data-core-nav-sort-list]"
+        );
+
+      const saveCoreNavButton =
+        document.querySelector(
+          "[data-save-core-nav-order]"
+        );
+
+      let draggedCoreNavItem = null;
+
+      coreNavList?.addEventListener(
+        "dragstart",
+        (event) => {
+          const item = event.target.closest(
+            '[data-core-nav-item]'
+          );
+
+          if (
+            !item ||
+            item.getAttribute(
+              "data-core-nav-visible"
+            ) !== "true"
+          ) {
+            event.preventDefault();
+            return;
+          }
+
+          draggedCoreNavItem = item;
+          item.classList.add("is-dragging");
+
+          if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed =
+              "move";
+          }
+        }
+      );
+
+      coreNavList?.addEventListener(
+        "dragover",
+        (event) => {
+          if (!draggedCoreNavItem) {
+            return;
+          }
+
+          event.preventDefault();
+
+          const target = event.target.closest(
+            '[data-core-nav-item][data-core-nav-visible="true"]'
+          );
+
+          if (
+            !target ||
+            target === draggedCoreNavItem
+          ) {
+            return;
+          }
+
+          const rect =
+            target.getBoundingClientRect();
+
+          const insertAfter =
+            event.clientY >
+            rect.top + rect.height / 2;
+
+          coreNavList.insertBefore(
+            draggedCoreNavItem,
+            insertAfter
+              ? target.nextSibling
+              : target
+          );
+        }
+      );
+
+      coreNavList?.addEventListener(
+        "dragend",
+        () => {
+          draggedCoreNavItem?.classList.remove(
+            "is-dragging"
+          );
+
+          draggedCoreNavItem = null;
+        }
+      );
+
+      saveCoreNavButton?.addEventListener(
+        "click",
+        async () => {
+          const siteId =
+            coreNavList?.getAttribute(
+              "data-site-id"
+            ) || "";
+
+          const propertyTypes = Array.from(
+            coreNavList?.querySelectorAll(
+              '[data-core-nav-item][data-core-nav-visible="true"]'
+            ) || []
+          ).map(
+            (item) =>
+              item.getAttribute(
+                "data-core-nav-item"
+              ) || ""
+          ).filter(Boolean);
+
+          const originalText =
+            saveCoreNavButton.textContent ||
+            "Save nav order";
+
+          saveCoreNavButton.disabled = true;
+          saveCoreNavButton.textContent =
+            "Saving...";
+
+          try {
+            const response = await fetch(
+              "/api/admin/save-core-nav-order",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type":
+                    "application/json",
+                },
+                body: JSON.stringify({
+                  site_id: siteId,
+                  property_types: propertyTypes,
+                }),
+              }
+            );
+
+            const result =
+              await response.json();
+
+            if (!response.ok) {
+              throw new Error(
+                result?.error ||
+                "Could not save nav order."
+              );
+            }
+
+            saveCoreNavButton.textContent =
+              "Saved!";
+          } catch (error) {
+            console.error(error);
+
+            saveCoreNavButton.textContent =
+              error instanceof Error
+                ? error.message
+                : "Save failed";
+          }
+
+          window.setTimeout(() => {
+            saveCoreNavButton.textContent =
+              originalText;
+
+            saveCoreNavButton.disabled = false;
+          }, 1600);
+        }
+      );
     </script>
 
     <style>
@@ -1175,5 +1392,37 @@ function ideaHref(template: string) {
     border-color: #a53228 !important;
     background: #a53228 !important;
     color: #fff !important;
+  }
+</style>
+<style is:global>
+  /* sortable-core-navigation */
+  .core-nav-tools {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+    color: var(--muted);
+    font-size: 0.78rem;
+  }
+
+  [data-core-nav-item][draggable="true"] {
+    cursor: grab;
+  }
+
+  [data-core-nav-item][draggable="true"]:active {
+    cursor: grabbing;
+  }
+
+  [data-core-nav-item].is-dragging {
+    opacity: 0.48;
+    outline: 2px dashed var(--accent);
+  }
+
+  @media (max-width: 700px) {
+    .core-nav-tools {
+      align-items: stretch;
+      flex-direction: column;
+    }
   }
 </style>
