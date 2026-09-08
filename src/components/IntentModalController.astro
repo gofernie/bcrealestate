@@ -433,7 +433,8 @@ const { listings = [] } = Astro.props;
 }
 
 #preview-sheet.is-landscape-gallery .landscape-expand-hint {
-  display: flex;
+  display: none !important;
+  
   position: fixed;
   right: 18px;
   bottom: 18px;
@@ -452,10 +453,6 @@ const { listings = [] } = Astro.props;
   cursor: pointer;
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-}
-
-:fullscreen .landscape-expand-hint {
-  display: none !important;
 }
 </style>
 <div class="overlay" id="sheet-overlay"></div>
@@ -1560,15 +1557,11 @@ function syncLandscapeViewport() {
 }
 function ensureLandscapeFullscreen() {
   if (!shouldUseLandscapeGallery()) return;
-  if (document.fullscreenElement) return;
 
-  const target = document.documentElement;
-
-  if (target.requestFullscreen) {
-    target
-      .requestFullscreen({ navigationUI: "hide" })
-      .catch(() => {});
-  }
+  // Landscape gallery already behaves like fullscreen using
+  // the fixed-position overlay. Do not invoke the browser
+  // Fullscreen API — avoids Android's fullscreen notification.
+  syncLandscapeViewport();
 }
 
 function restoreFullscreenAfterWake() {
@@ -1632,28 +1625,6 @@ function updateLandscapeGalleryMode() {
   document.documentElement.style.removeProperty("--landscape-vw");
   document.documentElement.style.removeProperty("--landscape-vh");
 
-  if (
-    document.fullscreenElement &&
-    document.exitFullscreen
-  ) {
-    document.exitFullscreen()
-  .then(() => {
-    requestAnimationFrame(() => {
-      updateLandscapeGalleryMode();
-
-      // Force Chrome to recalculate portrait geometry/repaint.
-      void sheet.offsetHeight;
-
-      window.dispatchEvent(new Event("resize"));
-
-      requestAnimationFrame(() => {
-        void sheet.offsetHeight;
-      });
-    });
-  })
-  .catch(() => {});
-  }
-
   photoZoom = 1;
   pinchStartDistance = 0;
 
@@ -1672,28 +1643,6 @@ function updateLandscapeGalleryMode() {
   }
 }
 }
-
-document.addEventListener("fullscreenchange", () => {
-  if (document.fullscreenElement) return;
-
-  requestAnimationFrame(() => {
-    updateLandscapeGalleryMode();
-
-    if (sheet) {
-      void sheet.offsetHeight;
-    }
-
-    window.dispatchEvent(new Event("resize"));
-
-    setTimeout(() => {
-      updateLandscapeGalleryMode();
-
-      if (sheet) {
-        void sheet.offsetHeight;
-      }
-    }, 100);
-  });
-});
 landscapeMediaQuery.addEventListener?.(
   "change",
   updateLandscapeGalleryMode
