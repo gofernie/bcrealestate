@@ -966,6 +966,31 @@ const filterType =
 const filterSort =
   String(searchParams.get("sort") || "").trim();
 
+const filterMinSqft =
+  Number(searchParams.get("minSqft") || 0);
+
+const filterMinYear =
+  Number(searchParams.get("minYear") || 0);
+
+const filterPrimaryOnMain =
+  searchParams.get("primaryOnMain") === "true";
+
+const filterThreeSameFloor =
+  searchParams.get("threeSameFloor") === "true";
+
+const filterFourSameFloor =
+  searchParams.get("fourSameFloor") === "true";
+
+const filterViewType =
+  String(searchParams.get("viewType") || "")
+    .trim()
+    .toLowerCase();
+
+const filterWaterfrontType =
+  String(searchParams.get("waterfrontType") || "")
+    .trim()
+    .toLowerCase();
+
 let navRowsQuery = supabase
   .from("listing_rows")
   .select(
@@ -1081,6 +1106,13 @@ const hasActiveSearchFilters =
   !!filterType ||
   filterBeds > 0 ||
   !!filterPrice ||
+  filterMinSqft > 0 ||
+  filterMinYear > 0 ||
+  filterPrimaryOnMain ||
+  filterThreeSameFloor ||
+  filterFourSameFloor ||
+  !!filterViewType ||
+  !!filterWaterfrontType ||
   (filterSort !== "" && filterSort !== "newest");
 const listingCardFields = `
   id,
@@ -1096,6 +1128,7 @@ const listingCardFields = `
   beds,
   baths,
   sqft,
+  year_built,
   address,
   description,
   image_url,
@@ -1282,6 +1315,36 @@ if (filterAreas.length > 0) {
 
 if (filterBeds > 0) {
   query = query.gte("beds", filterBeds);
+}
+
+if (filterMinSqft > 0) {
+  query = query.gte("sqft", filterMinSqft);
+}
+
+if (filterMinYear > 0) {
+  query = query.gte("year_built", filterMinYear);
+}
+
+if (filterPrimaryOnMain) {
+  query = query.eq("primary_on_main", true);
+}
+
+if (filterThreeSameFloor) {
+  query = query.eq("three_plus_beds_same_floor", true);
+}
+
+if (filterFourSameFloor) {
+  query = query.eq("four_plus_beds_same_floor", true);
+}
+
+if (filterViewType) {
+  query = query.ilike("view_type", `%${filterViewType}%`);
+}
+
+if (filterWaterfrontType === "any") {
+  query = query.eq("waterfront", true);
+} else if (filterWaterfrontType) {
+  query = query.eq("waterfront_type", filterWaterfrontType);
 }
 
 switch (filterPrice) {
@@ -8400,6 +8463,237 @@ grid-template-columns: 30px minmax(0, 1fr);
   transition: opacity .15s ease;
 }</style>
 
+<style is:global>
+/* ==========================================================
+   TYPE PAGE — SECOND LAYER / MORE FILTERS
+   ========================================================== */
+
+.intent-controls .type-more-filters-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  gap: 7px;
+  min-height: 58px;
+  padding: 0 18px;
+  border: 0;
+  border-right: 1px solid rgba(18, 58, 90, 0.10);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 750;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.intent-controls .type-more-filters-toggle:hover {
+  background: color-mix(in srgb, var(--accent) 3%, white);
+}
+
+.type-more-filters-chevron {
+  display: inline-block;
+  font-size: 1rem;
+  line-height: 1;
+  transition: transform 0.16s ease;
+}
+
+.type-more-filters-toggle.is-open .type-more-filters-chevron {
+  transform: rotate(180deg);
+}
+
+.type-more-filters-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.type-more-filters-count[hidden] {
+  display: none !important;
+}
+
+.type-more-filters-panel[hidden] {
+  display: none !important;
+}
+
+.type-more-filters-panel {
+  width: 100%;
+  box-sizing: border-box;
+  margin: -20px 0 22px;
+  padding: 22px 24px 24px;
+  border: 1px solid rgba(18, 58, 90, 0.11);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(18, 58, 90, 0.04);
+}
+
+.intent-controls:has(+ .type-more-filters-panel:not([hidden])) {
+  margin-bottom: 20px !important;
+  border-radius: 12px 12px 0 0 !important;
+  box-shadow: none !important;
+}
+
+.type-more-filters-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, 1fr)
+    minmax(0, 1fr);
+  gap: 30px;
+}
+
+.type-more-filter-group {
+  min-width: 0;
+}
+
+.type-more-filter-group h3 {
+  margin: 0 0 14px;
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.type-more-filter-selects {
+  display: grid;
+  gap: 12px;
+}
+
+.type-more-filter-selects label {
+  display: grid;
+  gap: 6px;
+}
+
+.type-more-filter-selects label > span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.type-more-filter-selects select {
+  width: 100%;
+  height: 44px;
+  padding: 0 38px 0 13px;
+  border: 1px solid rgba(18, 58, 90, 0.13);
+  border-radius: 8px;
+  background-color: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.type-more-filter-selects select:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--accent) 30%,
+    rgba(18, 58, 90, 0.13)
+  );
+}
+
+.type-more-filter-selects select:focus {
+  outline: 2px solid color-mix(
+    in srgb,
+    var(--accent) 18%,
+    transparent
+  );
+  outline-offset: 1px;
+}
+
+.type-more-filter-checks {
+  display: grid;
+  gap: 10px;
+}
+
+.type-more-filter-checks label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid rgba(18, 58, 90, 0.09);
+  border-radius: 8px;
+  background: color-mix(
+    in srgb,
+    var(--accent) 2.5%,
+    white
+  );
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.type-more-filter-checks input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--accent);
+  flex: 0 0 auto;
+}
+
+@media (max-width: 900px) {
+  .type-more-filters-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .type-more-filter-group:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .type-more-filter-group:last-child
+  .type-more-filter-selects {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .intent-controls .type-more-filters-toggle {
+    grid-column: 1 / -1 !important;
+    width: 100%;
+    min-height: 48px;
+    border-right: 0;
+    border-bottom:
+      1px solid rgba(18, 58, 90, 0.10);
+  }
+
+  .type-more-filters-panel {
+    margin: -20px 0 20px;
+    padding: 18px 14px 20px;
+  }
+
+  .type-more-filters-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .type-more-filter-group:last-child {
+    grid-column: auto;
+  }
+
+  .type-more-filter-group:last-child
+  .type-more-filter-selects {
+    grid-template-columns: 1fr;
+  }
+
+  .type-more-filter-selects select {
+    height: 46px;
+  }
+}
+</style>
+
 <div
   data-intent-page-id={page.id}
   data-city={city}
@@ -9731,8 +10025,217 @@ Approximate driving times from{" "}
     <option value="sqft-desc" selected={page.default_sort === "sqft-desc"}>Largest homes first</option>
   </select>
 
-  <span class="results-bar" data-total-listings={listings.length} style="margin-left:auto;font-size:0.82rem;color:var(--muted);font-weight:600;white-space:nowrap;">{listings.length} listings found</span>
+  <button
+    type="button"
+    class="type-more-filters-toggle"
+    data-type-more-toggle
+    aria-expanded="false"
+    aria-controls="type-more-filters"
+  >
+    <span>More filters</span>
+    <span
+      class="type-more-filters-count"
+      data-type-more-count
+      hidden
+    >
+      0
+    </span>
+    <span
+      class="type-more-filters-chevron"
+      aria-hidden="true"
+    >
+      &#8964;
+    </span>
+  </button>
+
+  <span
+    class="results-bar"
+    data-total-listings={listings.length}
+    style="margin-left:auto;font-size:0.82rem;color:var(--muted);font-weight:600;white-space:nowrap;"
+  >
+    {listings.length} listings found
+  </span>
 </section>
+
+<div
+  class="type-more-filters-panel"
+  id="type-more-filters"
+  data-type-more-panel
+  hidden
+>
+  <div class="type-more-filters-grid">
+
+    <section class="type-more-filter-group">
+      <h3>Size &amp; property</h3>
+
+      <div class="type-more-filter-selects">
+        <label>
+          <span>Minimum interior</span>
+
+          <select
+            class="min-sqft-filter-select"
+            aria-label="Minimum interior size"
+          >
+            <option value="" selected={!filterMinSqft}>
+              Any size
+            </option>
+            <option value="750" selected={filterMinSqft === 750}>
+              750+ sq ft
+            </option>
+            <option value="1000" selected={filterMinSqft === 1000}>
+              1,000+ sq ft
+            </option>
+            <option value="1500" selected={filterMinSqft === 1500}>
+              1,500+ sq ft
+            </option>
+            <option value="2000" selected={filterMinSqft === 2000}>
+              2,000+ sq ft
+            </option>
+            <option value="2500" selected={filterMinSqft === 2500}>
+              2,500+ sq ft
+            </option>
+          </select>
+        </label>
+
+        <label>
+          <span>Year built</span>
+
+          <select
+            class="min-year-filter-select"
+            aria-label="Minimum year built"
+          >
+            <option value="" selected={!filterMinYear}>
+              Any year
+            </option>
+            <option value="1990" selected={filterMinYear === 1990}>
+              1990 or newer
+            </option>
+            <option value="2000" selected={filterMinYear === 2000}>
+              2000 or newer
+            </option>
+            <option value="2010" selected={filterMinYear === 2010}>
+              2010 or newer
+            </option>
+            <option value="2020" selected={filterMinYear === 2020}>
+              2020 or newer
+            </option>
+            <option value="2025" selected={filterMinYear === 2025}>
+              New construction
+            </option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="type-more-filter-group">
+      <h3>Layout</h3>
+
+      <div class="type-more-filter-checks">
+        <label>
+          <input
+            type="checkbox"
+            class="primary-main-filter"
+            checked={filterPrimaryOnMain}
+          />
+          <span>Primary bedroom on main</span>
+        </label>
+
+        <label>
+          <input
+            type="checkbox"
+            class="three-floor-filter"
+            checked={filterThreeSameFloor}
+          />
+          <span>3 bedrooms on same floor</span>
+        </label>
+
+        <label>
+          <input
+            type="checkbox"
+            class="four-floor-filter"
+            checked={filterFourSameFloor}
+          />
+          <span>4 bedrooms on same floor</span>
+        </label>
+      </div>
+    </section>
+
+    <section class="type-more-filter-group">
+      <h3>Lifestyle</h3>
+
+      <div class="type-more-filter-selects">
+        <label>
+          <span>View</span>
+
+          <select
+            class="view-type-filter-select"
+            aria-label="View type"
+          >
+            <option value="" selected={!filterViewType}>
+              No preference
+            </option>
+            <option value="mountain" selected={filterViewType === "mountain"}>
+              Mountain view
+            </option>
+            <option value="ocean" selected={filterViewType === "ocean"}>
+              Ocean view
+            </option>
+            <option value="valley" selected={filterViewType === "valley"}>
+              Valley view
+            </option>
+            <option value="lake" selected={filterViewType === "lake"}>
+              Lake view
+            </option>
+            <option value="river" selected={filterViewType === "river"}>
+              River view
+            </option>
+            <option value="city" selected={filterViewType === "city"}>
+              City view
+            </option>
+            <option value="panoramic" selected={filterViewType === "panoramic"}>
+              Panoramic view
+            </option>
+          </select>
+        </label>
+
+        <label>
+          <span>Waterfront</span>
+
+          <select
+            class="waterfront-type-filter-select"
+            aria-label="Waterfront type"
+          >
+            <option value="" selected={!filterWaterfrontType}>
+              Waterfront not required
+            </option>
+            <option value="any" selected={filterWaterfrontType === "any"}>
+              Any waterfront
+            </option>
+            <option
+              value="oceanfront"
+              selected={filterWaterfrontType === "oceanfront"}
+            >
+              Oceanfront
+            </option>
+            <option
+              value="lakefront"
+              selected={filterWaterfrontType === "lakefront"}
+            >
+              Lakefront
+            </option>
+            <option
+              value="riverfront"
+              selected={filterWaterfrontType === "riverfront"}
+            >
+              Riverfront
+            </option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+  </div>
+</div>
 
   {pageKind !== "area" && (
   <div
@@ -12077,7 +12580,95 @@ const priceSelect = document.querySelector(".price-filter-select");
 const typeSelect = document.querySelector(".type-filter-select");
 const sortSelect = document.querySelector(".sort-filter-select");
 const bedsSelect = document.querySelector(".beds-filter-select");
+
+const minSqftSelect =
+  document.querySelector(".min-sqft-filter-select");
+
+const minYearSelect =
+  document.querySelector(".min-year-filter-select");
+
+const primaryMainFilter =
+  document.querySelector(".primary-main-filter");
+
+const threeFloorFilter =
+  document.querySelector(".three-floor-filter");
+
+const fourFloorFilter =
+  document.querySelector(".four-floor-filter");
+
+const viewTypeSelect =
+  document.querySelector(".view-type-filter-select");
+
+const waterfrontTypeSelect =
+  document.querySelector(".waterfront-type-filter-select");
+
+const moreFiltersToggle =
+  document.querySelector("[data-type-more-toggle]");
+
+const moreFiltersPanel =
+  document.querySelector("[data-type-more-panel]");
+
+const moreFiltersCount =
+  document.querySelector("[data-type-more-count]");
 const initialParams = new URLSearchParams(window.location.search);
+
+function getAdvancedFilterCount() {
+  let count = 0;
+
+  if (minSqftSelect?.value) count++;
+  if (minYearSelect?.value) count++;
+  if (primaryMainFilter?.checked) count++;
+  if (threeFloorFilter?.checked) count++;
+  if (fourFloorFilter?.checked) count++;
+  if (viewTypeSelect?.value) count++;
+  if (waterfrontTypeSelect?.value) count++;
+
+  return count;
+}
+
+function updateMoreFiltersState() {
+  const count = getAdvancedFilterCount();
+
+  if (moreFiltersCount) {
+    moreFiltersCount.textContent = String(count);
+    moreFiltersCount.hidden = count === 0;
+  }
+}
+
+function setMoreFiltersOpen(open) {
+  if (!moreFiltersPanel || !moreFiltersToggle) return;
+
+  moreFiltersPanel.hidden = !open;
+
+  moreFiltersToggle.setAttribute(
+    "aria-expanded",
+    open ? "true" : "false"
+  );
+
+  moreFiltersToggle.classList.toggle(
+    "is-open",
+    open
+  );
+}
+
+const hasInitialAdvancedFilters =
+  initialParams.has("minSqft") ||
+  initialParams.has("minYear") ||
+  initialParams.get("primaryOnMain") === "true" ||
+  initialParams.get("threeSameFloor") === "true" ||
+  initialParams.get("fourSameFloor") === "true" ||
+  initialParams.has("viewType") ||
+  initialParams.has("waterfrontType");
+
+setMoreFiltersOpen(hasInitialAdvancedFilters);
+updateMoreFiltersState();
+
+moreFiltersToggle?.addEventListener("click", () => {
+  const isOpen =
+    moreFiltersToggle.getAttribute("aria-expanded") === "true";
+
+  setMoreFiltersOpen(!isOpen);
+});
 
 
 if (areaSelect) {
@@ -12333,6 +12924,44 @@ function updateSearchFromFilters() {
   setOrDelete("beds", filters.beds);
   setOrDelete("price", filters.price);
 
+  setOrDelete(
+    "minSqft",
+    minSqftSelect?.value || ""
+  );
+
+  setOrDelete(
+    "minYear",
+    minYearSelect?.value || ""
+  );
+
+  if (primaryMainFilter?.checked) {
+    params.set("primaryOnMain", "true");
+  } else {
+    params.delete("primaryOnMain");
+  }
+
+  if (threeFloorFilter?.checked) {
+    params.set("threeSameFloor", "true");
+  } else {
+    params.delete("threeSameFloor");
+  }
+
+  if (fourFloorFilter?.checked) {
+    params.set("fourSameFloor", "true");
+  } else {
+    params.delete("fourSameFloor");
+  }
+
+  setOrDelete(
+    "viewType",
+    viewTypeSelect?.value || ""
+  );
+
+  setOrDelete(
+    "waterfrontType",
+    waterfrontTypeSelect?.value || ""
+  );
+
   if (sortSelect?.value && sortSelect.value !== "newest") {
     params.set("sort", sortSelect.value);
   } else {
@@ -12364,6 +12993,41 @@ typeSelect?.addEventListener(
 
 sortSelect?.addEventListener("change", updateSearchFromFilters);
 bedsSelect?.addEventListener("change", updateSearchFromFilters);
+
+minSqftSelect?.addEventListener(
+  "change",
+  updateSearchFromFilters
+);
+
+minYearSelect?.addEventListener(
+  "change",
+  updateSearchFromFilters
+);
+
+primaryMainFilter?.addEventListener(
+  "change",
+  updateSearchFromFilters
+);
+
+threeFloorFilter?.addEventListener(
+  "change",
+  updateSearchFromFilters
+);
+
+fourFloorFilter?.addEventListener(
+  "change",
+  updateSearchFromFilters
+);
+
+viewTypeSelect?.addEventListener(
+  "change",
+  updateSearchFromFilters
+);
+
+waterfrontTypeSelect?.addEventListener(
+  "change",
+  updateSearchFromFilters
+);
 
 document
   .querySelectorAll(".property-type-pill")
