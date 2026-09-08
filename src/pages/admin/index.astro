@@ -1,3 +1,45 @@
 ---
+import { createClient } from "@supabase/supabase-js";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const host =
+  (
+    Astro.request.headers.get("x-forwarded-host") ||
+    Astro.request.headers.get("host") ||
+    Astro.url.hostname ||
+    ""
+  )
+    .split(",")[0]
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .split(":")[0];
+
+const globalAdminHosts = new Set([
+  "localhost",
+  "127.0.0.1",
+  "bc.realestate",
+]);
+
+if (host && !globalAdminHosts.has(host)) {
+  const { data: site } = await supabase
+    .from("sites")
+    .select("id")
+    .eq("domain", host)
+    .maybeSingle();
+
+  if (site?.id) {
+    return Astro.redirect(
+      `/admin/sites/${site.id}/pages`
+    );
+  }
+}
+
 return Astro.redirect("/admin/sites");
 ---
