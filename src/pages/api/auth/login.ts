@@ -6,6 +6,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
 
   const email = String(formData.get("email") || "").trim();
   const password = String(formData.get("password") || "");
+  const returnTo = String(formData.get("returnTo") || "/admin");
 
   if (!email || !password) {
     return redirect("/login?error=Missing email or password");
@@ -22,5 +23,10 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     return redirect(`/login?error=${encodeURIComponent(error.message)}`);
   }
 
-  return redirect("/shortlists");
+  const safeReturnTo =
+    returnTo.startsWith("/") && !returnTo.startsWith("//")
+      ? returnTo
+      : "/admin";
+
+  return redirect(safeReturnTo);
 };

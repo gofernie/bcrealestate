@@ -1,4 +1,5 @@
 ---
+const returnTo = Astro.url.searchParams.get("returnTo") || "/admin";
 import { createSupabaseServerClient } from "../lib/supabaseServer";
 
 export const prerender = false;
@@ -11,7 +12,12 @@ const {
 } = await supabase.auth.getUser();
 
 if (user) {
-  return Astro.redirect("/shortlists");
+  const safeReturnTo =
+    returnTo.startsWith("/") && !returnTo.startsWith("//")
+      ? returnTo
+      : "/admin";
+
+  return Astro.redirect(safeReturnTo);
 }
 
 const errorMessage =
@@ -221,6 +227,7 @@ const errorMessage =
         }
 
         <form method="POST" action="/api/auth/login">
+          <input type="hidden" name="returnTo" value={returnTo} />
           <div class="field">
             <label for="email">Email address</label>
             <input
