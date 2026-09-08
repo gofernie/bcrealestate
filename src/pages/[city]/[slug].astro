@@ -958,6 +958,10 @@ const filterBeds =
 
 const filterPrice =
   String(searchParams.get("price") || "").trim();
+const filterType =
+  String(searchParams.get("type") || "")
+    .trim()
+    .toLowerCase();
 
 const filterSort =
   String(searchParams.get("sort") || "").trim();
@@ -1074,6 +1078,7 @@ const hasPolygonSearch =
 
 const hasActiveSearchFilters =
   filterAreas.length > 0 ||
+  !!filterType ||
   filterBeds > 0 ||
   !!filterPrice ||
   (filterSort !== "" && filterSort !== "newest");
@@ -1254,9 +1259,16 @@ const sitePrimaryType = String(
   .toLowerCase()
   .trim();
 
+const requestedPropertyType =
+  propertyTypeMap[filterType] ||
+  filterType;
+
 const effectivePropertyType =
+  requestedPropertyType ||
   normalizedPropertyType ||
-  (site?.isPropertyTypeSite ? sitePrimaryType : "");
+  (site?.isPropertyTypeSite
+    ? sitePrimaryType
+    : "");
 
 if (effectivePropertyType) {
   query = query.eq(
@@ -12147,93 +12159,6 @@ price: priceSelect?.value || "all",
   };
 }
 
-function cardMatchesFilters(card, filters, options = {}) {
-  const ignoreType = options.ignoreType === true;
-
-  const cardType = String(card.dataset.type || "").toLowerCase();
-  const price = getCardPrice(card);
-  const beds = Number(card.dataset.beds || 0);
-
-
-  const matchesBeds =
-    filters.beds === "all" || beds >= Number(filters.beds);
-
-  const matchesType =
-    ignoreType || filters.type === "all" || cardType === filters.type;
-
-  const underPriceMatch =
-    String(filters.price).match(/^under-(\d+)$/);
-
-  const overPriceMatch =
-    String(filters.price).match(/^over-(\d+)$/);
-
-  const matchesPrice =
-    filters.price === "all" ||
-    (
-      underPriceMatch &&
-      price <= Number(underPriceMatch[1]) * 1000
-    ) ||
-    (
-      overPriceMatch &&
-      price >= Number(overPriceMatch[1]) * 1000
-    );
-
-  return matchesBeds && matchesPrice && matchesType;
-}
-
-function getFilteredCards(options = {}) {
-  const filters = getCurrentFilters();
-
-  return Array.from(document.querySelectorAll(".original-card:not(.listing-load-hidden)"))
-    .filter((card) => !card.classList.contains("is-hidden-by-refine"))
-    .filter((card) => cardMatchesFilters(card, filters, options));
-}
-
-function updatePropertyTypePills() {
-  const cardsForCounts = getFilteredCards({ ignoreType: true });
-  const pills = Array.from(document.querySelectorAll(".property-type-pill"));
-
-  const counts = {
-    house: 0,
-    condo: 0,
-    townhouse: 0,
-    mobile: 0,
-    land: 0,
-  };
-
-  cardsForCounts.forEach((card) => {
-    const type = String(card.dataset.type || "").toLowerCase();
-    if (type in counts) counts[type] += 1;
-  });
-
-  pills.forEach((pill) => {
-    const type = pill.dataset.propertyType;
-    const count = counts[type] || 0;
-
-    pill.hidden = count === 0;
-
-    if (count === 0) {
-      pill.classList.remove("active");
-    }
-
-    const label =
-      type === "house" ? "Homes" :
-      type === "condo" ? "Condos" :
-      type === "townhouse" ? "Townhomes" :
-      type === "mobile" ? "Mobile Homes" :
-      "Lot / Land";
-
-    const icon =
-      type === "house" ? "??" :
-      type === "condo" ? "??" :
-      type === "townhouse" ? "???" :
-      type === "mobile" ? "??" :
-      "??";
-
-    pill.innerHTML = `${icon} <strong>${count}</strong> ${label}`;
-  });
-}
-
 function updateResultsHeading(filters, resultCount) {
   const heading =
     document.getElementById("dynamic-results-heading");
@@ -12315,28 +12240,12 @@ function updateResultsHeading(filters, resultCount) {
 }
 function submitFilters() {
   const filters = getCurrentFilters();
-  const cards = Array.from(document.querySelectorAll(".original-card"));
-  const filteredCards = getFilteredCards();
-
-  const filteredSet = new Set(filteredCards);
-
-  cards.forEach((card) => {
-    card.hidden = !filteredSet.has(card);
-    card.style.display = "";
-  });
-
-  const interruptCard = document.getElementById("intent-interrupt-card");
-  if (interruptCard) {
-    interruptCard.hidden = false;
-    interruptCard.style.display = "";
-  }
 
   const resultsBar =
     document.querySelector(".results-bar");
 
   const resultCount = Number(
-    resultsBar?.dataset.totalListings ||
-    filteredCards.length
+    resultsBar?.dataset.totalListings || 0
   );
 
   if (resultsBar) {
@@ -12344,12 +12253,18 @@ function submitFilters() {
       `${resultCount} listings found`;
   }
 
-  updateResultsHeading(filters, resultCount);
-  updatePropertyTypePills();
+  updateResultsHeading(
+    filters,
+    resultCount
+  );
 
-  window.dispatchEvent(new CustomEvent("listing-filters-updated"));
+  window.dispatchEvent(
+    new CustomEvent(
+      "listing-filters-updated"
+    )
+  );
 }
-  function applySort() {
+function applySort() {
     const sort = sortSelect?.value || "newest";
     const grid = document.querySelector(".grid");
     if (!grid) return;
@@ -12442,34 +12357,32 @@ window.location.assign(
 areaSelect?.addEventListener("change", updateSearchFromFilters);
 priceSelect?.addEventListener("change", updateSearchFromFilters);
 
-typeSelect?.addEventListener("change", () => {
-  submitFilters();
-});
+typeSelect?.addEventListener(
+  "change",
+  updateSearchFromFilters
+);
 
 sortSelect?.addEventListener("change", updateSearchFromFilters);
 bedsSelect?.addEventListener("change", updateSearchFromFilters);
 
-document.querySelectorAll(".property-type-pill").forEach((button) => {
-  button.addEventListener("click", () => {
-    const selectedType = button.dataset.propertyType || "all";
-    const wasActive = button.classList.contains("active");
+document
+  .querySelectorAll(".property-type-pill")
+  .forEach((button) => {
+    button.addEventListener("click", () => {
+      const selectedType =
+        button.dataset.propertyType || "all";
 
-    document.querySelectorAll(".property-type-pill").forEach((pill) => {
-      pill.classList.remove("active");
+      const wasActive =
+        button.classList.contains("active");
+
+      if (!typeSelect) return;
+
+      typeSelect.value =
+        wasActive ? "all" : selectedType;
+
+      updateSearchFromFilters();
     });
-
-    if (typeSelect) {
-      typeSelect.value = wasActive ? "all" : selectedType;
-    }
-
-    if (!wasActive) {
-      button.classList.add("active");
-    }
-
-    submitFilters();
   });
-});
-   
 
 applySort();
 </script>
@@ -16264,6 +16177,21 @@ document.addEventListener("click", (event) => {
     return aliases[normalized] || normalized || "all";
   };
 
+  const getActiveInventoryType = () => {
+    if (typeSelect instanceof HTMLSelectElement) {
+      return normalizeType(typeSelect.value);
+    }
+
+    const fixedTypeLabel = String(
+      document
+        .getElementById("dynamic-results-heading")
+        ?.dataset.fixedTypeLabel || ""
+    ).trim();
+
+    return normalizeType(
+      fixedTypeLabel || "all"
+    );
+  };
   const percentile = (prices, amount) => {
     if (!prices.length) return 0;
 
@@ -16308,11 +16236,7 @@ document.addEventListener("click", (event) => {
   };
 
   const getInventoryPrices = () => {
-    const inventoryType = normalizeType(
-      typeSelect instanceof HTMLSelectElement
-        ? typeSelect.value
-        : "all"
-    );
+    const inventoryType = getActiveInventoryType();
 
     let remainingListings = [];
 
@@ -16439,11 +16363,7 @@ document.addEventListener("click", (event) => {
     reset = false,
     open = false,
   } = {}) => {
-    const inventoryType = normalizeType(
-      typeSelect instanceof HTMLSelectElement
-        ? typeSelect.value
-        : "all"
-    );
+    const inventoryType = getActiveInventoryType();
 
     const prices = getInventoryPrices();
 
@@ -16501,6 +16421,38 @@ document.addEventListener("click", (event) => {
       );
     }
 
+    const hasRequestedOption =
+      Array.from(priceSelect.options).some(
+        (option) =>
+          option.value === requestedValue
+      );
+
+    if (
+      requestedValue !== "all" &&
+      !hasRequestedOption
+    ) {
+      const customMatch =
+        requestedValue.match(
+          /^(under|over)-(\d+)$/
+        );
+
+      if (customMatch) {
+        const direction =
+          customMatch[1] === "under"
+            ? "Under"
+            : "Over";
+
+        const amount =
+          Number(customMatch[2]) * 1000;
+
+        priceSelect.add(
+          new Option(
+            `${direction} ${formatBandPrice(amount)}`,
+            requestedValue
+          )
+        );
+      }
+    }
     priceSelect.value =
       Array.from(priceSelect.options).some(
         (option) =>
