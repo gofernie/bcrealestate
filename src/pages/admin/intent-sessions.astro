@@ -9,11 +9,24 @@ const supabase = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const { data: reactions, error } = await supabase
+const requestedSiteId =
+  String(
+    Astro.url.searchParams.get("site_id") || ""
+  ).trim();
+
+let reactionsQuery = supabase
   .from("intent_listing_reactions")
   .select("*")
   .order("created_at", { ascending: false })
   .limit(500);
+
+if (requestedSiteId) {
+  reactionsQuery =
+    reactionsQuery.eq("site_id", requestedSiteId);
+}
+
+const { data: reactions, error } =
+  await reactionsQuery;
 
 // Pull images for loved listings from listing_rows
 const allAddresses = [...new Set((reactions || []).map(r => r.address).filter(Boolean))];
@@ -54,10 +67,18 @@ const imageByAddress = new Map(
 
 const rows = reactions || [];
 
-const { data: leads } = await supabase
+let leadsQuery = supabase
   .from("intent_leads")
   .select("*")
   .order("created_at", { ascending: false });
+
+if (requestedSiteId) {
+  leadsQuery =
+    leadsQuery.eq("site_id", requestedSiteId);
+}
+
+const { data: leads } =
+  await leadsQuery;
 
 const leadBySessionId = new Map();
 
@@ -371,7 +392,17 @@ function getBuyerProfile(reactions) {
   };
 }
 
-const selectedSession = Astro.url.searchParams.get("session");
+const requestedSession =
+  Astro.url.searchParams.get("session");
+
+const selectedSession =
+  requestedSession &&
+  sessions.some(
+    (session: any) =>
+      session.session_id === requestedSession
+  )
+    ? requestedSession
+    : null;
 
 const { data: sessionNotes } = selectedSession
   ? await supabase
@@ -1109,7 +1140,7 @@ const assignedAgent = selectedSession
 
   <body>
  <div class="layout">
-  <AdminSidebar active="sessions" />
+  <AdminSidebar active="sessions" siteId={requestedSiteId} />
 
   <!-- Mobile tabs -->
   <div class="mobile-tabs" id="mobile-tabs" class="tabs-pending">
@@ -1137,7 +1168,17 @@ const assignedAgent = selectedSession
             return (
               <a
                 class={`session-row${isActive ? " is-active" : ""}`}
-                href={`?session=${encodeURIComponent(session.session_id)}`}
+                href={
+  requestedSiteId
+    ? `?site_id=${encodeURIComponent(
+        requestedSiteId
+      )}&session=${encodeURIComponent(
+        session.session_id
+      )}`
+    : `?session=${encodeURIComponent(
+        session.session_id
+      )}`
+}
               >
                 <div class="session-row-top">
                   <div class="session-row-name">{displayName}</div>

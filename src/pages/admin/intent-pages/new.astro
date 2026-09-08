@@ -8,23 +8,42 @@ const supabase = createClient(
   import.meta.env.PUBLIC_SUPABASE_URL,
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
-const site = await getSite(Astro.url.hostname);
+const requestedSiteId =
+  String(Astro.url.searchParams.get("site_id") || "").trim();
+
+let site = await getSite(Astro.url.hostname);
+
+if (requestedSiteId) {
+  const { data: requestedSite, error: requestedSiteError } =
+    await supabase
+      .from("sites")
+      .select("*")
+      .eq("id", requestedSiteId)
+      .maybeSingle();
+
+  if (requestedSiteError) {
+    console.error(
+      "Requested site lookup failed:",
+      requestedSiteError.message
+    );
+  }
+
+  if (requestedSite) {
+    site = requestedSite;
+  }
+}
 let message = "";
 
 const TEMPLATE_FEATURES = {
-  first_time_buyers: ["value", "updated", "walkability"],
-  downsizers: ["walkability", "updated", "views"],
-  family_homes: ["yard", "garage", "suite"],
-  ocean_view_homes: ["views"],
-  homes_with_suites: ["suite", "income", "mortgage_helper"],
-  luxury_homes: ["views", "garage", "updated"],
-  investment_properties: ["suite", "income", "value"],
-waterfront: ["views", "waterfront"],
-oceanfront: ["views", "waterfront"],
-lakefront: ["views", "waterfront"],
-riverfront: ["views", "waterfront"],
-walkable_homes: ["walkability"],
-  updated_homes: ["updated"],
+  first_time_buyers: [],
+  downsizers: ["primary_on_main"],
+  homes_with_suites: [
+    "suite",
+    "mortgage_helper",
+  ],
+  waterfront: [],
+  walkable_homes: ["walkability"],
+  ocean_view_homes: [],
 };
 
 function clean(value: FormDataEntryValue | null) {
@@ -91,6 +110,10 @@ if (Astro.request.method === "POST") {
 
   const pageType = clean(form.get("page_type") || "category").toLowerCase();
   const template = clean(form.get("template")).toLowerCase();
+
+  const waterfrontSubtype =
+    clean(form.get("waterfront_subtype"))
+      .toLowerCase();
   const city = clean(form.get("city") || "nanaimo").toLowerCase();
   const area = clean(form.get("area")).toLowerCase();
   const propertyType = clean(form.get("property_type")).toLowerCase();
@@ -128,7 +151,13 @@ const polygonBounds =
   const areaLabel = area ? titleCase(area) : titleCase(city);
   const typeLabel = pluralType(propertyType);
   const priceLabel = formatPriceLabel(price_max, price_min);
-  const templateLabel = titleCase(template);
+  const effectiveTemplate =
+    template === "waterfront"
+      ? waterfrontSubtype || "waterfront"
+      : template;
+
+  const templateLabel =
+    titleCase(effectiveTemplate);
 
   const features =
     pageType === "intent"
@@ -140,7 +169,7 @@ const polygonBounds =
     ? [area || city, propertyType ? pluralType(propertyType) : "homes", priceLabel]
     : pageType === "polygon"
       ? [city, customName || "custom-area", propertyType ? pluralType(propertyType) : "homes", priceLabel]
-      : [area || city, template, propertyType ? pluralType(propertyType) : "", priceLabel];
+      : [area || city, effectiveTemplate, propertyType ? pluralType(propertyType) : "", priceLabel];
  const slug = slugify(slugOverride || slugParts.filter(Boolean).join(" "));
 
   const heroHeading =
@@ -212,28 +241,26 @@ polygon_bounds: polygonBounds,
 
 requires_waterfront:
   pageType === "intent" &&
-  (
-    template === "waterfront" ||
-    template === "oceanfront" ||
-    template === "lakefront" ||
-    template === "riverfront"
-  ),
+  template === "waterfront",
 
 requires_ocean_view:
   pageType === "intent" &&
   template === "ocean_view_homes",
 
 waterfront_type:
-  template === "oceanfront"
-    ? "oceanfront"
-    : template === "lakefront"
-    ? "lakefront"
-    : template === "riverfront"
-    ? "riverfront"
-    : template === "waterfront"
-    ? "waterfront"
-    : null,
-})
+  pageType === "intent" &&
+  template === "waterfront"
+    ? (
+        [
+          "waterfront",
+          "oceanfront",
+          "lakefront",
+          "riverfront",
+        ].includes(waterfrontSubtype)
+          ? waterfrontSubtype
+          : "waterfront"
+      )
+    : null,})
     .select("*")
     .single();
 
@@ -249,7 +276,11 @@ waterfront_type:
       );
     }
 
-return Astro.redirect("/admin/intent-pages");
+return Astro.redirect(
+  site?.id
+    ? `/admin/sites/${site.id}/pages`
+    : "/admin/intent-pages"
+);
   }
 }
 }
@@ -559,7 +590,10 @@ textarea:focus {
 
 <body>
   <div class="page">
-    <AdminSidebar active="new-page" />
+    <AdminSidebar
+      active="new-page"
+      siteId={requestedSiteId || site?.id}
+    />
     <main class="main">
 
    <div class="page-header">
@@ -634,19 +668,37 @@ textarea:focus {
           <label>Intent template</label>
           <select name="template" id="templateSelect">
             <option value="first_time_buyers">First-time buyers</option>
-            <option value="downsizers">Downsizers</option>
-            <option value="family_homes">Family homes</option>
-            <option value="ocean_view_homes">Ocean view homes</option>
+            <option value="downsizers">Downsizer-friendly homes</option>
             <option value="homes_with_suites">Homes with suites</option>
-            <option value="luxury_homes">Luxury homes</option>
-            <option value="investment_properties">Investment properties</option>
-            <option value="waterfront">Waterfront</option>
-<option value="oceanfront">Oceanfront</option>
-<option value="lakefront">Lakefront</option>
-<option value="riverfront">Riverfront</option>
+            <option value="waterfront">Waterfront homes</option>
             <option value="walkable_homes">Walkable homes</option>
-            <option value="updated_homes">Updated homes</option>
+            <option value="ocean_view_homes">Ocean view homes</option>
           </select>
+          <div
+            id="waterfrontSubtypeBlock"
+            hidden
+            style="margin-top:16px;"
+          >
+            <label>Waterfront type</label>
+
+            <select
+              name="waterfront_subtype"
+              id="waterfrontSubtypeSelect"
+            >
+              <option value="waterfront">
+                Any waterfront
+              </option>
+              <option value="oceanfront">
+                Oceanfront
+              </option>
+              <option value="lakefront">
+                Lakefront
+              </option>
+              <option value="riverfront">
+                Riverfront
+              </option>
+            </select>
+          </div>
         </div>
 
         <div class="grid-2">
@@ -800,19 +852,15 @@ const previewType = document.getElementById("previewType");
       const previewFeatures = document.getElementById("previewFeatures");
 
       const templateFeatures = {
-        first_time_buyers: ["value", "updated", "walkability"],
-        downsizers: ["walkability", "updated", "views"],
-        family_homes: ["yard", "garage", "suite"],
-        ocean_view_homes: ["views"],
-        homes_with_suites: ["suite", "income", "mortgage helper"],
-        luxury_homes: ["views", "garage", "updated"],
-        investment_properties: ["suite", "income", "value"],
-        waterfront: ["views", "waterfront"],
-oceanfront: ["views", "waterfront"],
-lakefront: ["views", "waterfront"],
-riverfront: ["views", "waterfront"],
+        first_time_buyers: [],
+        downsizers: ["primary on main"],
+        homes_with_suites: [
+          "suite",
+          "mortgage helper",
+        ],
+        waterfront: ["waterfront"],
         walkable_homes: ["walkability"],
-        updated_homes: ["updated"],
+        ocean_view_homes: ["ocean view"],
       };
 
       function getPageType() {
@@ -867,9 +915,35 @@ riverfront: ["views", "waterfront"],
 const customName = customNameInput?.value || "";
         const areaLabel = titleCase(area);
         const typeLabel = pluralType(type);
-        const templateLabel = titleCase(template);
+        const waterfrontSubtypeSelect =
+          document.getElementById(
+            "waterfrontSubtypeSelect"
+          );
 
-        intentTemplateBlock.hidden = pageType !== "intent";
+        const effectiveTemplate =
+          template === "waterfront"
+            ? waterfrontSubtypeSelect?.value ||
+              "waterfront"
+            : template;
+
+        const templateLabel =
+    titleCase(effectiveTemplate);
+
+        intentTemplateBlock.hidden =
+          pageType !== "intent";
+
+        const waterfrontSubtypeBlock =
+          document.getElementById(
+            "waterfrontSubtypeBlock"
+          );
+
+        if (waterfrontSubtypeBlock) {
+          waterfrontSubtypeBlock.hidden =
+            !(
+              pageType === "intent" &&
+              template === "waterfront"
+            );
+        }
 
         const title =
           pageType === "category"
@@ -881,7 +955,7 @@ const customName = customNameInput?.value || "";
     ? slugify([area, typeLabel, price].filter(Boolean).join(" "))
     : pageType === "polygon"
       ? slugify([city, customName || "custom-area", typeLabel, price].filter(Boolean).join(" "))
-      : slugify([area, template, typeLabel, price].filter(Boolean).join(" "));
+      : slugify([area, effectiveTemplate, typeLabel, price].filter(Boolean).join(" "));
 
         const copy =
           pageType === "category"
@@ -1199,6 +1273,14 @@ function syncPolygonBlock() {
     }, 100);
   }
 }
+// waterfront-subtype-preview-listener
+document
+  .getElementById("waterfrontSubtypeSelect")
+  ?.addEventListener(
+    "change",
+    updatePreview
+  );
+
 loadCities().then(() => {
   loadAreas(cityInput.value);
   updatePreview();

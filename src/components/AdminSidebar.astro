@@ -1,14 +1,97 @@
 ---
-const { active = "" } = Astro.props;
+import { createClient } from "@supabase/supabase-js";
+const { active = "", siteId = "" } = Astro.props;
+
+const sitePathMatch =
+  Astro.url.pathname.match(
+    /^\/admin\/sites\/([^/]+)/
+  );
+
+const resolvedSiteId =
+  String(siteId || sitePathMatch?.[1] || "").trim();
+
+let workspaceSite: any = null;
+
+if (resolvedSiteId) {
+  const supabase = createClient(
+    import.meta.env.PUBLIC_SUPABASE_URL,
+    import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+  );
+
+  const { data } = await supabase
+    .from("sites")
+    .select("site_name, domain")
+    .eq("id", resolvedSiteId)
+    .maybeSingle();
+
+  workspaceSite = data;
+}
+
+const editorTitle =
+  resolvedSiteId
+    ? "Website Editor"
+    : "Agent Editor";
+
+const workspaceName =
+  resolvedSiteId
+    ? String(
+        workspaceSite?.site_name ||
+        workspaceSite?.domain ||
+        "Website"
+      )
+    : "Chris Crump";
+
+const pagesHref = resolvedSiteId
+  ? `/admin/sites/${resolvedSiteId}/pages`
+  : "/admin/sites";
+
+const createPageHref = resolvedSiteId
+  ? `/admin/intent-pages/new?site_id=${encodeURIComponent(
+      resolvedSiteId
+    )}`
+  : "/admin/intent-pages/new";
+
+const sitesHref = resolvedSiteId
+  ? `/admin/sites?site_id=${encodeURIComponent(
+      resolvedSiteId
+    )}`
+  : "/admin/sites";
+
+const intentSessionsHref = resolvedSiteId
+  ? `/admin/intent-sessions?site_id=${encodeURIComponent(
+      resolvedSiteId
+    )}`
+  : "/admin/intent-sessions";
+const leadsHref = resolvedSiteId
+  ? `/admin/leads?site_id=${encodeURIComponent(
+      resolvedSiteId
+    )}`
+  : "/admin/leads";
 
 const navItems = [
-  { key: "pages", label: "All pages", href: "/admin/intent-pages" },
-  { key: "new-page", label: "+ Create intent page", href: "/admin/intent-pages/new" },
-  { key: "sites", label: "Sites", href: "/admin/sites" },
-  { key: "areas", label: "Area boundaries", href: "/admin/area-boundaries" },
-  { key: "sessions", label: "Intent sessions", href: "/admin/intent-sessions" },
-  { key: "leads", label: "Leads", href: "/admin/leads" },
-  { key: "agents", label: "Agents", href: "/admin/agents" },
+  { key: "pages", label: "Pages & navigation", href: pagesHref },
+  { key: "new-page", label: "+ Create intent page", href: createPageHref },
+  { key: "sites", label: "Sites", href: sitesHref },
+  ...(
+    !resolvedSiteId
+      ? [{
+          key: "areas",
+          label: "Area boundaries",
+          href: "/admin/area-boundaries",
+        }]
+      : []
+  ),
+  { key: "sessions", label: "Intent sessions", href: intentSessionsHref },
+  { key: "leads", label: "Leads", href: leadsHref },
+  ...(
+    !resolvedSiteId
+      ? [{
+          key: "agents",
+          label: "Agents",
+          href: "/admin/agents",
+        }]
+      : []
+  ),
   { key: "shortlists", label: "Shortlists", href: "/shortlists" },
   { key: "create-shortlist", label: "Create shortlist", href: "/listings" },
 ];
@@ -66,6 +149,11 @@ const navItems = [
 </script>
 
 <style>
+  /* desktop-mobile-header-fix */
+  .mobile-topbar,
+  .drawer-overlay {
+    display: none;
+  }
 /* ── Desktop ── */
   /* visibility controlled by is:global in each page */
 

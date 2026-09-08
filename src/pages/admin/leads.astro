@@ -9,6 +9,23 @@ const supabase = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+const requestedSiteId =
+  String(
+    Astro.url.searchParams.get("site_id") || ""
+  ).trim();
+
+function sortHref(sort: string) {
+  const params = new URLSearchParams();
+
+  if (requestedSiteId) {
+    params.set("site_id", requestedSiteId);
+  }
+
+  params.set("sort", sort);
+
+  return `?${params.toString()}`;
+}
+
 const sortParam = Astro.url.searchParams.get("sort") || "newest";
 const sortMap: Record<string, { column: string; ascending: boolean }> = {
   newest: { column: "created_at", ascending: false },
@@ -18,10 +35,18 @@ const sortMap: Record<string, { column: string; ascending: boolean }> = {
 };
 const { column, ascending } = sortMap[sortParam] ?? sortMap.newest;
 
-const { data: leads = [], error } = await supabase
+let leadsQuery = supabase
   .from("intent_leads")
   .select("*")
   .order(column, { ascending });
+
+if (requestedSiteId) {
+  leadsQuery =
+    leadsQuery.eq("site_id", requestedSiteId);
+}
+
+const { data: leads = [], error } =
+  await leadsQuery;
 
 function fmtDate(value) {
   if (!value) return "";
@@ -204,7 +229,7 @@ function fmtDate(value) {
 
   <body>
     <div class="page">
-      <AdminSidebar active="leads" />
+      <AdminSidebar active="leads" siteId={requestedSiteId} />
 
       <main class="main">
         <h1>Leads</h1>
@@ -214,10 +239,10 @@ function fmtDate(value) {
 
        <div class="sort-bar">
           <span class="sort-label">Sort:</span>
-          <a href="?sort=newest" class={"sort-btn" + (sortParam === "newest" ? " active" : "")}>Newest</a>
-          <a href="?sort=oldest" class={"sort-btn" + (sortParam === "oldest" ? " active" : "")}>Oldest</a>
-          <a href="?sort=name"   class={"sort-btn" + (sortParam === "name"   ? " active" : "")}>Name</a>
-          <a href="?sort=source" class={"sort-btn" + (sortParam === "source" ? " active" : "")}>Source</a>
+          <a href={sortHref("newest")} class={"sort-btn" + (sortParam === "newest" ? " active" : "")}>Newest</a>
+          <a href={sortHref("oldest")} class={"sort-btn" + (sortParam === "oldest" ? " active" : "")}>Oldest</a>
+          <a href={sortHref("name")}   class={"sort-btn" + (sortParam === "name"   ? " active" : "")}>Name</a>
+          <a href={sortHref("source")} class={"sort-btn" + (sortParam === "source" ? " active" : "")}>Source</a>
         </div>
 
         {error && <p>Error loading leads: {error.message}</p>}
@@ -245,7 +270,17 @@ function fmtDate(value) {
               {lead.email && <a class="btn" href={`mailto:${lead.email}`}>Email</a>}
               {lead.phone && <a class="btn" href={`tel:${lead.phone}`}>Call</a>}
               {lead.session_id && (
-                <a class="btn" href={`/admin/intent-sessions?session=${encodeURIComponent(lead.session_id)}`}>
+                <a class="btn" href={
+  requestedSiteId
+    ? `/admin/intent-sessions?site_id=${encodeURIComponent(
+        requestedSiteId
+      )}&session=${encodeURIComponent(
+        lead.session_id
+      )}`
+    : `/admin/intent-sessions?session=${encodeURIComponent(
+        lead.session_id
+      )}`
+}>
                   View session
                 </a>
               )}

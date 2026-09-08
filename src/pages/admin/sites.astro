@@ -20,12 +20,21 @@ const domain = host
 
 const isLocal = domain === "localhost" || domain === "127.0.0.1";
 
+const requestedSiteId =
+  String(
+    Astro.url.searchParams.get("site_id") || ""
+  ).trim();
+
 const sitesQuery = supabase
   .from("sites")
   .select("id, domain, city, site_name, accent_color")
   .order("domain");
 
-if (!isLocal) sitesQuery.eq("domain", domain);
+if (requestedSiteId) {
+  sitesQuery.eq("id", requestedSiteId);
+} else if (!isLocal) {
+  sitesQuery.eq("domain", domain);
+}
 
 const { data: sites = [] } = await sitesQuery;
 ---
@@ -44,7 +53,7 @@ const { data: sites = [] } = await sitesQuery;
 </head>
 <body>
 <div class="page">
-  <AdminSidebar active="sites" />
+  <AdminSidebar active="sites" siteId={requestedSiteId} />
 
   <main class="main">
     <h1>Your Sites</h1>
