@@ -9,10 +9,44 @@ const supabase = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const requestedSiteId =
+let requestedSiteId =
   String(
     Astro.url.searchParams.get("site_id") || ""
   ).trim();
+
+const requestHost =
+  (
+    Astro.request.headers.get("x-forwarded-host") ||
+    Astro.request.headers.get("host") ||
+    Astro.url.hostname ||
+    ""
+  )
+    .split(",")[0]
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .split(":")[0];
+
+const globalAdminHosts = new Set([
+  "localhost",
+  "127.0.0.1",
+  "bc.realestate",
+]);
+
+if (
+  !requestedSiteId &&
+  requestHost &&
+  !globalAdminHosts.has(requestHost)
+) {
+  const { data: domainSite } = await supabase
+    .from("sites")
+    .select("id")
+    .eq("domain", requestHost)
+    .maybeSingle();
+
+  requestedSiteId =
+    String(domainSite?.id || "").trim();
+}
 
 function sortHref(sort: string) {
   const params = new URLSearchParams();
