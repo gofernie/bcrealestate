@@ -1523,8 +1523,17 @@ function syncLandscapeViewport() {
   }
 }
 function ensureLandscapeFullscreen() {
-  // Intentionally disabled.
-  // Landscape gallery now uses CSS fullscreen instead of the browser Fullscreen API.
+  if (!sheet?.classList.contains("open")) return;
+  if (!isPhoneLikeDevice()) return;
+  if (document.fullscreenElement) return;
+
+  const target = document.documentElement;
+
+  if (target.requestFullscreen) {
+    target
+      .requestFullscreen({ navigationUI: "hide" })
+      .catch(() => {});
+  }
 }
 
 function restoreFullscreenAfterWake() {
@@ -5487,9 +5496,13 @@ function showActivePhoto() {
   }
 }
 
-   sheetImage?.addEventListener("touchstart", (event) => {
-  ensureLandscapeFullscreen();
+   sheetImage?.addEventListener("click", () => {
+  if (!sheet?.classList.contains("open")) return;
+  if (photoZoom > 1.02) return;
 
+  ensureLandscapeFullscreen();
+});
+sheetImage?.addEventListener("touchstart", (event) => {
   // Two fingers = start pinch zoom
   if (
     sheet.classList.contains("is-landscape-gallery") &&
