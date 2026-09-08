@@ -9,9 +9,74 @@ const supabase = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+function cleanHost(request: Request) {
+  const host =
+    request.headers.get("x-forwarded-host") ||
+    request.headers.get("host") ||
+    "";
+
+  return host
+    .split(",")[0]
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .split(":")[0];
+}
+
 export const POST: APIRoute = async ({ request }) => {
   try {
     const body = await request.json();
+
+    // site-resolution-for-intent-lead
+    const sessionId =
+      String(body.session_id || "").trim();
+
+    const intentPageId =
+      String(body.intent_page_id || "").trim() ||
+      null;
+
+    let siteId: string | null = null;
+
+    if (intentPageId) {
+      const { data: intentPage } = await supabase
+        .from("intent_pages")
+        .select("site_id")
+        .eq("id", intentPageId)
+        .maybeSingle();
+
+      siteId =
+        String(intentPage?.site_id || "").trim() ||
+        null;
+    }
+
+    if (!siteId) {
+      const host = cleanHost(request);
+
+      const { data: domainSite } = await supabase
+        .from("sites")
+        .select("id")
+        .eq("domain", host)
+        .maybeSingle();
+
+      siteId =
+        String(domainSite?.id || "").trim() ||
+        null;
+    }
+
+    if (!siteId && body.site_id) {
+      const requestedSiteId =
+        String(body.site_id).trim();
+
+      const { data: requestedSite } = await supabase
+        .from("sites")
+        .select("id")
+        .eq("id", requestedSiteId)
+        .maybeSingle();
+
+      siteId =
+        String(requestedSite?.id || "").trim() ||
+        null;
+    }
 
     const name = String(body.name || "").trim();
     const email = String(body.email || "").trim();
@@ -24,18 +89,21 @@ const message = String(body.message || "").trim();
         status: 400,
       });
     }
-
     const lead = {
-  session_id: body.session_id || "",
-  intent_page_id: body.intent_page_id || null,
-  city: body.city || "",
-  slug: body.slug || "",
-  name,
-  email,
-  phone,
-  source: body.source || "intent_refined_search",
-message,
-};
+      session_id: sessionId,
+      intent_page_id: intentPageId,
+      site_id: siteId,
+      city: body.city || "",
+      slug: body.slug || "",
+      name,
+      email,
+      phone,
+      source:
+        body.source ||
+        "intent_refined_search",
+      question,
+      message,
+    };
 
     const { data, error } = await supabase
       .from("intent_leads")
@@ -44,6 +112,32 @@ message,
       .single();
 
     if (error) throw error;
+
+    // upsert-intent-session-for-lead
+    if (sessionId) {
+      const { error: sessionError } = await supabase
+        .from("intent_sessions")
+        .upsert(
+          {
+            session_id: sessionId,
+            intent_page_id: intentPageId,
+            site_id: siteId,
+            city: body.city || "",
+            slug: body.slug || "",
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: "session_id",
+          }
+        );
+
+      if (sessionError) {
+        console.error(
+          "Intent session save failed:",
+          sessionError.message
+        );
+      }
+    }
 
     const sid = import.meta.env.TWILIO_ACCOUNT_SID;
     const token = import.meta.env.TWILIO_AUTH_TOKEN;
@@ -70,7 +164,11 @@ message,
 `${question ? `Question: ${question}\n` : ""}` +
 `${message ? `Message: ${message}\n` : ""}` +
 `\n` +
-`${new URL(request.url).origin}/admin/leads?session=${encodeURIComponent(lead.session_id)}`,
+`${new URL(request.url).origin}/admin/leads?${
+  siteId
+    ? `site_id=${encodeURIComponent(siteId)}`
+    : ""
+}`,
       });
     }
 
