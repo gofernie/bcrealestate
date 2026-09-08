@@ -1600,7 +1600,22 @@ function updateLandscapeGalleryMode() {
     document.fullscreenElement &&
     document.exitFullscreen
   ) {
-    document.exitFullscreen().catch(() => {});
+    document.exitFullscreen()
+  .then(() => {
+    requestAnimationFrame(() => {
+      updateLandscapeGalleryMode();
+
+      // Force Chrome to recalculate portrait geometry/repaint.
+      void sheet.offsetHeight;
+
+      window.dispatchEvent(new Event("resize"));
+
+      requestAnimationFrame(() => {
+        void sheet.offsetHeight;
+      });
+    });
+  })
+  .catch(() => {});
   }
 
   photoZoom = 1;
@@ -1622,6 +1637,27 @@ function updateLandscapeGalleryMode() {
 }
 }
 
+document.addEventListener("fullscreenchange", () => {
+  if (document.fullscreenElement) return;
+
+  requestAnimationFrame(() => {
+    updateLandscapeGalleryMode();
+
+    if (sheet) {
+      void sheet.offsetHeight;
+    }
+
+    window.dispatchEvent(new Event("resize"));
+
+    setTimeout(() => {
+      updateLandscapeGalleryMode();
+
+      if (sheet) {
+        void sheet.offsetHeight;
+      }
+    }, 100);
+  });
+});
 landscapeMediaQuery.addEventListener?.(
   "change",
   updateLandscapeGalleryMode
