@@ -1,0 +1,216 @@
+---
+const {
+  active = "",
+  siteId = "",
+  siteName = "",
+  city = ""
+} = Astro.props;
+
+const querySiteId =
+  Astro.url.searchParams.get("site_id") || "";
+
+const resolvedSiteId =
+  String(siteId || querySiteId || "").trim();
+
+const withSite = (path) => {
+  if (!resolvedSiteId) return path;
+
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}site_id=${encodeURIComponent(resolvedSiteId)}`;
+};
+
+const links = [
+  {
+    key: "pages",
+    label: "Pages",
+    href: resolvedSiteId
+      ? `/admin/sites/${resolvedSiteId}/pages`
+      : "/admin/sites?view=pages"
+  },
+  { key: "sites", label: "Sites", href: resolvedSiteId ? `/admin/sites?site_id=${encodeURIComponent(resolvedSiteId)}` : "/admin/sites" },
+  { key: "sessions", label: "Intent Sessions", href: withSite("/admin/intent-sessions") },
+  { key: "leads", label: "Leads", href: withSite("/admin/leads") },
+  { key: "shortlists", label: "Shortlists", href: withSite("/shortlists") }
+];
+
+const createHref = resolvedSiteId
+  ? `/listings?site_id=${encodeURIComponent(resolvedSiteId)}`
+  : "/listings";
+---
+
+<header class="admin-topnav">
+  <div class="admin-topnav__main">
+    <a href="/admin/sites" class="admin-topnav__brand">
+      Locus
+      <span>Admin</span>
+    </a>
+
+    <nav class="admin-topnav__links">
+      {links.map(link => (
+        <a
+          href={link.href}
+          class:list={{ active: active === link.key }}
+        >
+          {link.label}
+        </a>
+      ))}
+    </nav>
+
+    <a href={createHref} class="admin-topnav__create">
+      + Create
+    </a>
+  </div>
+
+  {resolvedSiteId && siteName && (
+    <div class="admin-topnav__site">
+      <div>
+        <strong>{siteName}</strong>
+        {city && <span>{city}</span>}
+      </div>
+
+      <nav>
+        <a href={`/admin/sites/${resolvedSiteId}/pages`}>
+          Pages
+        </a>
+        <a href={`/admin/sites/${resolvedSiteId}/settings`}>
+          Markets & settings
+        </a>
+      </nav>
+    </div>
+  )}
+</header>
+
+<style>
+  .admin-topnav {
+    width: 100%;
+    background: #111;
+    color: white;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: 0;
+  }
+
+  .admin-topnav__main {
+    min-height: 64px;
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    gap: 34px;
+  }
+
+  .admin-topnav__brand {
+    color: white;
+    text-decoration: none;
+    font-size: 18px;
+    font-weight: 750;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
+  }
+
+  .admin-topnav__brand span {
+    color: #888;
+    font-weight: 500;
+  }
+
+  .admin-topnav__links {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+  }
+
+  .admin-topnav__links a {
+    color: #aaa;
+    text-decoration: none;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 20px;
+    letter-spacing: 0;
+    padding: 10px 13px;
+    border-radius: 8px;
+  }
+
+  .admin-topnav__links a:hover {
+    color: white;
+    background: #222;
+  }
+
+  .admin-topnav__links a.active {
+    color: white;
+    background: #292929;
+  }
+
+  .admin-topnav__create {
+    color: #111;
+    background: white;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 10px 16px;
+    border-radius: 8px;
+    white-space: nowrap;
+  }
+
+  .admin-topnav__site {
+    min-height: 52px;
+    padding: 0 32px;
+    border-top: 1px solid #292929;
+    background: #191919;
+    display: flex;
+    align-items: center;
+    gap: 32px;
+  }
+
+  .admin-topnav__site > div {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .admin-topnav__site strong {
+    font-size: 14px;
+  }
+
+  .admin-topnav__site span {
+    color: #888;
+    font-size: 12px;
+  }
+
+  .admin-topnav__site nav {
+    display: flex;
+    gap: 20px;
+  }
+
+  .admin-topnav__site nav a {
+    color: #aaa;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .admin-topnav__site nav a:hover {
+    color: white;
+  }
+
+  @media (max-width: 800px) {
+    .admin-topnav__main {
+      padding: 12px 18px;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .admin-topnav__links {
+      order: 3;
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    .admin-topnav__site {
+      padding: 12px 18px;
+      flex-wrap: wrap;
+    }
+  }
+</style>

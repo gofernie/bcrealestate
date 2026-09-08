@@ -1,11 +1,13 @@
 ---
-import AdminSidebar from "../../components/AdminSidebar.astro";
+import AdminTopNav from "../../components/AdminTopNav.astro";
 import { createSupabaseServerClient } from "../../lib/supabaseServer";
 const supabaseAuth = createSupabaseServerClient(Astro.cookies);
 const { data: { user } } = await supabaseAuth.auth.getUser();
 if (!user) return Astro.redirect("/login");
 
-const agentId = user.id;
+let agentId = user.id;
+const requestedSiteId =
+  (Astro.url.searchParams.get("site_id") || "").trim();
 import { createClient } from "@supabase/supabase-js";
 export const prerender = false;
 
@@ -14,6 +16,30 @@ const supabaseAdmin = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+if (requestedSiteId) {
+  const { data: requestedSite, error: requestedSiteError } =
+    await supabaseAdmin
+      .from("sites")
+      .select("id, agent_id")
+      .eq("id", requestedSiteId)
+      .maybeSingle();
+
+  if (requestedSiteError || !requestedSite) {
+    return new Response("Site not found", { status: 404 });
+  }
+
+  const siteAgentId =
+    String(requestedSite.agent_id || "").trim();
+
+  if (!siteAgentId) {
+    return new Response(
+      "This site has no agent assigned",
+      { status: 400 }
+    );
+  }
+
+  agentId = siteAgentId;
+}
 const pageSize = 20;
 const pageParam = Number(Astro.url.searchParams.get("page") || "1");
 const currentPage = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
@@ -68,6 +94,7 @@ function buildPageHref(page: number) {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
   if (searchQuery) params.set("q", searchQuery);
+  if (requestedSiteId) params.set("site_id", requestedSiteId);
   const qs = params.toString();
   return qs ? `/shortlists?${qs}` : "/shortlists";
 }
@@ -105,9 +132,8 @@ function buildPageHref(page: number) {
         --f-body: var(--font-body);
       }
 
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-*, *::before, *::after { box-sizing: border-box; margin: 0; }
-      body { font-family: var(--font-body); background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.5; }
+*, *::before, *::after { box-sizing: border-box; }
+      body { margin: 0; font-family: var(--font-body); background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.5; }
  .main a {
   color: inherit;
   text-decoration: none;
@@ -118,14 +144,11 @@ function buildPageHref(page: number) {
 }
 
 .page {
-  display: grid;
-  grid-template-columns: 220px 1fr;
   min-height: 100vh;
 }
 
 .main {
-  grid-column: 2;
-  padding: 40px 48px 80px;
+  padding: 48px 48px 64px;
   max-width: 1180px;
   min-width: 0;
 }
@@ -189,11 +212,6 @@ function buildPageHref(page: number) {
       .value { font-size: 0.9rem; }
 
      @media (max-width: 800px) {
-  .page { grid-template-columns: 1fr; }
-
-  .main {
-    grid-column: 1;
-  }
        
         .mobile-list { display: block; }
         .toolbar { align-items: stretch; flex-direction: column; }
@@ -207,7 +225,7 @@ function buildPageHref(page: number) {
 
 <body>
     <div class="page">
-      <AdminSidebar active="shortlists" />
+      <AdminTopNav active="shortlists" siteId={requestedSiteId} />
       <main class="main">
 
       <div class="page-header">
@@ -228,7 +246,8 @@ function buildPageHref(page: number) {
           <div class="toolbar">
             <div class="search-wrap">
               <form method="GET" action="/shortlists">
-                <input id="shortlistSearch" class="search-input" type="text" name="q" value={searchQuery} placeholder="Search client or code..." autocomplete="off" />
+                                {requestedSiteId && <input type="hidden" name="site_id" value={requestedSiteId} />}
+<input id="shortlistSearch" class="search-input" type="text" name="q" value={searchQuery} placeholder="Search client or code..." autocomplete="off" />
               </form>
             </div>
             <div class="toolbar-meta">

@@ -46,6 +46,8 @@ const sort = url.searchParams.get("sort") || "";
 const mls = url.searchParams.get("mls") || "";
 const waterfeature = url.searchParams.get("waterfeature") || "";
 const shortlistSlug = url.searchParams.get("shortlist") || "";
+const siteId = url.searchParams.get("site_id") || "";
+const requestedAgentId = url.searchParams.get("agent_id") || "";
 
 let listings: any[] = [];
 let error: string | null = null;
@@ -836,6 +838,8 @@ if (hasListingFilters) {
 <h1 style="font-family:var(--f-body);font-size:2.2rem;font-weight:700;letter-spacing:-0.02em;margin-bottom:24px;">Create New Shortlist</h1>
       <form class="filters" method="get" action="/listings">
         {shortlistSlug && <input type="hidden" name="shortlist" value={shortlistSlug} />}
+        {siteId && <input type="hidden" name="site_id" value={siteId} />}
+        {requestedAgentId && <input type="hidden" name="agent_id" value={requestedAgentId} />}
 
         <div class="filter-group">
           <label>
@@ -1419,7 +1423,10 @@ if (hasListingFilters) {
         try {
           const shortlistWithInsights = addShortlistInsights(shortlist);
           const listingSnapshots = shortlistWithInsights.map((item) => ({ id: item.id || null, repliers_listing_id: item.repliers_listing_id || null, address: item.address || null, price_text: item.price_text || null, image_url: item.image_url || null, images: item.images || [], beds: item.beds || null, baths: item.baths || null, property_type: item.property_type || null, sqft: item.sqft || null, year_built: item.year_built || null, description: item.description || null, insight_title: item.insight_title || null, insight_detail: item.insight_detail || null }));
-          const res = await fetch("/api/shortlists/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingIds: listingSnapshots.map((item) => item.id || item.repliers_listing_id).filter(Boolean), listingSnapshots, title: titleInput?.value?.trim() || null, clientName: clientNameInput?.value?.trim() || null, phone: clientPhoneInput?.value?.trim() || null, note: agentNoteInput?.value?.trim() || null, city: document.querySelector('[name="city"]')?.value || null, area: document.querySelector('[name="area"]')?.value || null, type: document.querySelector('[name="type"]')?.value || null, beds: document.querySelector('[name="beds"]')?.value || null, baths: document.querySelector('[name="baths"]')?.value || null, minPrice: document.querySelector('[name="minPrice"]')?.value || null, maxPrice: document.querySelector('[name="maxPrice"]')?.value || null }) });
+          const res = await fetch("/api/shortlists/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingIds: listingSnapshots.map((item) => item.id || item.repliers_listing_id).filter(Boolean), listingSnapshots, title: titleInput?.value?.trim() || null, clientName: clientNameInput?.value?.trim() || null, phone: clientPhoneInput?.value?.trim() || null, note: agentNoteInput?.value?.trim() || null,
+agentId: new URLSearchParams(window.location.search).get("agent_id") || null,
+siteId: new URLSearchParams(window.location.search).get("site_id") || null,
+city: document.querySelector('[name="city"]')?.value || null, area: document.querySelector('[name="area"]')?.value || null, type: document.querySelector('[name="type"]')?.value || null, beds: document.querySelector('[name="beds"]')?.value || null, baths: document.querySelector('[name="baths"]')?.value || null, minPrice: document.querySelector('[name="minPrice"]')?.value || null, maxPrice: document.querySelector('[name="maxPrice"]')?.value || null }) });
           const json = await res.json();
           if (json.ok && json.slug) { localStorage.removeItem(STORAGE_KEY); window.location.href = `/shortlists/${json.slug}?agent=1`; return; }
           if (statusEl) statusEl.textContent = json.error || "Could not create shortlist";

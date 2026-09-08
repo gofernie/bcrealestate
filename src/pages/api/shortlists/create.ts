@@ -47,6 +47,64 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     } = await supabaseAuth.auth.getUser();
     const body = await request.json();
     console.log("SHORTLIST CREATE BODY:", body);
+    const requestedSiteId =
+      typeof body?.siteId === "string" ? body.siteId.trim() : "";
+
+    const requestedAgentId =
+      typeof body?.agentId === "string" ? body.agentId.trim() : "";
+
+    let resolvedAgentId = user?.id || null;
+
+    if (requestedSiteId) {
+      const { data: site, error: siteError } = await supabaseAdmin
+        .from("sites")
+        .select("id, agent_id")
+        .eq("id", requestedSiteId)
+        .maybeSingle();
+
+      if (siteError || !site) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: siteError?.message || "Site not found"
+          }),
+          {
+            status: 404,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
+
+      const siteAgentId = String(site.agent_id || "").trim();
+
+      if (!siteAgentId) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: "This site has no agent assigned"
+          }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
+
+      if (requestedAgentId && requestedAgentId !== siteAgentId) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: "Agent does not belong to this site"
+          }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
+
+      resolvedAgentId = siteAgentId;
+    }
 
     const listingIds = Array.isArray(body?.listingIds) ? body.listingIds : [];
     const listingSnapshots = Array.isArray(body?.listingSnapshots)
@@ -281,7 +339,7 @@ const searchType = typeof body?.type === "string" ? body.type.trim() : "";
     const { data: shortlist, error: shortlistError } = await supabaseAdmin
       .from("shortlist_sends")
       .insert({
-  agent_id: user?.id || null,
+  agent_id: resolvedAgentId,
   shortlist_slug: shortlistSlug,
         shortlist_url: shortlistUrl,
         client_name: clientName || null,

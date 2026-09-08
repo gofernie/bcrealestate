@@ -1,6 +1,6 @@
 ---
 import { createClient } from "@supabase/supabase-js";
-import AdminSidebar from "../../../../components/AdminSidebar.astro";
+import AdminTopNav from "../../../../components/AdminTopNav.astro";
 
 export const prerender = false;
 
@@ -19,7 +19,8 @@ const { data: site, error: siteError } = await supabase
     city,
     site_name,
     accent_color,
-    nav_property_types
+    nav_property_types,
+    secondary_markets
   `)
   .eq("id", siteId)
   .maybeSingle();
@@ -43,6 +44,20 @@ const cityLabel = city.replace(
 
 const siteName =
   String(site?.site_name || site?.domain || "Website");
+
+const secondaryMarkets =
+  Array.isArray(site?.secondary_markets)
+    ? site.secondary_markets
+        .map((market: any) =>
+          String(
+            typeof market === "object" && market !== null
+              ? market.city || ""
+              : market || ""
+          ).trim()
+        )
+        .filter(Boolean)
+        .slice(0, 3)
+    : [];
 
 const visibleCoreTypes =
   Array.isArray(site?.nav_property_types)
@@ -260,16 +275,11 @@ function ideaHref(template: string) {
         }
       }
     </style>
-
-    <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
   </head>
 
   <body>
     <div class="page">
-      <AdminSidebar active="pages" />
+      <AdminTopNav active="pages" siteId={siteId} siteName={site?.site_name || ""} city={site?.city || ""} />
 
       <main class="main">
         <nav class="breadcrumbs" aria-label="Breadcrumb">
@@ -282,35 +292,36 @@ function ideaHref(template: string) {
           <strong>Pages</strong>
         </nav>
 
-        <header class="workspace-header">
-          <div>
-            <p class="eyebrow">Website Studio</p>
-            <h1>{siteName}</h1>
+        <header class="workspace-header workspace-header--focused">
+  <div>
+    <p class="eyebrow">Agent website</p>
 
-            <p class="workspace-meta">
-              {cityLabel} website
-              {site?.domain ? ` · ${site.domain}` : ""}
-            </p>
-          </div>
+    <div class="focused-title-row">
+      <h1>{siteName}</h1>
+      <span class="focused-live-badge">
+        <span></span>
+        Live
+      </span>
+    </div>
 
-          <div class="header-actions">
-            <a
-              class="button button--secondary"
-              href={`/${citySlug}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              View website
-            </a>
+    <p class="workspace-meta">
+      {site?.domain || `${cityLabel} website`}
+      {" · "}
+      Primary market: {cityLabel}
+    </p>
+  </div>
 
-            <a
-              class="button button--secondary"
-              href={`/admin/sites/${siteId}/settings`}
-            >
-              Settings
-            </a>
-          </div>
-        </header>
+  <div class="header-actions">
+    <a
+      class="button button--secondary"
+      href={`/${citySlug}`}
+      target="_blank"
+      rel="noreferrer"
+    >
+      View website
+    </a>
+  </div>
+</header>
 
         {siteError && (
           <div class="notice notice--error">
@@ -318,7 +329,229 @@ function ideaHref(template: string) {
           </div>
         )}
 
-        <section class="workspace-section">
+        
+<section class="focused-setup">
+  <div class="focused-setup-heading">
+    <p class="section-kicker">Website setup</p>
+    <h2>Build the agent's website</h2>
+    <p>
+      Work from the top down. The important decisions
+      come first; the website details stay out of the way.
+    </p>
+  </div>
+
+  <div class="focused-step-list">
+
+    <article class="focused-step">
+      <div class="focused-step-number">1</div>
+
+      <div class="focused-step-main">
+        <div class="focused-step-heading">
+          <div>
+            <h3>Agent</h3>
+            <p>
+              Branding, contact details and website appearance.
+            </p>
+          </div>
+
+          <a
+            href={`/admin/sites/${siteId}/settings`}
+            class="focused-step-link"
+          >
+            Edit agent →
+          </a>
+        </div>
+
+        <div class="focused-summary">
+          <strong>{siteName}</strong>
+          <span>{site?.domain || "Domain not set"}</span>
+        </div>
+      </div>
+    </article>
+
+
+    <article class="focused-step">
+      <div class="focused-step-number">2</div>
+
+      <div class="focused-step-main">
+        <div class="focused-step-heading">
+          <div>
+            <h3>Markets</h3>
+            <p>
+              One primary market plus up to three
+              secondary markets.
+            </p>
+          </div>
+
+          <a
+            href={`/admin/sites/${siteId}/settings`}
+            class="focused-step-link"
+          >
+            Manage markets →
+          </a>
+        </div>
+
+        <div class="focused-market-grid">
+          <div>
+            <span class="focused-label">Primary</span>
+            <strong class="focused-market focused-market--primary">
+              {cityLabel}
+            </strong>
+          </div>
+
+          <div>
+            <span class="focused-label">Also serves</span>
+
+            <div class="focused-market-row">
+              {
+                secondaryMarkets.length ? (
+                  secondaryMarkets.map((market) => (
+                    <span class="focused-market">
+                      {String(market)
+                        .replace(/[-_]+/g, " ")
+                        .replace(
+                          /\b\w/g,
+                          (letter) => letter.toUpperCase()
+                        )}
+                    </span>
+                  ))
+                ) : (
+                  <span class="focused-empty">
+                    No secondary markets yet
+                  </span>
+                )
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+
+
+    <article class="focused-step">
+      <div class="focused-step-number">3</div>
+
+      <div class="focused-step-main">
+        <div class="focused-step-heading">
+          <div>
+            <h3>Website</h3>
+            <p>
+              Core buyer pages and navigation.
+            </p>
+          </div>
+
+          <a
+            href="#core-pages"
+            class="focused-step-link"
+            data-open-section="core-pages"
+          >
+            Customize →
+          </a>
+        </div>
+
+        <div class="focused-page-summary">
+          {
+            corePages.map((page) => (
+              <div>
+                <span>{page.label}</span>
+
+                <strong
+                  class:list={[
+                    "focused-page-state",
+                    {
+                      "focused-page-state--off":
+                        !page.isVisible
+                    }
+                  ]}
+                >
+                  <i></i>
+                  {page.isVisible ? "On" : "Off"}
+                </strong>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+    </article>
+
+
+    <article class="focused-step">
+      <div class="focused-step-number">4</div>
+
+      <div class="focused-step-main">
+        <div class="focused-step-heading">
+          <div>
+            <h3>Lead generation</h3>
+            <p>
+              Build discovery pages and see what buyers
+              are responding to.
+            </p>
+          </div>
+
+          <a
+            href={`/admin/intent-pages/new?site_id=${encodeURIComponent(
+              siteId
+            )}&city=${encodeURIComponent(citySlug)}`}
+            class="focused-step-link"
+          >
+            Create page →
+          </a>
+        </div>
+
+        <div class="focused-lead-grid">
+          <a
+            href="#my-pages"
+            data-open-section="my-pages"
+          >
+            <strong>{customPages.length}</strong>
+            <span>Intent pages</span>
+          </a>
+
+          <a href={`/admin/intent-sessions?site_id=${encodeURIComponent(siteId)}`}>
+            <strong>◎</strong>
+            <span>Intent sessions</span>
+          </a>
+
+          <a href={`/admin/leads?site_id=${encodeURIComponent(siteId)}`}>
+            <strong>→</strong>
+            <span>Leads</span>
+          </a>
+
+          <a href={`/shortlists?site_id=${encodeURIComponent(siteId)}`}>
+  <strong>♥</strong>
+  <span>Shortlists</span>
+</a>
+<a href={`/listings?site_id=${encodeURIComponent(siteId)}&agent_id=${encodeURIComponent(String(site?.agent_id || ""))}`}>
+            <strong>⌂</strong>
+            <span>Create shortlist</span>
+          </a>
+        </div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+
+<section class="focused-share">
+  <div>
+    <p class="section-kicker">Ready to share</p>
+    <h2>{site?.domain || `${cityLabel} website`}</h2>
+    <p>
+      Open the finished site and send it to the agent.
+    </p>
+  </div>
+
+  <a
+    href={`/${citySlug}`}
+    target="_blank"
+    rel="noreferrer"
+    class="button focused-open-button"
+  >
+    Open website →
+  </a>
+</section>
+<section class="workspace-section" id="core-pages">
           <div class="section-heading">
             <div>
               <p class="section-kicker">Website foundation</p>
@@ -418,7 +651,7 @@ function ideaHref(template: string) {
         </section>
 
 
-        <section class="workspace-section">
+        <section class="workspace-section" id="my-pages">
           <div class="section-heading section-heading--actions">
             <div>
               <p class="section-kicker">Made for this website</p>
@@ -962,10 +1195,8 @@ function ideaHref(template: string) {
       }
 
       .page {
-        min-height: 100vh;
-        display: grid;
-        grid-template-columns: 220px minmax(0, 1fr);
-      }
+  min-height: 100vh;
+}
 
       .main {
         width: 100%;
@@ -1362,7 +1593,383 @@ function ideaHref(template: string) {
       }
 
     </style>
-  </body>
+  
+<style is:global>
+  .workspace-header--focused {
+    margin-bottom: 34px !important;
+  }
+
+  .focused-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 11px;
+  }
+
+  .focused-live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: #e8f4eb;
+    color: #29723d;
+    font-size: .68rem;
+    font-weight: 700;
+  }
+
+  .focused-live-badge span {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .focused-setup {
+    width: 100%;
+    max-width: 920px;
+    margin: 0 0 26px;
+  }
+
+  .focused-setup-heading {
+    margin-bottom: 16px;
+  }
+
+  .focused-setup-heading h2,
+  .focused-share h2 {
+    margin: 0;
+    font-size: 1.55rem;
+    letter-spacing: -.035em;
+  }
+
+  .focused-setup-heading p:not(.section-kicker),
+  .focused-share p:not(.section-kicker) {
+    margin: 5px 0 0;
+    color: var(--muted);
+    font-size: .84rem;
+  }
+
+  .focused-step-list {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  .focused-step {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 16px;
+    padding: 21px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .focused-step:last-child {
+    border-bottom: 0;
+  }
+
+  .focused-step-number {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg);
+    font-size: .76rem;
+    font-weight: 700;
+  }
+
+  .focused-step-main {
+    min-width: 0;
+  }
+
+  .focused-step-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .focused-step-heading h3 {
+    margin: 0;
+    font-size: 1rem;
+  }
+
+  .focused-step-heading p {
+    margin: 3px 0 0;
+    color: var(--muted);
+    font-size: .78rem;
+  }
+
+  .focused-step-link {
+    flex: 0 0 auto;
+    color: var(--ink);
+    font-size: .75rem;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .focused-summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 15px;
+    padding: 11px 13px;
+    border-radius: 10px;
+    background: var(--bg);
+  }
+
+  .focused-summary span {
+    color: var(--muted);
+    font-size: .76rem;
+  }
+
+  .focused-market-grid {
+    display: grid;
+    grid-template-columns: .7fr 1.3fr;
+    gap: 22px;
+    margin-top: 16px;
+  }
+
+  .focused-market-grid > div {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 7px;
+  }
+
+  .focused-label {
+    color: var(--accent);
+    font-size: .64rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+
+  .focused-market-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .focused-market {
+    display: inline-flex;
+    padding: 6px 9px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--bg);
+    font-size: .73rem;
+    font-weight: 700;
+  }
+
+  .focused-market--primary {
+    border-color: var(--ink);
+    background: var(--ink);
+    color: #fff;
+  }
+
+  .focused-empty {
+    color: var(--muted);
+    font-size: .75rem;
+  }
+
+  .focused-page-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    margin-top: 16px;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    overflow: hidden;
+  }
+
+  .focused-page-summary > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 41px;
+    padding: 9px 11px;
+    border-bottom: 1px solid var(--line);
+    font-size: .75rem;
+    font-weight: 600;
+  }
+
+  .focused-page-summary > div:nth-child(odd) {
+    border-right: 1px solid var(--line);
+  }
+
+  .focused-page-summary > div:nth-last-child(-n+2) {
+    border-bottom: 0;
+  }
+
+  .focused-page-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #29723d;
+    font-size: .67rem;
+  }
+
+  .focused-page-state i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .focused-page-state--off {
+    color: #99938a;
+  }
+
+  .focused-lead-grid {
+    display: grid;
+    grid-template-columns: repeat(3,minmax(0,1fr));
+    gap: 8px;
+    margin-top: 16px;
+  }
+
+  .focused-lead-grid a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .focused-lead-grid strong {
+    min-width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: var(--bg);
+    font-size: .76rem;
+  }
+
+  .focused-lead-grid span {
+    font-size: .72rem;
+    font-weight: 700;
+  }
+
+  .focused-share {
+    width: 100%;
+    max-width: 920px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    margin: 0 0 50px;
+    padding: 23px;
+    border-radius: 16px;
+    background: var(--ink);
+    color: #fff;
+  }
+
+  .focused-share .section-kicker {
+    color: #89c4c5;
+  }
+
+  .focused-share p:not(.section-kicker) {
+    color: rgba(255,255,255,.62);
+  }
+
+  .focused-open-button {
+    flex: 0 0 auto;
+    border-color: #fff !important;
+    background: #fff !important;
+    color: var(--ink) !important;
+  }
+
+  #core-pages {
+    padding-top: 10px;
+  }
+
+  @media (max-width: 700px) {
+    .focused-step-heading,
+    .focused-share {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .focused-market-grid,
+    .focused-page-summary,
+    .focused-lead-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .focused-page-summary > div:nth-child(odd) {
+      border-right: 0;
+    }
+
+    .focused-page-summary > div:nth-last-child(-n+2) {
+      border-bottom: 1px solid var(--line);
+    }
+
+    .focused-page-summary > div:last-child {
+      border-bottom: 0;
+    }
+  }
+</style>
+
+<style is:global>
+  #core-pages,
+  #my-pages {
+    display: none;
+  }
+
+  #core-pages.is-open,
+  #my-pages.is-open {
+    display: block;
+  }
+</style>
+
+<script is:inline>
+(() => {
+  function toggleAdminSection(id) {
+    const target = document.getElementById(id);
+    if (!target) return;
+
+    const wasOpen =
+      target.classList.contains("is-open");
+
+    document
+      .querySelectorAll("#core-pages, #my-pages")
+      .forEach((section) => {
+        section.classList.remove("is-open");
+      });
+
+    if (!wasOpen) {
+      target.classList.add("is-open");
+
+      requestAnimationFrame(() => {
+        target.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      });
+    }
+  }
+
+  document.addEventListener("click", (event) => {
+    const trigger =
+      event.target.closest("[data-open-section]");
+
+    if (!trigger) return;
+
+    const id =
+      trigger.getAttribute("data-open-section");
+
+    if (!id) return;
+
+    event.preventDefault();
+    toggleAdminSection(id);
+  });
+})();
+</script>
+</body>
 </html>
 
 <style is:global>
