@@ -944,11 +944,71 @@ const areaFilterOptions = areaBoundaryRows
   })
   .filter((item) => item.value && item.label)
   .sort((a, b) => a.label.localeCompare(b.label));
-const { data: navRows = [] } = await supabase
+const searchParams = Astro.url.searchParams;
+
+const filterAreas = searchParams
+  .getAll("area")
+  .map((value) =>
+    String(value || "").trim().toLowerCase()
+  )
+  .filter(Boolean);
+
+const filterBeds =
+  Number(searchParams.get("beds") || 0);
+
+const filterPrice =
+  String(searchParams.get("price") || "").trim();
+
+const filterSort =
+  String(searchParams.get("sort") || "").trim();
+
+let navRowsQuery = supabase
   .from("listing_rows")
-  .select("normalized_type, normalized_area")
+  .select(
+    "normalized_type, normalized_area, price, beds"
+  )
   .in("normalized_city", cityDatabaseKeys)
+  .eq("status", "A")
   .not("normalized_type", "is", null);
+
+if (filterBeds > 0) {
+  navRowsQuery =
+    navRowsQuery.gte("beds", filterBeds);
+}
+
+const navUnderPrice =
+  filterPrice.match(/^under-(\d+)$/);
+
+const navPriceRange =
+  filterPrice.match(/^(\d+)-(\d+)$/);
+
+const navPlusPrice =
+  filterPrice.match(/^(\d+)-plus$/);
+
+if (navUnderPrice) {
+  navRowsQuery = navRowsQuery.lte(
+    "price",
+    Number(navUnderPrice[1]) * 1000
+  );
+} else if (navPriceRange) {
+  navRowsQuery = navRowsQuery
+    .gte(
+      "price",
+      Number(navPriceRange[1]) * 1000
+    )
+    .lt(
+      "price",
+      Number(navPriceRange[2]) * 1000
+    );
+} else if (navPlusPrice) {
+  navRowsQuery = navRowsQuery.gte(
+    "price",
+    Number(navPlusPrice[1]) * 1000
+  );
+}
+
+const { data: navRows = [] } =
+  await navRowsQuery;
 
 const navAreaCounts = new Map<string, number>();
 
@@ -1011,15 +1071,7 @@ logPhaseTiming("census amenities nav and area context");
 
 const hasPolygonSearch =
   Boolean(page.polygon_geojson?.coordinates?.[0]?.length);
-const searchParams = Astro.url.searchParams;
 
-const filterAreas = searchParams
-  .getAll("area")
-  .map((value) => String(value || "").trim().toLowerCase())
-  .filter(Boolean);
-const filterBeds = Number(searchParams.get("beds") || 0);
-const filterPrice = String(searchParams.get("price") || "").trim();
-const filterSort = String(searchParams.get("sort") || "").trim();
 const hasActiveSearchFilters =
   filterAreas.length > 0 ||
   filterBeds > 0 ||
@@ -1114,6 +1166,42 @@ const propertyTypeMap: Record<string, string> = {
 const normalizedPropertyType =
   propertyTypeMap[String(page.property_type || "").toLowerCase()] ||
   String(page.property_type || "").toLowerCase();
+
+const typeAreaCounts = new Map<string, number>();
+
+(navRows || []).forEach((row) => {
+  const rowType = String(row.normalized_type || "")
+    .trim()
+    .toLowerCase();
+
+  if (rowType !== normalizedPropertyType) return;
+
+  const areaKey = String(row.normalized_area || "")
+    .replace(/-/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  if (!areaKey) return;
+
+  typeAreaCounts.set(
+    areaKey,
+    (typeAreaCounts.get(areaKey) || 0) + 1
+  );
+});
+
+const rankedAreaFilterOptions = areaFilterOptions
+  .map((item) => ({
+    ...item,
+    count: typeAreaCounts.get(item.value) || 0,
+  }))
+  .filter((item) => item.count > 0)
+  .sort(
+    (a, b) =>
+      b.count - a.count ||
+      a.label.localeCompare(b.label)
+  );
+
 const dedicatedTypePageSlugs = new Set([
   "homes",
   "houses",
@@ -2818,7 +2906,6 @@ const socialUrl =
       )}`
     : `${Astro.url.origin}${Astro.url.pathname}`;
 ---
-
 <Layout
   title={socialTitle}
   accentColor={accentColor}
@@ -2826,6 +2913,70 @@ const socialUrl =
   site={site}
 >
   <Fragment slot="head">
+    <style is:global>
+      /* listing-anchor-prepaint */
+      html.is-listing-anchor-reload body {
+        opacity: 0 !important;
+      }
+    </style>
+
+    <script is:inline>
+      (() => {
+        const isListingReload =
+          window.location.hash ===
+          "#listing-results-anchor";
+
+        if (!isListingReload) return;
+
+        document.documentElement.classList.add(
+          "is-listing-anchor-reload"
+        );
+
+        if ("scrollRestoration" in history) {
+          history.scrollRestoration = "manual";
+        }
+
+        const revealAtListings = () => {
+          const anchor =
+            document.getElementById(
+              "listing-results-anchor"
+            );
+
+          if (anchor) {
+            anchor.scrollIntoView({
+              block: "start",
+              inline: "nearest",
+              behavior: "instant",
+            });
+          }
+
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              document.documentElement.classList.remove(
+                "is-listing-anchor-reload"
+              );
+            });
+          });
+        };
+
+        if (document.readyState === "loading") {
+          document.addEventListener(
+            "DOMContentLoaded",
+            revealAtListings,
+            { once: true }
+          );
+        } else {
+          revealAtListings();
+        }
+
+        // Safety fallback: never leave the page hidden.
+        window.setTimeout(() => {
+          document.documentElement.classList.remove(
+            "is-listing-anchor-reload"
+          );
+        }, 3000);
+      })();
+    </script>
     <meta
       name="description"
       content={
@@ -9361,12 +9512,12 @@ Approximate driving times from{" "}
 <div
   class="section-head"
   id="type-listings"
-  hidden={isDedicatedTypePage}
   style="margin:0 0 14px;"
 >
 <h2
   id="dynamic-results-heading"
   data-fixed-type-label={isDedicatedTypePage ? dedicatedTypeLabel : ""}
+  data-page-area={page.area || ""}
   style="margin:0;font-family:var(--serif);font-size:clamp(1.2rem,2vw,1.6rem);font-weight:500;letter-spacing:-0.02em;"
 >
   {isDedicatedTypePage
@@ -9479,16 +9630,17 @@ Approximate driving times from{" "}
 )}
 
 
-{isDedicatedTypePage && areaFilterOptions.length > 0 && (
+{isDedicatedTypePage && rankedAreaFilterOptions.length > 0 && (
   <select
     class="area-filter-select" multiple
     aria-label="Filter by area"
   >
     <option value="all">Any area</option>
 
-    {areaFilterOptions.map((item) => (
+    {rankedAreaFilterOptions.map((item) => (
       <option
         value={item.value}
+        data-count={item.count}
         selected={filterAreas.includes(item.value)}
       >
         {item.label}
@@ -12082,50 +12234,83 @@ function updatePropertyTypePills() {
   });
 }
 
-function updateResultsHeading(filters) {
-  const heading = document.getElementById("dynamic-results-heading");
+function updateResultsHeading(filters, resultCount) {
+  const heading =
+    document.getElementById("dynamic-results-heading");
+
   if (!heading) return;
 
   const cityLabel = jsTitleCase(
-    document.querySelector("[data-city]")?.dataset.city || "Nanaimo"
+    document.querySelector("[data-city]")
+      ?.dataset.city || "Nanaimo"
   );
-  const fixedTypeLabel =
-    String(
-      heading.dataset.fixedTypeLabel || ""
-    ).trim();
+
+  const fixedTypeLabel = String(
+    heading.dataset.fixedTypeLabel || ""
+  ).trim();
+
+  const pageArea = String(
+    heading.dataset.pageArea || ""
+  ).trim();
+
+  const selectedAreaLabels =
+    areaSelect instanceof HTMLSelectElement
+      ? Array.from(areaSelect.selectedOptions)
+          .filter((option) => option.value !== "all")
+          .map((option) =>
+            String(option.textContent || "").trim()
+          )
+          .filter(Boolean)
+      : [];
+
+  const locationLabel =
+    selectedAreaLabels.length === 1
+      ? selectedAreaLabels[0]
+      : selectedAreaLabels.length > 1
+        ? `${selectedAreaLabels.length} selected areas`
+        : pageArea
+          ? jsTitleCase(pageArea)
+          : cityLabel;
+
+  let pluralTypeLabel;
 
   if (fixedTypeLabel) {
-    heading.textContent =
-      `${cityLabel} ${fixedTypeLabel}`;
-    return;
+    pluralTypeLabel = fixedTypeLabel.toLowerCase();
+  } else {
+    pluralTypeLabel =
+      filters.type === "condo"
+        ? "condos"
+        : filters.type === "townhouse"
+          ? "townhomes"
+          : filters.type === "mobile"
+            ? "mobile homes"
+            : filters.type === "land"
+              ? "properties"
+              : filters.type === "house"
+                ? "homes"
+                : "homes";
   }
 
-
-  const bedsLabel =
-    filters.beds === "all"
-      ? ""
-      : `${filters.beds}+ Bed`;
+  const singularTypeLabel =
+    pluralTypeLabel === "condos"
+      ? "condo"
+      : pluralTypeLabel === "townhomes"
+        ? "townhome"
+        : pluralTypeLabel === "mobile homes"
+          ? "mobile home"
+          : pluralTypeLabel === "properties" ||
+            pluralTypeLabel === "land"
+            ? "property"
+            : "home";
 
   const typeLabel =
-    filters.type === "all"
-      ? "Homes"
-      : filters.type === "house"
-        ? "Homes"
-        : jsTitleCase(`${filters.type}s`);
+    Number(resultCount) === 1
+      ? singularTypeLabel
+      : pluralTypeLabel;
 
-  const priceLabel =
-    filters.price === "all"
-      ? ""
-      : priceSelect.options[priceSelect.selectedIndex].text;
-
-  heading.textContent = [
-    cityLabel,
-    bedsLabel,
-    typeLabel,
-    priceLabel,
-  ].filter(Boolean).join(" ");
+  heading.textContent =
+    `${resultCount} ${typeLabel} for sale in ${locationLabel}`;
 }
-
 function submitFilters() {
   const filters = getCurrentFilters();
   const cards = Array.from(document.querySelectorAll(".original-card"));
@@ -12146,10 +12331,10 @@ function submitFilters() {
 
   const resultsBar = document.querySelector(".results-bar");
   if (resultsBar) {
-    resultsBar.textContent = `${resultsBar.dataset.totalListings || filteredCards.length} listings found`;
+    resultsBar.textContent = `${filteredCards.length} listings found`;
   }
 
-  updateResultsHeading(filters);
+  updateResultsHeading(filters, filteredCards.length);
   updatePropertyTypePills();
 
   window.dispatchEvent(new CustomEvent("listing-filters-updated"));
@@ -14973,7 +15158,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
 
   .type-area-multi__option {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 22px;
+    grid-template-columns: minmax(0, 1fr) auto 22px;
     align-items: center;
     width: 100%;
     min-height: 48px;
@@ -14993,6 +15178,12 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
     font-weight: 750;
   }
 
+  .type-area-multi__count {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 750;
+    text-align: right;
+  }
   .type-area-multi__check {
     color: var(--accent);
     font-weight: 900;
@@ -15079,15 +15270,15 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
             (option) => option.value === b.dataset.value
           );
 
-          if (
-            Boolean(aOption?.selected) !==
-            Boolean(bOption?.selected)
-          ) {
-            return aOption?.selected ? -1 : 1;
-          }
+          const countDifference =
+            Number(bOption?.dataset.count || 0) -
+            Number(aOption?.dataset.count || 0);
 
-          return String(a.textContent || "").localeCompare(
-            String(b.textContent || "")
+          return (
+            countDifference ||
+            String(aOption?.textContent || "").localeCompare(
+              String(bOption?.textContent || "")
+            )
           );
         })
         .forEach((button) => {
@@ -15135,10 +15326,14 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
       const label = document.createElement("span");
       label.textContent = option.textContent;
 
+      const count = document.createElement("span");
+      count.className = "type-area-multi__count";
+      count.textContent = option.dataset.count || "0";
+
       const check = document.createElement("span");
       check.className = "type-area-multi__check";
 
-      button.append(label, check);
+      button.append(label, count, check);
 
       button.addEventListener("click", () => {
         option.selected = !option.selected;
@@ -15169,10 +15364,14 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
           );
         });
 
-      window.location.href =
+      nextUrl.hash =
+        "listing-results-anchor";
+
+      window.location.assign(
         nextUrl.pathname +
         nextUrl.search +
-        nextUrl.hash;
+        nextUrl.hash
+      );
     };
 
     const scheduleAreaApply = () => {
@@ -16450,6 +16649,32 @@ document.addEventListener("click", (event) => {
     .is-type-page .grid > .card.original-card {
       width: 100% !important;
       max-width: none !important;
+    }
+  }
+</style>
+
+
+
+<style is:global>
+  /* smooth-filter-page-transition */
+  @view-transition {
+    navigation: auto;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 140ms;
+    animation-timing-function: ease-out;
+  }
+
+  #listing-results-anchor {
+    scroll-margin-top: 76px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      animation-duration: 0s;
     }
   }
 </style>

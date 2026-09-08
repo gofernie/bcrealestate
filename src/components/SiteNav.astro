@@ -514,6 +514,7 @@ const finalNavLinks: NavItem[] =
     padding: 0 !important;
   }
 
+
   @media (max-width: 760px) {
     .site-nav .shell {
       width: calc(100% - 28px) !important;
@@ -712,3 +713,86 @@ const finalNavLinks: NavItem[] =
       font-weight: 800;
     }
   }</style>
+
+<script is:inline>
+  // content-aware-nav-breakpoint
+  (() => {
+    const navInner =
+      document.querySelector(".site-nav__inner");
+
+    const brand =
+      document.querySelector(".site-nav__brand");
+
+    const links =
+      document.querySelector(".site-nav__links");
+
+    if (!navInner || !brand || !links) return;
+
+    function getMobileMediaRules() {
+      const matches = [];
+
+      for (const sheet of document.styleSheets) {
+        let rules;
+
+        try {
+          rules = sheet.cssRules;
+        } catch {
+          continue;
+        }
+
+        for (const rule of rules) {
+          if (
+            rule instanceof CSSMediaRule &&
+            /max-width:\s*(?:760|\d+)px/.test(
+              rule.media.mediaText
+            ) &&
+            Array.from(rule.cssRules).some((child) =>
+              child.cssText.includes("site-nav")
+            )
+          ) {
+            matches.push(rule);
+          }
+        }
+      }
+
+      return matches;
+    }
+
+    function setNaturalBreakpoint() {
+      const mediaRules = getMobileMediaRules();
+
+      if (!mediaRules.length) return;
+
+      // Temporarily expose the full desktop navigation for measurement.
+      mediaRules.forEach((rule) => {
+        rule.media.mediaText = "(max-width: 0px)";
+      });
+
+      requestAnimationFrame(() => {
+        const styles = getComputedStyle(navInner);
+        const gap = parseFloat(styles.columnGap || styles.gap) || 24;
+
+        const requiredShellWidth =
+          Math.ceil(
+            brand.getBoundingClientRect().width +
+            links.scrollWidth +
+            gap
+          );
+
+        // Desktop shell removes 40px from each side.
+        const breakpoint = requiredShellWidth + 80;
+
+        mediaRules.forEach((rule) => {
+          rule.media.mediaText =
+            `(max-width: ${breakpoint}px)`;
+        });
+      });
+    }
+
+    setNaturalBreakpoint();
+
+    document.fonts?.ready?.then(
+      setNaturalBreakpoint
+    );
+  })();
+</script>
