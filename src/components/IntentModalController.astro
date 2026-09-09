@@ -457,6 +457,16 @@ const { listings = [] } = Astro.props;
 :fullscreen .landscape-expand-hint {
   display: none !important;
 }
+
+/* Mobile media button bar background */
+#mobile-media-nav {
+  padding: 10px 12px !important;
+  background: color-mix(
+    in srgb,
+    var(--accent) 14%,
+    white
+  ) !important;
+}
 </style>
 <div class="overlay" id="sheet-overlay"></div>
 
@@ -1157,6 +1167,7 @@ new MutationObserver(() => {
 
 queueMicrotask(() => {
   syncDedicatedFloorplanPdfOverlay();
+  syncMobileMediaCounts();
 });
 
 function getCurrentFloorplanUrls() {
@@ -1868,6 +1879,39 @@ const mobileMediaFloorplan =
 const mobileMediaPhotos =
   document.getElementById("mobile-media-photos");
 
+function syncMobileMediaCounts() {
+  const floorplanCount =
+    typeof getCurrentFloorplanUrls === "function"
+      ? getCurrentFloorplanUrls().length
+      : 0;
+
+  let photoCount = 0;
+
+  try {
+    const images = JSON.parse(
+      activeCard?.dataset?.images || "[]"
+    );
+
+    if (Array.isArray(images)) {
+      photoCount = images.length;
+    }
+  } catch {}
+
+  if (mobileMediaFloorplan) {
+    mobileMediaFloorplan.textContent =
+      floorplanCount > 0
+        ? `Floorplan (${floorplanCount})`
+        : "Floorplan";
+  }
+
+  if (mobileMediaPhotos) {
+    mobileMediaPhotos.textContent =
+      photoCount > 0
+        ? `Pics (${photoCount})`
+        : "Pics";
+  }
+}
+
 if (
   mobileMediaNav &&
   mobileMediaNav.parentElement !== document.body
@@ -2477,6 +2521,7 @@ window.saveViewedIntentAddress?.(card.dataset.address || "");
 window.saveViewedIntentListingKey?.(card);
 window.updateViewedBadges?.();
   renderCard(card);
+syncMobileMediaCounts();
 
 sheetContent?.classList.add("open");
 syncListingSectionsToOpenPanel();
@@ -2526,10 +2571,12 @@ fetchListingDetailIfNeeded(card).then((wasUpdated) => {
 
   // Full detail is now hydrated onto the card.
   // Instead, hydrate only the gallery/room data in place.
-  // renderCard(card); // intentionally disabled
+  // renderCard(card);
+syncMobileMediaCounts(); // intentionally disabled
 
   hydrateRoomMeasurements(card);
   refreshFloorplanButtonVisibility();
+syncMobileMediaCounts();
 
   const hydratedUrls = getCardPhotoUrls(card);
 
@@ -4287,11 +4334,13 @@ if (index >= cards.length - 1) {
        activeCard = cards[index + 1];
 syncListingUrl(activeCard, "replace");
 renderCard(activeCard);
+syncMobileMediaCounts();
 fetchListingDetailIfNeeded(activeCard).then((wasUpdated) => {
   if (!wasUpdated || !activeCard) return;
 
   hydrateRoomMeasurements(activeCard);
   refreshFloorplanButtonVisibility();
+syncMobileMediaCounts();
 
   const hydratedUrls = getCardPhotoUrls(activeCard);
 
@@ -4339,11 +4388,13 @@ requestAnimationFrame(() => {
        activeCard = cards[index - 1];
 syncListingUrl(activeCard, "replace");
 renderCard(activeCard);
+syncMobileMediaCounts();
 fetchListingDetailIfNeeded(activeCard).then((wasUpdated) => {
   if (!wasUpdated || !activeCard) return;
 
   hydrateRoomMeasurements(activeCard);
   refreshFloorplanButtonVisibility();
+syncMobileMediaCounts();
 
   const hydratedUrls = getCardPhotoUrls(activeCard);
 
