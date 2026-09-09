@@ -1,4 +1,4 @@
----
+﻿---
 import { createClient } from "@supabase/supabase-js";
 import Layout from "../../layouts/Layout.astro";
 import SlugSaveSearch from "../../components/SlugSaveSearch.astro";
@@ -954,12 +954,32 @@ const filterAreas = searchParams
   .filter(Boolean);
 
 const filterBeds =
-  Number(searchParams.get("beds") || 0);
+  Number(
+    searchParams.has("beds")
+      ? searchParams.get("beds")
+      : page.beds_min || 0
+  );
+
+const savedPagePrice =
+  page.price_max && !page.price_min
+    ? `under-${Math.round(Number(page.price_max) / 1000)}`
+    : page.price_min && !page.price_max
+      ? `over-${Math.round(Number(page.price_min) / 1000)}`
+      : "";
 
 const filterPrice =
-  String(searchParams.get("price") || "").trim();
+  String(
+    searchParams.has("price")
+      ? searchParams.get("price")
+      : savedPagePrice
+  ).trim();
+
 const filterType =
-  String(searchParams.get("type") || "")
+  String(
+    searchParams.has("type")
+      ? searchParams.get("type")
+      : page.property_type || ""
+  )
     .trim()
     .toLowerCase();
 
@@ -967,27 +987,49 @@ const filterSort =
   String(searchParams.get("sort") || "").trim();
 
 const filterMinSqft =
-  Number(searchParams.get("minSqft") || 0);
+  Number(
+    searchParams.has("minSqft")
+      ? searchParams.get("minSqft")
+      : page.min_sqft || 0
+  );
 
 const filterMinYear =
-  Number(searchParams.get("minYear") || 0);
+  Number(
+    searchParams.has("minYear")
+      ? searchParams.get("minYear")
+      : page.min_year || 0
+  );
 
 const filterPrimaryOnMain =
-  searchParams.get("primaryOnMain") === "true";
+  searchParams.has("primaryOnMain")
+    ? searchParams.get("primaryOnMain") === "true"
+    : page.primary_on_main === true;
 
 const filterThreeSameFloor =
-  searchParams.get("threeSameFloor") === "true";
+  searchParams.has("threeSameFloor")
+    ? searchParams.get("threeSameFloor") === "true"
+    : page.three_plus_beds_same_floor === true;
 
 const filterFourSameFloor =
-  searchParams.get("fourSameFloor") === "true";
+  searchParams.has("fourSameFloor")
+    ? searchParams.get("fourSameFloor") === "true"
+    : page.four_plus_beds_same_floor === true;
 
 const filterViewType =
-  String(searchParams.get("viewType") || "")
+  String(
+    searchParams.has("viewType")
+      ? searchParams.get("viewType")
+      : page.view_type || ""
+  )
     .trim()
     .toLowerCase();
 
 const filterWaterfrontType =
-  String(searchParams.get("waterfrontType") || "")
+  String(
+    searchParams.get("waterfrontType") ||
+    page.waterfront_type ||
+    (page.requires_waterfront ? "any" : "")
+  )
     .trim()
     .toLowerCase();
 
@@ -8090,7 +8132,7 @@ grid-template-columns: 30px minmax(0, 1fr);
 }
 
 /* =========================================================
-   FINAL LISTING FILTER BAR ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â HOMEPAGE SEARCH LANGUAGE
+   FINAL LISTING FILTER BAR ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â HOMEPAGE SEARCH LANGUAGE
    ========================================================= */
 
 .intent-controls {
@@ -8465,7 +8507,7 @@ grid-template-columns: 30px minmax(0, 1fr);
 
 <style is:global>
 /* ==========================================================
-   TYPE PAGE — SECOND LAYER / MORE FILTERS
+   TYPE PAGE â€” SECOND LAYER / MORE FILTERS
    ========================================================== */
 
 .intent-controls .type-more-filters-toggle {
@@ -9955,22 +9997,49 @@ Approximate driving times from{" "}
   </select>
 )}
   <select class="price-filter-select" aria-label="Filter by price">
-    <option value="all">Any Price</option>
+    <option value="all" selected={!filterPrice || filterPrice === "all"}>
+      Any Price
+    </option>
+
+    {
+      filterPrice &&
+      filterPrice !== "all" &&
+      ![
+        "under-300",
+        "300-450",
+        "under-450",
+        "450-650",
+        "650-850",
+        "850-1100",
+        "1100-plus",
+        "650-plus",
+      ].includes(filterPrice) && (
+        <option value={filterPrice} selected>
+          {
+            filterPrice.startsWith("under-")
+              ? "Under $" + Number(filterPrice.replace("under-", "")).toLocaleString() + "k"
+              : filterPrice.startsWith("over-")
+                ? "$" + Number(filterPrice.replace("over-", "")).toLocaleString() + "k+"
+                : filterPrice
+          }
+        </option>
+      )
+    }
 
     {normalizedPropertyType === "mobile" ? (
       <>
-        <option value="under-300">Under $300k</option>
-        <option value="300-450">$300k - $450k</option>
-        <option value="450-650">$450k - $650k</option>
-        <option value="650-plus">$650k+</option>
+        <option value="under-300" selected={filterPrice === "under-300"}>Under $300k</option>
+        <option value="300-450" selected={filterPrice === "300-450"}>$300k - $450k</option>
+        <option value="450-650" selected={filterPrice === "450-650"}>$450k - $650k</option>
+        <option value="650-plus" selected={filterPrice === "650-plus"}>$650k+</option>
       </>
     ) : (
       <>
-        <option value="under-450">Under $450k</option>
-        <option value="450-650">$450k - $650k</option>
-        <option value="650-850">$650k - $850k</option>
-        <option value="850-1100">$850k - $1.1M</option>
-        <option value="1100-plus">$1.1M+</option>
+        <option value="under-450" selected={filterPrice === "under-450"}>Under $450k</option>
+        <option value="450-650" selected={filterPrice === "450-650"}>$450k - $650k</option>
+        <option value="650-850" selected={filterPrice === "650-850"}>$650k - $850k</option>
+        <option value="850-1100" selected={filterPrice === "850-1100"}>$850k - $1.1M</option>
+        <option value="1100-plus" selected={filterPrice === "1100-plus"}>$1.1M+</option>
       </>
     )}
   </select>
@@ -15816,7 +15885,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
 
     const chevron = document.createElement("span");
     chevron.style.gridArea = "arrow";
-    chevron.textContent = "⌄";
+    chevron.textContent = "âŒ„";
     chevron.setAttribute("aria-hidden", "true");
 
     trigger.append(fieldLabel, value, chevron);
@@ -15900,7 +15969,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
 
           button.querySelector(
             ".type-area-multi__check"
-          ).textContent = isSelected ? "✓" : "";
+          ).textContent = isSelected ? "âœ“" : "";
         });
     };
 
@@ -17304,3 +17373,9 @@ document.addEventListener("click", (event) => {
     }
   }
 </style>
+
+
+
+
+
+

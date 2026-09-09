@@ -1,4 +1,4 @@
----
+﻿---
 import { createClient } from "@supabase/supabase-js";
 import AdminSidebar from "../../../components/AdminSidebar.astro";
 import { getSite } from "../../../lib/getSite";
@@ -117,6 +117,31 @@ if (Astro.request.method === "POST") {
   const city = clean(form.get("city") || "nanaimo").toLowerCase();
   const area = clean(form.get("area")).toLowerCase();
   const propertyType = clean(form.get("property_type")).toLowerCase();
+
+  const bedsMin =
+    Number(clean(form.get("beds_min")) || 0);
+
+  const bathsMin =
+    Number(clean(form.get("baths_min")) || 0);
+
+  const minSqft =
+    Number(clean(form.get("min_sqft")) || 0);
+
+  const minYear =
+    Number(clean(form.get("min_year")) || 0);
+
+  const primaryOnMain =
+    form.get("primary_on_main") === "true";
+
+  const threePlusBedsSameFloor =
+    form.get("three_plus_beds_same_floor") === "true";
+
+  const fourPlusBedsSameFloor =
+    form.get("four_plus_beds_same_floor") === "true";
+
+  const viewType =
+    clean(form.get("view_type")).toLowerCase();
+
   let pricePreset = clean(form.get("price_preset"));
 
 if (!pricePreset && template === "luxury_homes") {
@@ -129,6 +154,12 @@ const seoTitleOverride = clean(form.get("seo_title_override"));
 const introCopyOverride = clean(form.get("intro_copy_override"));
 const metaDescriptionOverride = clean(form.get("meta_description_override"));  
 const defaultSort = clean(form.get("default_sort")) || "newest";
+
+const customPriceMin =
+  Number(clean(form.get("price_min_custom")) || 0);
+
+const customPriceMax =
+  Number(clean(form.get("price_max_custom")) || 0);
 const polygonGeojsonRaw = clean(form.get("polygon_geojson"));
 const polygonGeojson = polygonGeojsonRaw
   ? JSON.parse(polygonGeojsonRaw)
@@ -146,7 +177,17 @@ const polygonBounds =
   polygonBoundsRaw
     ? JSON.parse(polygonBoundsRaw)
     : null;
-  const { price_min, price_max } = getPricePreset(pricePreset);
+  const presetPrice = getPricePreset(pricePreset);
+
+  const price_min =
+    customPriceMin > 0
+      ? customPriceMin
+      : presetPrice.price_min;
+
+  const price_max =
+    customPriceMax > 0
+      ? customPriceMax
+      : presetPrice.price_max;
 
   const areaLabel = area ? titleCase(area) : titleCase(city);
   const typeLabel = pluralType(propertyType);
@@ -225,6 +266,14 @@ message = `A page with this URL already exists.||/${existingPage.city}/${existin
   city,
   area,
   property_type: propertyType || null,
+  beds_min: bedsMin > 0 ? bedsMin : null,
+  baths_min: bathsMin > 0 ? bathsMin : null,
+  min_sqft: minSqft > 0 ? minSqft : null,
+  min_year: minYear > 0 ? minYear : null,
+  primary_on_main: primaryOnMain,
+  three_plus_beds_same_floor: threePlusBedsSameFloor,
+  four_plus_beds_same_floor: fourPlusBedsSameFloor,
+  view_type: viewType || null,
   price_min,
   price_max,
   hero_heading: heroHeadingOverride || heroHeading,
@@ -776,7 +825,115 @@ textarea:focus {
           </div>
         </div>
 
-        <div class="seo-box">
+                <div class="grid-2">
+          <div>
+            <label>Custom minimum price</label>
+            <input
+              type="number"
+              name="price_min_custom"
+              min="0"
+              step="1000"
+              placeholder="Example: 500000"
+            />
+            <p class="hint">Optional. Overrides the preset minimum.</p>
+          </div>
+
+          <div>
+            <label>Custom maximum price</label>
+            <input
+              type="number"
+              name="price_max_custom"
+              min="0"
+              step="1000"
+              placeholder="Example: 700000"
+            />
+            <p class="hint">Optional. Overrides the preset maximum.</p>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label>Minimum bedrooms</label>
+            <select name="beds_min">
+              <option value="">Any</option>
+              <option value="1">1+</option>
+              <option value="2">2+</option>
+              <option value="3">3+</option>
+              <option value="4">4+</option>
+              <option value="5">5+</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Minimum bathrooms</label>
+            <select name="baths_min">
+              <option value="">Any</option>
+              <option value="1">1+</option>
+              <option value="2">2+</option>
+              <option value="3">3+</option>
+              <option value="4">4+</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div>
+            <label>Minimum interior size</label>
+            <select name="min_sqft">
+              <option value="">Any size</option>
+              <option value="750">750+ sq ft</option>
+              <option value="1000">1,000+ sq ft</option>
+              <option value="1500">1,500+ sq ft</option>
+              <option value="2000">2,000+ sq ft</option>
+              <option value="2500">2,500+ sq ft</option>
+              <option value="3000">3,000+ sq ft</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Minimum year built</label>
+            <select name="min_year">
+              <option value="">Any year</option>
+              <option value="1980">1980 or newer</option>
+              <option value="1990">1990 or newer</option>
+              <option value="2000">2000 or newer</option>
+              <option value="2010">2010 or newer</option>
+              <option value="2020">2020 or newer</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div>
+            <label>View</label>
+            <select name="view_type">
+              <option value="">No preference</option>
+              <option value="mountain">Mountain view</option>
+              <option value="ocean">Ocean view</option>
+              <option value="valley">Valley view</option>
+              <option value="lake">Lake view</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Layout</label>
+
+            <label>
+              <input type="checkbox" name="primary_on_main" value="true" />
+              Primary bedroom on main
+            </label>
+
+            <label>
+              <input type="checkbox" name="three_plus_beds_same_floor" value="true" />
+              3+ bedrooms on same floor
+            </label>
+
+            <label>
+              <input type="checkbox" name="four_plus_beds_same_floor" value="true" />
+              4+ bedrooms on same floor
+            </label>
+          </div>
+        </div>
+<div class="seo-box">
 <label>Default sort</label>
 <select name="default_sort" id="defaultSortSelect">
   <option value="newest">Newest listings first</option>
@@ -1301,3 +1458,11 @@ form?.addEventListener("submit", (e) => {
   </div>
 </body>
 </html>
+
+
+
+
+
+
+
+
