@@ -1,0 +1,452 @@
+﻿---
+import Layout from "../../layouts/Layout.astro";
+import { createClient } from "@supabase/supabase-js";
+
+const { slug } = Astro.params;
+
+const host =
+  Astro.request.headers.get("x-forwarded-host") ||
+  Astro.request.headers.get("host") ||
+  "";
+
+let domain = host
+  .split(",")[0]
+  .trim()
+  .replace(/^www\./, "")
+  .split(":")[0];
+
+if (
+  import.meta.env.DEV &&
+  (domain === "localhost" || domain === "127.0.0.1")
+) {
+  domain =
+    Astro.url.searchParams.get("domain") ||
+    "tammygalvin.bc.realestate";
+}
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const { data: prospect, error } = await supabase
+  .from("prospect_pages")
+  .select("*")
+  .eq("domain", domain)
+  .eq("slug", slug)
+  .eq("is_published", true)
+  .maybeSingle();
+
+if (error) {
+  console.error("Prospect page lookup failed:", error);
+}
+
+if (!prospect) {
+  return new Response("Prospect page not found", {
+    status: 404,
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+    },
+  });
+}
+
+const links = prospect.links || {};
+
+function getListingDemoUrl(value) {
+  const raw = String(value || "").trim();
+
+  if (!raw) return "";
+
+  const match = raw.match(
+    /(?:\/listing\/)?(\d{6,})\/?(?:[?#].*)?$/
+  );
+
+  if (!match) return raw;
+
+  const listingId = match[1];
+
+  const market = String(
+    prospect.primary_market || "nanaimo"
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return `/${market}?listing_id=${encodeURIComponent(listingId)}`;
+}
+
+const listingDemoUrl =
+  getListingDemoUrl(links.listing);
+
+const sections = prospect.sections || {};
+
+const agentName = prospect.agent_name || "there";
+const primaryMarket = prospect.primary_market || "";
+const otherMarkets = Array.isArray(prospect.other_markets)
+  ? prospect.other_markets
+  : [];
+
+const enabled = (key) =>
+  sections[key] !== false;
+---
+
+<Layout title={`A Locus site for ${agentName}`}>
+  <main class="prospect-page">
+    <section class="prospect-hero">
+      <div class="prospect-shell">
+        <p class="eyebrow">LOCUS</p>
+
+        <h1>{agentName}, I built this for you.</h1>
+
+        <p class="hero-note">
+          {prospect.personal_note ||
+            "Rather than send you a long sales pitch, I thought it would be more useful to give you a working Locus site and a few things to actually try."}
+        </p>
+
+        <div class="market-line">
+          {primaryMarket && <strong>{primaryMarket}</strong>}
+
+          {otherMarkets.length > 0 && (
+            <>
+              <span>+</span>
+              <span>{otherMarkets.join(" · ")}</span>
+            </>
+          )}
+        </div>
+
+        <p class="scroll-cue">A few things worth trying ↓</p>
+      </div>
+    </section>
+
+    <section class="prospect-demo">
+      <div class="prospect-shell demo-grid">
+
+        {enabled("search") && (
+          <article class="demo-card">
+            <div class="demo-number">01</div>
+            <div>
+              <p class="demo-kicker">SEARCH LIKE A REAL BUYER</p>
+              <h2>Try a search that is actually difficult.</h2>
+              <p>
+                Find homes with 3 or 4 bedrooms on the same floor, or a
+                primary bedroom on the main. Locus is built around the
+                way buyers actually describe what they want.
+              </p>
+
+              {links.search && (
+                <a href={links.search} class="demo-link">
+                  Try the search →
+                </a>
+              )}
+            </div>
+          </article>
+        )}
+
+        {enabled("listing") && (
+          <article class="demo-card">
+            <div class="demo-number">02</div>
+            <div>
+              <p class="demo-kicker">OPEN A LISTING</p>
+              <h2>More than a photo gallery.</h2>
+              <p>
+                Pics, floorplans, maps, room details and downloadable
+                property material are surfaced directly inside the
+                listing experience.
+              </p>
+
+              {links.listing && (
+                <a href={listingDemoUrl} class="demo-link">
+                  Open this listing →
+                </a>
+              )}
+            </div>
+          </article>
+        )}
+
+        {enabled("reactions") && (
+          <article class="demo-card">
+            <div class="demo-number">03</div>
+            <div>
+              <p class="demo-kicker">LOVE · LIKE · NOPE</p>
+              <h2>Let the buyer tell you what matters.</h2>
+              <p>
+                Buyers can react naturally while they browse instead of
+                filling out another form. Those reactions become useful
+                context for the agent.
+              </p>
+
+              {links.reactions && (
+                <a href={links.reactions} class="demo-link">
+                  Try it →
+                </a>
+              )}
+            </div>
+          </article>
+        )}
+
+        {enabled("shortlist") && (
+          <article class="demo-card">
+            <div class="demo-number">04</div>
+            <div>
+              <p class="demo-kicker">SHORTLISTS</p>
+              <h2>Do it right there.</h2>
+              <p>
+                Create a shortlist on your phone in less than a minute,
+                add the homes and send your buyer a clean, polished link.
+                At a showing, over coffee or between appointments —
+                no going back to the office to put something together.
+              </p>
+
+              {links.shortlist_create && (
+                <a href={links.shortlist_create} class="demo-link">
+                  Create a shortlist →
+                </a>
+              )}
+            </div>
+          </article>
+        )}
+
+        {enabled("entry") && (
+          <article class="demo-card">
+            <div class="demo-number">05</div>
+            <div>
+              <p class="demo-kicker">ENTRY POINTS</p>
+              <h2>Show them what you promised to show them.</h2>
+              <p>
+                If an ad promises homes under a certain price, show the
+                homes first. Locus is designed to earn trust by being
+                useful before asking for contact information.
+              </p>
+
+              {links.entry && (
+                <a href={links.entry} class="demo-link">
+                  See an Entry Point →
+                </a>
+              )}
+            </div>
+          </article>
+        )}
+
+        {enabled("market") && (
+          <article class="demo-card">
+            <div class="demo-number">06</div>
+            <div>
+              <p class="demo-kicker">MARKET INTELLIGENCE</p>
+              <h2>Give buyers something useful beyond listings.</h2>
+              <p>
+                Inventory, sales, pricing and activity can all live
+                alongside the search experience instead of on a separate
+                generic market-report site.
+              </p>
+
+              {links.market && (
+                <a href={links.market} class="demo-link">
+                  Explore market intelligence →
+                </a>
+              )}
+            </div>
+          </article>
+        )}
+
+        {enabled("admin") && (
+          <article class="demo-card demo-card-dark">
+            <div class="demo-number">07</div>
+            <div>
+              <p class="demo-kicker">BEHIND THE CURTAIN</p>
+              <h2>This isn't just a website.</h2>
+              <p>
+                Leads, Intent Sessions, Shortlists, Entry Points and
+                market management are all part of the same platform.
+              </p>
+
+              <div class="admin-links">
+                {links.intent && <a href={links.intent}>Intent Sessions →</a>}
+                {links.leads && <a href={links.leads}>Leads →</a>}
+                {links.admin && <a href={links.admin}>Manage site →</a>}
+              </div>
+            </div>
+          </article>
+        )}
+      </div>
+    </section>
+
+    <section class="prospect-close">
+      <div class="prospect-shell">
+        <p class="eyebrow">LOCUS</p>
+
+        <h2>{prospect.price || "$59/month"}</h2>
+
+        <p class="tagline">
+          Your name. Your markets. Your site.
+        </p>
+
+        <p class="upgrade-copy">
+          I'm continually working on Locus — improving existing
+          features, polishing the experience and building new ones.
+          Ongoing Locus platform improvements and upgrades are included
+          with your subscription.
+        </p>
+      </div>
+    </section>
+  </main>
+</Layout>
+
+<style>
+  .prospect-page {
+    background: #f7f7f4;
+    color: #111;
+  }
+
+  .prospect-shell {
+    width: min(1120px, calc(100% - 36px));
+    margin: 0 auto;
+  }
+
+  .prospect-hero {
+    padding: 110px 0 90px;
+    background:
+      radial-gradient(
+        circle at top right,
+        rgba(0,0,0,.05),
+        transparent 35%
+      ),
+      #f7f7f4;
+  }
+
+  .eyebrow,
+  .demo-kicker {
+    font-size: .76rem;
+    font-weight: 800;
+    letter-spacing: .14em;
+  }
+
+  .prospect-hero h1 {
+    max-width: 850px;
+    margin: 12px 0 24px;
+    font-size: clamp(3rem, 7vw, 6.7rem);
+    line-height: .92;
+    letter-spacing: -.065em;
+  }
+
+  .hero-note {
+    max-width: 720px;
+    font-size: 1.22rem;
+    line-height: 1.6;
+  }
+
+  .market-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 28px;
+    font-size: .95rem;
+  }
+
+  .scroll-cue {
+    margin-top: 70px;
+    font-weight: 700;
+  }
+
+  .prospect-demo {
+    padding: 20px 0 100px;
+  }
+
+  .demo-grid {
+    display: grid;
+    gap: 20px;
+  }
+
+  .demo-card {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 22px;
+    padding: 42px;
+    border: 1px solid rgba(0,0,0,.09);
+    border-radius: 26px;
+    background: white;
+  }
+
+  .demo-number {
+    font-size: 1.05rem;
+    font-weight: 800;
+    opacity: .35;
+  }
+
+  .demo-card h2 {
+    max-width: 780px;
+    margin: 8px 0 14px;
+    font-size: clamp(1.8rem, 4vw, 3rem);
+    line-height: 1;
+    letter-spacing: -.045em;
+  }
+
+  .demo-card p {
+    max-width: 760px;
+    line-height: 1.65;
+  }
+
+  .demo-link,
+  .admin-links a {
+    display: inline-block;
+    margin-top: 16px;
+    font-weight: 800;
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .demo-card-dark {
+    background: #111;
+    color: white;
+  }
+
+  .admin-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 22px;
+  }
+
+  .prospect-close {
+    padding: 100px 0 120px;
+    background: #111;
+    color: white;
+  }
+
+  .prospect-close h2 {
+    margin: 12px 0 0;
+    font-size: clamp(3rem, 8vw, 7rem);
+    line-height: .9;
+    letter-spacing: -.06em;
+  }
+
+  .tagline {
+    margin-top: 18px;
+    font-size: 1.35rem;
+    font-weight: 800;
+  }
+
+  .upgrade-copy {
+    max-width: 720px;
+    margin-top: 34px;
+    line-height: 1.7;
+    opacity: .78;
+  }
+
+  @media (max-width: 700px) {
+    .prospect-hero {
+      padding: 72px 0 64px;
+    }
+
+    .demo-card {
+      grid-template-columns: 1fr;
+      padding: 28px;
+    }
+
+    .demo-number {
+      margin-bottom: -8px;
+    }
+  }
+</style>
+
+
+
