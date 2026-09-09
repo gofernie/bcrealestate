@@ -544,7 +544,7 @@ const { listings = [] } = Astro.props;
   id="landscape-expand-hint"
   class="landscape-expand-hint"
   aria-label="Expand photo fullscreen"
->⛶ Tap to expand</button>
+>Γ¢╢ Tap to expand</button>
         <button type="button" class="photo-nav photo-nav--prev" id="photo-prev-btn">&#8249;</button>
         <button type="button" class="photo-nav photo-nav--next" id="photo-next-btn">&#8250;</button>
         <div class="panel__photo-count" id="sheet-photo-count">1 / 1 photos</div>
@@ -2625,7 +2625,259 @@ syncMobileMediaCounts();
         }
    window.openSheet = openSheet;
 window.openSheet = openSheet;
-      function closeSheet(options = {}) {
+      
+
+/* Open listing modal from ?listing_id=MLS */
+async function openListingDeepLink() {
+  const requestedId = String(
+    new URLSearchParams(window.location.search).get("listing_id") || ""
+  ).trim();
+
+  if (!requestedId) return;
+
+  const existingCard = getCards().find((candidate) =>
+    [
+      candidate.dataset.listingId,
+      candidate.dataset.mls,
+      candidate.dataset.itemId
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).trim() === requestedId)
+  );
+
+  if (existingCard) {
+    openSheet(existingCard);
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `/api/listing-detail?id=${encodeURIComponent(requestedId)}&mls=${encodeURIComponent(requestedId)}`
+    );
+
+    if (!response.ok) return;
+
+    const data = await response.json();
+    const listing = data?.listing;
+
+    if (!listing) return;
+
+    const listingId = String(
+      listing.id ||
+      listing.mls_number ||
+      requestedId
+    ).trim();
+
+    const mls = String(
+      listing.mls_number ||
+      listing.id ||
+      requestedId
+    ).trim();
+
+    const rawImages = Array.isArray(data.images)
+      ? data.images
+      : [];
+
+    const images = rawImages
+      .map((image) => {
+        if (typeof image === "string") return image;
+
+        return (
+          image?.highRes ||
+          image?.mediumRes ||
+          image?.lowRes ||
+          image?.url ||
+          ""
+        );
+      })
+      .filter(Boolean);
+
+    if (!images.length && listing.image_url) {
+      images.push(listing.image_url);
+    }
+
+    const priceNumber = Number(listing.price || 0);
+
+    const price = priceNumber
+      ? priceNumber.toLocaleString("en-CA", {
+          style: "currency",
+          currency: "CAD",
+          maximumFractionDigits: 0,
+        })
+      : "";
+
+    const address = String(
+      listing.address || "Listing"
+    ).trim();
+
+    const city = String(
+      listing.normalized_city ||
+      listing.city ||
+      document.body.dataset.city ||
+      "nanaimo"
+    ).trim();
+
+    const card = document.createElement("article");
+
+    card.className = "card original-card";
+    card.dataset.itemId = listingId;
+    card.dataset.cardId = listingId;
+    card.dataset.listingId = listingId;
+    card.dataset.mls = mls;
+
+    card.dataset.price = price;
+    card.dataset.rawPrice = String(
+      listing.price || 0
+    );
+
+    card.dataset.listedAt = String(
+      listing.listed_at ||
+      listing.created_at ||
+      ""
+    );
+
+    card.dataset.address = address;
+
+    card.dataset.beds = String(
+      listing.beds ?? "-"
+    );
+
+    card.dataset.baths = String(
+      listing.baths ?? "-"
+    );
+
+    card.dataset.sqft = String(
+      listing.sqft || ""
+    );
+
+    card.dataset.meta =
+      `${card.dataset.beds} bed | ${card.dataset.baths} bath`;
+
+    card.dataset.image = images[0] || "";
+    card.dataset.images = JSON.stringify(images);
+
+    card.dataset.floorplans = JSON.stringify(
+      Array.isArray(data.floorplans)
+        ? data.floorplans
+        : []
+    );
+
+    card.dataset.rooms = JSON.stringify(
+      Array.isArray(data.rooms)
+        ? data.rooms
+        : []
+    );
+
+    card.dataset.description = String(
+      listing.description || ""
+    );
+
+    card.dataset.propertyType = String(
+      listing.property_type ||
+      listing.normalized_type ||
+      "Home"
+    );
+
+    card.dataset.type = String(
+      listing.normalized_type ||
+      listing.property_type ||
+      "Home"
+    );
+
+    card.dataset.year = String(
+      listing.year_built || ""
+    );
+
+    card.dataset.lotSize = String(
+      listing.lot_size || ""
+    );
+
+    card.dataset.area = String(
+      listing.normalized_area ||
+      listing.area ||
+      ""
+    );
+
+    card.dataset.oceanView = String(
+      listing.ocean_view || ""
+    );
+
+    card.dataset.viewType = String(
+      listing.view_type || ""
+    );
+
+    card.dataset.waterfront = String(
+      listing.waterfront || ""
+    );
+
+    card.dataset.waterfrontType = String(
+      listing.waterfront_type || ""
+    );
+
+    card.dataset.lat = String(
+      listing.lat || ""
+    );
+
+    card.dataset.lng = String(
+      listing.lng || ""
+    );
+
+    card.dataset.city = city;
+    card.dataset.likedTags = "[]";
+    card.dataset.isFavourite = "false";
+    card.dataset.decision = "";
+
+    /*
+     * The API has already supplied the full detail payload,
+     * so prevent a second hydration request.
+     */
+    card.dataset.detailHydrated = "true";
+
+    card.innerHTML = `
+      <div class="card-image-wrap">
+        <img
+          src="${images[0] || ""}"
+          alt=""
+        />
+      </div>
+
+      <div class="card-body">
+        <div class="price"></div>
+        <div class="address"></div>
+        <div class="meta"></div>
+        <div
+          class="card-decision-badge"
+          hidden
+        ></div>
+      </div>
+    `;
+
+    /*
+     * Keep the synthetic card in the DOM because some
+     * modal features expect activeCard to be attached.
+     * It is not visually displayed in the listing grid.
+     */
+    card.style.position = "absolute";
+    card.style.width = "1px";
+    card.style.height = "1px";
+    card.style.overflow = "hidden";
+    card.style.opacity = "0";
+    card.style.pointerEvents = "none";
+
+    document.body.appendChild(card);
+
+    openSheet(card);
+  } catch (error) {
+    console.error(
+      "Could not open listing deep link:",
+      error
+    );
+  }
+}
+
+window.setTimeout(openListingDeepLink, 300);
+
+function closeSheet(options = {}) {
   sheet.classList.remove("is-engagement-mode");
   const currentCardKey = getCardKey(activeCard);
 
