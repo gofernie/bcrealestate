@@ -204,7 +204,7 @@ export const POST: APIRoute = async ({ request }) => {
         {
           ok: false,
           error:
-            "Could not prepare the agent portrait.",
+            `Photoroom failed (${cutoutResponse.status}): ${details || "Unknown error"}`,
         },
         502
       );
