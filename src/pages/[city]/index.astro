@@ -179,6 +179,60 @@ const effectiveSiteDomain =
     ? requestedLocalDomain
     : domain;
 
+/* city-route-validation-v1 */
+
+const repeatedMarketRoute =
+  /(?:-real-estate-market){2,}$/i;
+
+if (repeatedMarketRoute.test(routeCity)) {
+  const cleanCity = routeCity
+    .replace(/(?:-real-estate-market)+$/i, "")
+    .replace(/-+$/g, "")
+    .trim();
+
+  if (cleanCity) {
+    return Astro.redirect(`/${cleanCity}/`, 301);
+  }
+}
+
+const reservedRootRoutes = new Set([
+  "privacy",
+  "terms",
+  "admin",
+  "api",
+  "listings",
+  "shortlists",
+  "for",
+  "learn",
+  "sitemap",
+  "robots",
+  "favicon",
+]);
+
+if (reservedRootRoutes.has(routeCity)) {
+  return Astro.rewrite("/404");
+}
+
+const {
+  data: cityValidationRow,
+  error: cityValidationError,
+} = await supabase
+  .from("listing_rows")
+  .select("normalized_city")
+  .in("normalized_city", cityDatabaseKeys)
+  .limit(1)
+  .maybeSingle();
+
+if (cityValidationError) {
+  console.error(
+    "City route validation failed:",
+    cityValidationError
+  );
+}
+
+if (!cityValidationError && !cityValidationRow) {
+  return Astro.rewrite("/404");
+}
 const {
   data: exactSiteRow,
   error: exactSiteError
