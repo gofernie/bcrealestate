@@ -84,6 +84,7 @@ export const GET: APIRoute = async ({ url }) => {
   }
 };
 
+/* agent-photo-cutout-v1 */
 export const POST: APIRoute = async ({ request }) => {
   try {
     const form = await request.formData();
@@ -125,6 +126,19 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
+    const photoRoomApiKey =
+      String(import.meta.env.PHOTOROOM_API_KEY || "").trim();
+
+    if (!photoRoomApiKey) {
+      return json(
+        {
+          ok: false,
+          error: "PHOTOROOM_API_KEY is not configured.",
+        },
+        500
+      );
+    }
+
     const { data: site, error: siteError } =
       await supabase
         .from("sites")
@@ -149,7 +163,60 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    const extension =
+    /*
+     * Create transparent cutout.
+     * This is segmentation only - no face regeneration.
+     */
+    const cutoutForm = new FormData();
+
+    cutoutForm.append(
+      "image_file",
+      file,
+      file.name
+    );
+
+    cutoutForm.append("format", "png");
+    cutoutForm.append("channels", "rgba");
+    cutoutForm.append("size", "hd");
+
+    const cutoutResponse = await fetch(
+      "https://sdk.photoroom.com/v1/segment",
+      {
+        method: "POST",
+        headers: {
+          "x-api-key": photoRoomApiKey,
+        },
+        body: cutoutForm,
+      }
+    );
+
+    if (!cutoutResponse.ok) {
+      const details =
+        await cutoutResponse.text().catch(() => "");
+
+      console.error(
+        "Photoroom background removal failed:",
+        cutoutResponse.status,
+        details
+      );
+
+      return json(
+        {
+          ok: false,
+          error:
+            "Could not prepare the agent portrait.",
+        },
+        502
+      );
+    }
+
+    const originalBytes =
+      await file.arrayBuffer();
+
+    const cutoutBytes =
+      await cutoutResponse.arrayBuffer();
+
+    const originalExtension =
       file.name
         .split(".")
         .pop()
@@ -157,44 +224,87 @@ export const POST: APIRoute = async ({ request }) => {
         .replace(/[^a-z0-9]/g, "") ||
       "jpg";
 
-    const storagePath =
-      `agents/${site.agent_id}/headshot-${Date.now()}.${extension}`;
+    const stamp = Date.now();
 
-    const bytes = await file.arrayBuffer();
+    const originalPath =
+      `agents/${site.agent_id}/headshot-original-${stamp}.${originalExtension}`;
 
-    const { error: uploadError } =
-      await supabase.storage
-        .from("public-images")
-        .upload(
-          storagePath,
-          bytes,
-          {
-            contentType: file.type,
-            upsert: false,
-            cacheControl: "3600",
-          }
-        );
+    const cutoutPath =
+      `agents/${site.agent_id}/headshot-cutout-${stamp}.png`;
 
-    if (uploadError) {
+    const {
+      error: originalUploadError,
+    } = await supabase.storage
+      .from("public-images")
+      .upload(
+        originalPath,
+        originalBytes,
+        {
+          contentType: file.type,
+          upsert: false,
+          cacheControl: "3600",
+        }
+      );
+
+    if (originalUploadError) {
       return json(
-        { ok: false, error: uploadError.message },
+        {
+          ok: false,
+          error: originalUploadError.message,
+        },
         500
       );
     }
 
-    const { data: publicData } =
+    const {
+      error: cutoutUploadError,
+    } = await supabase.storage
+      .from("public-images")
+      .upload(
+        cutoutPath,
+        cutoutBytes,
+        {
+          contentType: "image/png",
+          upsert: false,
+          cacheControl: "3600",
+        }
+      );
+
+    if (cutoutUploadError) {
+      return json(
+        {
+          ok: false,
+          error: cutoutUploadError.message,
+        },
+        500
+      );
+    }
+
+    const { data: cutoutPublicData } =
       supabase.storage
         .from("public-images")
-        .getPublicUrl(storagePath);
+        .getPublicUrl(cutoutPath);
+
+    const { data: originalPublicData } =
+      supabase.storage
+        .from("public-images")
+        .getPublicUrl(originalPath);
 
     const photoUrl =
-      String(publicData?.publicUrl || "").trim();
+      String(
+        cutoutPublicData?.publicUrl || ""
+      ).trim();
+
+    const originalUrl =
+      String(
+        originalPublicData?.publicUrl || ""
+      ).trim();
 
     if (!photoUrl) {
       return json(
         {
           ok: false,
-          error: "Could not create photo URL.",
+          error: "Could not create cutout photo URL.",
         },
         500
       );
@@ -211,7 +321,10 @@ export const POST: APIRoute = async ({ request }) => {
 
     if (agentError) {
       return json(
-        { ok: false, error: agentError.message },
+        {
+          ok: false,
+          error: agentError.message,
+        },
         500
       );
     }
@@ -219,8 +332,16 @@ export const POST: APIRoute = async ({ request }) => {
     return json({
       ok: true,
       photo_url: photoUrl,
+      original_url: originalUrl,
+      cutout_created: true,
     });
+
   } catch (error: any) {
+    console.error(
+      "Agent photo upload failed:",
+      error
+    );
+
     return json(
       {
         ok: false,
