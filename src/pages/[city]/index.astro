@@ -1478,8 +1478,18 @@ const homepageNeighbourhoodImages = [
   "https://images.unsplash.com/photo-1511818966892-d7d671e672a2?auto=format&fit=crop&w=900&q=82"
 ];
 
+const jawgAccessToken = import.meta.env.PUBLIC_JAWG_ACCESS_TOKEN || "";
 ---
 
+<script is:inline define:vars={{ jawgAccessToken }}>
+  window.__JAWG_TILE_URL__ = jawgAccessToken
+    ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d0562bb6d/{z}/{x}/{y}{r}.png?access-token=${encodeURIComponent(jawgAccessToken)}`
+    : window.__JAWG_TILE_URL__;
+
+  window.__JAWG_ATTRIBUTION__ = jawgAccessToken
+    ? '&copy; <a href="https://www.jawg.io/" target="_blank" rel="noopener">Jawg Maps</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+    : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
+</script>
 <Layout
   title={seoTitle}
   accentColor={accentColor}
@@ -1615,6 +1625,114 @@ const homepageNeighbourhoodImages = [
   </div>
 
   <style is:global>
+/* adaptive-hero-intel-panel-v1 */
+
+.locus-home-intel {
+  --accent-on-dark: var(--accent, #67c56d);
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(38, 42, 45, .94),
+      rgba(25, 29, 32, .91)
+    ) !important;
+
+  border: 1px solid rgba(255, 255, 255, .09);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, .22),
+    inset 0 1px 0 rgba(255, 255, 255, .04);
+}
+
+.locus-home-intel__icon {
+  color: var(--accent-on-dark) !important;
+}
+
+.locus-home-intel__item strong {
+  color: rgba(255, 255, 255, .96);
+}
+
+.locus-home-intel__item div span {
+  color: rgba(255, 255, 255, .68) !important;
+}
+
+.locus-home-intel__item {
+  border-bottom-color: rgba(255, 255, 255, .11) !important;
+}
+</style>
+
+<script is:inline>
+/* adaptive-accent-on-dark-v1 */
+(() => {
+  const panel =
+    document.querySelector(".locus-home-intel");
+
+  if (!(panel instanceof HTMLElement)) return;
+
+  const styles = getComputedStyle(panel);
+
+  const accent =
+    styles.getPropertyValue("--accent").trim();
+
+  if (!accent) return;
+
+  const probe = document.createElement("span");
+
+  probe.style.position = "absolute";
+  probe.style.visibility = "hidden";
+  probe.style.color = accent;
+
+  document.body.appendChild(probe);
+
+  const resolved =
+    getComputedStyle(probe).color;
+
+  probe.remove();
+
+  const match =
+    resolved.match(
+      /rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/
+    );
+
+  if (!match) return;
+
+  let r = Number(match[1]);
+  let g = Number(match[2]);
+  let b = Number(match[3]);
+
+  const channel = (value) => {
+    const v = value / 255;
+
+    return v <= 0.04045
+      ? v / 12.92
+      : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+
+  const luminance = () =>
+    0.2126 * channel(r) +
+    0.7152 * channel(g) +
+    0.0722 * channel(b);
+
+  if (luminance() < 0.24) {
+
+    let amount = 0;
+
+    while (luminance() < 0.38 && amount < 0.7) {
+
+      r = r + (255 - r) * 0.08;
+      g = g + (255 - g) * 0.08;
+      b = b + (255 - b) * 0.08;
+
+      amount += 0.08;
+    }
+  }
+
+  panel.style.setProperty(
+    "--accent-on-dark",
+    `rgb(${Math.round(r)} ${Math.round(g)} ${Math.round(b)})`
+  );
+})();
+</script>
+<style is:global>
 /* stable-home-search-load-v2 */
 #home-hero-search {
   visibility: hidden !important;
@@ -5563,7 +5681,7 @@ const cardWaterfront = String(card.dataset.waterfront || "").toLowerCase();
 
     if (!leafletMap) {
       leafletMap = L.map(intentMapEl, { zoomControl: true, attributionControl: false, scrollWheelZoom: false });
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(leafletMap);
+      L.tileLayer(window.__JAWG_TILE_URL__, { maxZoom: 19, attribution: window.__JAWG_ATTRIBUTION__ }).addTo(leafletMap);
       L.control.attribution({ prefix: false }).addAttribution('© <a href="https://openstreetmap.org">OSM</a>').addTo(leafletMap);
     }
 
