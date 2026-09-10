@@ -114,7 +114,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const clientName =
       typeof body?.clientName === "string" ? body.clientName.trim() : "";
 
-        const phone = typeof body?.phone === "string" ? body.phone.trim() : "";
+        const email = typeof body?.email === "string" ? body.email.trim() : "";
     const note = typeof body?.note === "string" ? body.note.trim() : "";
 
   const searchCity = typeof body?.city === "string" ? body.city.trim() : "";
@@ -183,7 +183,7 @@ const searchType = typeof body?.type === "string" ? body.type.trim() : "";
       const { data: existingClient, error: clientLookupError } =
         await supabaseAdmin
           .from("clients")
-          .select("id, name, phone")
+          .select("id, name, email")
           .eq("normalized_name", normalizedName)
           .maybeSingle();
 
@@ -205,19 +205,19 @@ const searchType = typeof body?.type === "string" ? body.type.trim() : "";
       if (existingClient?.id) {
         clientId = existingClient.id;
 
-        if (phone && phone !== existingClient.phone) {
+        if (email && email !== existingClient.email) {
           const { error: clientUpdateError } = await supabaseAdmin
             .from("clients")
-            .update({ phone })
+            .update({ email })
             .eq("id", existingClient.id);
 
-          console.log("CLIENT PHONE UPDATE:", existingClient.id, clientUpdateError);
+          console.log("CLIENT EMAIL UPDATE:", existingClient.id, clientUpdateError);
 
           if (clientUpdateError) {
             return new Response(
               JSON.stringify({
                 ok: false,
-                error: `Client phone update failed: ${clientUpdateError.message}`
+                error: `Client email update failed: ${clientUpdateError.message}`
               }),
               {
                 status: 500,
@@ -233,7 +233,7 @@ const searchType = typeof body?.type === "string" ? body.type.trim() : "";
             .insert({
               name: clientName,
               normalized_name: normalizedName,
-              phone: phone || null
+              email: email || null
             })
             .select("id")
             .single();
@@ -259,7 +259,7 @@ const searchType = typeof body?.type === "string" ? body.type.trim() : "";
       const { data: existingBuyerRows, error: buyerLookupError } =
         await supabaseAdmin
           .from("buyers")
-          .select("id, name, phone")
+          .select("id, name, email")
           .eq("name", clientName)
           .limit(1);
 
@@ -283,19 +283,19 @@ const searchType = typeof body?.type === "string" ? body.type.trim() : "";
       if (existingBuyer?.id) {
         buyerId = existingBuyer.id;
 
-        if (phone && phone !== existingBuyer.phone) {
+        if (email && email !== existingBuyer.email) {
           const { error: buyerUpdateError } = await supabaseAdmin
             .from("buyers")
-            .update({ phone })
+            .update({ email })
             .eq("id", existingBuyer.id);
 
-          console.log("BUYER PHONE UPDATE:", existingBuyer.id, buyerUpdateError);
+          console.log("BUYER EMAIL UPDATE:", existingBuyer.id, buyerUpdateError);
 
           if (buyerUpdateError) {
             return new Response(
               JSON.stringify({
                 ok: false,
-                error: `Buyer phone update failed: ${buyerUpdateError.message}`
+                error: `Buyer email update failed: ${buyerUpdateError.message}`
               }),
               {
                 status: 500,
@@ -309,7 +309,7 @@ const searchType = typeof body?.type === "string" ? body.type.trim() : "";
           .from("buyers")
           .insert({
             name: clientName,
-            phone: phone || null
+            email: email || null
           })
           .select("id")
           .single();
@@ -345,7 +345,7 @@ const searchType = typeof body?.type === "string" ? body.type.trim() : "";
         client_name: clientName || null,
         client_id: clientId,
         buyer_id: buyerId,
-                client_phone: phone || null,
+                client_email: email || null,
         note: note || null,
         status: "draft",
 

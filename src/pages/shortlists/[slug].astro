@@ -188,12 +188,14 @@ const { data: shortlist } = await supabase
     *,
     agent:agent_id (
       id,
-      name
+      name,
+      email
     ),
     client:client_id (
       id,
       name,
-      phone
+      phone,
+      email
     )
   `)
   .eq("shortlist_slug", slug)
@@ -2473,14 +2475,13 @@ body.edit-mode .card__preview-image-btn {
          <button
   class="ab-btn ab-btn--primary"
   type="button"
-  id="nav-send-text-btn"
-  data-send-text
+  id="nav-send-email-btn"
+  data-send-email
   data-shortlist-slug={slug}
   data-client-name={shortlist?.client?.name || shortlist?.client_name || ""}
-  data-client-phone={shortlist?.client_phone || shortlist?.client?.phone || ""}
-  data-note={shortlist?.note || ""}
-  data-sms-image-url={smsImageUrl}>
-  Send text
+  data-client-email={shortlist?.client_email || shortlist?.client?.email || ""}
+  data-note={shortlist?.note || ""}>
+  Send email
 </button>
 
             <button
@@ -2591,7 +2592,7 @@ body.edit-mode .card__preview-image-btn {
             </button>
           </div>
 
-          <div class="note-editor" id="sms-message-editor">
+          <div class="note-editor" id="sms-message-editor" style="display:none;">
   <label class="note-editor__label" for="sms-message-input">
     Text message (SMS)
   </label>
@@ -2612,7 +2613,7 @@ body.edit-mode .card__preview-image-btn {
   </button>
 </div>
 
-          <div class="note-editor" id="sms-image-editor">
+          <div class="note-editor" id="sms-image-editor" style="display:none;">
             <label class="note-editor__label" for="sms-image-url-input">
               Text preview image
             </label>
@@ -2960,20 +2961,219 @@ data-featured={i === 0 ? "true" : "false"}>
         </section>
       )}
 
-      <div class="cta">
-        <strong>Want to see any of these?</strong>
-        <p>Reply or text me and we’ll set it up.</p>
+      <div class="cta buyer-feedback-cta">
+  <strong>Questions or want to see one?</strong>
+  <p>Send {shortlist?.agent?.name || "your agent"} a note right from your shortlist.</p>
 
-        {isAgentView ? (
-          <p style="font-size:0.8rem; opacity:0.6;">Client sees this as a contact prompt</p>
-        ) : (
-          <a href="sms:" class="cta-btn">Text your agent</a>
-        )}
-      </div>
-      
-    </main>
+  {isAgentView ? (
+    <p style="font-size:0.8rem; opacity:0.6;">
+      Client sees a feedback form here.
+    </p>
+  ) : (
+    <form id="buyer-feedback-form" class="buyer-feedback-form">
+      <label for="buyer-feedback-email">Your email</label>
+
+      <input
+        id="buyer-feedback-email"
+        type="email"
+        autocomplete="email"
+        required
+        value={shortlist?.client_email || shortlist?.client?.email || ""}
+        placeholder="you@example.com"
+      />
+
+      <label for="buyer-feedback-message">Message</label>
+
+      <textarea
+        id="buyer-feedback-message"
+        rows="4"
+        required
+        placeholder="I'd like to see the first and third homes. Saturday afternoon would work."
+      ></textarea>
+
+      <button
+        type="submit"
+        class="cta-btn"
+        id="buyer-feedback-submit"
+      >
+        Send to {shortlist?.agent?.name || "your agent"}
+      </button>
+
+      <p
+        id="buyer-feedback-status"
+        class="buyer-feedback-status"
+        aria-live="polite"
+      ></p>
+    </form>
+  )}
+</div></main>
+
+
+<style is:global>
+  .buyer-feedback-cta {
+    padding: 38px 24px;
+  }
+
+  .buyer-feedback-form {
+    width: min(100%, 560px);
+    margin: 24px auto 0;
+    text-align: left;
+  }
+
+  .buyer-feedback-form label {
+    display: block;
+    margin: 0 0 7px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: rgba(255,255,255,0.78);
+  }
+
+  .buyer-feedback-form input,
+  .buyer-feedback-form textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 10px;
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    font: inherit;
+    padding: 12px 14px;
+    margin: 0 0 16px;
+    outline: none;
+  }
+
+  .buyer-feedback-form textarea {
+    resize: vertical;
+    min-height: 110px;
+  }
+
+  .buyer-feedback-form input:focus,
+  .buyer-feedback-form textarea:focus {
+    border-color: rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.11);
+  }
+
+  .buyer-feedback-form .cta-btn {
+    border: 0;
+    cursor: pointer;
+  }
+
+  .buyer-feedback-form .cta-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+
+  .buyer-feedback-status {
+    min-height: 22px;
+    margin: 12px 0 0 !important;
+    font-size: 0.84rem;
+    color: rgba(255,255,255,0.82);
+  }
+</style>
 
 <IntentModalController listings={listings} />
+
+<script is:inline>
+(() => {
+  const form = document.getElementById("buyer-feedback-form");
+  if (!form) return;
+
+  const emailInput =
+    document.getElementById("buyer-feedback-email");
+
+  const messageInput =
+    document.getElementById("buyer-feedback-message");
+
+  const submitBtn =
+    document.getElementById("buyer-feedback-submit");
+
+  const status =
+    document.getElementById("buyer-feedback-status");
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const email =
+      String(emailInput?.value || "").trim();
+
+    const message =
+      String(messageInput?.value || "").trim();
+
+    if (!email || !message) return;
+
+    const originalText =
+      submitBtn?.textContent || "Send";
+
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Sending...";
+    }
+
+    if (status) {
+      status.textContent = "";
+    }
+
+    try {
+      const res = await fetch(
+        "/api/shortlists/send-feedback",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            slug: document.body.dataset.shortlistSlug || "",
+            buyerEmail: email,
+            message
+          })
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(
+          data?.error || "Failed to send message."
+        );
+      }
+
+      if (submitBtn) {
+        submitBtn.textContent = "Sent";
+      }
+
+      if (status) {
+        status.textContent =
+          "Sent to your agent. They'll get back to you shortly.";
+      }
+
+      if (messageInput) {
+        messageInput.value = "";
+      }
+
+      setTimeout(() => {
+        if (submitBtn) {
+          submitBtn.textContent = originalText;
+        }
+      }, 2500);
+    } catch (err) {
+      if (status) {
+        status.textContent =
+          err instanceof Error
+            ? err.message
+            : "Failed to send message.";
+      }
+
+      if (submitBtn) {
+        submitBtn.textContent = originalText;
+      }
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+      }
+    }
+  });
+})();
+</script>
 
 <script is:inline>
 document.addEventListener("click", (e) => {
@@ -3136,14 +3336,14 @@ function initShortlistPage() {
   });
 
   // ── SMS + note saving ─────────────────────────────────────────────
-  const navSendTextBtn = document.getElementById("nav-send-text-btn");
+  const navSendEmailBtn = document.getElementById("nav-send-email-btn");
   const navCopyLinkBtn = document.getElementById("nav-copy-link-btn");
   const saveNoteBtn = document.getElementById("save-note-btn");
   const noteInput = document.getElementById("shortlist-note-input");
   const smsMessageInput = document.getElementById("sms-message-input");
   const saveSmsMessageBtn = document.getElementById("save-sms-message-btn");
   const mastheadMessage = document.getElementById("masthead-message");
-  const sendTextButtons = Array.from(document.querySelectorAll("[data-send-text]"));
+  const sendEmailButtons = Array.from(document.querySelectorAll("[data-send-email]"));
   const saveSmsImageBtn = document.getElementById("save-sms-image-btn");
   const smsImageInput = document.getElementById("sms-image-url-input");
   const presetImageButtons = Array.from(document.querySelectorAll("[data-preset-image-url]"));
@@ -3157,33 +3357,32 @@ function initShortlistPage() {
     });
     const data = await res.json();
     if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to save image.");
-    sendTextButtons.forEach((btn) => btn.setAttribute("data-sms-image-url", cleanUrl));
+    
     return cleanUrl;
   }
 
-  async function sendShortlistText(sendBtn) {
+  async function sendShortlistEmail(sendBtn) {
     const slug = sendBtn?.getAttribute("data-shortlist-slug") || "";
     const clientName = sendBtn?.getAttribute("data-client-name") || "";
-    const phone = sendBtn?.getAttribute("data-client-phone") || "";
+    const email = sendBtn?.getAttribute("data-client-email") || "";
     const note = sendBtn?.getAttribute("data-note") || "";
-    const smsImageUrl = sendBtn?.getAttribute("data-sms-image-url") || "";
-    if (!slug) { alert("Missing shortlist slug."); return; }
-    if (!phone) { alert("No client phone number found."); return; }
-    const originalText = sendBtn.textContent || "Send text";
+if (!slug) { alert("Missing shortlist slug."); return; }
+    if (!email) { alert("No client email address found."); return; }
+    const originalText = sendBtn.textContent || "Send email";
     sendBtn.disabled = true;
     sendBtn.textContent = "Sending...";
     try {
-      const res = await fetch("/api/shortlists/send-text", {
+      const res = await fetch("/api/shortlists/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug, clientName, phone, note, agentName: "Chris Crump", smsImageUrl })
+        body: JSON.stringify({ slug, clientName, email, note, agentName: "Chris Crump" })
       });
       const data = await res.json();
-      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to send text.");
-      sendBtn.textContent = "Text sent ✓";
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to send email.");
+      sendBtn.textContent = "Email sent";
       setTimeout(() => { sendBtn.textContent = originalText; }, 1800);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to send text.");
+      alert(err instanceof Error ? err.message : "Failed to send email.");
       sendBtn.textContent = originalText;
     } finally {
       sendBtn.disabled = false;
@@ -3202,12 +3401,12 @@ function initShortlistPage() {
     } catch { alert(url); }
   }
 
-  navSendTextBtn?.addEventListener("click", async (e) => { e.preventDefault(); await sendShortlistText(navSendTextBtn); });
+  navSendEmailBtn?.addEventListener("click", async (e) => { e.preventDefault(); await sendShortlistEmail(navSendEmailBtn); });
   navCopyLinkBtn?.addEventListener("click", async (e) => { e.preventDefault(); await copyShortlistLink(navCopyLinkBtn); });
 
-  sendTextButtons.forEach((btn) => {
-    if (btn === navSendTextBtn) return;
-    btn.addEventListener("click", async (e) => { e.preventDefault(); await sendShortlistText(btn); });
+  sendEmailButtons.forEach((btn) => {
+    if (btn === navSendEmailBtn) return;
+    btn.addEventListener("click", async (e) => { e.preventDefault(); await sendShortlistEmail(btn); });
   });
 
   saveNoteBtn?.addEventListener("click", async (e) => {
@@ -3225,7 +3424,7 @@ function initShortlistPage() {
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to save message.");
       if (mastheadMessage) mastheadMessage.textContent = note;
-      sendTextButtons.forEach((btn) => btn.setAttribute("data-note", note));
+      sendEmailButtons.forEach((btn) => btn.setAttribute("data-note", note));
       saveNoteBtn.textContent = "Saved ✓";
       setTimeout(() => { saveNoteBtn.textContent = originalText; }, 1400);
     } catch (err) {
