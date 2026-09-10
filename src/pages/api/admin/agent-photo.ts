@@ -127,7 +127,11 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     const photoRoomApiKey =
-      String(import.meta.env.PHOTOROOM_API_KEY || "").trim();
+      String(
+        process.env.PHOTOROOM_API_KEY ||
+        import.meta.env.PHOTOROOM_API_KEY ||
+        ""
+      ).trim();
 
     if (!photoRoomApiKey) {
       return json(
