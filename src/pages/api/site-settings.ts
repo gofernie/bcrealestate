@@ -45,7 +45,16 @@ export const GET: APIRoute = async ({ request, url }) => {
       .maybeSingle();
 
     if (error) return json({ ok: false, error: error.message }, 500);
-    return json({ ok: true, data });
+    return json({
+      ok: true,
+      data: {
+        ...data,
+        accentColor: data?.accent_color || "#2f6f73",
+        savedColours: Array.isArray(data?.saved_colours)
+          ? data.saved_colours
+          : [],
+      },
+    });
   } catch (error: any) {
     return json({ ok: false, error: error?.message || "Could not load site settings." }, 500);
   }
@@ -107,11 +116,35 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
+    const savedColours = Array.from(
+      new Map(
+        (Array.isArray(data.savedColours) ? data.savedColours : [])
+          .map((item: any) => {
+            const colour = String(item?.colour || "")
+              .trim()
+              .toLowerCase();
+
+            if (!/^#[0-9a-f]{6}$/.test(colour)) return null;
+
+            return [
+              colour,
+              {
+                colour,
+                name: String(item?.name || colour.toUpperCase())
+                  .trim()
+                  .slice(0, 40),
+              },
+            ];
+          })
+          .filter(Boolean)
+      ).values()
+    ).slice(0, 20);
     const { error } = await supabase
       .from("sites")
       .update({
         site_name: data.siteName || data.site_name,
         accent_color: accentColor || null,
+        saved_colours: savedColours,
         city: data.city,
         hero_eyebrow: data.heroEyebrow,
         hero_heading: data.heroHeading,

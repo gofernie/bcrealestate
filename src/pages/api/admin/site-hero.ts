@@ -8,58 +8,124 @@ const supabase = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+    },
+  });
+
+const cleanCity = (value: unknown) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const titleCase = (value: unknown) =>
+  String(value || "")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (letter) =>
+      letter.toUpperCase()
+    );
+
+const cleanHeroImages = (value: unknown) =>
+  Array.from(
+    new Set(
+      (Array.isArray(value) ? value : [])
+        .map((item) => String(item || "").trim())
+        .filter((url) => /^https?:\/\/\S+$/i.test(url))
+    )
+  ).slice(0, 30);
+
+const cleanHeroImagesByCity = (value: unknown) => {
+  const source =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {};
+
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([city, images]) => [
+        cleanCity(city),
+        cleanHeroImages(images),
+      ])
+      .filter(([city]) => city)
+  );
+};
+
 export const GET: APIRoute = async ({ url }) => {
   const siteId = String(
     url.searchParams.get("id") || ""
   ).trim();
 
   if (!siteId) {
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        error: "Missing site id.",
-      }),
-      {
-        status: 400,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
+    return json(
+      { ok: false, error: "Missing site id." },
+      400
     );
   }
 
   const { data, error } = await supabase
     .from("sites")
-    .select("id, hero_image_url")
+    .select(
+      "id, city, secondary_markets, hero_images_by_city"
+    )
     .eq("id", siteId)
     .maybeSingle();
 
   if (error) {
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        error: error.message,
-      }),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
+    return json(
+      { ok: false, error: error.message },
+      500
     );
   }
 
-  return new Response(
-    JSON.stringify({
-      ok: true,
-      hero_image_url: data?.hero_image_url || "",
-    }),
-    {
-      headers: {
-        "Content-Type": "application/json",
-      },
-    }
-  );
+  if (!data) {
+    return json(
+      { ok: false, error: "Site not found." },
+      404
+    );
+  }
+
+  const primaryCity = cleanCity(data.city);
+
+  const secondaryMarkets = Array.isArray(
+    data.secondary_markets
+  )
+    ? data.secondary_markets
+    : [];
+
+  const markets = [
+    ...(primaryCity
+      ? [{
+          city: primaryCity,
+          label: titleCase(primaryCity),
+          primary: true,
+        }]
+      : []),
+    ...secondaryMarkets
+      .map((market: any) => {
+        const city = cleanCity(market?.city);
+
+        return {
+          city,
+          label:
+            String(market?.label || "").trim() ||
+            titleCase(city),
+          primary: false,
+        };
+      })
+      .filter((market: any) => market.city),
+  ];
+
+  return json({
+    ok: true,
+    markets,
+    hero_images_by_city:
+      cleanHeroImagesByCity(data.hero_images_by_city),
+  });
 };
 
 export const POST: APIRoute = async ({ request }) => {
@@ -69,71 +135,67 @@ export const POST: APIRoute = async ({ request }) => {
     body?.site_id || ""
   ).trim();
 
-  const heroImageUrl = String(
-    body?.hero_image_url || ""
-  ).trim();
+  const marketCity = cleanCity(
+    body?.market_city
+  );
 
   if (!siteId) {
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        error: "Missing site id.",
-      }),
-      {
-        status: 400,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
+    return json(
+      { ok: false, error: "Missing site id." },
+      400
     );
   }
 
-  if (
-    heroImageUrl &&
-    !/^https?:\/\/\S+$/i.test(heroImageUrl)
-  ) {
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        error: "Enter a complete http or https image URL.",
-      }),
-      {
-        status: 400,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
+  if (!marketCity) {
+    return json(
+      { ok: false, error: "Missing market city." },
+      400
     );
   }
 
-  const { error } = await supabase
+  const { data: site, error: loadError } =
+    await supabase
+      .from("sites")
+      .select("hero_images_by_city")
+      .eq("id", siteId)
+      .maybeSingle();
+
+  if (loadError) {
+    return json(
+      { ok: false, error: loadError.message },
+      500
+    );
+  }
+
+  if (!site) {
+    return json(
+      { ok: false, error: "Site not found." },
+      404
+    );
+  }
+
+  const heroImagesByCity =
+    cleanHeroImagesByCity(site.hero_images_by_city);
+
+  heroImagesByCity[marketCity] =
+    cleanHeroImages(body?.hero_images);
+
+  const { error: updateError } = await supabase
     .from("sites")
     .update({
-      hero_image_url: heroImageUrl || null,
+      hero_images_by_city: heroImagesByCity,
     })
     .eq("id", siteId);
 
-  if (error) {
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        error: error.message,
-      }),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
+  if (updateError) {
+    return json(
+      { ok: false, error: updateError.message },
+      500
     );
   }
 
-  return new Response(
-    JSON.stringify({ ok: true }),
-    {
-      headers: {
-        "Content-Type": "application/json",
-      },
-    }
-  );
+  return json({
+    ok: true,
+    hero_images_by_city: heroImagesByCity,
+  });
 };

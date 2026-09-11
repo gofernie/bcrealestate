@@ -1065,17 +1065,39 @@ const siteId = String(Astro.params.id || "");
               <div class="field"><label>Intro</label><textarea name="heroIntro"></textarea></div>
 
               <div class="field">
-                <label>Homepage hero image URL</label>
-                <input
-                  id="homepageHeroImageUrl"
-                  name="homepageHeroImageUrl"
-                  type="url"
-                  placeholder="https://images.example.com/nanaimo.jpg"
-                />
+                <label>Homepage hero images</label>
                 <p class="hint">
-                  Leave blank to use the default city skyline image.
+                  Choose one of this agent's markets, then manage its homepage images.
                 </p>
+
+                <select
+                  id="homepageHeroMarket"
+                  style="margin-bottom:10px;"
+                  aria-label="Hero image market"
+                ></select>
+
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input
+                    id="homepageHeroImageUrl"
+                    type="url"
+                    placeholder="https://images.unsplash.com/..."
+                    style="flex:1;"
+                  />
+
+                  <button
+                    type="button"
+                    class="btn btn--ghost"
+                    id="addHomepageHero"
+                  >
+                    Add image
+                  </button>
+                </div>
               </div>
+
+              <div
+                id="homepageHeroImages"
+                style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin:4px 0 16px;"
+              ></div>
 
               <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
                 <button
@@ -1083,7 +1105,7 @@ const siteId = String(Astro.params.id || "");
                   class="btn btn--ghost"
                   id="saveHomepageHero"
                 >
-                  Save hero image
+                  Save hero images
                 </button>
 
                 <span
@@ -1856,21 +1878,68 @@ loadPage();
       ? decodeURIComponent(pathMatch[1])
       : "";
 
+    const marketSelect = document.getElementById(
+      "homepageHeroMarket"
+    );
+
     const input = document.getElementById(
       "homepageHeroImageUrl"
     );
 
-    const button = document.getElementById(
+    const addButton = document.getElementById(
+      "addHomepageHero"
+    );
+
+    const saveButton = document.getElementById(
       "saveHomepageHero"
+    );
+
+    const grid = document.getElementById(
+      "homepageHeroImages"
     );
 
     const status = document.getElementById(
       "homepageHeroStatus"
     );
 
-    if (!siteId || !input || !button || !status) {
+    let heroImagesByCity = {};
+
+    if (
+      !siteId ||
+      !marketSelect ||
+      !input ||
+      !addButton ||
+      !saveButton ||
+      !grid ||
+      !status
+    ) {
       return;
     }
+
+    const cleanCity = (value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+
+    const titleCase = (value) =>
+      String(value || "")
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (letter) =>
+          letter.toUpperCase()
+        );
+
+    const selectedCity = () =>
+      cleanCity(marketSelect.value);
+
+    const currentImages = () => {
+      const city = selectedCity();
+
+      return Array.isArray(heroImagesByCity[city])
+        ? heroImagesByCity[city]
+        : [];
+    };
 
     const setStatus = (message, isError = false) => {
       status.textContent = message;
@@ -1878,6 +1947,113 @@ loadPage();
         ? "#a52a2a"
         : "";
     };
+
+    const renderImages = () => {
+      const images = currentImages();
+
+      grid.replaceChildren();
+
+      if (!images.length) {
+        const empty = document.createElement("p");
+        empty.className = "hint";
+        empty.textContent =
+          `No custom images saved for ${titleCase(selectedCity())}. The city fallback images will be used.`;
+
+        grid.appendChild(empty);
+        return;
+      }
+
+      images.forEach((url, index) => {
+        const card = document.createElement("div");
+
+        card.style.cssText =
+          "overflow:hidden;border:1px solid rgba(0,0,0,.12);border-radius:12px;background:#fff;";
+
+        const image = document.createElement("img");
+        image.src = url;
+        image.alt =
+          `${titleCase(selectedCity())} hero image ${index + 1}`;
+        image.loading = "lazy";
+
+        image.style.cssText =
+          "display:block;width:100%;height:105px;object-fit:cover;background:#eee;";
+
+        const footer = document.createElement("div");
+
+        footer.style.cssText =
+          "display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;";
+
+        const number = document.createElement("span");
+        number.className = "hint";
+        number.textContent = `Image ${index + 1}`;
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "btn btn--ghost";
+        remove.textContent = "Remove";
+
+        remove.style.cssText =
+          "padding:5px 9px;color:#a52a2a;";
+
+        remove.addEventListener("click", () => {
+          const city = selectedCity();
+          const nextImages = [...currentImages()];
+
+          nextImages.splice(index, 1);
+          heroImagesByCity[city] = nextImages;
+
+          renderImages();
+          setStatus("Unsaved changes");
+        });
+
+        footer.append(number, remove);
+        card.append(image, footer);
+        grid.appendChild(card);
+      });
+    };
+
+    const addImage = () => {
+      const url = String(input.value || "").trim();
+      const city = selectedCity();
+
+      if (!city) {
+        setStatus("Choose a market first.", true);
+        return;
+      }
+
+      if (!/^https?:\/\/\S+$/i.test(url)) {
+        setStatus(
+          "Enter a complete http or https image URL.",
+          true
+        );
+        return;
+      }
+
+      const images = [...currentImages()];
+
+      if (!images.includes(url)) {
+        images.push(url);
+        heroImagesByCity[city] = images;
+      }
+
+      input.value = "";
+      renderImages();
+      setStatus("Unsaved changes");
+    };
+
+    marketSelect.addEventListener("change", () => {
+      setStatus("");
+      renderImages();
+    });
+
+    addButton.addEventListener("click", addImage);
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+
+      event.preventDefault();
+      addImage();
+    });
 
     fetch(
       `/api/admin/site-hero?id=${encodeURIComponent(siteId)}`
@@ -1887,18 +2063,45 @@ loadPage();
 
         if (!response.ok || !result.ok) {
           throw new Error(
-            result.error || "Could not load hero image."
+            result.error || "Could not load hero images."
           );
         }
 
-        input.value = result.hero_image_url || "";
+        heroImagesByCity =
+          result.hero_images_by_city &&
+          typeof result.hero_images_by_city === "object"
+            ? result.hero_images_by_city
+            : {};
+
+        marketSelect.replaceChildren();
+
+        (result.markets || []).forEach((market) => {
+          const option = document.createElement("option");
+
+          option.value = cleanCity(market.city);
+          option.textContent =
+            market.primary
+              ? `${market.label} — Primary`
+              : market.label;
+
+          marketSelect.appendChild(option);
+        });
+
+        renderImages();
       })
       .catch((error) => {
         setStatus(error.message, true);
       });
 
-    button.addEventListener("click", async () => {
-      button.disabled = true;
+    saveButton.addEventListener("click", async () => {
+      const city = selectedCity();
+
+      if (!city) {
+        setStatus("Choose a market first.", true);
+        return;
+      }
+
+      saveButton.disabled = true;
       setStatus("Saving...");
 
       try {
@@ -1911,7 +2114,8 @@ loadPage();
             },
             body: JSON.stringify({
               site_id: siteId,
-              hero_image_url: input.value.trim(),
+              market_city: city,
+              hero_images: currentImages(),
             }),
           }
         );
@@ -1920,22 +2124,27 @@ loadPage();
 
         if (!response.ok || !result.ok) {
           throw new Error(
-            result.error || "Could not save hero image."
+            result.error || "Could not save hero images."
           );
         }
 
-        setStatus("Saved ✓");
+        heroImagesByCity =
+          result.hero_images_by_city ||
+          heroImagesByCity;
+
+        renderImages();
+        setStatus(`Saved for ${titleCase(city)} ✓`);
       } catch (error) {
         setStatus(
-          error?.message || "Could not save hero image.",
+          error?.message || "Could not save hero images.",
           true
         );
       } finally {
-        button.disabled = false;
+        saveButton.disabled = false;
       }
     });
   })();
-</script>
+  </script>
 <script is:inline>
 /* agent-photo-upload-ui-v1 */
 (() => {
