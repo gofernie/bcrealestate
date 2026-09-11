@@ -1701,119 +1701,126 @@ function updateLandscapeGalleryMode() {
 }
 }
 
-document.addEventListener("fullscreenchange", () => {
-  if (document.fullscreenElement) return;
+let portraitRecoveryTimer = null;
+let portraitExitInProgress = false;
+
+function browserReportsPortrait() {
+  const orientationType = screen.orientation?.type || "";
+
+  if (orientationType.startsWith("portrait")) return true;
+  if (orientationType.startsWith("landscape")) return false;
+
+  return window.matchMedia("(orientation: portrait)").matches;
+}
+
+function restorePortraitGalleryLayout() {
+  if (!sheet?.classList.contains("open")) return;
+  if (!browserReportsPortrait()) return;
+
+  sheet.classList.remove("is-landscape-gallery");
+  overlay?.classList.remove("is-landscape-gallery");
+
+  document.body.classList.remove(
+    "is-landscape-gallery-open"
+  );
+
+  document.documentElement.style.removeProperty(
+    "--landscape-vw"
+  );
+
+  document.documentElement.style.removeProperty(
+    "--landscape-vh"
+  );
+
+  photoZoom = 1;
+  pinchStartDistance = 0;
+  photoPanX = 0;
+  photoPanY = 0;
+  panStartX = 0;
+  panStartY = 0;
+
+  if (sheetImage) {
+    sheetImage.style.transform =
+      "translate(0px, 0px) scale(1)";
+    sheetImage.style.transformOrigin =
+      "center center";
+  }
+
+  if (mobileMediaNav) {
+    mobileMediaNav.style.removeProperty("display");
+    mobileMediaNav.style.removeProperty("visibility");
+    mobileMediaNav.style.removeProperty("pointer-events");
+  }
+
+  if (
+    document.fullscreenElement &&
+    document.exitFullscreen &&
+    !portraitExitInProgress
+  ) {
+    portraitExitInProgress = true;
+
+    document.exitFullscreen()
+      .catch(() => {})
+      .finally(() => {
+        portraitExitInProgress = false;
+      });
+  }
 
   requestAnimationFrame(() => {
-    updateLandscapeGalleryMode();
-
     if (sheet) {
       void sheet.offsetHeight;
     }
-
-    window.dispatchEvent(new Event("resize"));
-
-    setTimeout(() => {
-      updateLandscapeGalleryMode();
-
-      if (sheet) {
-        void sheet.offsetHeight;
-      }
-    }, 100);
   });
-});
-landscapeMediaQuery.addEventListener?.(
-  "change",
-  updateLandscapeGalleryMode
-);
-
-window.addEventListener(
-  "orientationchange",
-  () => {
-    window.setTimeout(updateLandscapeGalleryMode, 120);
-  }
-);
-
-// robust-landscape-orientation-settling
-function settleLandscapeGalleryAfterRotation() {
-  [0, 50, 120, 250, 450, 750].forEach(
-    (delay) => {
-      window.setTimeout(() => {
-        updateLandscapeGalleryMode();
-        syncLandscapeViewport();
-      }, delay);
-    }
-  );
 }
 
+function scheduleOrientationRecovery() {
+  if (portraitRecoveryTimer) {
+    clearTimeout(portraitRecoveryTimer);
+  }
+
+  if (browserReportsPortrait()) {
+    restorePortraitGalleryLayout();
+
+    portraitRecoveryTimer = window.setTimeout(() => {
+      portraitRecoveryTimer = null;
+      restorePortraitGalleryLayout();
+    }, 250);
+
+    return;
+  }
+
+  portraitRecoveryTimer = window.setTimeout(() => {
+    portraitRecoveryTimer = null;
+    updateLandscapeGalleryMode();
+    syncLandscapeViewport();
+  }, 120);
+}
+
+document.addEventListener("fullscreenchange", () => {
+  if (document.fullscreenElement) {
+    syncLandscapeViewport();
+    return;
+  }
+
+  if (browserReportsPortrait()) {
+    restorePortraitGalleryLayout();
+  }
+});
+
 landscapeMediaQuery.addEventListener?.(
   "change",
-  settleLandscapeGalleryAfterRotation
+  scheduleOrientationRecovery
 );
 
 window.addEventListener(
   "orientationchange",
-  settleLandscapeGalleryAfterRotation
+  scheduleOrientationRecovery
 );
 
 screen.orientation?.addEventListener?.(
   "change",
-  settleLandscapeGalleryAfterRotation
+  scheduleOrientationRecovery
 );
-
-function refreshLandscapeAfterBrowserChange() {
-  if (!sheet?.classList.contains("open")) return;
-
-  requestAnimationFrame(() => {
-    updateLandscapeGalleryMode();
-    syncLandscapeViewport();
-
-    requestAnimationFrame(() => {
-      syncLandscapeViewport();
-    });
-  });
-
-  // Chrome's address bar / visual viewport can settle
-  // after the first frame when returning to the page.
-  setTimeout(syncLandscapeViewport, 100);
-  setTimeout(syncLandscapeViewport, 300);
-}
-
-window.addEventListener(
-  "resize",
-  refreshLandscapeAfterBrowserChange
-);
-
-window.visualViewport?.addEventListener(
-  "resize",
-  refreshLandscapeAfterBrowserChange
-);
-
-window.visualViewport?.addEventListener(
-  "scroll",
-  refreshLandscapeAfterBrowserChange
-);
-
-window.addEventListener(
-  "pageshow",
-  refreshLandscapeAfterBrowserChange
-);
-
-window.addEventListener(
-  "focus",
-  refreshLandscapeAfterBrowserChange
-);
-
-document.addEventListener(
-  "visibilitychange",
-  () => {
-    if (document.visibilityState === "visible") {
-      landscapeFullscreenNeedsRefresh = true;
-      refreshLandscapeAfterBrowserChange();
-    }
-  }
-);
-
 
 function hidePhotoOverlayTemporarily() {
   if (window.innerWidth > 768 || !sheetImageOverlay) return;
