@@ -574,15 +574,15 @@ html {
 
 
 <div
-  class="decision-actions listing-reaction-actions"
+  class="decision-actions"
   aria-label="Save your reaction to this listing"
-  style="display:grid !important;grid-template-columns:repeat(3,minmax(0,1fr)) !important;width:min(calc(100% - 32px),300px) !important;max-width:300px !important;margin:32px auto 14px !important;padding:4px !important;"
 >
   <button
     class="decision-btn decision-btn--love"
     type="button"
     id="decision-love-btn"
   >
+    <span aria-hidden="true">&#10084;&#65039;</span>
     <span>Love</span>
   </button>
 
@@ -591,6 +591,7 @@ html {
     type="button"
     id="decision-maybe-btn"
   >
+    <span aria-hidden="true">&#128076;</span>
     <span>Like</span>
   </button>
 
@@ -599,6 +600,7 @@ html {
     type="button"
     id="decision-pass-btn"
   >
+    <span aria-hidden="true">&times;</span>
     <span>Nope</span>
   </button>
 </div>
@@ -646,7 +648,6 @@ html {
   type="button"
   class="panel__share-link"
   id="sheet-share-btn"
-  style="display:inline-flex !important;width:auto !important;min-width:0 !important;margin:0 auto !important;padding:7px 10px !important;border:0 !important;background:transparent !important;box-shadow:none !important;"
 >
   <svg
     class="panel__share-icon"
@@ -665,26 +666,20 @@ html {
 
   <span>Share this listing</span>
 </button>
-
+<button
+  type="button"
+  class="panel__share-link"
+  id="sheet-brochure-btn"
+  style="display:flex !important; width:min(100%, 300px) !important; max-width:300px !important; margin:0 auto !important;"
+>
+  <span>Download property brochure</span>
+</button>
 </div>
         <div
   class="panel__rooms"
   id="sheet-rooms"
   hidden
 ></div>
-
-<div
-  class="panel__brochure-row"
-  style="display:flex;justify-content:center;align-items:center;width:100%;margin:0 auto 26px;"
->
-  <button
-    type="button"
-    class="panel__share-link"
-    id="sheet-brochure-btn"
-  >
-    <span>Download property brochure</span>
-  </button>
-</div>
       </div>
 
       <div id="sheet-osm-amenities" class="panel__osm-amenities" hidden></div>
@@ -804,7 +799,7 @@ const redesignListingUtilities = () => {
       group.hidden = !keep;
       group.style.setProperty(
         "display",
-        keep ? "grid" : "none",
+        keep ? "flex" : "none",
         "important"
       );
     });
@@ -836,13 +831,6 @@ const redesignListingUtilities = () => {
   // Ensure order remains actions, then rooms.
   if (canonicalActions && sheetRooms) {
     canonicalActions.after(sheetRooms);
-
-    const brochureRow =
-      document.querySelector(".panel__brochure-row");
-
-    if (brochureRow) {
-      sheetRooms.after(brochureRow);
-    }
   }
 };
 
@@ -956,13 +944,6 @@ const syncListingSectionsToOpenPanel = () => {
       "afterend",
       sheetRooms
     );
-
-    const brochureRow =
-      document.querySelector(".panel__brochure-row");
-
-    if (brochureRow) {
-      sheetRooms.after(brochureRow);
-    }
   }
 };
 
@@ -1609,7 +1590,7 @@ function ensureLandscapeFullscreen() {
   if (!shouldUseLandscapeGallery()) return;
   if (document.fullscreenElement) return;
 
-  const target = sheetImageStage || sheet;
+  const target = document.documentElement;
 
   if (target.requestFullscreen) {
     target
@@ -4803,109 +4784,75 @@ if (document.body.dataset.shortlistSendId && document.body.dataset.agentView ===
 
         closeBtn?.addEventListener("click", closeSheet);
 sheetShareBtn?.addEventListener("click", async (event) => {
-  event.preventDefault();
   event.stopPropagation();
 
-  if (!activeCard || !sheetShareBtn) return;
+  if (!activeCard) return;
 
-  let shareUrl = window.location.href;
+  const listingId =
+    activeCard.dataset.listingId ||
+    activeCard.dataset.itemId ||
+    "";
 
-  try {
-    const listingPath = getListingUrl(activeCard);
-
-    if (listingPath) {
-      shareUrl = new URL(
-        listingPath,
-        window.location.origin
-      ).toString();
-    }
-  } catch (error) {
-    console.warn(
-      "Could not build listing share URL:",
-      error
-    );
+  if (!listingId) {
+    console.warn("No listing ID available to share");
+    return;
   }
 
-  const address =
-    activeCard.dataset.address ||
-    "Property listing";
+  const city =
+    activeCard.dataset.city ||
+    document.body.dataset.city ||
+    "nanaimo";
 
-  if (navigator.share) {
-    try {
+  const type =
+    activeCard.dataset.type || "house";
+
+  const typePath =
+    type === "condo"
+      ? "condos"
+      : type === "townhouse"
+      ? "townhomes"
+      : type === "mobile"
+      ? "mobile-homes"
+      : type === "land"
+      ? "land"
+      : "homes";
+
+  const shareUrl = `${window.location.origin}${getListingUrl(activeCard)}`;
+
+  try {
+    if (navigator.share) {
       await navigator.share({
-        title: address,
+        title:
+          activeCard.dataset.address ||
+          "Property listing",
+
         text:
-          address === "Property listing"
-            ? "Take a look at this property"
-            : `Take a look at ${address}`,
+          activeCard.dataset.address
+            ? `Take a look at ${activeCard.dataset.address}`
+            : "Take a look at this property",
+
         url: shareUrl,
       });
 
       return;
-    } catch (error) {
-      if (error?.name === "AbortError") {
-        return;
-      }
+    }
 
-      console.warn(
-        "Native sharing failed; copying instead:",
+    await navigator.clipboard.writeText(
+      shareUrl
+    );
+
+    sheetShareBtn.textContent = "Copied";
+
+    setTimeout(() => {
+      sheetShareBtn.textContent = "Share";
+    }, 1500);
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      console.error(
+        "Share failed:",
         error
       );
     }
-  }
-
-  try {
-    if (
-      navigator.clipboard &&
-      window.isSecureContext
-    ) {
-      await navigator.clipboard.writeText(
-        shareUrl
-      );
-    } else {
-      const textarea =
-        document.createElement("textarea");
-
-      textarea.value = shareUrl;
-      textarea.setAttribute("readonly", "");
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-
-      document.body.appendChild(textarea);
-      textarea.select();
-
-      const copied =
-        document.execCommand("copy");
-
-      textarea.remove();
-
-      if (!copied) {
-        throw new Error("Copy command failed");
-      }
-    }
-
-    const label =
-      sheetShareBtn.querySelector("span");
-
-    const originalText =
-      label?.textContent ||
-      "Share this listing";
-
-    if (label) {
-      label.textContent = "Link copied";
-    }
-
-    window.setTimeout(() => {
-      if (label) {
-        label.textContent = originalText;
-      }
-    }, 1500);
-  } catch (error) {
-    console.error("Share failed:", error);
-    window.prompt(
-      "Copy this listing link:",
-      shareUrl
-    );
   }
 });
         sheetMapBtn?.addEventListener("click", async () => {
@@ -5161,7 +5108,18 @@ maybeBtn?.addEventListener("click", () => {
 passBtn?.addEventListener("click", () => {
   popDecisionEmojisFromButton(passBtn, ["\u00D7"], 1);
   saveIntentDecision("pass");
-  cancelIdleAdvance();
+
+
+  const nextBtn = document.getElementById("sheet-next-btn");
+  if (nextBtn) {
+    setTimeout(() => {
+      nextBtn.classList.add("is-pulsing");
+      setTimeout(() => {
+        nextBtn.classList.remove("is-pulsing");
+        goNext();
+      }, 1800);
+    }, 1200);
+  }
 });
 
 askQuestionBtn?.addEventListener("click", () => {
@@ -6609,12 +6567,6 @@ sheetImage?.addEventListener("touchend", (event) => {
       if (!shareSolo) {
         shareSolo = document.createElement("div");
         shareSolo.className = "panel__share-solo";
-        shareSolo.style.setProperty("display", "flex", "important");
-        shareSolo.style.setProperty("justify-content", "center", "important");
-        shareSolo.style.setProperty("align-items", "center", "important");
-        shareSolo.style.setProperty("width", "100%", "important");
-        shareSolo.style.setProperty("margin-left", "auto", "important");
-        shareSolo.style.setProperty("margin-right", "auto", "important");
       }
 
       shareSolo.appendChild(shareButton);
@@ -6720,12 +6672,6 @@ sheetImage?.addEventListener("touchend", (event) => {
       if (!shareSolo) {
         shareSolo = document.createElement("div");
         shareSolo.className = "panel__share-solo";
-        shareSolo.style.setProperty("display", "flex", "important");
-        shareSolo.style.setProperty("justify-content", "center", "important");
-        shareSolo.style.setProperty("align-items", "center", "important");
-        shareSolo.style.setProperty("width", "100%", "important");
-        shareSolo.style.setProperty("margin-left", "auto", "important");
-        shareSolo.style.setProperty("margin-right", "auto", "important");
       }
 
       shareSolo.appendChild(shareButton);
@@ -6816,6 +6762,46 @@ sheetImage?.addEventListener("touchend", (event) => {
     margin-right: 12px !important;
   }
 </style>
+
+<script is:inline>
+  (() => {
+    let scheduled = false;
+
+    function removeLegacyReactionRow() {
+      scheduled = false;
+
+      document
+        .querySelectorAll(
+          "#preview-sheet .listing-reaction-actions"
+        )
+        .forEach((row) => row.remove());
+    }
+
+    function scheduleRemoval() {
+      if (scheduled) return;
+
+      scheduled = true;
+      requestAnimationFrame(removeLegacyReactionRow);
+    }
+
+    removeLegacyReactionRow();
+
+    new MutationObserver(scheduleRemoval).observe(
+      document.getElementById("preview-sheet") ||
+        document.body,
+      {
+        childList: true,
+        subtree: true,
+      }
+    );
+
+    document.addEventListener(
+      "click",
+      scheduleRemoval,
+      true
+    );
+  })();
+</script>
 <!-- static-modal-utility-layout -->
 <style is:global>
   #preview-sheet #sheet-engage {
@@ -7629,180 +7615,5 @@ sheetImage?.addEventListener("touchend", (event) => {
       overflow: hidden !important;
       background: #000 !important;
     }
-  }
-</style>
-<style is:global>
-  /* classy-listing-actions-v2 */
-
-  /* Contact actions */
-  #preview-sheet #ask-question-btn {
-    border-color: var(--accent, #2f6f73) !important;
-    background: var(--accent, #2f6f73) !important;
-    color: #fff !important;
-    box-shadow: none !important;
-  }
-
-  #preview-sheet #book-showing-btn {
-    border-color: rgba(17, 17, 16, 0.18) !important;
-    background: #fff !important;
-    color: #171715 !important;
-    box-shadow: none !important;
-  }
-
-  /* Reaction panel */
-  #preview-sheet .decision-actions,
-  #preview-sheet .listing-reaction-actions {
-    position: relative !important;
-    display: grid !important;
-    grid-template-columns: repeat(3, minmax(64px, 1fr)) !important;
-    gap: 4px !important;
-    width: min(calc(100% - 32px), 340px) !important;
-    margin: 38px auto 14px !important;
-    padding: 5px !important;
-    overflow: visible !important;
-    border: 0 !important;
-    border-radius: 13px !important;
-    background: color-mix(
-      in srgb,
-      var(--accent, #2f6f73) 7%,
-      #fff
-    ) !important;
-    box-shadow: none !important;
-  }
-
-  #preview-sheet .listing-reaction-actions::before {
-    content: "YOUR TAKE";
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: -23px;
-    color: #77736d;
-    font-size: 0.64rem;
-    font-weight: 800;
-    letter-spacing: 0.13em;
-    text-align: center;
-  }
-
-  #preview-sheet .listing-reaction-actions .decision-btn {
-    appearance: none !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 6px !important;
-    width: 100% !important;
-    min-width: 0 !important;
-    height: 38px !important;
-    margin: 0 !important;
-    padding: 0 10px !important;
-    border: 0 !important;
-    border-radius: 9px !important;
-    background: transparent !important;
-    color: #45433f !important;
-    box-shadow: none !important;
-    font: inherit !important;
-    font-size: 0.76rem !important;
-    font-weight: 700 !important;
-    line-height: 1 !important;
-    cursor: pointer !important;
-    transition:
-      background 140ms ease,
-      color 140ms ease,
-      transform 140ms ease !important;
-  }
-
-  #preview-sheet
-    .decision-btn--love::before {
-    content: "♡";
-    font-size: 1rem;
-    line-height: 1;
-  }
-
-  #preview-sheet
-    .decision-btn--maybe::before {
-    content: "✓";
-    font-size: 0.88rem;
-    line-height: 1;
-  }
-
-  #preview-sheet
-    .decision-btn--pass::before {
-    content: "×";
-    font-size: 1rem;
-    line-height: 1;
-  }
-
-  #preview-sheet
-    .listing-reaction-actions
-    .decision-btn:hover {
-    background: rgba(255, 255, 255, 0.72) !important;
-    color: #111110 !important;
-  }
-
-  #preview-sheet
-    .listing-reaction-actions
-    .decision-btn.is-selected {
-    background: var(--accent, #2f6f73) !important;
-    color: #fff !important;
-    box-shadow: 0 2px 7px rgba(17, 17, 16, 0.12) !important;
-  }
-
-  #preview-sheet
-    .listing-reaction-actions
-    .decision-btn:active {
-    transform: scale(0.98) !important;
-  }
-
-  /* Share becomes a quiet utility action */
-  #preview-sheet .panel__share-solo {
-    margin-top: 2px !important;
-    margin-bottom: 24px !important;
-  }
-
-  #preview-sheet #sheet-share-btn {
-    min-width: 0 !important;
-    height: auto !important;
-    padding: 6px 8px !important;
-    border: 0 !important;
-    border-radius: 6px !important;
-    background: transparent !important;
-    color: #55514c !important;
-    box-shadow: none !important;
-    font-size: 0.76rem !important;
-  }
-
-  #preview-sheet #sheet-share-btn:hover {
-    background: rgba(17, 17, 16, 0.045) !important;
-    color: #111110 !important;
-  }
-
-  /* Brochure becomes a distinct download link */
-  #preview-sheet #sheet-brochure-btn {
-    display: inline-flex !important;
-    width: auto !important;
-    max-width: none !important;
-    min-width: 0 !important;
-    height: auto !important;
-    margin: 2px auto 24px !important;
-    padding: 7px 4px !important;
-    border: 0 !important;
-    border-bottom: 1px solid
-      color-mix(
-        in srgb,
-        var(--accent, #2f6f73) 45%,
-        transparent
-      ) !important;
-    border-radius: 0 !important;
-    background: transparent !important;
-    color: var(--accent, #2f6f73) !important;
-    box-shadow: none !important;
-    font-size: 0.73rem !important;
-    font-weight: 750 !important;
-    letter-spacing: 0.02em !important;
-  }
-
-  #preview-sheet #sheet-brochure-btn::before {
-    content: "↓";
-    margin-right: 7px;
-    font-size: 0.9rem;
   }
 </style>
