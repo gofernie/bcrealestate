@@ -1094,6 +1094,11 @@ const siteId = String(Astro.params.id || "");
                 </div>
               </div>
 
+              <div style="margin:10px 0 14px;">
+                <input id="homepageHeroUploadInput" type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden />
+                <button type="button" class="btn btn--ghost" id="uploadHomepageHero">Upload image</button>
+                <span class="hint">Choose a photo from your computer.</span>
+              </div>
               <div
                 id="homepageHeroImages"
                 style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin:4px 0 16px;"
@@ -1970,7 +1975,22 @@ loadPage();
           "overflow:hidden;border:1px solid rgba(0,0,0,.12);border-radius:12px;background:#fff;";
 
         const image = document.createElement("img");
-        image.src = url;
+        try {
+          const thumbnailUrl = new URL(url);
+          if (["images.unsplash.com", "plus.unsplash.com"].includes(thumbnailUrl.hostname)) {
+            thumbnailUrl.searchParams.set("auto", "format");
+            thumbnailUrl.searchParams.set("fit", "crop");
+            thumbnailUrl.searchParams.set("w", "320");
+            thumbnailUrl.searchParams.set("q", "65");
+          }
+          if (thumbnailUrl.hostname === "nwgtgpnilvhiwpxxzhsm.supabase.co") {
+            image.src = `https://img.fernie.homes/cdn-cgi/image/width=320,quality=65,format=auto/${thumbnailUrl.toString()}`;
+          } else {
+            image.src = thumbnailUrl.toString();
+          }
+        } catch {
+          image.src = url;
+        }
         image.alt =
           `${titleCase(selectedCity())} hero image ${index + 1}`;
         image.loading = "lazy";
@@ -2092,6 +2112,55 @@ loadPage();
       .catch((error) => {
         setStatus(error.message, true);
       });
+
+    const uploadButton = document.getElementById("uploadHomepageHero");
+    const uploadInput = document.getElementById("homepageHeroUploadInput");
+
+    uploadButton?.addEventListener("click", () => uploadInput?.click());
+
+    uploadInput?.addEventListener("change", async () => {
+      const file = uploadInput.files?.[0];
+      const city = selectedCity();
+      if (!file) return;
+      if (!city) {
+        setStatus("Choose a market first.", true);
+        uploadInput.value = "";
+        return;
+      }
+
+      uploadButton.disabled = true;
+      setStatus("Uploading image...");
+
+      try {
+        const form = new FormData();
+        form.append("siteId", siteId);
+        form.append("marketCity", city);
+        form.append("image", file);
+
+        const response = await fetch("/api/admin/hero-image-upload", {
+          method: "POST",
+          body: form,
+        });
+        const result = await response.json();
+
+        if (!response.ok || !result.ok || !result.url) {
+          throw new Error(result.error || "Upload failed.");
+        }
+
+        const images = Array.isArray(heroImagesByCity[city])
+          ? [...heroImagesByCity[city]]
+          : [];
+        images.push(result.url);
+        heroImagesByCity[city] = images;
+        renderImages();
+        setStatus("Uploaded. Click Save hero images to publish.");
+      } catch (error) {
+        setStatus(error?.message || "Upload failed.", true);
+      } finally {
+        uploadButton.disabled = false;
+        uploadInput.value = "";
+      }
+    });
 
     saveButton.addEventListener("click", async () => {
       const city = selectedCity();
