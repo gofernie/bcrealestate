@@ -2032,7 +2032,7 @@ loadPage();
       });
     };
 
-    const addImage = () => {
+    const addImage = async () => {
       const url = String(input.value || "").trim();
       const city = selectedCity();
 
@@ -2041,24 +2041,49 @@ loadPage();
         return;
       }
 
-      if (!/^https?:\/\/\S+$/i.test(url)) {
-        setStatus(
-          "Enter a complete http or https image URL.",
-          true
-        );
+      if (!/^https:\/\/\S+$/i.test(url)) {
+        setStatus("Enter a complete HTTPS image URL.", true);
         return;
       }
 
-      const images = [...currentImages()];
-
-      if (!images.includes(url)) {
-        images.push(url);
-        heroImagesByCity[city] = images;
+      if ((heroImagesByCity[city] || []).includes(url)) {
+        setStatus("This image is already in the list.");
+        return;
       }
 
-      input.value = "";
-      renderImages();
-      setStatus("Unsaved changes");
+      addButton.disabled = true;
+      setStatus("Importing image...");
+
+      try {
+        const response = await fetch("/api/admin/hero-image-import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId,
+            marketCity: city,
+            url,
+          }),
+        });
+        const result = await response.json();
+
+        if (!response.ok || !result.ok || !result.url) {
+          throw new Error(result.error || "Could not import image.");
+        }
+
+        const images = Array.isArray(heroImagesByCity[city])
+          ? [...heroImagesByCity[city]]
+          : [];
+        images.push(result.url);
+        heroImagesByCity[city] = images;
+        input.value = "";
+
+        if (selectedCity() === city) renderImages();
+        setStatus("Imported. Click Save hero images to publish.");
+      } catch (error) {
+        setStatus(error?.message || "Could not import image.", true);
+      } finally {
+        addButton.disabled = false;
+      }
     };
 
     marketSelect.addEventListener("change", () => {
