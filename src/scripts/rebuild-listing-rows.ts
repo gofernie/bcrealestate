@@ -2234,6 +2234,17 @@ images: finalImages,
 
         description: getDescription(listing),
 
+        listing_brokerage: String(
+          listing?.office?.brokerageName ||
+          listing?.agents?.brokerage?.name ||
+          (
+            Array.isArray(listing?.agents)
+              ? listing.agents[0]?.brokerage?.name
+              : ""
+          ) ||
+          ""
+        ).trim() || null,
+
         realtor_ca_url: (() => {
           const value = String(
             listing?.details?.moreInformationLink ||
