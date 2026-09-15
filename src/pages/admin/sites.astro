@@ -1,24 +1,28 @@
 ---
 import { createClient } from "@supabase/supabase-js";
 import AdminTopNav from "../../components/AdminTopNav.astro";
+import { createSupabaseServerClient } from "../../lib/supabaseServer";
 
 const supabase = createClient(
   import.meta.env.PUBLIC_SUPABASE_URL,
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const host =
-  Astro.request.headers.get("x-forwarded-host") ||
-  Astro.request.headers.get("host") ||
-  "";
+const auth = createSupabaseServerClient(Astro.cookies);
 
-const domain = host
-  .split(",")[0]
-  .trim()
-  .replace(/^www\./, "")
-  .split(":")[0];
+const {
+  data: { user },
+} = await auth.auth.getUser();
 
-const isLocal = domain === "localhost" || domain === "127.0.0.1";
+if (!user) {
+  return Astro.redirect("/login");
+}
+
+const platformAdminUserId =
+  "e6ef2640-eeff-4d57-8df2-c4c5f820a182";
+
+const isPlatformAdmin =
+  user.id === platformAdminUserId;
 
 const requestedSiteId =
   String(
@@ -27,13 +31,21 @@ const requestedSiteId =
 
 const sitesQuery = supabase
   .from("sites")
-  .select("id, domain, city, site_name, accent_color")
+  .select(
+    "id, domain, city, site_name, accent_color, agent_id, admin_scope"
+  )
   .order("domain");
 
 if (requestedSiteId) {
   sitesQuery.eq("id", requestedSiteId);
-} else if (!isLocal) {
-  sitesQuery.eq("domain", domain);
+}
+
+if (isPlatformAdmin) {
+  sitesQuery.or(
+    `admin_scope.eq.platform,agent_id.eq.${user.id}`
+  );
+} else {
+  sitesQuery.eq("agent_id", user.id);
 }
 
 const { data: sites = [] } = await sitesQuery;
