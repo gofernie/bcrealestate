@@ -207,11 +207,7 @@ export async function sendSavedSearchNotifications(
               mlsNumber
                 ? `${siteUrl}/${savedSearch.city}?listing_id=${encodeURIComponent(
                     mlsNumber
-                  )}${
-                    encodedEmailNewMatches
-                      ? `&new=${encodedEmailNewMatches}`
-                      : ""
-                  }#new-matches`
+                  )}`
                 : "#";
 
             return `
