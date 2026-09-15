@@ -2234,11 +2234,20 @@ images: finalImages,
 
         description: getDescription(listing),
 
-        realtor_ca_url:
-          listing?.details?.moreInformationLink ||
-          listing?.raw?.details?.moreInformationLink ||
-          listing?.moreInformationLink ||
-          null,
+        realtor_ca_url: (() => {
+          const value = String(
+            listing?.details?.moreInformationLink ||
+            listing?.raw?.details?.moreInformationLink ||
+            listing?.moreInformationLink ||
+            ""
+          ).trim();
+
+          if (!value) return null;
+
+          return /^https?:\/\//i.test(value)
+            ? value
+            : `https://${value.replace(/^\/+/, "")}`;
+        })(),
 
         listed_at: getListedAt(listing, snapshot),
 

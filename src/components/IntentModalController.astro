@@ -2581,6 +2581,39 @@ return true;
   sheetRooms.hidden = false;
 }
 
+function syncRealtorCaBadge(card) {
+  if (!sheetRealtorCaBadge || !sheetRealtorCaLink) return;
+
+  const rawRealtorCaUrl = String(
+    card?.dataset?.realtorCaUrl || ""
+  ).trim();
+
+  let safeRealtorCaUrl = "";
+
+  try {
+    const parsedRealtorCaUrl = new URL(rawRealtorCaUrl);
+
+    if (
+      parsedRealtorCaUrl.protocol === "https:" &&
+      (
+        parsedRealtorCaUrl.hostname === "realtor.ca" ||
+        parsedRealtorCaUrl.hostname.endsWith(".realtor.ca")
+      )
+    ) {
+      safeRealtorCaUrl = parsedRealtorCaUrl.href;
+    }
+  } catch {
+    safeRealtorCaUrl = "";
+  }
+
+  sheetRealtorCaBadge.hidden = !safeRealtorCaUrl;
+
+  if (safeRealtorCaUrl) {
+    sheetRealtorCaLink.href = safeRealtorCaUrl;
+  } else {
+    sheetRealtorCaLink.removeAttribute("href");
+  }
+}
 function openSheet(card) {
   activeCard = card;
   card.dataset.viewed = "true";
@@ -2651,6 +2684,7 @@ fetchListingDetailIfNeeded(card).then((wasUpdated) => {
 syncMobileMediaCounts(); // intentionally disabled
 
   hydrateRoomMeasurements(card);
+  syncRealtorCaBadge(card);
   refreshFloorplanButtonVisibility();
 syncMobileMediaCounts();
 
@@ -3249,37 +3283,7 @@ if (sheetAddress) sheetAddress.textContent = card.dataset.address || "Address";
   );
 }
 
-if (sheetRealtorCaBadge && sheetRealtorCaLink) {
-  const rawRealtorCaUrl = String(
-    card.dataset.realtorCaUrl || ""
-  ).trim();
-
-  let safeRealtorCaUrl = "";
-
-  try {
-    const parsedRealtorCaUrl = new URL(rawRealtorCaUrl);
-
-    if (
-      parsedRealtorCaUrl.protocol === "https:" &&
-      (
-        parsedRealtorCaUrl.hostname === "realtor.ca" ||
-        parsedRealtorCaUrl.hostname.endsWith(".realtor.ca")
-      )
-    ) {
-      safeRealtorCaUrl = parsedRealtorCaUrl.href;
-    }
-  } catch {
-    safeRealtorCaUrl = "";
-  }
-
-  sheetRealtorCaBadge.hidden = !safeRealtorCaUrl;
-
-  if (safeRealtorCaUrl) {
-    sheetRealtorCaLink.href = safeRealtorCaUrl;
-  } else {
-    sheetRealtorCaLink.removeAttribute("href");
-  }
-}
+syncRealtorCaBadge(card);
 
 const chips = getHighlightChips(card.dataset.description || "");
 let chipsEl = document.getElementById("sheet-highlight-chips");
