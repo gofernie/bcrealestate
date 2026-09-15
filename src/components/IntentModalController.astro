@@ -629,8 +629,26 @@ html {
     <div class="panel__desc-wrap">
   <p class="panel__desc" id="sheet-description"></p>
   <button type="button" class="panel__desc-toggle" id="sheet-desc-toggle" hidden>Read more</button>
+</div>
 
-
+<div
+  id="sheet-realtor-ca-badge"
+  style="margin: 18px 0 6px;"
+  hidden
+>
+  <a
+    id="sheet-realtor-ca-link"
+    href=""
+    target="_blank"
+    rel="noopener noreferrer"
+    aria-label="View this listing on REALTOR.ca"
+  >
+    <img
+      width="125"
+      src="https://www.realtor.ca/images/en-ca/powered_by_realtor.svg"
+      alt="Powered by REALTOR.ca"
+    />
+  </a>
 </div>
 
 
@@ -735,6 +753,10 @@ html {
         const sheetAddress = document.getElementById("sheet-address");
         const sheetMeta = document.getElementById("sheet-meta");
         const sheetDescription = document.getElementById("sheet-description");
+        const sheetRealtorCaBadge =
+          document.getElementById("sheet-realtor-ca-badge");
+        const sheetRealtorCaLink =
+          document.getElementById("sheet-realtor-ca-link");
         const sheetPosition = document.getElementById("sheet-position");
         const sheetProgressBar = document.getElementById("sheet-progress-bar");
         const closeBtn = document.getElementById("sheet-close-btn");
@@ -2382,6 +2404,10 @@ if (card.dataset.detailHydrated === "true") return false;
       Array.isArray(data.rooms) ? data.rooms : []
     );
 
+    card.dataset.realtorCaUrl = String(
+      data?.listing?.realtor_ca_url || ""
+    ).trim();
+
     card.dataset.detailHydrated = "true";
 
 return true;
@@ -2822,6 +2848,10 @@ async function openListingDeepLink() {
       listing.description || ""
     );
 
+    card.dataset.realtorCaUrl = String(
+      listing.realtor_ca_url || ""
+    ).trim();
+
     card.dataset.propertyType = String(
       listing.property_type ||
       listing.normalized_type ||
@@ -3217,6 +3247,38 @@ if (sheetAddress) sheetAddress.textContent = card.dataset.address || "Address";
     "is-collapsed",
     isMobile
   );
+}
+
+if (sheetRealtorCaBadge && sheetRealtorCaLink) {
+  const rawRealtorCaUrl = String(
+    card.dataset.realtorCaUrl || ""
+  ).trim();
+
+  let safeRealtorCaUrl = "";
+
+  try {
+    const parsedRealtorCaUrl = new URL(rawRealtorCaUrl);
+
+    if (
+      parsedRealtorCaUrl.protocol === "https:" &&
+      (
+        parsedRealtorCaUrl.hostname === "realtor.ca" ||
+        parsedRealtorCaUrl.hostname.endsWith(".realtor.ca")
+      )
+    ) {
+      safeRealtorCaUrl = parsedRealtorCaUrl.href;
+    }
+  } catch {
+    safeRealtorCaUrl = "";
+  }
+
+  sheetRealtorCaBadge.hidden = !safeRealtorCaUrl;
+
+  if (safeRealtorCaUrl) {
+    sheetRealtorCaLink.href = safeRealtorCaUrl;
+  } else {
+    sheetRealtorCaLink.removeAttribute("href");
+  }
 }
 
 const chips = getHighlightChips(card.dataset.description || "");
