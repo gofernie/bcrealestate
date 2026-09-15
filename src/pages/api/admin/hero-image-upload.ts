@@ -56,7 +56,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (siteError || !site) {
       return json({ ok: false, error: "Site not found." }, 404);
     }
-    if (site.agent_id !== user.id) {
+    const isPlatformSite =
+      !site.agent_id &&
+      user.id === "e6ef2640-eeff-4d57-8df2-c4c5f820a182";
+
+    if (site.agent_id !== user.id && !isPlatformSite) {
       return json({ ok: false, error: "You cannot upload images for this site." }, 403);
     }
 

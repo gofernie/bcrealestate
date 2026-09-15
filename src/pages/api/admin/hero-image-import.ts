@@ -36,6 +36,19 @@ function publicAddress(address: string): boolean {
 
 async function checkedUrl(value: string): Promise<URL> {
   const url = new URL(value);
+
+  if (
+    url.hostname === "images.unsplash.com" ||
+    url.hostname === "plus.unsplash.com"
+  ) {
+    url.searchParams.delete("auto");
+    url.searchParams.delete("h");
+    url.searchParams.set("fm", "jpg");
+    url.searchParams.set("fit", "max");
+    url.searchParams.set("w", "2000");
+    url.searchParams.set("q", "85");
+  }
+
   if (
     url.protocol !== "https:" ||
     url.username || url.password ||
@@ -147,7 +160,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       .from("sites").select("id, agent_id").eq("id", siteId).maybeSingle();
 
     if (siteError || !site) return json({ ok: false, error: "Site not found." }, 404);
-    if (site.agent_id !== user.id) {
+    const isPlatformSite =
+      !site.agent_id &&
+      user.id === "e6ef2640-eeff-4d57-8df2-c4c5f820a182";
+
+    if (site.agent_id !== user.id && !isPlatformSite) {
       return json({ ok: false, error: "You cannot import images for this site." }, 403);
     }
 
