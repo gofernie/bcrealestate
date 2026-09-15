@@ -1,0 +1,189 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { getSite } from "../lib/getSite";
+import { getAgentForSite } from "../lib/getAgentForSite";
+
+export const prerender = false;
+
+const forwardedHost =
+  Astro.request.headers.get("x-forwarded-host") ||
+  Astro.request.headers.get("host") ||
+  Astro.url.hostname;
+
+const requestDomain = forwardedHost
+  .split(",")[0]
+  .trim()
+  .replace(/^www\./, "")
+  .split(":")[0]
+  .toLowerCase();
+
+const previewDomain = String(
+  Astro.url.searchParams.get("siteDomain") || ""
+)
+  .trim()
+  .toLowerCase()
+  .replace(/^www\./, "");
+
+const effectiveDomain =
+  ["localhost", "127.0.0.1"].includes(requestDomain) && previewDomain
+    ? previewDomain
+    : requestDomain;
+
+const requestedCity = String(
+  Astro.url.searchParams.get("city") || "nanaimo"
+)
+  .trim()
+  .toLowerCase();
+
+const site = await getSite(
+  effectiveDomain,
+  requestedCity
+);
+
+const agent = await getAgentForSite(site);
+
+const agentName =
+  agent?.name ||
+  site?.agent_name ||
+  site?.realtor_name ||
+  site?.owner_name ||
+  site?.site_name ||
+  "Site operator";
+
+
+const legalName =
+  agent?.legal_name ||
+  agentName;
+
+const brokerage =
+  agent?.brokerage ||
+  site?.brokerage ||
+  site?.brokerage_name ||
+  "";
+
+const email =
+  agent?.email ||
+  site?.agent_email ||
+  site?.email ||
+  site?.contact_email ||
+  "";
+
+const city = site?.city || "nanaimo";
+const accent = site?.accent_color || "#2f6f73";
+---
+
+<Layout
+  title={`Terms of Use | ${agentName}`}
+  accentColor={accent}
+  city={city}
+  site={site}
+>
+  <main class="legal-page">
+    <a class="legal-back" href={`/${city}`}>&larr; Back to listings</a>
+
+    <h1>Terms of Use</h1>
+
+    <p class="legal-updated">Last updated September 15, 2026</p>
+
+    <p>
+      By continuing to browse this website, you agree to these Terms of Use.
+      This website is operated by <strong>{legalName}</strong>
+      {brokerage && <> of <strong>{brokerage}</strong></>}.
+    </p>
+
+    <h2>Listing information</h2>
+
+    <p>
+      Listing information is supplied in whole or in part by members of
+      The Canadian Real Estate Association (CREA), who are responsible for
+      its accuracy. REALTOR.ca Canada Inc. reproduces and distributes this
+      information as a service for its members. Neither CREA nor REALTOR.ca
+      Canada Inc. guarantees or accepts responsibility for its accuracy.
+    </p>
+
+    <p>
+      Listings, prices, availability, measurements and other property
+      information may change and should be independently verified.
+    </p>
+
+    <h2>Trademarks</h2>
+
+    <p>
+      REALTOR®, REALTORS® and the REALTOR® logo are certification marks
+      owned by REALTOR® Canada Inc. and licensed exclusively to CREA.
+      The MLS® trademark and MLS® logo are owned by CREA and identify
+      professional real estate services supplied through a cooperative
+      selling system.
+    </p>
+
+    <h2>Permitted use</h2>
+
+    <p>
+      Listing content is protected by copyright and other laws. It is
+      provided solely for individuals' private, non-commercial use in
+      connection with considering real estate.
+    </p>
+
+    <p>
+      Reproduction, redistribution, commercial use, screen scraping,
+      database scraping, automated collection, storage, reorganization or
+      manipulation of listing content is prohibited.
+    </p>
+
+    <h2>No professional guarantee</h2>
+
+    <p>
+      Website content is general information and does not replace legal,
+      financial, tax, inspection or other professional advice. Contact the
+      site operator before relying on listing information.
+    </p>
+
+    <h2>Contact</h2>
+
+    <p>
+      Questions about these terms may be directed to
+      {email
+        ? <a href={`mailto:${email}`}>{email}</a>
+        : agentName}.
+    </p>
+  </main>
+</Layout>
+
+<style>
+  .legal-page {
+    width: min(760px, calc(100% - 40px));
+    margin: 0 auto;
+    padding: 64px 0 24px;
+    color: var(--ink, #15283d);
+  }
+
+  .legal-back {
+    color: var(--accent);
+    font-weight: 750;
+    text-decoration: none;
+  }
+
+  h1 {
+    margin: 26px 0 8px;
+    font-size: clamp(2.2rem, 6vw, 4rem);
+    line-height: 1;
+  }
+
+  h2 {
+    margin: 34px 0 10px;
+    font-size: 1.25rem;
+  }
+
+  p {
+    line-height: 1.75;
+  }
+
+  .legal-updated {
+    color: #6d7782;
+    font-size: .85rem;
+  }
+
+  a {
+    color: var(--accent);
+  }
+</style>

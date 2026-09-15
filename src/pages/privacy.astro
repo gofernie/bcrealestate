@@ -1,0 +1,182 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { getSite } from "../lib/getSite";
+import { getAgentForSite } from "../lib/getAgentForSite";
+
+export const prerender = false;
+
+const forwardedHost =
+  Astro.request.headers.get("x-forwarded-host") ||
+  Astro.request.headers.get("host") ||
+  Astro.url.hostname;
+
+const requestDomain = forwardedHost
+  .split(",")[0]
+  .trim()
+  .replace(/^www\./, "")
+  .split(":")[0]
+  .toLowerCase();
+
+const previewDomain = String(
+  Astro.url.searchParams.get("siteDomain") || ""
+)
+  .trim()
+  .toLowerCase()
+  .replace(/^www\./, "");
+
+const effectiveDomain =
+  ["localhost", "127.0.0.1"].includes(requestDomain) && previewDomain
+    ? previewDomain
+    : requestDomain;
+
+const requestedCity = String(
+  Astro.url.searchParams.get("city") || "nanaimo"
+)
+  .trim()
+  .toLowerCase();
+
+const site = await getSite(
+  effectiveDomain,
+  requestedCity
+);
+
+const agent = await getAgentForSite(site);
+
+const agentName =
+  agent?.name ||
+  site?.agent_name ||
+  site?.realtor_name ||
+  site?.owner_name ||
+  site?.site_name ||
+  "Site operator";
+
+
+const legalName =
+  agent?.legal_name ||
+  agentName;
+
+const brokerage =
+  agent?.brokerage ||
+  site?.brokerage ||
+  site?.brokerage_name ||
+  "";
+
+const email =
+  agent?.email ||
+  site?.agent_email ||
+  site?.email ||
+  site?.contact_email ||
+  "";
+
+const city = site?.city || "nanaimo";
+const accent = site?.accent_color || "#2f6f73";
+---
+
+<Layout
+  title={`Privacy Policy | ${agentName}`}
+  accentColor={accent}
+  city={city}
+  site={site}
+>
+  <main class="legal-page">
+    <a class="legal-back" href={`/${city}`}>&larr; Back to listings</a>
+
+    <h1>Privacy Policy</h1>
+
+    <p class="legal-updated">Last updated September 15, 2026</p>
+
+    <p>
+      This policy explains how <strong>{legalName}</strong>
+      {brokerage && <> of <strong>{brokerage}</strong></>}
+      collects and uses personal information through this website.
+    </p>
+
+    <h2>Information collected</h2>
+
+    <p>
+      Information may include your name, email address, telephone number,
+      saved searches, showing requests, questions, listing preferences and
+      basic technical information such as browser, device and website usage.
+    </p>
+
+    <h2>How information is used</h2>
+
+    <p>
+      Information is used to respond to inquiries, arrange showings, provide
+      requested listing alerts, maintain shortlists, improve the website and
+      deliver real estate services you request.
+    </p>
+
+    <h2>Service providers</h2>
+
+    <p>
+      Information may be processed by service providers used to operate the
+      website, database, email, text messaging, analytics and listing-search
+      services. Information is not sold.
+    </p>
+
+    <h2>Retention and security</h2>
+
+    <p>
+      Personal information is retained only as reasonably necessary for the
+      purposes described above and is protected using reasonable technical
+      and organizational safeguards.
+    </p>
+
+    <h2>Your choices</h2>
+
+    <p>
+      You may request access to or correction of your personal information,
+      withdraw consent for future marketing messages, or request deletion
+      where legally permitted.
+    </p>
+
+    <h2>Contact</h2>
+
+    <p>
+      Privacy questions or requests may be directed to
+      {email
+        ? <a href={`mailto:${email}`}>{email}</a>
+        : agentName}.
+    </p>
+  </main>
+</Layout>
+
+<style>
+  .legal-page {
+    width: min(760px, calc(100% - 40px));
+    margin: 0 auto;
+    padding: 64px 0 24px;
+    color: var(--ink, #15283d);
+  }
+
+  .legal-back {
+    color: var(--accent);
+    font-weight: 750;
+    text-decoration: none;
+  }
+
+  h1 {
+    margin: 26px 0 8px;
+    font-size: clamp(2.2rem, 6vw, 4rem);
+    line-height: 1;
+  }
+
+  h2 {
+    margin: 34px 0 10px;
+    font-size: 1.25rem;
+  }
+
+  p {
+    line-height: 1.75;
+  }
+
+  .legal-updated {
+    color: #6d7782;
+    font-size: .85rem;
+  }
+
+  a {
+    color: var(--accent);
+  }
+</style>
