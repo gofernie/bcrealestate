@@ -157,14 +157,22 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       import.meta.env.SUPABASE_SERVICE_ROLE_KEY
     );
     const { data: site, error: siteError } = await supabase
-      .from("sites").select("id, agent_id").eq("id", siteId).maybeSingle();
+      .from("sites").select("id, agent_id, admin_scope").eq("id", siteId).maybeSingle();
 
     if (siteError || !site) return json({ ok: false, error: "Site not found." }, 404);
-    const isPlatformSite =
-      !site.agent_id &&
-      user.id === "e6ef2640-eeff-4d57-8df2-c4c5f820a182";
+    const platformAdminUserIds = new Set([
+      "e6ef2640-eeff-4d57-8df2-c4c5f820a182",
+      "0282af0e-cef9-4f8e-a263-d456c6c26b1b",
+    ]);
 
-    if (site.agent_id !== user.id && !isPlatformSite) {
+    const isPlatformAdmin =
+      platformAdminUserIds.has(user.id);
+
+    const canManageSite = isPlatformAdmin
+      ? site.admin_scope === "platform"
+      : site.agent_id === user.id;
+
+    if (!canManageSite) {
       return json({ ok: false, error: "You cannot import images for this site." }, 403);
     }
 
