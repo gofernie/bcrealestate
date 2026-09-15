@@ -304,7 +304,7 @@ async function refreshMarket(city: string) {
   const lastSettledMonth =
     new Date(Date.UTC(
       now.getUTCFullYear(),
-      now.getUTCMonth() - 2,
+      now.getUTCMonth() - 1,
       1
     ));
 
