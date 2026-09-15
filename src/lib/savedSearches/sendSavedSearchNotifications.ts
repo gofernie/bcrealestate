@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   SupabaseClient,
 } from "@supabase/supabase-js";
 
@@ -205,7 +205,7 @@ export async function sendSavedSearchNotifications(
             const href =
               siteUrl &&
               mlsNumber
-                ? `${siteUrl}/${savedSearch.city}?listing=${encodeURIComponent(
+                ? `${siteUrl}/${savedSearch.city}?listing_id=${encodeURIComponent(
                     mlsNumber
                   )}${
                     encodedEmailNewMatches

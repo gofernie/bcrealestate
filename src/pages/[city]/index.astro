@@ -1050,11 +1050,48 @@ href: `/${city || "nanaimo"}/${String(boundary.area_slug || slug.replace(/\s+/g,
   .slice(0, 5);
 } catch {}
 
+const newMatchIds = Array.from(
+  new Set(
+    String(
+      Astro.url.searchParams.get("new") || ""
+    )
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) =>
+        /^[a-z0-9._-]+$/i.test(value)
+      )
+  )
+).slice(0, 20);
+
+const isNewMatchesView =
+  newMatchIds.length > 0;
+
 let listings: any[] = [];
 let errorMessage = "";
 
 try {
-let query = supabase.from("listing_rows").select("*").eq("status", "A").limit(1000);  if (city) query = query.in("normalized_city", cityDatabaseKeys);
+let query =
+  supabase
+    .from("listing_rows")
+    .select("*")
+    .eq("status", "A")
+    .limit(1000);
+
+if (city) {
+  query =
+    query.in(
+      "normalized_city",
+      cityDatabaseKeys
+    );
+}
+
+if (isNewMatchesView) {
+  query =
+    query.in(
+      "mls_number",
+      newMatchIds
+    );
+}
 
 /* homepage-server-area-filter-v1 */
 if (areas.length > 0) {
@@ -1114,6 +1151,18 @@ if (areas.length > 0) {
 
     return !isCommercialOrLease && !isLeaseSizedPrice;
   });
+
+  if (isNewMatchesView) {
+    listings.sort(
+      (a, b) =>
+        newMatchIds.indexOf(
+          String(a?.mls_number || "")
+        ) -
+        newMatchIds.indexOf(
+          String(b?.mls_number || "")
+        )
+    );
+  }
 
  
 
@@ -2614,16 +2663,32 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 
           </div>
 
-       <div class="results-heading">
+       <div
+         class="results-heading"
+         id={isNewMatchesView ? "new-matches" : undefined}
+       >
   <p id="results-update-note">
-    <span id="results-count">{listings.length}</span> Active Listings
+    <span id="results-count">{listings.length}</span>
+    {
+      isNewMatchesView
+        ? listings.length === 1
+          ? " New Match"
+          : " New Matches"
+        : " Active Listings"
+    }
   </p>
 </div>
 
         {errorMessage && <div class="empty">{errorMessage}</div>}
 
                {!errorMessage && listings.length === 0 && (
-          <div class="empty">No matching homes found yet.</div>
+          <div class="empty">
+            {
+              isNewMatchesView
+                ? "These new matches are no longer active."
+                : "No matching homes found yet."
+            }
+          </div>
         )}
 
       {!errorMessage && listings.length > 0 && (
