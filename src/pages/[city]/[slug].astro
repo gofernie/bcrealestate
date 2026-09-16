@@ -99,18 +99,72 @@ const siteHostname =
    ? "bc.realestate"
     : requestHostname;
 
-const repeatedMarketSuffix =
-  /(?:-real-estate-market){2,}$/i;
+const reservedCityRoutes = new Set([
+  "404",
+  "about",
+  "about-bc",
+  "bc",
+  "buying-guide",
+  "contact",
+  "explore",
+  "market-insights",
+  "privacy",
+  "terms",
+  "admin",
+  "api",
+  "listings",
+  "shortlists",
+  "for",
+  "learn",
+  "sitemap",
+  "sitemap.xml",
+  "robots",
+  "robots.txt",
+  "favicon",
+]);
 
-if (repeatedMarketSuffix.test(city)) {
-  const cleanCity = city
+const legacyMarketSuffix =
+  /(?:-real-estate-market)+$/i;
+
+if (legacyMarketSuffix.test(normalizedRouteCity)) {
+  const cleanCity = normalizedRouteCity
     .replace(/(?:-real-estate-market)+$/i, "")
+    .replace(/-+$/g, "")
     .trim();
 
+  if (!cleanCity || reservedCityRoutes.has(cleanCity)) {
+    return Astro.rewrite("/404");
+  }
+
   return Astro.redirect(
-    `/market-insights?city=${encodeURIComponent(cleanCity)}`,
+    `/${cleanCity}/${slug}`,
     301
   );
+}
+
+if (reservedCityRoutes.has(normalizedRouteCity)) {
+  return Astro.rewrite("/404");
+}
+
+const {
+  data: validCityRow,
+  error: validCityError,
+} = await supabase
+  .from("listing_rows")
+  .select("normalized_city")
+  .in("normalized_city", cityDatabaseKeys)
+  .limit(1)
+  .maybeSingle();
+
+if (validCityError) {
+  console.error(
+    "City content-route validation failed:",
+    validCityError
+  );
+}
+
+if (!validCityError && !validCityRow) {
+  return Astro.rewrite("/404");
 }
 
 const site = await getSite(siteHostname, city);

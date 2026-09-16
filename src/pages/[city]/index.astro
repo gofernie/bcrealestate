@@ -179,23 +179,17 @@ const effectiveSiteDomain =
     ? requestedLocalDomain
     : domain;
 
-/* city-route-validation-v1 */
-
-const repeatedMarketRoute =
-  /(?:-real-estate-market){2,}$/i;
-
-if (repeatedMarketRoute.test(routeCity)) {
-  const cleanCity = routeCity
-    .replace(/(?:-real-estate-market)+$/i, "")
-    .replace(/-+$/g, "")
-    .trim();
-
-  if (cleanCity) {
-    return Astro.redirect(`/${cleanCity}/`, 301);
-  }
-}
+/* city-route-validation-v2 */
 
 const reservedRootRoutes = new Set([
+  "404",
+  "about",
+  "about-bc",
+  "bc",
+  "buying-guide",
+  "contact",
+  "explore",
+  "market-insights",
   "privacy",
   "terms",
   "admin",
@@ -205,9 +199,27 @@ const reservedRootRoutes = new Set([
   "for",
   "learn",
   "sitemap",
+  "sitemap.xml",
   "robots",
+  "robots.txt",
   "favicon",
 ]);
+
+const legacyMarketRoute =
+  /(?:-real-estate-market)+$/i;
+
+if (legacyMarketRoute.test(routeCity)) {
+  const cleanCity = routeCity
+    .replace(/(?:-real-estate-market)+$/i, "")
+    .replace(/-+$/g, "")
+    .trim();
+
+  if (!cleanCity || reservedRootRoutes.has(cleanCity)) {
+    return Astro.rewrite("/404");
+  }
+
+  return Astro.redirect(`/${cleanCity}/`, 301);
+}
 
 if (reservedRootRoutes.has(routeCity)) {
   return Astro.rewrite("/404");
