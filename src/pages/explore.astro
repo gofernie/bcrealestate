@@ -7285,38 +7285,118 @@ function priceButtonCount(button, homes) {
 }
 
 function updateDynamicPriceOptions() {
-  const homes = layerItems.homes.filter((home) => {
-    return passesAreaFilter(home) &&
-      passesTypeAndBeds(home) &&
-      passesMoreFilters(home);
+  const priceBandsByType = {
+  mobile: [
+    [0, 250000, "Under $250k"],
+    [250000, 350000, "$250k - $350k"],
+    [350000, 450000, "$350k - $450k"],
+    [450000, 600000, "$450k - $600k"],
+    [600000, 99999999, "$600k+"],
+  ],
+  condo: [
+    [0, 400000, "Under $400k"],
+    [400000, 550000, "$400k - $550k"],
+    [550000, 700000, "$550k - $700k"],
+    [700000, 900000, "$700k - $900k"],
+    [900000, 99999999, "$900k+"],
+  ],
+  townhouse: [
+    [0, 550000, "Under $550k"],
+    [550000, 700000, "$550k - $700k"],
+    [700000, 850000, "$700k - $850k"],
+    [850000, 1000000, "$850k - $1M"],
+    [1000000, 99999999, "$1M+"],
+  ],
+  house: [
+    [0, 700000, "Under $700k"],
+    [700000, 900000, "$700k - $900k"],
+    [900000, 1200000, "$900k - $1.2M"],
+    [1200000, 1500000, "$1.2M - $1.5M"],
+    [1500000, 99999999, "$1.5M+"],
+  ],
+  land: [
+    [0, 300000, "Under $300k"],
+    [300000, 500000, "$300k - $500k"],
+    [500000, 750000, "$500k - $750k"],
+    [750000, 1000000, "$750k - $1M"],
+    [1000000, 99999999, "$1M+"],
+  ],
+};
+
+const defaultPriceBands = [
+  [0, 500000, "Under $500k"],
+  [500000, 700000, "$500k - $700k"],
+  [700000, 900000, "$700k - $900k"],
+  [900000, 1200000, "$900k - $1.2M"],
+  [1200000, 99999999, "$1.2M+"],
+];
+  const bands =
+    priceBandsByType[navFilters.type] ||
+    defaultPriceBands;
+
+  const buttons = [
+    ...document.querySelectorAll("[data-filter-price]"),
+  ];
+
+  const selectedRangeExists = bands.some(([min, max]) => {
+    return (
+      navFilters.priceMin === min &&
+      navFilters.priceMax === max
+    );
   });
 
-  let selectedRangeStillAvailable = true;
+  if (
+    navFilters.priceMin !== 0 ||
+    navFilters.priceMax !== Infinity
+  ) {
+    if (!selectedRangeExists) {
+      navFilters.priceMin = 0;
+      navFilters.priceMax = Infinity;
 
-  document.querySelectorAll("[data-filter-price]").forEach((button) => {
+      const priceLabel =
+        document.getElementById("nav-price-label");
+
+      if (priceLabel) priceLabel.textContent = "Any price";
+    }
+  }
+
+  buttons.slice(1).forEach((button, index) => {
+    const band = bands[index];
+    if (!band) return;
+
+    const [min, max, label] = band;
+
+    button.dataset.filterPrice = `${min}-${max}`;
+    button.dataset.priceLabel = label;
+
+    const labelTarget =
+      button.querySelector("span:not(.price-count)");
+
+    if (labelTarget) labelTarget.textContent = label;
+  });
+
+  const homes = layerItems.homes.filter((home) => {
+    return (
+      passesAreaFilter(home) &&
+      passesTypeAndBeds(home) &&
+      passesMoreFilters(home)
+    );
+  });
+
+  buttons.forEach((button) => {
     const count = priceButtonCount(button, homes);
     const countTarget = button.querySelector(".price-count");
-    if (countTarget) countTarget.textContent = count.toLocaleString();
 
-    const isAnyPrice = !(button.dataset.filterPrice || "");
+    if (countTarget) {
+      countTarget.textContent = count.toLocaleString();
+    }
+
+    const isAnyPrice =
+      !(button.dataset.filterPrice || "");
+
     button.disabled = !isAnyPrice && count === 0;
-
-    const [min, max] = (button.dataset.filterPrice || "").split("-").map(Number);
-    const isSelected = !isAnyPrice &&
-      navFilters.priceMin === min &&
-      navFilters.priceMax === max;
-
-    if (isSelected && count === 0) selectedRangeStillAvailable = false;
   });
-
-  if (!selectedRangeStillAvailable) {
-    navFilters.priceMin = 0;
-    navFilters.priceMax = Infinity;
-    const priceLabel = document.getElementById("nav-price-label");
-    if (priceLabel) priceLabel.textContent = "Any price";
-  }
 }
-
 updateLocationUi();
 
 document.querySelectorAll("[data-menu-trigger]").forEach((button) => {
@@ -7390,9 +7470,11 @@ function focusFilteredHomesOnMap() {
     return;
   }
 
-  const center = bounds.getCenter();
-
-  map.flyTo(center, 13, { duration: 0.45 });
+  map.fitBounds(bounds, {
+    padding: [48, 48],
+    maxZoom: 13,
+    animate: false,
+  });
 
   
 }
