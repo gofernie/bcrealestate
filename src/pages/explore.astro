@@ -44,50 +44,6 @@ let query = supabase
   .eq("normalized_city", city)
   .order("listed_at", { ascending: false });
 
-if (area && boundaryRow?.polygon_geojson) {
-  const geometry =
-    boundaryRow.polygon_geojson.type === "Feature"
-      ? boundaryRow.polygon_geojson.geometry
-      : boundaryRow.polygon_geojson;
-
-  const points = [];
-
-  const collectCoordinates = (coords) => {
-    if (!Array.isArray(coords)) return;
-
-    if (
-      coords.length >= 2 &&
-      Number.isFinite(Number(coords[0])) &&
-      Number.isFinite(Number(coords[1]))
-    ) {
-      points.push([
-        Number(coords[0]),
-        Number(coords[1]),
-      ]);
-      return;
-    }
-
-    coords.forEach(collectCoordinates);
-  };
-
-  collectCoordinates(geometry?.coordinates);
-
-  if (points.length) {
-    const lngs = points.map(([lng]) => lng);
-    const lats = points.map(([, lat]) => lat);
-
-    const minLng = Math.min(...lngs);
-    const maxLng = Math.max(...lngs);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-
-    query = query
-      .gte("lat", minLat)
-      .lte("lat", maxLat)
-      .gte("lng", minLng)
-      .lte("lng", maxLng);
-  }
-}
 
 const { data: listings = [] } = await query.limit(1000);
 
@@ -187,10 +143,13 @@ const jawgAccessToken = import.meta.env.PUBLIC_JAWG_ACCESS_TOKEN || "";
 </script>
 <Layout title={`${areaLabel} Explorer`} accentColor={accentColor} city={city}>
   <style>
+    @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap");
+
     body { overflow: hidden; }
 
     .explorer {
       position: fixed;
+      font-family: "Manrope", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       inset: 0;
       width: 100vw;
       height: 100dvh;
@@ -588,12 +547,12 @@ const jawgAccessToken = import.meta.env.PUBLIC_JAWG_ACCESS_TOKEN || "";
        (.map-preview-card, #preview-sheet, etc). */
  :global(.drawer-row) {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 210px;
+   grid-auto-flow: row;
+   grid-template-columns: minmax(0, 1fr);
   gap: 10px;
-  overflow-x: auto;
+   overflow-x: hidden;
   padding-bottom: 4px;
-  scrollbar-width: thin;
+
 }
 
     :global(.explorer-drawer.is-expanded .drawer-row) {
@@ -1169,19 +1128,19 @@ const jawgAccessToken = import.meta.env.PUBLIC_JAWG_ACCESS_TOKEN || "";
   position: absolute !important;
   top: 50% !important;
   z-index: 20 !important;
-  width: 30px !important;
-  height: 30px !important;
+  width: 26px !important;
+  height: 26px !important;
   display: grid !important;
   place-items: center !important;
   padding: 0 !important;
   transform: translateY(-50%) !important;
-  border: 1px solid rgba(255,255,255,.9) !important;
+  border: 0 !important;
   border-radius: 999px !important;
-  background: rgba(255,255,255,.96) !important;
-  color: #123a5a !important;
-  box-shadow: 0 6px 18px rgba(0,0,0,.24) !important;
-  font-size: 1.25rem !important;
-  font-weight: 950 !important;
+  background: rgba(255,255,255,.70) !important;
+  color: #667085 !important;
+  box-shadow: 0 2px 6px rgba(15,23,42,.10) !important;
+  font-size: 1rem !important;
+  font-weight: 800 !important;
   line-height: 1 !important;
   opacity: 1 !important;
   visibility: visible !important;
@@ -2736,6 +2695,23 @@ grid-template-columns: minmax(92px, auto) minmax(0, 1fr) minmax(0, 1fr) !importa
   }
 }
 
+/* Uniform compact cards in the normal two-column Explorer panel. */
+.explorer-drawer:not(.is-expanded) :global(.drawer-row) .explorer-card {
+  height: 90px !important;
+  min-height: 90px !important;
+  grid-template-columns: 128px minmax(0, 1fr) !important;
+  align-items: stretch !important;
+}
+
+.explorer-drawer:not(.is-expanded) :global(.drawer-row) .explorer-card img {
+  display: block !important;
+  width: 128px !important;
+  height: 100% !important;
+  min-height: 90px !important;
+  align-self: stretch !important;
+  object-fit: cover !important;
+}
+
 /* Uniform homes cards */
 
 .explorer-drawer.is-homes-mode .explorer-card {
@@ -4259,7 +4235,7 @@ height: auto !important;
 
 :global(.listing-preview-popup .leaflet-popup-content) {
   margin: 0 !important;
-  width: 250px !important;
+  width: 340px !important;
 }
 
 :global(.listing-preview-popup .map-preview-card) {
@@ -4277,7 +4253,7 @@ height: auto !important;
 :global(.listing-preview-popup .map-preview-card img) {
   display: block;
   width: 100%;
-  height: 132px;
+  height: 190px;
   object-fit: cover;
   border-radius: 0;
 }
@@ -4316,15 +4292,15 @@ height: auto !important;
 }
 
 :global(.listing-preview-popup .popup-img-nav) {
-  width: 34px !important;
-  height: 34px !important;
+  width: 28px !important;
+  height: 28px !important;
   margin: 0 !important;
   padding: 0 !important;
-  border: 1px solid rgba(255,255,255,.95) !important;
+  border: 1px solid rgba(255,255,255,.72) !important;
   border-radius: 999px !important;
-  background: rgba(255,255,255,.95) !important;
-  color: #164e56 !important;
-  box-shadow: 0 2px 8px rgba(15,23,42,.16);
+  background: rgba(255,255,255,.70) !important;
+  color: #45666a !important;
+  box-shadow: 0 2px 6px rgba(15,23,42,.10);
 }
 
 :global(.listing-preview-popup .popup-img-prev) {
@@ -4338,15 +4314,15 @@ height: auto !important;
 :global(.listing-preview-popup .leaflet-popup-close-button) {
   top: 8px !important;
   right: 8px !important;
-  width: 28px !important;
-  height: 28px !important;
+  width: 24px !important;
+  height: 24px !important;
   display: grid !important;
   place-items: center !important;
   padding: 0 !important;
   border-radius: 999px;
-  background: rgba(255,255,255,.95) !important;
-  color: #475467 !important;
-  box-shadow: 0 2px 8px rgba(15,23,42,.14);
+  background: rgba(255,255,255,.70) !important;
+  color: #667085 !important;
+  box-shadow: 0 2px 6px rgba(15,23,42,.10);
   z-index: 30;
 }
 /* final map listing popup overrides */
@@ -4364,11 +4340,11 @@ height: auto !important;
 
 :where(.leaflet-popup-content:has(.map-preview-card)) {
   margin: 0 !important;
-  width: 250px !important;
+  width: 340px !important;
 }
 
 :where(.leaflet-popup-content .map-preview-card) {
-  width: 250px !important;
+  width: 340px !important;
   display: block !important;
   padding: 0 14px 15px !important;
   box-sizing: border-box !important;
@@ -4383,7 +4359,7 @@ height: auto !important;
 
 :where(.leaflet-popup-content .map-preview-image-wrap img) {
   width: 100% !important;
-  height: 132px !important;
+  height: 190px !important;
   display: block !important;
   object-fit: cover !important;
   border-radius: 0 !important;
@@ -4423,33 +4399,75 @@ height: auto !important;
 }
 
 :where(.leaflet-popup-content .popup-img-nav) {
-  width: 34px !important;
-  height: 34px !important;
+  width: 28px !important;
+  height: 28px !important;
   padding: 0 !important;
   margin: 0 !important;
   display: grid !important;
   place-items: center !important;
-  border: 1px solid rgba(255,255,255,.95) !important;
+  border: 1px solid rgba(255,255,255,.72) !important;
   border-radius: 50% !important;
-  background: rgba(255,255,255,.96) !important;
-  color: #164e56 !important;
-  box-shadow: 0 2px 8px rgba(15,23,42,.18) !important;
+  background: rgba(255,255,255,.70) !important;
+  color: #45666a !important;
+  box-shadow: 0 2px 6px rgba(15,23,42,.10) !important;
 }
 
 :where(.leaflet-popup:has(.map-preview-card) .leaflet-popup-close-button) {
   top: 7px !important;
   right: 7px !important;
-  width: 28px !important;
-  height: 28px !important;
+  width: 24px !important;
+  height: 24px !important;
   padding: 0 !important;
   display: grid !important;
   place-items: center !important;
   border-radius: 50% !important;
-  background: rgba(255,255,255,.96) !important;
-  color: #475467 !important;
-  box-shadow: 0 2px 8px rgba(15,23,42,.14) !important;
+  background: rgba(255,255,255,.70) !important;
+  color: #667085 !important;
+  box-shadow: 0 2px 6px rgba(15,23,42,.10) !important;
   z-index: 30 !important;
 }
+  /* explorer-popup-final-size */
+  :global(.listing-preview-popup .leaflet-popup-content) {
+    width: 360px !important;
+  }
+
+  :global(.listing-preview-popup .map-preview-card) {
+    width: 360px !important;
+  }
+
+  :global(.listing-preview-popup .map-preview-image-wrap img) {
+    width: 100% !important;
+    height: 200px !important;
+    object-fit: cover !important;
+  }
+
+  :global(.listing-preview-popup .popup-img-nav) {
+    width: 26px !important;
+    height: 26px !important;
+    border: 0 !important;
+    background: rgba(15, 23, 42, 0.58) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12) !important;
+  }
+
+  :global(.listing-preview-popup .leaflet-popup-close-button) {
+    width: 22px !important;
+    height: 22px !important;
+    border: 0 !important;
+    background: rgba(15, 23, 42, 0.58) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12) !important;
+  }
+  /* subdued-popup-nav */
+  :global(.listing-preview-popup .popup-img-nav) {
+    opacity: 0.58 !important;
+    transition: opacity 160ms ease, transform 160ms ease !important;
+  }
+
+  :global(.listing-preview-popup .popup-img-nav:hover),
+  :global(.listing-preview-popup .popup-img-nav:focus-visible) {
+    opacity: 0.88 !important;
+  }
 </style>
 
 <div
@@ -5427,7 +5445,7 @@ marker.bindPopup(`
       View listing &rarr;</button>
   </article>
 `, {
-  maxWidth: 240,
+  maxWidth: 360,
   className: "listing-preview-popup"
 });
 marker.on("click", () => {
@@ -5961,9 +5979,9 @@ if (homesCountEl) {
 
           card.addEventListener("click", () => focusItem(item, card));
           card.addEventListener("mouseenter", () => item.marker?.openPopup());
-          card.addEventListener("mouseleave", () => {
-            if (!card.classList.contains("is-active")) item.marker?.closePopup();
-          });
+          // Keep the popup open so the cursor can move from the list to the map card.
+
+
         });
       }
 function renderInsights() {
@@ -6396,11 +6414,11 @@ drawerPlaces
         item.marker?.openPopup();
       });
 
-      card.addEventListener("mouseleave", () => {
-        if (!card.classList.contains("is-active")) {
-          item.marker?.closePopup();
-        }
-      });
+      // Keep the popup open so the cursor can move from the list to the map card.
+
+
+
+
     });
 }
 
