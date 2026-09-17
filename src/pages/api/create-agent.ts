@@ -27,6 +27,7 @@ export const POST: APIRoute = async ({ request }) => {
       phone: clean(body?.phone) || null,
       brokerage: clean(body?.brokerage) || null,
       legal_name: clean(body?.legal_name) || null,
+      credentials: clean(body?.credentials) || null,
       brokerage_logo_url:
         clean(body?.brokerage_logo_url) || null,
     };
