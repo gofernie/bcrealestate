@@ -3101,18 +3101,60 @@ if (modalHistoryPushed && !options.fromPopState) {
   modalHistoryPushed = false;
 }
 }
+const requestedImageUrls = new Set();
+const loadedImageUrls = new Set();
+
 function preloadImages(urls = []) {
   urls
     .filter(Boolean)
-   .slice(0, 50)
     .forEach((src) => {
+      if (requestedImageUrls.has(src)) return;
+
+      requestedImageUrls.add(src);
+
       const img = new Image();
       img.decoding = "async";
       img.loading = "eager";
+
+      img.onload = async () => {
+        try {
+          await img.decode();
+        } catch {
+          // The browser may already have decoded the image.
+        }
+
+        loadedImageUrls.add(src);
+      };
+
+      img.onerror = () => {
+        requestedImageUrls.delete(src);
+        loadedImageUrls.delete(src);
+      };
+
       img.src = src;
     });
 }
 
+function preloadPhotoWindow(
+  currentIndex = activePhotoIndex,
+  behind = 2,
+  ahead = 12
+) {
+  if (!activePhotoUrls.length) return;
+
+  const safeIndex = Math.max(
+    0,
+    Math.min(currentIndex, activePhotoUrls.length - 1)
+  );
+
+  const start = Math.max(0, safeIndex - behind);
+  const end = Math.min(
+    activePhotoUrls.length,
+    safeIndex + ahead + 1
+  );
+
+  preloadImages(activePhotoUrls.slice(start, end));
+}
 function getCardPhotoUrls(card) {
   if (!card) return [];
 
@@ -3298,12 +3340,7 @@ lastRegularPhotoIndex = activePhotoIndex;
           }
 
         renderActivePhoto();
-
-preloadImages(activePhotoUrls.slice(1, 6));
-
-window.setTimeout(() => {
-  preloadImages(activePhotoUrls.slice(6));
-}, 100);
+preloadPhotoWindow();
 
 preloadNearbyListingPhotos(card);
 
@@ -5673,7 +5710,9 @@ photoPrevBtn?.addEventListener("click", (event) => {
   hidePhotoOverlayTemporarily();
 });
 function updatePhotoCounter() {
-  if (!sheetPhotoCount) return;
+if (!sheetPhotoCount) return;
+
+preloadPhotoWindow();
   const normalizeForMatch = (url) =>
     String(url || "")
       .replace(/[?&]class=[^&]+/g, "")
@@ -6133,27 +6172,36 @@ function showActivePhoto() {
   sheetImage.style.transition = "none";
   // keep current photo visible while next photo loads
 
+  const revealTargetPhoto = () => {
+  sheetImage.src = targetSrc;
+  sheetImage.style.opacity = "1";
+
+  if (sheetImageStage) {
+    sheetImageStage.style.visibility = "visible";
+  }
+};
+
+if (loadedImageUrls.has(targetSrc)) {
+  revealTargetPhoto();
+} else {
   const loader = new Image();
+  loader.decoding = "async";
 
-  loader.onload = () => {
-    sheetImage.src = targetSrc;
-    sheetImage.style.opacity = "1";
-
-    if (sheetImageStage) {
-      sheetImageStage.style.visibility = "visible";
+  loader.onload = async () => {
+    try {
+      await loader.decode();
+    } catch {
+      // Continue if explicit decoding is unavailable.
     }
+
+    requestedImageUrls.add(targetSrc);
+    loadedImageUrls.add(targetSrc);
+    revealTargetPhoto();
   };
 
-  loader.onerror = () => {
-    sheetImage.src = targetSrc;
-    sheetImage.style.opacity = "1";
-
-    if (sheetImageStage) {
-      sheetImageStage.style.visibility = "visible";
-    }
-  };
-
+  loader.onerror = revealTargetPhoto;
   loader.src = targetSrc;
+}
 
   updatePhotoCounter();
 
@@ -8075,5 +8123,37 @@ sheetImage?.addEventListener("touchend", (event) => {
     #preview-sheet.is-landscape-gallery .decision-actions {
       display: none !important;
     }
+  }
+</style>
+<style is:global>
+  /* geometric-centered-photo-chevrons */
+  #preview-sheet #photo-prev-btn,
+  #preview-sheet #photo-next-btn {
+    position: absolute !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+  }
+
+  #preview-sheet #photo-prev-btn::before,
+  #preview-sheet #photo-next-btn::before {
+    content: "" !important;
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    width: 9px !important;
+    height: 9px !important;
+    border-right: 2px solid currentColor !important;
+    border-bottom: 2px solid currentColor !important;
+    box-sizing: border-box !important;
+    transform-origin: center !important;
+  }
+
+  #preview-sheet #photo-prev-btn::before {
+    transform: translate(-40%, -50%) rotate(135deg) !important;
+  }
+
+  #preview-sheet #photo-next-btn::before {
+    transform: translate(-60%, -50%) rotate(-45deg) !important;
   }
 </style>
