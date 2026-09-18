@@ -3022,6 +3022,29 @@ async function openListingDeepLink() {
 
 window.setTimeout(openListingDeepLink, 300);
 
+function resetExpandedSheetMap() {
+  mapIsExpanded = false;
+
+  if (sheetMiniMap && mapBaseHeight) {
+    sheetMiniMap.style.height = `${mapBaseHeight}px`;
+    sheetMiniMap.style.minHeight = `${mapBaseHeight}px`;
+  }
+
+  sheetMiniMapWrap?.style.removeProperty("margin-bottom");
+
+  if (sheetMapExpandBtn) {
+    sheetMapExpandBtn.setAttribute("aria-expanded", "false");
+    sheetMapExpandBtn.innerHTML = "<span>Expand map</span>";
+
+    sheetMiniMapWrap?.appendChild(sheetMapExpandBtn);
+
+    sheetMapExpandBtn.style.removeProperty("position");
+    sheetMapExpandBtn.style.removeProperty("top");
+    sheetMapExpandBtn.style.removeProperty("left");
+    sheetMapExpandBtn.style.removeProperty("bottom");
+    sheetMapExpandBtn.style.removeProperty("z-index");
+  }
+}
 function closeSheet(options = {}) {
   sheet.classList.remove("is-engagement-mode");
   const currentCardKey = getCardKey(activeCard);
@@ -3042,6 +3065,8 @@ function closeSheet(options = {}) {
 
     return;
   }
+
+resetExpandedSheetMap();
 
 sheet.style.transition = "transform 180ms ease";
 overlay.style.transition = "opacity 180ms ease";
@@ -3812,11 +3837,7 @@ badge.classList.remove("is-love", "is-maybe", "is-pass");
       "important"
     );
 
-    reactionRow.style.setProperty(
-      "display",
-      "flex",
-      "important"
-    );
+    reactionRow.style.removeProperty("display");
   }
 
   [loveBtn, maybeBtn, passBtn].forEach((btn) => {
@@ -5204,6 +5225,36 @@ sheetMapExpandBtn?.addEventListener("click", () => {
 }, 300);
 });
 
+/*
+ * Restore the expanded-map button before Astro changes pages.
+ */
+document.addEventListener(
+  "astro:before-swap",
+  () => {
+    mapIsExpanded = false;
+
+    if (sheetMiniMap && mapBaseHeight) {
+      sheetMiniMap.style.height = `${mapBaseHeight}px`;
+      sheetMiniMap.style.minHeight = `${mapBaseHeight}px`;
+    }
+
+    sheetMiniMapWrap?.style.removeProperty("margin-bottom");
+
+    if (sheetMapExpandBtn) {
+      sheetMapExpandBtn.setAttribute("aria-expanded", "false");
+      sheetMapExpandBtn.innerHTML = "<span>Expand map</span>";
+
+      sheetMiniMapWrap?.appendChild(sheetMapExpandBtn);
+
+      sheetMapExpandBtn.style.removeProperty("position");
+      sheetMapExpandBtn.style.removeProperty("top");
+      sheetMapExpandBtn.style.removeProperty("left");
+      sheetMapExpandBtn.style.removeProperty("bottom");
+      sheetMapExpandBtn.style.removeProperty("z-index");
+    }
+  },
+  { once: true }
+);
 overlay?.addEventListener("click", closeSheet);
 
         window.addEventListener("popstate", () => {
@@ -8013,6 +8064,15 @@ sheetImage?.addEventListener("touchend", (event) => {
   @media (orientation: landscape) and (max-height: 600px) {
     #preview-sheet .decision-actions,
     #preview-sheet .listing-reaction-actions {
+      display: none !important;
+    }
+  }
+</style>
+
+<style is:global>
+  /* hide-reactions-in-landscape-gallery */
+  @media (orientation: landscape) {
+    #preview-sheet.is-landscape-gallery .decision-actions {
       display: none !important;
     }
   }
