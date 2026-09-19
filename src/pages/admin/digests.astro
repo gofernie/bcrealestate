@@ -1,0 +1,1274 @@
+---
+import { createClient } from "@supabase/supabase-js";
+import AdminTopNav from "../../components/AdminTopNav.astro";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const requestedSiteId =
+  String(
+    Astro.url.searchParams.get("site_id") || ""
+  ).trim();
+
+const { data: sites = [] } = await supabase
+  .from("sites")
+  .select("id, site_name, domain, city")
+  .order("site_name", { ascending: true });
+
+let configsQuery = supabase
+  .from("digest_configs")
+  .select(`
+    *,
+    site:sites (
+      id,
+      site_name,
+      domain,
+      city
+    )
+  `)
+  .order("created_at", { ascending: false });
+
+if (requestedSiteId) {
+  configsQuery =
+    configsQuery.eq("site_id", requestedSiteId);
+}
+
+const {
+  data: configs = [],
+  error: configsError,
+} = await configsQuery;
+
+const configIds = configs.map((config) => config.id);
+
+let subscribers = [];
+let runs = [];
+
+if (configIds.length) {
+  const [
+    subscriberResult,
+    runResult,
+  ] = await Promise.all([
+    supabase
+      .from("digest_subscribers")
+      .select("*")
+      .in("config_id", configIds)
+      .order("created_at", { ascending: false }),
+
+    supabase
+      .from("digest_runs")
+      .select(`
+        id,
+        config_id,
+        period_start,
+        period_end,
+        status,
+        subject,
+        preview_html,
+        generated_at,
+        sent_at,
+        error_message
+      `)
+      .in("config_id", configIds)
+      .order("generated_at", { ascending: false })
+      .limit(50),
+  ]);
+
+  subscribers = subscriberResult.data || [];
+  runs = runResult.data || [];
+}
+
+const subscriberMap = new Map();
+const runMap = new Map();
+
+for (const subscriber of subscribers) {
+  const list =
+    subscriberMap.get(subscriber.config_id) || [];
+
+  list.push(subscriber);
+  subscriberMap.set(subscriber.config_id, list);
+}
+
+for (const run of runs) {
+  const list = runMap.get(run.config_id) || [];
+
+  list.push(run);
+  runMap.set(run.config_id, list);
+}
+
+const selectedSite =
+  sites.find((site) => site.id === requestedSiteId) ||
+  null;
+
+const formatDate = (value) =>
+  value
+    ? new Date(value).toLocaleString("en-CA", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : "Never";
+
+const csvCities = (config) =>
+  Array.isArray(config.market_cities)
+    ? config.market_cities.join(", ")
+    : config.city_slug || "";
+
+const dayNames = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width"
+    />
+    <title>Weekly Digests · Locus</title>
+
+    <style>
+      :root {
+        --bg: #f6f3ed;
+        --card: #ffffff;
+        --ink: #181614;
+        --muted: #706b64;
+        --line: #ded8ce;
+        --accent: #2f6f73;
+        --danger: #a13d35;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          "DM Sans",
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      .page {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 44px 28px 90px;
+      }
+
+      .heading {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 30px;
+      }
+
+      .eyebrow {
+        margin: 0 0 7px;
+        color: var(--accent);
+        font-size: 0.75rem;
+        font-weight: 800;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        margin-bottom: 8px;
+        font-size: clamp(2rem, 5vw, 3.5rem);
+        line-height: 0.98;
+        letter-spacing: -0.045em;
+      }
+
+      .lede {
+        max-width: 700px;
+        margin-bottom: 0;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .site-filter {
+        min-width: 230px;
+      }
+
+      .panel,
+      .digest {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--card);
+        box-shadow: 0 12px 36px rgba(24, 22, 20, 0.04);
+      }
+
+      .panel {
+        padding: 24px;
+        margin-bottom: 24px;
+      }
+
+      .digest {
+        overflow: hidden;
+        margin-top: 24px;
+      }
+
+      .digest__header {
+        padding: 24px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .digest__header-row,
+      .edition__top,
+      .subscriber {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .digest__header h2 {
+        margin-bottom: 5px;
+      }
+
+      .digest__meta,
+      .muted {
+        color: var(--muted);
+        font-size: 0.87rem;
+      }
+
+      .mode {
+        display: inline-flex;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #e8f0ef;
+        color: #23575a;
+        font-size: 0.76rem;
+        font-weight: 800;
+        text-transform: capitalize;
+      }
+
+      .digest__body {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
+      }
+
+      .digest__section {
+        padding: 24px;
+      }
+
+      .digest__section + .digest__section {
+        border-left: 1px solid var(--line);
+      }
+
+      .digest__section h3 {
+        margin-bottom: 15px;
+        font-size: 1rem;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 15px;
+      }
+
+      .wide {
+        grid-column: 1 / -1;
+      }
+
+      label {
+        display: grid;
+        gap: 7px;
+        color: #393531;
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 11px 12px;
+        border: 1px solid #cec7bc;
+        border-radius: 9px;
+        background: #ffffff;
+        color: var(--ink);
+      }
+
+      textarea {
+        min-height: 94px;
+        resize: vertical;
+      }
+
+      .checkbox {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+
+      .checkbox input {
+        width: auto;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 9px;
+        margin-top: 17px;
+      }
+
+      button,
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 41px;
+        padding: 10px 15px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--ink);
+        color: #ffffff;
+        font-weight: 750;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      button.secondary,
+      .button.secondary {
+        border: 1px solid var(--line);
+        background: #ffffff;
+        color: var(--ink);
+      }
+
+      button.accent {
+        background: var(--accent);
+      }
+
+      button.danger {
+        background: transparent;
+        color: var(--danger);
+        padding: 4px;
+        min-height: auto;
+      }
+
+      button:disabled {
+        cursor: wait;
+        opacity: 0.55;
+      }
+
+      .subscriber {
+        padding: 10px 0;
+        border-bottom: 1px solid #eeeae3;
+      }
+
+      .subscriber:last-child {
+        border-bottom: 0;
+      }
+
+      .subscriber strong,
+      .subscriber span {
+        display: block;
+      }
+
+      .subscriber span {
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+
+      .subscriber.unsubscribed {
+        opacity: 0.48;
+      }
+
+      .subscriber-form {
+        display: grid;
+        grid-template-columns: 1fr 1.3fr auto;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+
+      .editions {
+        padding: 24px;
+        border-top: 1px solid var(--line);
+        background: #fcfaf7;
+      }
+
+      .edition {
+        margin-top: 13px;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #ffffff;
+      }
+
+      .edition__top strong {
+        display: block;
+      }
+
+      .status {
+        display: inline-flex;
+        padding: 5px 9px;
+        border-radius: 999px;
+        background: #ece9e3;
+        font-size: 0.72rem;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .status.sent {
+        background: #e3f2e9;
+        color: #276240;
+      }
+
+      .status.failed {
+        background: #f7e4e1;
+        color: #8e3029;
+      }
+
+      details {
+        margin-top: 14px;
+      }
+
+      summary {
+        color: var(--accent);
+        font-weight: 750;
+        cursor: pointer;
+      }
+
+      iframe {
+        width: 100%;
+        height: 720px;
+        margin-top: 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: white;
+      }
+
+      .notice {
+        display: none;
+        position: fixed;
+        right: 22px;
+        bottom: 22px;
+        z-index: 500;
+        max-width: 420px;
+        padding: 14px 17px;
+        border-radius: 10px;
+        background: #181614;
+        color: white;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+      }
+
+      .notice.show {
+        display: block;
+      }
+
+      .notice.error {
+        background: #922f29;
+      }
+
+      .empty {
+        padding: 28px;
+        border: 1px dashed #cfc8bd;
+        border-radius: 14px;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      @media (max-width: 850px) {
+        .page {
+          padding: 28px 16px 70px;
+        }
+
+        .heading {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .site-filter {
+          min-width: 0;
+        }
+
+        .digest__body {
+          grid-template-columns: 1fr;
+        }
+
+        .digest__section + .digest__section {
+          border-left: 0;
+          border-top: 1px solid var(--line);
+        }
+
+        .grid,
+        .subscriber-form {
+          grid-template-columns: 1fr;
+        }
+
+        .wide {
+          grid-column: auto;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <AdminTopNav
+      active="digests"
+      siteId={requestedSiteId}
+      siteName={selectedSite?.site_name || selectedSite?.domain || ""}
+      city={selectedSite?.city || ""}
+    />
+
+    <main class="page">
+      <header class="heading">
+        <div>
+          <p class="eyebrow">Locus email</p>
+          <h1>Weekly digests</h1>
+          <p class="lede">
+            Turn live listing and market data into a useful weekly
+            email. Prepare it manually, require approval, or let
+            Locus send it automatically.
+          </p>
+        </div>
+
+        <label class="site-filter">
+          Website
+          <select
+            id="site-filter"
+            data-current={requestedSiteId}
+          >
+            <option value="">All websites</option>
+
+            {sites.map((site) => (
+              <option
+                value={site.id}
+                selected={site.id === requestedSiteId}
+              >
+                {site.site_name || site.domain || site.city}
+              </option>
+            ))}
+          </select>
+        </label>
+      </header>
+
+      {configsError && (
+        <div class="panel">
+          The digest tables are not available yet. Apply the
+          Supabase migration before using this page.
+        </div>
+      )}
+
+      <section class="panel">
+        <h2>Create a weekly digest</h2>
+
+        <form class="config-form" data-config-form>
+          <div class="grid">
+            <label>
+              Website
+              <select name="siteId" required>
+                <option value="">Choose website</option>
+
+                {sites.map((site) => (
+                  <option
+                    value={site.id}
+                    selected={site.id === requestedSiteId}
+                  >
+                    {site.site_name || site.domain || site.city}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Digest name
+              <input
+                name="name"
+                value="Weekly market update"
+                required
+              />
+            </label>
+
+            <label>
+              Primary city slug
+              <input
+                name="citySlug"
+                value={selectedSite?.city?.toLowerCase() || ""}
+                placeholder="nanaimo"
+                required
+              />
+            </label>
+
+            <label>
+              Market metrics name
+              <input
+                name="marketName"
+                value={selectedSite?.city || ""}
+                placeholder="Nanaimo"
+              />
+            </label>
+
+            <label class="wide">
+              Listing cities
+              <input
+                name="marketCities"
+                value={selectedSite?.city?.toLowerCase() || ""}
+                placeholder="nanaimo"
+              />
+              <span class="muted">
+                Comma separated. This supports grouped markets such
+                as Parksville and Nanoose Bay.
+              </span>
+            </label>
+
+            <label>
+              Sending mode
+              <select name="sendMode">
+                <option value="manual">
+                  Manual
+                </option>
+                <option value="approval">
+                  Prepare for approval
+                </option>
+                <option value="automatic">
+                  Automatic
+                </option>
+              </select>
+            </label>
+
+            <label>
+              Send day
+              <select name="sendDay">
+                {dayNames.map((day, index) => (
+                  <option
+                    value={index}
+                    selected={index === 1}
+                  >
+                    {day}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Send hour (UTC)
+              <input
+                type="number"
+                name="sendHourUtc"
+                min="0"
+                max="23"
+                value="16"
+              />
+            </label>
+
+            <label>
+              Maximum listings
+              <input
+                type="number"
+                name="maxListings"
+                min="1"
+                max="20"
+                value="6"
+              />
+            </label>
+
+            <label class="wide">
+              Email subject
+              <input
+                name="subjectTemplate"
+                value="{{market}} weekly real estate update"
+              />
+            </label>
+
+            <label class="wide">
+              Opening note
+              <textarea
+                name="introText"
+                placeholder="A short personal market note from the agent."
+              ></textarea>
+            </label>
+          </div>
+
+          <div class="actions">
+            <button type="submit">
+              Create digest
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {configs.length === 0 && !configsError && (
+        <div class="empty">
+          No weekly digests have been created yet.
+        </div>
+      )}
+
+      {configs.map((config) => {
+        const configSubscribers =
+          subscriberMap.get(config.id) || [];
+
+        const configRuns =
+          runMap.get(config.id) || [];
+
+        return (
+          <article class="digest">
+            <header class="digest__header">
+              <div class="digest__header-row">
+                <div>
+                  <h2>{config.name}</h2>
+                  <div class="digest__meta">
+                    {config.site?.site_name ||
+                      config.site?.domain}
+                    {" · "}
+                    {config.market_name ||
+                      config.city_slug}
+                    {" · "}
+                    Last sent:
+                    {" "}
+                    {formatDate(config.last_sent_at)}
+                  </div>
+                </div>
+
+                <span class="mode">
+                  {config.send_mode}
+                </span>
+              </div>
+            </header>
+
+            <div class="digest__body">
+              <section class="digest__section">
+                <h3>Settings</h3>
+
+                <form
+                  class="config-form"
+                  data-config-form
+                  data-id={config.id}
+                >
+                  <input
+                    type="hidden"
+                    name="siteId"
+                    value={config.site_id}
+                  />
+
+                  <div class="grid">
+                    <label>
+                      Digest name
+                      <input
+                        name="name"
+                        value={config.name}
+                        required
+                      />
+                    </label>
+
+                    <label>
+                      Sending mode
+                      <select name="sendMode">
+                        <option
+                          value="manual"
+                          selected={
+                            config.send_mode === "manual"
+                          }
+                        >
+                          Manual
+                        </option>
+
+                        <option
+                          value="approval"
+                          selected={
+                            config.send_mode === "approval"
+                          }
+                        >
+                          Prepare for approval
+                        </option>
+
+                        <option
+                          value="automatic"
+                          selected={
+                            config.send_mode === "automatic"
+                          }
+                        >
+                          Automatic
+                        </option>
+                      </select>
+                    </label>
+
+                    <label>
+                      Primary city slug
+                      <input
+                        name="citySlug"
+                        value={config.city_slug}
+                        required
+                      />
+                    </label>
+
+                    <label>
+                      Market metrics name
+                      <input
+                        name="marketName"
+                        value={config.market_name || ""}
+                      />
+                    </label>
+
+                    <label class="wide">
+                      Listing cities
+                      <input
+                        name="marketCities"
+                        value={csvCities(config)}
+                      />
+                    </label>
+
+                    <label>
+                      Send day
+                      <select name="sendDay">
+                        {dayNames.map((day, index) => (
+                          <option
+                            value={index}
+                            selected={
+                              Number(config.send_day) === index
+                            }
+                          >
+                            {day}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label>
+                      Send hour (UTC)
+                      <input
+                        type="number"
+                        name="sendHourUtc"
+                        min="0"
+                        max="23"
+                        value={config.send_hour_utc}
+                      />
+                    </label>
+
+                    <label>
+                      Maximum listings
+                      <input
+                        type="number"
+                        name="maxListings"
+                        min="1"
+                        max="20"
+                        value={config.max_listings}
+                      />
+                    </label>
+
+                    <label class="checkbox">
+                      <input
+                        type="checkbox"
+                        name="active"
+                        checked={config.active}
+                      />
+                      Active
+                    </label>
+
+                    <label class="wide">
+                      Email subject
+                      <input
+                        name="subjectTemplate"
+                        value={config.subject_template}
+                      />
+                    </label>
+
+                    <label class="wide">
+                      Opening note
+                      <textarea name="introText">{config.intro_text || ""}</textarea>
+                    </label>
+                  </div>
+
+                  <div class="actions">
+                    <button type="submit" class="secondary">
+                      Save settings
+                    </button>
+
+                    <button
+                      type="button"
+                      class="accent"
+                      data-generate={config.id}
+                    >
+                      Generate this week
+                    </button>
+                  </div>
+                </form>
+              </section>
+
+              <section class="digest__section">
+                <h3>
+                  Recipients ({configSubscribers.filter(
+                    (subscriber) =>
+                      subscriber.status === "subscribed"
+                  ).length})
+                </h3>
+
+                <form
+                  class="subscriber-form"
+                  data-subscriber-form
+                  data-config-id={config.id}
+                >
+                  <input
+                    name="name"
+                    placeholder="Name"
+                  />
+
+                  <input
+                    name="email"
+                    type="email"
+                    placeholder="Email address"
+                    required
+                  />
+
+                  <button type="submit">
+                    Add
+                  </button>
+                </form>
+
+                {configSubscribers.length === 0 && (
+                  <p class="muted">
+                    No recipients yet.
+                  </p>
+                )}
+
+                {configSubscribers.map((subscriber) => (
+                  <div
+                    class:list={[
+                      "subscriber",
+                      {
+                        unsubscribed:
+                          subscriber.status !== "subscribed",
+                      },
+                    ]}
+                  >
+                    <div>
+                      <strong>
+                        {subscriber.name || subscriber.email}
+                      </strong>
+
+                      <span>
+                        {subscriber.email}
+                        {" · "}
+                        {subscriber.status}
+                      </span>
+                    </div>
+
+                    {subscriber.status === "subscribed" && (
+                      <button
+                        type="button"
+                        class="danger"
+                        data-remove-subscriber={subscriber.id}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </section>
+            </div>
+
+            <section class="editions">
+              <h3>Weekly editions</h3>
+
+              {configRuns.length === 0 && (
+                <p class="muted">
+                  Generate the first edition to preview it.
+                </p>
+              )}
+
+              {configRuns.map((run) => (
+                <article class="edition">
+                  <div class="edition__top">
+                    <div>
+                      <strong>{run.subject}</strong>
+
+                      <div class="muted">
+                        {run.period_start}
+                        {" – "}
+                        {run.period_end}
+                        {" · "}
+                        Generated
+                        {" "}
+                        {formatDate(run.generated_at)}
+                      </div>
+                    </div>
+
+                    <span class:list={[
+                      "status",
+                      run.status,
+                    ]}>
+                      {run.status}
+                    </span>
+                  </div>
+
+                  {run.error_message && (
+                    <p class="muted">
+                      {run.error_message}
+                    </p>
+                  )}
+
+                  <div class="actions">
+                    {run.status !== "sent" && (
+                      <button
+                        type="button"
+                        data-send={run.id}
+                      >
+                        {config.send_mode === "approval"
+                          ? "Approve and send"
+                          : "Send now"}
+                      </button>
+                    )}
+                  </div>
+
+                  {run.preview_html && (
+                    <details>
+                      <summary>Preview email</summary>
+
+                      <iframe
+                        title={`Preview ${run.subject}`}
+                        srcdoc={run.preview_html}
+                      ></iframe>
+                    </details>
+                  )}
+                </article>
+              ))}
+            </section>
+          </article>
+        );
+      })}
+    </main>
+
+    <div id="notice" class="notice" role="status"></div>
+
+    <script>
+      const endpoint = "/api/admin/digests";
+      const notice =
+        document.getElementById("notice");
+
+      function showNotice(message, error = false) {
+        if (!notice) return;
+
+        notice.textContent = message;
+        notice.classList.toggle("error", error);
+        notice.classList.add("show");
+
+        window.setTimeout(() => {
+          notice.classList.remove("show");
+        }, 5000);
+      }
+
+      async function post(body) {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.ok) {
+          throw new Error(
+            result.error || "Digest action failed."
+          );
+        }
+
+        return result;
+      }
+
+      document
+        .getElementById("site-filter")
+        ?.addEventListener("change", (event) => {
+          const select = event.currentTarget;
+          const value = select.value;
+
+          window.location.href = value
+            ? `/admin/digests?site_id=${encodeURIComponent(
+                value
+              )}`
+            : "/admin/digests";
+        });
+
+      document
+        .querySelectorAll("[data-config-form]")
+        .forEach((form) => {
+          form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            const submitter =
+              event.submitter ||
+              form.querySelector(
+                'button[type="submit"]'
+              );
+
+            submitter?.setAttribute("disabled", "");
+
+            try {
+              const values = new FormData(form);
+
+              await post({
+                action: "save-config",
+                id: form.dataset.id || "",
+                siteId: values.get("siteId"),
+                name: values.get("name"),
+                citySlug: values.get("citySlug"),
+                marketName: values.get("marketName"),
+                marketCities:
+                  values.get("marketCities"),
+                sendMode: values.get("sendMode"),
+                sendDay: values.get("sendDay"),
+                sendHourUtc:
+                  values.get("sendHourUtc"),
+                maxListings:
+                  values.get("maxListings"),
+                subjectTemplate:
+                  values.get("subjectTemplate"),
+                introText: values.get("introText"),
+                active:
+                  values.get("active") !== null ||
+                  !form.dataset.id,
+              });
+
+              showNotice("Digest settings saved.");
+              window.location.reload();
+            } catch (error) {
+              showNotice(error.message, true);
+            } finally {
+              submitter?.removeAttribute("disabled");
+            }
+          });
+        });
+
+      document
+        .querySelectorAll("[data-subscriber-form]")
+        .forEach((form) => {
+          form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            const button =
+              form.querySelector("button");
+
+            button?.setAttribute("disabled", "");
+
+            try {
+              const values = new FormData(form);
+
+              await post({
+                action: "add-subscriber",
+                configId: form.dataset.configId,
+                name: values.get("name"),
+                email: values.get("email"),
+              });
+
+              showNotice("Recipient added.");
+              window.location.reload();
+            } catch (error) {
+              showNotice(error.message, true);
+            } finally {
+              button?.removeAttribute("disabled");
+            }
+          });
+        });
+
+      document
+        .querySelectorAll("[data-remove-subscriber]")
+        .forEach((button) => {
+          button.addEventListener("click", async () => {
+            button.setAttribute("disabled", "");
+
+            try {
+              await post({
+                action: "remove-subscriber",
+                subscriberId:
+                  button.dataset.removeSubscriber,
+              });
+
+              showNotice("Recipient removed.");
+              window.location.reload();
+            } catch (error) {
+              showNotice(error.message, true);
+              button.removeAttribute("disabled");
+            }
+          });
+        });
+
+      document
+        .querySelectorAll("[data-generate]")
+        .forEach((button) => {
+          button.addEventListener("click", async () => {
+            button.setAttribute("disabled", "");
+            button.textContent = "Generating…";
+
+            try {
+              await post({
+                action: "generate",
+                configId: button.dataset.generate,
+              });
+
+              showNotice("This week’s edition is ready.");
+              window.location.reload();
+            } catch (error) {
+              showNotice(error.message, true);
+              button.removeAttribute("disabled");
+              button.textContent = "Generate this week";
+            }
+          });
+        });
+
+      document
+        .querySelectorAll("[data-send]")
+        .forEach((button) => {
+          button.addEventListener("click", async () => {
+            const confirmed = window.confirm(
+              "Send this digest to all subscribed recipients?"
+            );
+
+            if (!confirmed) return;
+
+            const action =
+              button.textContent
+                .toLowerCase()
+                .includes("approve")
+                ? "approve-and-send"
+                : "send";
+
+            button.setAttribute("disabled", "");
+            button.textContent = "Sending…";
+
+            try {
+              await post({
+                action,
+                runId: button.dataset.send,
+              });
+
+              showNotice("Digest sent.");
+              window.location.reload();
+            } catch (error) {
+              showNotice(error.message, true);
+              button.removeAttribute("disabled");
+              button.textContent = "Send now";
+            }
+          });
+        });
+    </script>
+  </body>
+</html>
