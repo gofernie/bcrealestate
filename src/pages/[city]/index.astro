@@ -1568,6 +1568,30 @@ const homepageNeighbourhoodCount = new Set(
     )
 ).size;
 
+if (homepageAreaCards.length === 0) {
+  const fallbackAreaCounts = new Map<string, number>();
+
+  listings.forEach((listing: any) => {
+    const name = String(getListingArea(listing) || "")
+      .replace(/-/g, " ")
+      .trim()
+      .toLowerCase();
+
+    if (!name || name === "unknown") return;
+
+    fallbackAreaCounts.set(name, (fallbackAreaCounts.get(name) || 0) + 1);
+  });
+
+  homepageAreaCards = [...fallbackAreaCounts.entries()]
+    .map(([name, count]) => ({
+      name,
+      count,
+      href: `/${city || "nanaimo"}/${name.replace(/\s+/g, "-")}`,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+}
+
 const homepageNeighbourhoodImages = [
   "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=82",
   "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&w=900&q=82",
@@ -2442,28 +2466,31 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 
     <div class="locus-home-market__numbers">
 
-      <div>
+      <div class="locus-home-market__primary">
+        <span>AVAILABLE NOW</span>
         <strong>{listings.length.toLocaleString()}</strong>
-        <span>Active Listings</span>
+        <small>homes for sale in {cityName}</small>
       </div>
 
-      <div>
-        <strong>{homepageNewThisWeek.toLocaleString()}</strong>
-        <span>New This Week</span>
-      </div>
+      <div class="locus-home-market__support">
+        <div>
+          <strong>{homepageNewThisWeek.toLocaleString()}</strong>
+          <span>New this week</span>
+        </div>
 
-      <div>
-        <strong>
-          {homepageMedianPrice
-            ? `${Math.round(homepageMedianPrice / 1000).toLocaleString()}k`
-            : "-"}
-        </strong>
-        <span>Median Price</span>
-      </div>
+        <div>
+          <strong>
+            {homepageMedianPrice
+              ? `${Math.round(homepageMedianPrice / 1000).toLocaleString()}k`
+              : "-"}
+          </strong>
+          <span>Median price</span>
+        </div>
 
-      <div>
-        <strong>{homepageNeighbourhoodCount}</strong>
-        <span>Neighbourhoods</span>
+        <div>
+          <strong>{homepageNeighbourhoodCount}</strong>
+          <span>Neighbourhoods</span>
+        </div>
       </div>
 
     </div>
@@ -7931,35 +7958,71 @@ document.documentElement.style.visibility = "";
 
 .locus-home-market__numbers {
   display: grid;
-  grid-template-columns: repeat(4,1fr);
+  grid-template-columns: minmax(190px,.9fr) 1.3fr;
+  gap: 22px;
+  align-items: stretch;
 }
 
-.locus-home-market__numbers > div {
-  padding-right: 15px;
-  border-right: 1px solid var(--locus-line);
+.locus-home-market__primary {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 122px;
+  padding: 18px 20px;
+  border-radius: 12px;
+  background: var(--locus-green);
+  color: #fff;
 }
 
-.locus-home-market__numbers > div + div {
-  padding-left: 15px;
-}
-.locus-home-market__numbers > div:last-child {
-  border-right: 0;
+.locus-home-market__primary span {
+  font-size: .6rem;
+  font-weight: 850;
+  letter-spacing: .12em;
+  opacity: .78;
 }
 
-.locus-home-market__numbers strong,
-.locus-home-market__numbers span {
+.locus-home-market__primary strong {
+  display: block;
+  margin: 5px 0 2px;
+  color: #fff;
+  font-size: clamp(2.15rem,3vw,2.8rem);
+  line-height: .95;
+  letter-spacing: -.06em;
+}
+
+.locus-home-market__primary small {
+  font-size: .68rem;
+  font-weight: 650;
+  opacity: .86;
+}
+
+.locus-home-market__support {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  align-items: center;
+}
+
+.locus-home-market__support > div {
+  padding: 8px 14px;
+  border-left: 1px solid var(--locus-line);
+}
+
+.locus-home-market__support strong,
+.locus-home-market__support span {
   display: block;
 }
 
-.locus-home-market__numbers strong {
+.locus-home-market__support strong {
   color: var(--locus-ink);
-  font-size: 1.35rem;
+  font-size: 1.2rem;
+  letter-spacing: -.035em;
 }
 
-.locus-home-market__numbers span {
+.locus-home-market__support span {
   margin-top: 5px;
   color: var(--locus-muted);
-  font-size: .65rem;
+  font-size: .63rem;
+  line-height: 1.25;
 }
 
 .locus-home-market__intel {
@@ -8323,8 +8386,20 @@ document.documentElement.style.visibility = "";
   }
 
   .locus-home-market__numbers {
-    grid-template-columns: repeat(2,1fr);
-    gap: 22px 0;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .locus-home-market__primary {
+    min-height: 0;
+  }
+
+  .locus-home-market__support {
+    min-height: 80px;
+  }
+
+  .locus-home-market__support > div {
+    padding: 6px 10px;
   }
 
   .locus-home-market__intel {
