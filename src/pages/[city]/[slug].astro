@@ -84,10 +84,11 @@ const normalizedRouteCity = String(city)
   .toLowerCase();
 
 const cityDatabaseKeys = Array.from(
-  new Set([
-    normalizedRouteCity,
-    normalizedRouteCity.replace(/-/g, " "),
-  ])
+  new Set(
+    normalizedRouteCity === "comox"
+      ? ["comox", "courtenay", "cumberland", "black creek", "merville", "union bay", "fanny bay", "royston", "denman island"]
+      : [normalizedRouteCity, normalizedRouteCity.replace(/-/g, " ")]
+  )
 );
 const requestHostname = Astro.url.hostname
   .toLowerCase()
@@ -1201,8 +1202,27 @@ const { data: areaIntentPages = [] } = await areaIntentQuery
   .order("area", { ascending: true });
 logPhaseTiming("census amenities nav and area context");
 
+const pagePolygonGeojson = (() => {
+  const raw = page.polygon_geojson;
+
+  if (typeof raw !== "string") return raw;
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+})();
+
+const pagePolygonGeometry =
+  pagePolygonGeojson?.type === "Feature"
+    ? pagePolygonGeojson.geometry
+    : pagePolygonGeojson?.type === "FeatureCollection"
+      ? pagePolygonGeojson.features?.[0]?.geometry
+      : pagePolygonGeojson;
+
 const hasPolygonSearch =
-  Boolean(page.polygon_geojson?.coordinates?.[0]?.length);
+  Boolean(pagePolygonGeometry?.coordinates?.[0]?.length);
 
 const hasActiveSearchFilters =
   filterAreas.length > 0 ||
@@ -1747,7 +1767,7 @@ if (hasPolygonSearch) {
 
     return pointInPolygon(
       [lng, lat],
-      page.polygon_geojson
+      pagePolygonGeojson
     );
   });
 

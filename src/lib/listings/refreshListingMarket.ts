@@ -159,7 +159,19 @@ const OCEANSIDE_FETCH_CITIES = [
   "Bowser/Deep Bay"
 ];
 
+const COMOX_VALLEY_FETCH_CITIES = [
+  "Comox",
+  "Courtenay",
+  "Cumberland",
+  "Black Creek",
+  "Merville",
+  "Union Bay",
+  "Fanny Bay",
+  "Royston",
+  "Denman Island",
+];
 const CITY_FETCH_GROUPS: Record<string, string[]> = {
+  comox: COMOX_VALLEY_FETCH_CITIES,
   parksville: OCEANSIDE_FETCH_CITIES,
 
   "qualicum beach": OCEANSIDE_FETCH_CITIES,
