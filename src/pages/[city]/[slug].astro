@@ -12125,6 +12125,7 @@ const mapViewBtn = document.getElementById("map-view-btn");
 let leafletMap = null;
 let listingMarkers = [];
 let listingMarkerLayer = null;
+let listingsVisible = true;
 let markerClusterLoadPromise = null;
 
 function ensureMarkerCluster() {
@@ -12564,7 +12565,9 @@ function initLeafletMap(mode = "all") {
       listingMarkerLayer = L.layerGroup();
     }
 
-    listingMarkerLayer.addTo(leafletMap);
+    if (listingsVisible) {
+      listingMarkerLayer.addTo(leafletMap);
+    }
 
     amenityMarkers.forEach((marker) => marker.remove());
     amenityMarkers = [];
@@ -13157,31 +13160,53 @@ document.querySelectorAll("[data-nearby-target]").forEach((card) => {
 window.__initRefinedLeafletMap = initRefinedLeafletMap;
 window.__initLeafletMap = initLeafletMap;
 
-document.getElementById("toggle-listings-btn")?.addEventListener("click", function() {
-  const visible = this.dataset.listingsVisible === "true";
-  if (visible) {
-listingMarkers.forEach((m) => {
-  m.setOpacity(0);
-  m.getElement()?.style.setProperty("pointer-events", "none");
-});
-    this.innerHTML = "Show listings";
-    this.dataset.listingsVisible = "false";
-this.classList.add("active");
-  } else {
-   listingMarkers.forEach((m) => {
-  m.setOpacity(1);
-  m.getElement()?.style.setProperty("pointer-events", "auto");
+document.querySelectorAll(".area-census-snapshot__stat").forEach((stat) => {
+  const label = stat.querySelector("span")?.textContent?.trim();
 
-  if (m.options?.listing) {
-    m.on("click", () => {
-      window.open(m.options.listing.url, "_blank");
-    });
-  }
+  if (label !== "Current market") return;
+
+  stat.style.cursor = "pointer";
+  stat.setAttribute("role", "link");
+  stat.setAttribute("tabindex", "0");
+  stat.setAttribute("aria-label", "Open market intelligence");
+
+  const openMarketIntel = () => {
+    const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
+    window.location.href = `/${encodeURIComponent(city)}/market-intelligence`;
+  };
+
+  stat.addEventListener("click", openMarketIntel);
+  stat.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openMarketIntel();
+    }
+  });
 });
-    this.innerHTML = "Hide listings";
-    this.dataset.listingsVisible = "true";
-    this.classList.remove("active");
+
+document.getElementById("toggle-listings-btn")?.addEventListener("click", function() {
+  listingsVisible = !listingsVisible;
+
+  if (!listingsVisible) {
+    leafletMap?.closePopup();
+
+    if (listingMarkerLayer && leafletMap?.hasLayer(listingMarkerLayer)) {
+      leafletMap.removeLayer(listingMarkerLayer);
+    }
+
+    this.textContent = "Show listings";
+    this.dataset.listingsVisible = "false";
+    this.classList.add("active");
+    return;
   }
+
+  if (listingMarkerLayer && leafletMap && !leafletMap.hasLayer(listingMarkerLayer)) {
+    listingMarkerLayer.addTo(leafletMap);
+  }
+
+  this.textContent = "Hide listings";
+  this.dataset.listingsVisible = "true";
+  this.classList.remove("active");
 });
 </script>
 
