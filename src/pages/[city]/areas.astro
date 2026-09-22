@@ -102,7 +102,7 @@ const site = await getSite(Astro.url.hostname, city);
 const { data: listings = [], error: listingsError } =
   await supabase
     .from("listing_rows")
-    .select("normalized_area")
+    .select("lat, lng")
     .in("normalized_city", cityDatabaseKeys)
     .eq("status", "A");
 
@@ -117,7 +117,8 @@ const { data: areaRows = [], error: areasError } =
       area_slug,
       area_name,
       short_description,
-      hero_image_url
+      hero_image_url,
+      polygon_geojson
     `)
     .ilike("city", city);
 
@@ -142,12 +143,52 @@ const titleCase = (value) =>
     .trim()
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
-const areaCountMap = listings.reduce((result, listing) => {
-  const slug = areaToSlug(listing.normalized_area);
+function pointInRing(point, ring) {
+  const [x, y] = point;
+  let inside = false;
 
-  if (slug) {
-    result[slug] = Number(result[slug] || 0) + 1;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = Number(ring[i][0]);
+    const yi = Number(ring[i][1]);
+    const xj = Number(ring[j][0]);
+    const yj = Number(ring[j][1]);
+
+    if (
+      yi > y !== yj > y &&
+      x < ((xj - xi) * (y - yi)) / (yj - yi) + xi
+    ) inside = !inside;
   }
+
+  return inside;
+}
+
+function polygonContainsPoint(geojson, lat, lng) {
+  if (!geojson || !Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+
+  const geometry = geojson.type === "Feature" ? geojson.geometry : geojson;
+  const point = [lng, lat];
+
+  const containsPolygon = (polygon) =>
+    Array.isArray(polygon?.[0]) &&
+    pointInRing(point, polygon[0]) &&
+    !polygon.slice(1).some((ring) => pointInRing(point, ring));
+
+  if (geometry?.type === "Polygon") return containsPolygon(geometry.coordinates);
+  if (geometry?.type === "MultiPolygon") return geometry.coordinates.some(containsPolygon);
+
+  return false;
+}
+
+const areaCountMap = areaRows.reduce((result, row) => {
+  const slug = areaToSlug(row.area_slug || row.area_name);
+
+  result[slug] = listings.filter((listing) =>
+    polygonContainsPoint(
+      row.polygon_geojson,
+      Number(listing.lat),
+      Number(listing.lng)
+    )
+  ).length;
 
   return result;
 }, {});
