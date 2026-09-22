@@ -524,122 +524,189 @@ const sitesJson = JSON.stringify(sites);
 
       // ── build polygon from selected lines ────────────────────────
       function buildPolygonFromSelectedLines() {
-        if (!selectedLineLayers.length) { setStatus("Select boundary segments first."); return; }
-        if (activeLayer) { map.removeLayer(activeLayer); activeLayer = null; }
+        if (!selectedLineLayers.length) {
+          setStatus("Select boundary lines first.");
+          return;
+        }
 
-        const segments = selectedLineLayers.map(line => {
-          const pts = line.getLatLngs();
-          return [{ lat: pts[0].lat, lng: pts[0].lng }, { lat: pts[1].lat, lng: pts[1].lng }];
-        });
+        if (activeLayer) {
+          map.removeLayer(activeLayer);
+          activeLayer = null;
+        }
 
-        function key(p) { return `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`; }
+        const paths = selectedLineLayers
+          .map((line) =>
+            line.getLatLngs().map((point) => ({
+              lat: point.lat,
+              lng: point.lng,
+            }))
+          )
+          .filter((path) => path.length >= 2);
 
-        const used = new Set();
-        const points = [...segments[0]];
-        used.add(0);
+        if (!paths.length) {
+          setStatus("No usable boundary lines were selected.");
+          return;
+        }
+
+        function key(point) {
+          return `${point.lat.toFixed(6)},${point.lng.toFixed(6)}`;
+        }
+
+        const used = new Set([0]);
+        const points = [...paths[0]];
         let changed = true;
 
         while (changed) {
           changed = false;
-          for (let i = 0; i < segments.length; i++) {
+
+          for (let i = 1; i < paths.length; i++) {
             if (used.has(i)) continue;
-            const [a, b] = segments[i];
-            const first = points[0], last = points[points.length - 1];
-            if      (key(a) === key(last))  { points.push(b);    used.add(i); changed = true; }
-            else if (key(b) === key(last))  { points.push(a);    used.add(i); changed = true; }
-            else if (key(b) === key(first)) { points.unshift(a); used.add(i); changed = true; }
-            else if (key(a) === key(first)) { points.unshift(b); used.add(i); changed = true; }
+
+            const path = paths[i];
+            const first = points[0];
+            const last = points[points.length - 1];
+            const start = path[0];
+            const end = path[path.length - 1];
+
+            if (key(start) === key(last)) {
+              points.push(...path.slice(1));
+            } else if (key(end) === key(last)) {
+              points.push(...path.slice(0, -1).reverse());
+            } else if (key(end) === key(first)) {
+              points.unshift(...path.slice(0, -1));
+            } else if (key(start) === key(first)) {
+              points.unshift(...path.slice(1).reverse());
+            } else {
+              continue;
+            }
+
+            used.add(i);
+            changed = true;
           }
         }
 
-        if (points.length < 3) { setStatus("Need at least 3 connected segments."); return; }
+        if (points.length < 3) {
+          setStatus("Need at least 3 connected boundary points.");
+          return;
+        }
 
-        const latlngs = points.map(p => [p.lat, p.lng]);
-        activeLayer = L.polygon(latlngs, { color: "#2563eb", weight: 3, fillOpacity: 0.15 }).addTo(map);
+        const latlngs = points.map((point) => [point.lat, point.lng]);
+        activeLayer = L.polygon(latlngs, {
+          color: "#2563eb",
+          weight: 3,
+          fillOpacity: 0.15,
+        }).addTo(map);
 
         const bounds = L.latLngBounds(latlngs);
-        map.fitBounds(bounds, { padding: [40, 40] });
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40] });
 
-        setStatus(`Path built from ${used.size} segment(s). Save Boundary when ready.`);
+        setStatus(`Path built from ${used.size} KML piece(s). Save Boundary when ready.`);
       }
 
       async function importKmlBoundaries(file) {
         if (!file) return;
 
         try {
-          setStatus("Reading KML…");
-          const xml = new DOMParser().parseFromString(await file.text(), "application/xml");
-          if (xml.querySelector("parsererror")) throw new Error("That file is not valid KML.");
+          const selectedSlug = String(areaSelect.value || "").trim().toLowerCase();
 
-          const features = Array.from(xml.getElementsByTagName("Placemark"))
+          if (!selectedSlug) {
+            throw new Error("Choose the area you want to trace before importing the KML.");
+          }
+
+          setStatus("Reading KML…");
+
+          const xml = new DOMParser().parseFromString(
+            await file.text(),
+            "application/xml"
+          );
+
+          if (xml.querySelector("parsererror")) {
+            throw new Error("That file is not valid KML.");
+          }
+
+          const pieces = Array.from(xml.getElementsByTagName("Placemark"))
             .map((placemark) => {
               const nameNode = Array.from(placemark.children)
                 .find((child) => child.localName === "name");
+
               const line = placemark.getElementsByTagName("LineString")[0];
               const coordsNode = line?.getElementsByTagName("coordinates")[0];
               const areaName = String(nameNode?.textContent || "").trim();
+
               if (!areaName || !coordsNode) return null;
 
-              const ring = String(coordsNode.textContent || "")
+              const coords = String(coordsNode.textContent || "")
                 .trim()
                 .split(/\s+/)
                 .map((value) => value.split(","))
-                .map(([lng, lat]) => [Number(lng), Number(lat)])
-                .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat));
+                .map(([lng, lat]) => [Number(lat), Number(lng)])
+                .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
 
-              if (ring.length < 3) return null;
-              const first = ring[0];
-              const last = ring[ring.length - 1];
-              if (first[0] !== last[0] || first[1] !== last[1]) ring.push([...first]);
+              if (coords.length < 2) return null;
 
               return {
-                area_name: areaName,
-                area_slug: slugify(areaName),
-                ring,
+                areaName,
+                areaSlug: slugify(areaName),
+                coords,
               };
             })
-            .filter(Boolean);
+            .filter(Boolean)
+            .filter((piece) => piece.areaSlug === selectedSlug);
 
-          if (!features.length) throw new Error("No boundary lines were found.");
-
-          const city = String(citySelect.value || "").toLowerCase();
-          if (!city || !siteSelect.value) throw new Error("Choose the Duncan site and city first.");
-
-          let saved = 0;
-          for (const feature of features) {
-            setStatus(`Importing ${feature.area_name} (${saved + 1} of ${features.length})…`);
-
-            const bounds = L.latLngBounds(feature.ring.map(([lng, lat]) => [lat, lng]));
-            const center = bounds.getCenter();
-
-            const res = await fetch("/api/admin/area-boundary", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                site_id: siteSelect.value,
-                city,
-                area_slug: feature.area_slug,
-                area_name: feature.area_name,
-                polygon_geojson: { type: "Polygon", coordinates: [feature.ring] },
-                center_lat: center.lat,
-                center_lng: center.lng,
-              }),
-            });
-
-            const result = await res.json();
-            if (!res.ok || !result.ok) {
-              throw new Error(`${feature.area_name}: ${result.error || "save failed"}`);
-            }
-
-            if (!areasByCity[city]) areasByCity[city] = [];
-            if (!areasByCity[city].includes(feature.area_name)) {
-              areasByCity[city].push(feature.area_name);
-            }
-            saved += 1;
+          if (!pieces.length) {
+            throw new Error("No KML lines matched the selected area.");
           }
 
-          refreshAreas();
-          setStatus(`Imported ${saved} editable area boundaries.`);
+          clearActiveLayer({ quiet: true });
+
+          importedLineLayers.forEach((line) => map.removeLayer(line));
+          importedLineLayers = [];
+          selectedLineLayers = [];
+
+          pieces.forEach((piece) => {
+            const line = L.polyline(piece.coords, {
+              color: "#cc4444",
+              weight: 3,
+              opacity: 0.8,
+            }).addTo(map);
+
+            line.__selected = false;
+
+            line.on("click", () => {
+              line.__selected = !line.__selected;
+
+              line.setStyle(
+                line.__selected
+                  ? { color: "#2563eb", weight: 5, opacity: 1 }
+                  : { color: "#cc4444", weight: 3, opacity: 0.8 }
+              );
+
+              if (line.__selected) {
+                selectedLineLayers.push(line);
+              } else {
+                selectedLineLayers = selectedLineLayers.filter(
+                  (item) => item !== line
+                );
+              }
+
+              setStatus(`${selectedLineLayers.length} KML piece(s) selected.`);
+            });
+
+            importedLineLayers.push(line);
+          });
+
+          const allPoints = pieces.flatMap((piece) => piece.coords);
+          const bounds = L.latLngBounds(allPoints);
+
+          if (bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [40, 40] });
+          }
+
+          const option = areaSelect.options[areaSelect.selectedIndex];
+
+          setStatus(
+            `Loaded ${pieces.length} KML piece(s) for ${option?.textContent || "this area"}. Click the red piece(s), then Build Path. Nothing has been saved yet.`
+          );
         } catch (error) {
           setStatus(`KML import failed: ${error?.message || "Unknown error"}`);
         } finally {
