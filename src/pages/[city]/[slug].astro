@@ -12359,8 +12359,6 @@ function buildListingPopup(card) {
         <button
           type="button"
           data-map-listing-id="${listingId}"
-          onclick="event.preventDefault();event.stopPropagation();window.openSheet?.(window.__mapListingCards?.[this.dataset.mapListingId]);"
-          ontouchend="event.preventDefault();event.stopPropagation();window.openSheet?.(window.__mapListingCards?.[this.dataset.mapListingId]);"
           style="
             display:inline-flex;
             align-items:center;
@@ -12622,36 +12620,21 @@ function initLeafletMap(mode = "all") {
 
       marker.bindPopup(popup);
 
-      marker.on("popupopen", () => {
-        const action = marker
-          .getPopup()
-          ?.getElement()
+      marker.on("popupopen", (event) => {
+        const button = event.popup
+          .getElement()
           ?.querySelector("[data-map-listing-id]");
 
-        if (
-          !(action instanceof HTMLElement) ||
-          action.dataset.mapModalBound === "true"
-        ) {
-          return;
-        }
-
-        action.dataset.mapModalBound = "true";
-
-        const openListing = (event) => {
-          event.preventDefault();
-          event.stopImmediatePropagation();
+        button?.addEventListener("click", (clickEvent) => {
+          clickEvent.preventDefault();
+          clickEvent.stopPropagation();
 
           if (typeof window.openSheet === "function") {
+            leafletMap?.closePopup();
             window.openSheet(card);
-          } else {
-            card.click();
           }
-        };
-
-        action.addEventListener("click", openListing);
-        action.addEventListener("touchend", openListing);
+        });
       });
-
 
       marker.setOpacity(1);
       marker.getElement()?.style.setProperty("pointer-events", "auto");
