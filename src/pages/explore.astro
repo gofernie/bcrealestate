@@ -14,6 +14,16 @@ const supabase = createClient(
 const city = Astro.url.searchParams.get("city") || "nanaimo";
 const area = Astro.url.searchParams.get("area") || "";
 
+const cityDatabaseKeys =
+  String(city).trim().toLowerCase() === "comox"
+    ? ["comox", "courtenay", "cumberland", "black creek", "merville", "union bay", "fanny bay", "royston", "denman island"]
+    : Array.from(
+        new Set([
+          String(city).trim().toLowerCase(),
+          String(city).trim().toLowerCase().replace(/-/g, " "),
+        ])
+      );
+
 const site = await getSite(Astro.url.hostname, city);
 const accentColor = site?.accent_color || "#2f6f73";
 const { data: boundaryRow } = area
@@ -41,7 +51,7 @@ let query = supabase
   .from("listing_rows")
   .select("*")
   .eq("status", "A")
-  .eq("normalized_city", city)
+  .in("normalized_city", cityDatabaseKeys)
   .order("listed_at", { ascending: false });
 
 
