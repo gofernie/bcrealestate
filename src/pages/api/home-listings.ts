@@ -109,6 +109,46 @@ const normalizeListing = (listing: any) => {
   };
 };
 
+function pointInRing(point: [number, number], ring: any[]) {
+  const [x, y] = point;
+  let inside = false;
+
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = Number(ring[i][0]);
+    const yi = Number(ring[i][1]);
+    const xj = Number(ring[j][0]);
+    const yj = Number(ring[j][1]);
+
+    const intersects =
+      yi > y !== yj > y &&
+      x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+
+    if (intersects) inside = !inside;
+  }
+
+  return inside;
+}
+
+function polygonContainsPoint(geojson: any, lat: number, lng: number) {
+  if (!geojson || !Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+
+  const geometry = geojson.type === "Feature" ? geojson.geometry : geojson;
+  if (!geometry) return false;
+
+  const point: [number, number] = [lng, lat];
+
+  if (geometry.type === "Polygon") {
+    return geometry.coordinates.some((ring: any[]) => pointInRing(point, ring));
+  }
+
+  if (geometry.type === "MultiPolygon") {
+    return geometry.coordinates.some((polygon: any[]) =>
+      polygon.some((ring: any[]) => pointInRing(point, ring))
+    );
+  }
+
+  return false;
+}
 export const GET: APIRoute = async ({ request }) => {
   const url = new URL(request.url);
   const city = String(url.searchParams.get("city") || "nanaimo").trim().toLowerCase();
@@ -170,6 +210,34 @@ export const GET: APIRoute = async ({ request }) => {
     });
   }
 
+  const requestedAreaSlugs = Array.from(
+    new Set(
+      [...areas, ...(area ? [area] : [])]
+        .map((value) =>
+          String(value || "")
+            .trim()
+            .toLowerCase()
+            .replace(/[\s-]+/g, "-")
+        )
+        .filter(Boolean)
+    )
+  );
+
+  let selectedAreaBoundaries: any[] = [];
+
+  if (requestedAreaSlugs.length) {
+    const { data: boundaryRows, error: boundaryError } = await supabase
+      .from("area_boundaries")
+      .select("area_slug, polygon_geojson")
+      .eq("city", city)
+      .in("area_slug", requestedAreaSlugs);
+
+    if (boundaryError) {
+      console.error("Area boundary lookup failed:", boundaryError);
+    } else {
+      selectedAreaBoundaries = boundaryRows || [];
+    }
+  }
   let listings = (data || []).map(normalizeListing).filter((listing) => {
     // Classify from structured type fields only. Marketing remarks
     // commonly mention offices, businesses, or nearby retail.
@@ -178,8 +246,22 @@ export const GET: APIRoute = async ({ request }) => {
     const commercial = /\b(lease|commercial|business|industrial|retail|office)\b/i.test(searchable);
     if (commercial || (listing.rawPrice > 0 && listing.rawPrice < 50000)) return false;
     if (id && listing.id !== id && listing.mls !== id) return false;
-    if (areas.length && !areas.some((value) => String(listing.area).toLowerCase().includes(value))) return false;
-    if (!areas.length && area && !String(listing.area).toLowerCase().includes(area)) return false;
+    if (selectedAreaBoundaries.length) {
+      const lat = Number(listing.lat);
+      const lng = Number(listing.lng);
+
+      if (
+        !selectedAreaBoundaries.some((boundary) =>
+          polygonContainsPoint(boundary.polygon_geojson, lat, lng)
+        )
+      ) {
+        return false;
+      }
+    } else {
+      // Keeps existing searches working until a drawn/imported boundary exists.
+      if (areas.length && !areas.some((value) => String(listing.area).toLowerCase().includes(value))) return false;
+      if (!areas.length && area && !String(listing.area).toLowerCase().includes(area)) return false;
+    }
     if (type) {
       const listingType = listing.type;
 
