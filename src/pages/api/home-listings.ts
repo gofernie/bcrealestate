@@ -152,6 +152,10 @@ function polygonContainsPoint(geojson: any, lat: number, lng: number) {
 export const GET: APIRoute = async ({ request }) => {
   const url = new URL(request.url);
   const city = String(url.searchParams.get("city") || "nanaimo").trim().toLowerCase();
+  const cityDatabaseKeys =
+    city === "comox"
+      ? ["comox", "courtenay", "black creek", "denman island", "union bay", "cumberland"]
+      : Array.from(new Set([city, city.replace(/-/g, " ")]));
   const id = String(url.searchParams.get("id") || "").trim();
   const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
   const limit = Math.min(48, Math.max(1, Number(url.searchParams.get("limit") || 24)));
@@ -198,7 +202,7 @@ export const GET: APIRoute = async ({ request }) => {
     .from("listing_rows")
     .select("*")
     .eq("status", "A")
-    .eq("normalized_city", city)
+    .in("normalized_city", cityDatabaseKeys)
     .limit(1000);
 
   const { data, error } = await query;
