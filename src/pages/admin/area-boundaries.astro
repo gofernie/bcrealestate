@@ -311,6 +311,8 @@ const sitesJson = JSON.stringify(sites);
               <button type="button" id="buildPolygonBtn">Build Path</button>
               <button type="button" class="danger" id="clearBtn">Clear</button>
               <button type="button" class="primary" id="saveBtn">Save Boundary</button>
+              <button type="button" id="importKmlBtn">Import KML</button>
+              <input id="kmlImportInput" type="file" accept=".kml,application/vnd.google-earth.kml+xml" hidden />
             </div>
           </div>
 
@@ -337,6 +339,8 @@ const sitesJson = JSON.stringify(sites);
       const clearBtn = document.getElementById("clearBtn");
       const saveBtn = document.getElementById("saveBtn");
       const statusEl = document.getElementById("status");
+      const importKmlBtn = document.getElementById("importKmlBtn");
+      const kmlImportInput = document.getElementById("kmlImportInput");
 
       let map = null;
       let drawnItems = null;
@@ -559,6 +563,89 @@ const sitesJson = JSON.stringify(sites);
         setStatus(`Path built from ${used.size} segment(s). Save Boundary when ready.`);
       }
 
+      async function importKmlBoundaries(file) {
+        if (!file) return;
+
+        try {
+          setStatus("Reading KML…");
+          const xml = new DOMParser().parseFromString(await file.text(), "application/xml");
+          if (xml.querySelector("parsererror")) throw new Error("That file is not valid KML.");
+
+          const features = Array.from(xml.getElementsByTagName("Placemark"))
+            .map((placemark) => {
+              const nameNode = Array.from(placemark.children)
+                .find((child) => child.localName === "name");
+              const line = placemark.getElementsByTagName("LineString")[0];
+              const coordsNode = line?.getElementsByTagName("coordinates")[0];
+              const areaName = String(nameNode?.textContent || "").trim();
+              if (!areaName || !coordsNode) return null;
+
+              const ring = String(coordsNode.textContent || "")
+                .trim()
+                .split(/\s+/)
+                .map((value) => value.split(","))
+                .map(([lng, lat]) => [Number(lng), Number(lat)])
+                .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat));
+
+              if (ring.length < 3) return null;
+              const first = ring[0];
+              const last = ring[ring.length - 1];
+              if (first[0] !== last[0] || first[1] !== last[1]) ring.push([...first]);
+
+              return {
+                area_name: areaName,
+                area_slug: slugify(areaName),
+                ring,
+              };
+            })
+            .filter(Boolean);
+
+          if (!features.length) throw new Error("No boundary lines were found.");
+
+          const city = String(citySelect.value || "").toLowerCase();
+          if (!city || !siteSelect.value) throw new Error("Choose the Duncan site and city first.");
+
+          let saved = 0;
+          for (const feature of features) {
+            setStatus(`Importing ${feature.area_name} (${saved + 1} of ${features.length})…`);
+
+            const bounds = L.latLngBounds(feature.ring.map(([lng, lat]) => [lat, lng]));
+            const center = bounds.getCenter();
+
+            const res = await fetch("/api/admin/area-boundary", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                site_id: siteSelect.value,
+                city,
+                area_slug: feature.area_slug,
+                area_name: feature.area_name,
+                polygon_geojson: { type: "Polygon", coordinates: [feature.ring] },
+                center_lat: center.lat,
+                center_lng: center.lng,
+              }),
+            });
+
+            const result = await res.json();
+            if (!res.ok || !result.ok) {
+              throw new Error(`${feature.area_name}: ${result.error || "save failed"}`);
+            }
+
+            if (!areasByCity[city]) areasByCity[city] = [];
+            if (!areasByCity[city].includes(feature.area_name)) {
+              areasByCity[city].push(feature.area_name);
+            }
+            saved += 1;
+          }
+
+          refreshAreas();
+          setStatus(`Imported ${saved} editable area boundaries.`);
+        } catch (error) {
+          setStatus(`KML import failed: ${error?.message || "Unknown error"}`);
+        } finally {
+          kmlImportInput.value = "";
+        }
+      }
       // ── load existing boundary ───────────────────────────────────
       async function loadBoundary() {
         if (!map || !areaSelect.value) return;
@@ -675,6 +762,10 @@ const sitesJson = JSON.stringify(sites);
       clearBtn?.addEventListener("click", () => { setActiveAction("clear"); clearActiveLayer(); importedLineLayers.forEach(l => map.removeLayer(l)); importedLineLayers = []; selectedLineLayers = []; map.getContainer().style.cursor = ""; });
       document.getElementById("loadLinesBtn")?.addEventListener("click", loadImportedLines);
       document.getElementById("buildPolygonBtn")?.addEventListener("click", buildPolygonFromSelectedLines);
+      importKmlBtn?.addEventListener("click", () => kmlImportInput?.click());
+      kmlImportInput?.addEventListener("change", async () => {
+        await importKmlBoundaries(kmlImportInput.files?.[0]);
+      });
       saveBtn?.addEventListener("click", saveBoundary);
     </script>
   </body>
