@@ -6669,6 +6669,29 @@ function showMoreCards() {
     }
 
     document.getElementById("home-load-more")?.addEventListener("click", showMoreCards);
+
+    // Capture this action before desktop overlays or later handlers can intercept it.
+    if (!window.__homeLoadMoreCaptureBound) {
+      window.__homeLoadMoreCaptureBound = true;
+
+      document.addEventListener(
+        "click",
+        (event) => {
+          const target = event.target;
+          const button =
+            target instanceof Element
+              ? target.closest("#home-load-more")
+              : null;
+
+          if (!button || homeLoading) return;
+
+          event.preventDefault();
+          event.stopPropagation();
+          fetchHomeListings({ append: true, resetVisible: false });
+        },
+        true
+      );
+    }
     updateLoadMoreBtn();
 
    async function fetchHomeListings({ resetVisible = true, append = false } = {}) {
@@ -10047,4 +10070,26 @@ intro h2,
     min-height: 650px !important;
   }
 }
-</style>
+
+/* Keep listing-card rows aligned when brokerage names wrap. */
+#home-listings-grid {
+  align-items: stretch;
+}
+
+#home-listings-grid > .card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+#home-listings-grid > .card .card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 166px;
+}
+
+#home-listings-grid > .card .card-brokerage {
+  min-height: 37px;
+  margin-top: auto;
+}</style>
