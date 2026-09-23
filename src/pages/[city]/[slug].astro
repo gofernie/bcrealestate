@@ -1479,60 +1479,50 @@ if (filterWaterfrontType === "any") {
   query = query.eq("waterfront_type", filterWaterfrontType);
 }
 
-switch (filterPrice) {
-  case "under-300":
-    query = query.lt("price", 300000);
-    break;
-
-  case "300-450":
-    query = query.gte("price", 300000).lt("price", 450000);
-    break;
-
-  case "under-450":
-    query = query.lt("price", 450000);
-    break;
-
-  case "450-650":
-    query = query.gte("price", 450000).lt("price", 650000);
-    break;
-
-  case "650-850":
-    query = query.gte("price", 650000).lt("price", 850000);
-    break;
-
-  case "850-1100":
-    query = query.gte("price", 850000).lt("price", 1100000);
-    break;
-
-  case "1100-plus":
-    query = query.gte("price", 1100000);
-    break;
-
-  case "650-plus":
-    query = query.gte("price", 650000);
-    break;
-}
-const dynamicUnderPriceMatch =
+const priceUnderMatch =
   String(filterPrice || "").match(
     /^under-(\d+)$/
   );
 
-const dynamicOverPriceMatch =
+const priceRangeMatch =
+  String(filterPrice || "").match(
+    /^(\d+)-(\d+)$/
+  );
+
+const pricePlusMatch =
+  String(filterPrice || "").match(
+    /^(\d+)-plus$/
+  );
+
+const priceOverMatch =
   String(filterPrice || "").match(
     /^over-(\d+)$/
   );
 
-if (dynamicUnderPriceMatch) {
+if (priceUnderMatch) {
   query = query.lte(
     "price",
-    Number(dynamicUnderPriceMatch[1]) * 1000
+    Number(priceUnderMatch[1]) * 1000
   );
-}
-
-if (dynamicOverPriceMatch) {
+} else if (priceRangeMatch) {
+  query = query
+    .gte(
+      "price",
+      Number(priceRangeMatch[1]) * 1000
+    )
+    .lt(
+      "price",
+      Number(priceRangeMatch[2]) * 1000
+    );
+} else if (pricePlusMatch) {
   query = query.gte(
     "price",
-    Number(dynamicOverPriceMatch[1]) * 1000
+    Number(pricePlusMatch[1]) * 1000
+  );
+} else if (priceOverMatch) {
+  query = query.gte(
+    "price",
+    Number(priceOverMatch[1]) * 1000
   );
 }
 
@@ -17502,7 +17492,7 @@ document.addEventListener("click", (event) => {
 
 
 <script is:inline>
-/* Inventory-aware pricing for type and neighbourhood pages */
+/* inventory-aware-price-bands-v2 */
 (() => {
   const priceSelect =
     document.querySelector(".price-filter-select");
@@ -17519,15 +17509,6 @@ document.addEventListener("click", (event) => {
 
   priceSelect.dataset.inventoryPricingReady = "true";
 
-  const fallbackBands = {
-    all: [500000, 700000, 900000, 1200000],
-    house: [500000, 750000, 1000000, 1500000],
-    condo: [200000, 300000, 400000, 500000],
-    townhouse: [300000, 450000, 600000, 750000],
-    mobile: [100000, 200000, 300000, 400000],
-    land: [200000, 400000, 700000, 1000000],
-  };
-
   const normalizeType = (value) => {
     const normalized = String(value || "")
       .trim()
@@ -17536,84 +17517,37 @@ document.addEventListener("click", (event) => {
 
     const aliases = {
       all: "all",
-      homes: "house",
       home: "house",
+      homes: "house",
       houses: "house",
+      condo: "condo",
       condos: "condo",
       apartment: "condo",
       apartments: "condo",
-      townhomes: "townhouse",
       townhome: "townhouse",
+      townhomes: "townhouse",
       "mobile-home": "mobile",
       "mobile-homes": "mobile",
-      lots: "land",
       lot: "land",
+      lots: "land",
     };
 
     return aliases[normalized] || normalized || "all";
   };
 
-  const getActiveInventoryType = () => {
+  const getActiveType = () => {
     if (typeSelect instanceof HTMLSelectElement) {
       return normalizeType(typeSelect.value);
     }
 
-    const fixedTypeLabel = String(
+    return normalizeType(
       document
         .getElementById("dynamic-results-heading")
-        ?.dataset.fixedTypeLabel || ""
-    ).trim();
-
-    return normalizeType(
-      fixedTypeLabel || "all"
-    );
-  };
-  const percentile = (prices, amount) => {
-    if (!prices.length) return 0;
-
-    const index = Math.min(
-      prices.length - 1,
-      Math.max(
-        0,
-        Math.round((prices.length - 1) * amount)
-      )
-    );
-
-    return prices[index];
-  };
-
-  const roundMarketPrice = (price) => {
-    const increment =
-      price < 600000
-        ? 50000
-        : price < 1500000
-        ? 100000
-        : price < 4000000
-        ? 250000
-        : 500000;
-
-    return Math.max(
-      increment,
-      Math.round(price / increment) * increment
+        ?.dataset.fixedTypeLabel || "all"
     );
   };
 
-  const formatBandPrice = (price) => {
-    if (price >= 1000000) {
-      const millions = price / 1000000;
-
-      return `$${Number.isInteger(millions)
-        ? millions.toFixed(0)
-        : millions.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")
-      }M`;
-    }
-
-    return `$${Math.round(price / 1000)}k`;
-  };
-
-  const getInventoryPrices = () => {
-    const inventoryType = getActiveInventoryType();
-
+  const getInventory = () => {
     let remainingListings = [];
 
     try {
@@ -17629,11 +17563,12 @@ document.addEventListener("click", (event) => {
     const renderedListings = Array.from(
       document.querySelectorAll(".original-card")
     ).map((card) => ({
-      type: card.dataset.type,
-      price: card.dataset.rawPrice,
+      type: card.dataset.type || "",
+      price: card.dataset.rawPrice || 0,
+      address: card.dataset.address || "",
     }));
 
-    const inventory = [
+    return [
       ...renderedListings,
       ...remainingListings.map((listing) => ({
         type:
@@ -17647,14 +17582,43 @@ document.addEventListener("click", (event) => {
           listing.raw_price ??
           listing.listPrice ??
           0,
+        address: listing.address || "",
       })),
     ];
+  };
 
-    return inventory
+  const isFractionalOwnership = (listing) => {
+    const text = String(
+      listing.address || ""
+    ).toLowerCase();
+
+    return (
+      /\b\d+[a-z]\s*[-–]/i.test(text) ||
+      /\b(?:fractional|quarter[- ]?share|1\/4|1\/8|shared ownership)\b/i.test(text)
+    );
+  };
+
+  const getPrices = (ownership = "all") => {
+    const activeType = getActiveType();
+
+    return getInventory()
       .filter((listing) => {
-        if (inventoryType === "all") return true;
+        if (
+          activeType !== "all" &&
+          normalizeType(listing.type) !== activeType
+        ) {
+          return false;
+        }
 
-        return normalizeType(listing.type) === inventoryType;
+        if (ownership === "fractional") {
+          return isFractionalOwnership(listing);
+        }
+
+        if (ownership === "full") {
+          return !isFractionalOwnership(listing);
+        }
+
+        return true;
       })
       .map((listing) =>
         Number(
@@ -17670,6 +17634,227 @@ document.addEventListener("click", (event) => {
       .sort((a, b) => a - b);
   };
 
+  const percentile = (prices, amount) => {
+    if (!prices.length) return 0;
+
+    return prices[
+      Math.min(
+        prices.length - 1,
+        Math.max(
+          0,
+          Math.round(
+            (prices.length - 1) * amount
+          )
+        )
+      )
+    ];
+  };
+
+  const roundMarketPrice = (price) => {
+    const increment =
+      price < 600000
+        ? 50000
+        : price < 1500000
+          ? 100000
+          : price < 4000000
+            ? 250000
+            : 500000;
+
+    return Math.max(
+      increment,
+      Math.round(price / increment) * increment
+    );
+  };
+
+  const floorMarketPrice = (price) => {
+    const increment =
+      price < 600000
+        ? 50000
+        : price < 1500000
+          ? 100000
+          : price < 4000000
+            ? 250000
+            : 500000;
+
+    return Math.max(
+      increment,
+      Math.floor(price / increment) * increment
+    );
+  };
+
+  const formatBandPrice = (price) => {
+    if (price >= 1000000) {
+      const millions = price / 1000000;
+
+      return `${Number.isInteger(millions)
+        ? millions.toFixed(0)
+        : millions
+            .toFixed(2)
+            .replace(/0+$/, "")
+            .replace(/\.$/, "")
+      }M`;
+    }
+
+    return `${Math.round(price / 1000)}k`;
+  };
+
+  const uniqueSorted = (values) =>
+    Array.from(new Set(values))
+      .filter((value) => value > 0)
+      .sort((a, b) => a - b);
+
+  const regularOptions = (prices) => {
+    if (!prices.length) {
+      return [
+        {
+          label: "Any Price",
+          value: "all",
+        },
+      ];
+    }
+
+    const maximum = prices.at(-1);
+    const cuts = uniqueSorted(
+      [0.25, 0.5, 0.75]
+        .map((amount) =>
+          roundMarketPrice(
+            percentile(prices, amount)
+          )
+        )
+        .filter(
+          (price) =>
+            price > 0 &&
+            price < maximum
+        )
+    );
+
+    const options = [
+      {
+        label: "Any Price",
+        value: "all",
+      },
+    ];
+
+    if (!cuts.length) {
+      options.push({
+        label: `Under ${formatBandPrice(maximum)}`,
+        value: `under-${Math.round(maximum / 1000)}`,
+      });
+
+      return options;
+    }
+
+    options.push({
+      label: `Under ${formatBandPrice(cuts[0])}`,
+      value: `under-${Math.round(cuts[0] / 1000)}`,
+    });
+
+    cuts.slice(1).forEach((cut, index) => {
+      const previous = cuts[index];
+
+      options.push({
+        label: `${formatBandPrice(previous)}–${formatBandPrice(cut)}`,
+        value: `${Math.round(previous / 1000)}-${Math.round(cut / 1000)}`,
+      });
+    });
+
+    const lastCut = cuts.at(-1);
+
+    options.push({
+      label: `${formatBandPrice(lastCut)}+`,
+      value: `${Math.round(lastCut / 1000)}-plus`,
+    });
+
+    return options;
+  };
+
+  const fernieOwnershipOptions = () => {
+    const hostname =
+      window.location.hostname.toLowerCase();
+
+    if (hostname !== "fernie.homes") return null;
+
+    const fractionalPrices =
+      getPrices("fractional");
+
+    const fullTitlePrices =
+      getPrices("full");
+
+    if (
+      !fractionalPrices.length ||
+      !fullTitlePrices.length
+    ) {
+      return null;
+    }
+
+    const fullStart = floorMarketPrice(
+      fullTitlePrices[0]
+    );
+
+    const fullMaximum =
+      fullTitlePrices.at(-1);
+
+    const fullCuts = uniqueSorted(
+      [0.5, 0.8]
+        .map((amount) =>
+          roundMarketPrice(
+            percentile(
+              fullTitlePrices,
+              amount
+            )
+          )
+        )
+        .filter(
+          (price) =>
+            price > fullStart &&
+            price < fullMaximum
+        )
+    );
+
+    const options = [
+      {
+        label: "Any Price",
+        value: "all",
+      },
+      {
+        label: `Fractional ownership · under ${formatBandPrice(
+          fractionalPrices.at(-1)
+        )}`,
+        value: `under-${Math.round(
+          fractionalPrices.at(-1) / 1000
+        )}`,
+      },
+    ];
+
+    let lowerBound = fullStart;
+
+    fullCuts.forEach((upperBound) => {
+      options.push({
+        label: `Full ownership · ${formatBandPrice(
+          lowerBound
+        )}–${formatBandPrice(upperBound)}`,
+        value: `${Math.round(
+          lowerBound / 1000
+        )}-${Math.round(
+          upperBound / 1000
+        )}`,
+      });
+
+      lowerBound = upperBound;
+    });
+
+    options.push({
+      label: `Full ownership · ${formatBandPrice(
+        lowerBound
+      )}+`,
+      value: `${Math.round(
+        lowerBound / 1000
+      )}-plus`,
+    });
+
+    return options;
+  };
+
   const syncCustomPriceDropdown = () => {
     const dropdown =
       priceSelect.parentElement?.querySelector(
@@ -17677,10 +17862,14 @@ document.addEventListener("click", (event) => {
       );
 
     const menu =
-      dropdown?.querySelector(".filter-dd__menu");
+      dropdown?.querySelector(
+        ".filter-dd__menu"
+      );
 
     const value =
-      dropdown?.querySelector(".filter-dd__value");
+      dropdown?.querySelector(
+        ".filter-dd__value"
+      );
 
     if (!dropdown || !menu || !value) return;
 
@@ -17688,39 +17877,48 @@ document.addEventListener("click", (event) => {
       .querySelectorAll(".filter-dd__option")
       .forEach((button) => button.remove());
 
-    Array.from(priceSelect.options).forEach((option) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "filter-dd__option";
-      button.dataset.value = option.value;
+    Array.from(priceSelect.options).forEach(
+      (option) => {
+        const button =
+          document.createElement("button");
 
-      const text = document.createElement("span");
-      text.textContent = option.textContent;
+        button.type = "button";
+        button.className = "filter-dd__option";
+        button.dataset.value = option.value;
 
-      const check = document.createElement("span");
-      check.className = "filter-dd__check";
-      check.textContent = "\u2713";
+        const text =
+          document.createElement("span");
 
-      button.append(text, check);
+        text.textContent = option.textContent;
 
-      button.addEventListener("click", () => {
-        priceSelect.value = option.value;
+        const check =
+          document.createElement("span");
 
-        priceSelect.dispatchEvent(
-          new Event("change", {
-            bubbles: true,
-          })
-        );
+        check.className = "filter-dd__check";
+        check.textContent = "\u2713";
 
-        dropdown.classList.remove("is-open");
-      });
+        button.append(text, check);
 
-      menu.appendChild(button);
-    });
+        button.addEventListener("click", () => {
+          priceSelect.value = option.value;
+
+          priceSelect.dispatchEvent(
+            new Event("change", {
+              bubbles: true,
+            })
+          );
+
+          dropdown.classList.remove("is-open");
+        });
+
+        menu.appendChild(button);
+      }
+    );
 
     const selected =
-      priceSelect.options[priceSelect.selectedIndex] ||
-      priceSelect.options[0];
+      priceSelect.options[
+        priceSelect.selectedIndex
+      ] || priceSelect.options[0];
 
     value.textContent =
       selected?.textContent || "Any Price";
@@ -17730,143 +17928,54 @@ document.addEventListener("click", (event) => {
       .forEach((button) => {
         button.classList.toggle(
           "is-selected",
-          button.dataset.value === priceSelect.value
+          button.dataset.value ===
+            priceSelect.value
         );
       });
   };
 
-  const rebuildPriceBands = ({
-    reset = false,
-    open = false,
-  } = {}) => {
-    const inventoryType = getActiveInventoryType();
+  const rebuildPriceBands = () => {
+    const requestedValue =
+      new URLSearchParams(
+        window.location.search
+      ).get("price") ||
+      priceSelect.value ||
+      "all";
 
-    const prices = getInventoryPrices();
+    const options =
+      fernieOwnershipOptions() ||
+      regularOptions(getPrices());
 
-    const calculated =
-      prices.length >= 8
-        ? [0.2, 0.4, 0.6, 0.8].map(
-            (amount) =>
-              roundMarketPrice(
-                percentile(prices, amount)
-              )
-          )
-        : (
-            fallbackBands[inventoryType] ||
-            fallbackBands.all
-          );
+    priceSelect.replaceChildren();
 
-    const bands = Array.from(
-      new Set(calculated)
-    )
-      .filter((price) => price > 0)
-      .sort((a, b) => a - b);
-
-    const requestedValue = reset
-      ? "all"
-      : (
-          new URLSearchParams(
-            window.location.search
-          ).get("price") ||
-          priceSelect.value ||
-          "all"
-        );
-
-    priceSelect.replaceChildren(
-      new Option("Any Price", "all")
-    );
-
-    bands.forEach((price) => {
+    options.forEach((option) => {
       priceSelect.add(
         new Option(
-          `Under ${formatBandPrice(price)}`,
-          `under-${Math.round(price / 1000)}`
+          option.label,
+          option.value
         )
       );
     });
 
-    const highestBand =
-      bands[bands.length - 1];
+    const valueExists = Array.from(
+      priceSelect.options
+    ).some(
+      (option) =>
+        option.value === requestedValue
+    );
 
-    if (highestBand) {
-      priceSelect.add(
-        new Option(
-          `Over ${formatBandPrice(highestBand)}`,
-          `over-${Math.round(highestBand / 1000)}`
-        )
-      );
-    }
-
-    const hasRequestedOption =
-      Array.from(priceSelect.options).some(
-        (option) =>
-          option.value === requestedValue
-      );
-
-    if (
-      requestedValue !== "all" &&
-      !hasRequestedOption
-    ) {
-      const customMatch =
-        requestedValue.match(
-          /^(under|over)-(\d+)$/
-        );
-
-      if (customMatch) {
-        const direction =
-          customMatch[1] === "under"
-            ? "Under"
-            : "Over";
-
-        const amount =
-          Number(customMatch[2]) * 1000;
-
-        priceSelect.add(
-          new Option(
-            `${direction} ${formatBandPrice(amount)}`,
-            requestedValue
-          )
-        );
-      }
-    }
     priceSelect.value =
-      Array.from(priceSelect.options).some(
-        (option) =>
-          option.value === requestedValue
-      )
-        ? requestedValue
-        : "all";
+      valueExists ? requestedValue : "all";
 
     syncCustomPriceDropdown();
-
-    if (open) {
-      priceSelect.parentElement
-        ?.querySelector(".filter-dd--price")
-        ?.classList.add("is-open");
-    }
   };
 
   rebuildPriceBands();
 
-  typeSelect?.addEventListener("change", () => {
-    rebuildPriceBands({
-      reset: true,
-      open: true,
-    });
-  });
-
-  document
-    .querySelectorAll(".property-type-pill")
-    .forEach((button) => {
-      button.addEventListener("click", () => {
-        window.setTimeout(() => {
-          rebuildPriceBands({
-            reset: true,
-            open: true,
-          });
-        }, 0);
-      });
-    });
+  typeSelect?.addEventListener(
+    "change",
+    rebuildPriceBands
+  );
 })();
 </script>
 <script is:inline>
