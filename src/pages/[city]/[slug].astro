@@ -1479,6 +1479,9 @@ if (filterWaterfrontType === "any") {
   query = query.eq("waterfront_type", filterWaterfrontType);
 }
 
+const { data: priceBandInventoryRows = [] } =
+  await query;
+
 const priceUnderMatch =
   String(filterPrice || "").match(
     /^under-(\d+)$/
@@ -11048,6 +11051,18 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
   }
 </style>
 
+<script
+  type="application/json"
+  id="price-band-inventory-data"
+  set:html={JSON.stringify(
+    priceBandInventoryRows.map((listing) => ({
+      type: listing.normalized_type || listing.property_type || "",
+      price: listing.price || 0,
+      address: listing.address || "",
+    }))
+  )}
+></script>
+
 {listings.length > 30 && (
   <>
     <script
@@ -17548,43 +17563,19 @@ document.addEventListener("click", (event) => {
   };
 
   const getInventory = () => {
-    let remainingListings = [];
-
     try {
-      remainingListings = JSON.parse(
+      const inventory = JSON.parse(
         document.getElementById(
-          "remaining-listings-data"
+          "price-band-inventory-data"
         )?.textContent || "[]"
       );
-    } catch {
-      remainingListings = [];
-    }
 
-    const renderedListings = Array.from(
-      document.querySelectorAll(".original-card")
-    ).map((card) => ({
-      type: card.dataset.type || "",
-      price: card.dataset.rawPrice || 0,
-      address: card.dataset.address || "",
-    }));
+      if (Array.isArray(inventory) && inventory.length) {
+        return inventory;
+      }
+    } catch {}
 
-    return [
-      ...renderedListings,
-      ...remainingListings.map((listing) => ({
-        type:
-          listing.normalized_type ||
-          listing.property_type ||
-          listing.propertyType ||
-          listing.type ||
-          "",
-        price:
-          listing.price ??
-          listing.raw_price ??
-          listing.listPrice ??
-          0,
-        address: listing.address || "",
-      })),
-    ];
+    return [];
   };
 
   const isFractionalOwnership = (listing) => {
