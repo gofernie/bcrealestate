@@ -66,6 +66,11 @@ const effectiveSiteDomain =
     ? requestedLocalDomain
     : requestDomain;
 
+const comparisonMarketScope =
+  effectiveSiteDomain === "fernie.homes"
+    ? ["fernie", "sparwood", "elkford"]
+    : null;
+
 const { data: exactSite } = await supabase
   .from("sites")
   .select("*")
@@ -570,7 +575,7 @@ for (const row of islandMonthlyRows || []) {
 }
 
 const islandMarketComparisons =
-  islandMarketKeys
+  (comparisonMarketScope || islandMarketKeys)
     .map((marketKey) => {
       const history = [
         ...(islandRowsByMarket.get(marketKey) ||
@@ -715,8 +720,42 @@ const islandMarketComparisons =
       b.score - a.score ||
       a.label.localeCompare(b.label)
     );
-const listingOnlyMarket = [
+const smallMarketCities = new Set([
   "fernie",
+  "sparwood",
+  "elkford",
+]);
+
+const usesRollingSmallMarketTrend =
+  smallMarketCities.has(city);
+
+let rawSaleRows: any[] = [];
+
+if (usesRollingSmallMarketTrend) {
+  const {
+    data: importedSaleRows,
+    error: importedSaleError,
+  } = await supabase
+    .from("market_sale_records")
+    .select("sold_date, sold_price")
+    .in("city", cityDatabaseKeys)
+    .eq("eligible_for_market_stats", true)
+    .eq("is_single_family", true)
+    .order("sold_date", {
+      ascending: true,
+    });
+
+  if (importedSaleError) {
+    console.error(
+      "Imported market-sale lookup failed:",
+      importedSaleError
+    );
+  }
+
+  rawSaleRows = importedSaleRows || [];
+}
+
+const listingOnlyMarket = [
   "sparwood",
   "whistler",
 ].includes(city);
@@ -782,6 +821,32 @@ const trendPath = (key) =>
 
 const newListingsPath = trendPath("newListings");
 const salesPath = trendPath("sales");
+const trendAveragePath = (key) =>
+  monthlyHistory
+    .map((_, index) => {
+      const values = monthlyHistory
+        .slice(Math.max(0, index - 5), index + 1)
+        .map((row) => Number(row[key] || 0));
+
+      const movingAverage =
+        values.reduce(
+          (total, value) => total + value,
+          0
+        ) / values.length;
+
+      return `${index === 0 ? "M" : "L"} ${trendX(
+        index
+      ).toFixed(2)} ${trendY(
+        movingAverage
+      ).toFixed(2)}`;
+    })
+    .join(" ");
+
+const newListingsAveragePath =
+  trendAveragePath("newListings");
+
+const salesAveragePath =
+  trendAveragePath("sales");
 
 const trendTicks = Array.from(
   { length: trendMaximum / trendStep + 1 },
@@ -809,8 +874,10 @@ const reliableSalesMonths = monthlyHistory.filter(
 ).length;
 
 const hasReliableSalesHistory =
-  !listingOnlyMarket &&
-  reliableSalesMonths >= 6;
+  (!listingOnlyMarket &&
+    reliableSalesMonths >= 6) ||
+  (usesRollingSmallMarketTrend &&
+    rawSaleRows.length >= 12);
 const latestMonth = monthlyHistory.at(-1);
 
 const latestSalesToNewListings =
@@ -847,8 +914,99 @@ const marketBehaviourSummary = latestMonth
       .join(" ")
   : "";
 
-const priceHistory = monthlyHistory.filter(
-  (row) => row.medianSoldPrice > 0
+const priceTrendMonths =
+  usesRollingSmallMarketTrend
+    ? Array.from(
+        { length: 36 },
+        (_, index) => {
+          const latestKnownMonth = new Date(
+            `${monthlyHistory.at(-1)?.month || new Date().toISOString().slice(0, 10)}T00:00:00Z`
+          );
+
+          const monthStart = new Date(
+            Date.UTC(
+              latestKnownMonth.getUTCFullYear(),
+              latestKnownMonth.getUTCMonth() -
+                (35 - index),
+              1
+            )
+          );
+
+          return {
+            month: monthStart
+              .toISOString()
+              .slice(0, 10),
+            label: new Intl.DateTimeFormat(
+              "en-CA",
+              {
+                month: "short",
+                year: "2-digit",
+                timeZone: "UTC",
+              }
+            ).format(monthStart),
+          };
+        }
+      )
+    : monthlyHistory;
+
+const priceHistory =
+  usesRollingSmallMarketTrend
+    ? priceTrendMonths
+        .map((row) => {
+          const monthStart = new Date(
+            `${row.month}T00:00:00Z`
+          );
+
+          const windowStart = new Date(
+            Date.UTC(
+              monthStart.getUTCFullYear(),
+              monthStart.getUTCMonth() - 2,
+              1
+            )
+          );
+
+          const windowEnd = new Date(
+            Date.UTC(
+              monthStart.getUTCFullYear(),
+              monthStart.getUTCMonth() + 1,
+              0
+            )
+          );
+
+          const qualifyingPrices = rawSaleRows
+            .filter((sale) => {
+              const soldAt = new Date(
+                `${sale.sold_date}T00:00:00Z`
+              );
+
+              return (
+                soldAt >= windowStart &&
+                soldAt <= windowEnd
+              );
+            })
+            .map((sale) =>
+              Number(sale.sold_price || 0)
+            )
+            .filter((price) => price > 0);
+
+          return {
+            ...row,
+            medianSoldPrice:
+              median(qualifyingPrices) || 0,
+            sampleSize: qualifyingPrices.length,
+          };
+        })
+        .filter(
+          (row) =>
+            row.medianSoldPrice > 0 &&
+            row.sampleSize >= 4
+        )
+    : monthlyHistory.filter(
+        (row) => row.medianSoldPrice > 0
+      );
+
+const latestRollingPriceSample = Number(
+  priceHistory.at(-1)?.sampleSize || 0
 );
 
 const priceValues = priceHistory.map(
@@ -894,35 +1052,65 @@ const priceY = (value) =>
     Math.max(priceMaximum - priceMinimum, 1)
   ) * trendPlotHeight;
 
-const pricePath = priceHistory
-  .map((row, index) => {
-    const historyIndex =
-      monthlyHistory.findIndex(
-        (item) => item.month === row.month
-      );
+const smoothedPriceHistory = priceHistory.map(
+  (row, index) => {
+    const smoothingValues = priceHistory
+      .slice(Math.max(0, index - 5), index + 1)
+      .map((item) => item.medianSoldPrice);
 
-    return `${index === 0 ? "M" : "L"} ${trendX(
-      historyIndex
+    return {
+      ...row,
+      movingAverage:
+        smoothingValues.reduce(
+          (total, value) => total + value,
+          0
+        ) / smoothingValues.length,
+    };
+  }
+);
+
+const priceTrendX = (index) =>
+  trendPadding.left +
+  (index /
+    Math.max(priceHistory.length - 1, 1)) *
+    trendPlotWidth;
+
+const priceTrendLabelIndexes = Array.from(
+  new Set([
+    0,
+    ...priceHistory
+      .map((_, index) => index)
+      .filter((index) => index % 6 === 0),
+    Math.max(priceHistory.length - 1, 0),
+  ])
+).filter((index) => priceHistory[index]);
+
+const rawPricePath = priceHistory
+  .map((row, index) =>
+    `${index === 0 ? "M" : "L"} ${priceTrendX(
+      index
     ).toFixed(2)} ${priceY(
       row.medianSoldPrice
-    ).toFixed(2)}`;
-  })
+    ).toFixed(2)}`
+  )
+  .join(" ");
+
+const pricePath = smoothedPriceHistory
+  .map((row, index) =>
+    `${index === 0 ? "M" : "L"} ${priceTrendX(
+      index
+    ).toFixed(2)} ${priceY(
+      row.movingAverage
+    ).toFixed(2)}`
+  )
   .join(" ");
 
 const priceAreaPath = priceHistory.length
-  ? `${pricePath} L ${trendX(
-      monthlyHistory.findIndex(
-        (item) =>
-          item.month === priceHistory.at(-1)?.month
-      )
+  ? `${pricePath} L ${priceTrendX(
+      priceHistory.length - 1
     ).toFixed(2)} ${(
       trendPadding.top + trendPlotHeight
-    ).toFixed(2)} L ${trendX(
-      monthlyHistory.findIndex(
-        (item) =>
-          item.month === priceHistory[0]?.month
-      )
-    ).toFixed(2)} ${(
+    ).toFixed(2)} L ${priceTrendX(0).toFixed(2)} ${(
       trendPadding.top + trendPlotHeight
     ).toFixed(2)} Z`
   : "";
@@ -1182,7 +1370,7 @@ const marketSeoSchema = {
           <h2>
             {hasReliableSalesHistory
               ? "Sales and new listings over time"
-              : "New listings recorded by month"}
+              : "New listings and sales over time"}
           </h2>
         </div>
 
@@ -1245,8 +1433,20 @@ const marketSeoSchema = {
               />
 
               <path
+                d={newListingsAveragePath}
+                class="market-trend__line market-trend__line--listings"
+                style="stroke-width: 4px; opacity: .95"
+              />
+
+              <path
                 d={hasReliableSalesHistory ? salesPath : ""}
                 class="market-trend__line market-trend__line--sales"
+              />
+
+              <path
+                d={hasReliableSalesHistory ? salesAveragePath : ""}
+                class="market-trend__line market-trend__line--sales"
+                style="stroke-width: 4px; opacity: .95"
               />
 
               {monthlyHistory.map((row, index) => (
@@ -1342,12 +1542,9 @@ const marketSeoSchema = {
           </div>
 
           <p class="market-trend__note">
-            {hasReliableSalesHistory
-              ? "Residential and condominium sales and listing records from Repliers."
-
-              : "Residential and condominium new-listing records from Repliers."}
-            The most recent completed month is preliminary because sold-status
-            reporting can continue after month-end.
+            {usesRollingSmallMarketTrend
+              ? "Faint lines show monthly activity; the stronger lines are six-month averages. New listings come from Repliers. Qualifying sales exclude fractional ownership."
+              : "Faint lines show monthly activity; the stronger lines are six-month averages. Residential and condominium records come from Repliers."}
           </p>
         </>
       ) : (
@@ -1361,10 +1558,14 @@ const marketSeoSchema = {
       <div class="section-heading">
         <div>
           <p class="eyebrow">What happened to prices</p>
-          <h2>Median single-family home sold price</h2>
+          <h2>
+  {usesRollingSmallMarketTrend
+    ? "Three-year single-family sold-price trend"
+    : "Median single-family home sold price"}
+</h2>
         </div>
 
-        {firstMedianPrice > 0 && (
+        {!usesRollingSmallMarketTrend && firstMedianPrice > 0 && (
           <div
             class:list={[
               "sold-price-trend__change",
@@ -1393,7 +1594,7 @@ const marketSeoSchema = {
               aria-labelledby="sold-price-title"
             >
               <title id="sold-price-title">
-                {cityLabel} monthly median single-family home sold price
+                {usesRollingSmallMarketTrend ? `${cityLabel} three-month rolling median and six-month moving average` : `${cityLabel} monthly median single-family home sold price`}
               </title>
 
               <defs>
@@ -1438,14 +1639,14 @@ const marketSeoSchema = {
                 </g>
               ))}
 
-              {trendLabelIndexes.map((index) => (
+              {priceTrendLabelIndexes.map((index) => (
                 <text
-                  x={trendX(index)}
+                  x={priceTrendX(index)}
                   y={trendHeight - 15}
                   class="market-trend__axis-label"
                   text-anchor="middle"
                 >
-                  {monthlyHistory[index].label}
+                  {priceHistory[index].label}
                 </text>
               ))}
 
@@ -1459,14 +1660,10 @@ const marketSeoSchema = {
                 class="sold-price-trend__line"
               />
 
-              {priceHistory.map((row) => {
-                const index = monthlyHistory.findIndex(
-                  (item) => item.month === row.month
-                );
-
+              {priceHistory.map((row, index) => {
                 return (
                   <circle
-                    cx={trendX(index)}
+                    cx={priceTrendX(index)}
                     cy={priceY(row.medianSoldPrice)}
                     r="4"
                     class="sold-price-trend__point"
@@ -1519,9 +1716,9 @@ const marketSeoSchema = {
           </div>
 
           <p class="market-trend__note">
-            Monthly median sold prices for single-family homes can move with the mix of
-            properties sold. A change does not necessarily mean every
-            individual property gained or lost the same amount.
+            {usesRollingSmallMarketTrend
+              ? `Each monthly point is a three-month rolling median from qualifying single-family sales. The darker line is a six-month moving average. The latest window includes ${latestRollingPriceSample} sale${latestRollingPriceSample === 1 ? "" : "s"}. Individual sold properties are not shown.`
+              : "Monthly median sold prices for single-family homes can move with the mix of properties sold. A change does not necessarily mean every individual property gained or lost the same amount."}
           </p>
         </>
       ) : (
