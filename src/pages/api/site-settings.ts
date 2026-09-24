@@ -139,6 +139,11 @@ export const POST: APIRoute = async ({ request }) => {
           .filter(Boolean)
       ).values()
     ).slice(0, 20);
+    const featuredListingMls = String(data.featuredListingMls || "")
+      .trim()
+      .replace(/\s+/g, "")
+      .slice(0, 80) || null;
+
     const { error } = await supabase
       .from("sites")
       .update({
@@ -153,6 +158,7 @@ export const POST: APIRoute = async ({ request }) => {
         bio: String(data.agentBio || "").trim() || null,
         contact_copy: String(data.agentContactCopy || "").trim() || null,
         secondary_markets: secondaryMarkets,
+        featured_listing_mls: featuredListingMls,
       })
       .eq("id", siteId);
 

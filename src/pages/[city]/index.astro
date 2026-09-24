@@ -1603,6 +1603,117 @@ const homepageNeighbourhoodImages = [
 ];
 
 const jawgAccessToken = import.meta.env.PUBLIC_JAWG_ACCESS_TOKEN || "";
+
+const firstListingImage = (value: any): string => {
+  if (!value) return "";
+
+  if (typeof value === "string") {
+    if (/^https?:\/\//i.test(value)) return value;
+    try {
+      return firstListingImage(JSON.parse(value));
+    } catch {
+      return "";
+    }
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(firstListingImage).find(Boolean) || "";
+  }
+
+  if (typeof value === "object") {
+    return firstListingImage(
+      value.url ||
+      value.src ||
+      value.href ||
+      value.original ||
+      value.large ||
+      value.medium ||
+      value.full ||
+      value.image ||
+      value.thumbnailUrl
+    );
+  }
+
+  return "";
+};
+
+const featuredListingMls = String(
+  siteRow?.featured_listing_mls || ""
+).trim();
+
+const selectedFeaturedListing = featuredListingMls
+  ? listings.find(
+      (listing: any) =>
+        String(listing?.mls_number || "").trim() === featuredListingMls
+    )
+  : null;
+
+const featuredListing =
+  selectedFeaturedListing ||
+  listings.find((listing: any) =>
+    firstListingImage(
+      listing?.images ||
+      listing?.photos ||
+      listing?.photo_urls ||
+      listing?.image_urls ||
+      listing?.primary_image ||
+      listing?.image_url
+    )
+  ) ||
+  listings[0] ||
+  null;
+
+const featuredImage = featuredListing
+  ? firstListingImage(
+      featuredListing.images ||
+      featuredListing.photos ||
+      featuredListing.photo_urls ||
+      featuredListing.image_urls ||
+      featuredListing.primary_image ||
+      featuredListing.image_url
+    )
+  : "";
+
+const featuredPriceNumber = Number(
+  String(featuredListing?.price || featuredListing?.list_price || 0)
+    .replace(/[^0-9.]/g, "")
+);
+
+const featuredPrice = featuredPriceNumber > 0
+  ? new Intl.NumberFormat("en-CA", {
+      style: "currency",
+      currency: "CAD",
+      maximumFractionDigits: 0,
+    }).format(featuredPriceNumber)
+  : "View price";
+
+const featuredArea = String(
+  featuredListing?.normalized_area ||
+  featuredListing?.area ||
+  featuredListing?.neighbourhood ||
+  featuredListing?.community ||
+  city ||
+  "Nanaimo"
+).replace(/-/g, " ");
+
+const featuredAddress = String(
+  featuredListing?.address ||
+  featuredListing?.street_address ||
+  featuredListing?.display_address ||
+  featuredArea
+);
+
+const featuredSlug = String(
+  featuredListing?.slug ||
+  featuredListing?.seo_slug ||
+  featuredListing?.url_slug ||
+  featuredListing?.mls_number ||
+  ""
+);
+
+const featuredHref = featuredListing?.mls_number
+  ? `/${city || "nanaimo"}/?listing_id=${encodeURIComponent(String(featuredListing.mls_number))}`
+  : `/${city || "nanaimo"}/`;
 ---
 
 <script is:inline define:vars={{ jawgAccessToken }}>
@@ -1614,6 +1725,8 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
     ? '&copy; <a href="https://www.jawg.io/" target="_blank" rel="noopener">Jawg Maps</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
     : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
 </script>
+
+
 <Layout
   title={seoTitle}
   accentColor={accentColor}
@@ -1719,32 +1832,40 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
         </a>
       </div>
     </div>
+    {featuredListing && (
+      <a
+        class="locus-home-featured"
+        href={featuredHref}
+        data-featured-listing-id={String(featuredListing?.id || featuredListing?.mls_number || "")}
+        aria-label={`View featured home: ${featuredAddress}`}
+      >
+        <span class="locus-home-featured__eyebrow">Home to watch <span>&rarr;</span></span>
 
-    <aside class="locus-home-intel">
-      <div class="locus-home-intel__item">
-        <span class="locus-home-intel__icon">&#9673;</span>
-        <div>
-          <strong>Local knowledge.</strong>
-          <span>Better decisions.</span>
-        </div>
-      </div>
+        <div class="locus-home-featured__body">
+          {featuredImage ? (
+            <img
+              class="locus-home-featured__image"
+              src={featuredImage}
+              alt={`Featured home at ${featuredAddress}`}
+              loading="eager"
+            />
+          ) : (
+            <div class="locus-home-featured__image locus-home-featured__image--empty"></div>
+          )}
 
-      <div class="locus-home-intel__item">
-        <span class="locus-home-intel__icon">&#8599;</span>
-        <div>
-          <strong>Live market data</strong>
-          <span>you can trust.</span>
+          <div class="locus-home-featured__copy">
+            <strong>{featuredPrice}</strong>
+            <span class="locus-home-featured__area">{featuredArea}</span>
+            <span class="locus-home-featured__stats">
+              {featuredListing?.beds ? `${featuredListing.beds} bed` : "Home"}
+              {featuredListing?.baths ? ` · ${featuredListing.baths} bath` : ""}
+            </span>
+          </div>
         </div>
-      </div>
 
-      <div class="locus-home-intel__item">
-        <span class="locus-home-intel__icon">&#8962;</span>
-        <div>
-          <strong>Every neighbourhood</strong>
-          <span>covered in detail.</span>
-        </div>
-      </div>
-    </aside>
+        <span class="locus-home-featured__link">View property <span>&rarr;</span></span>
+      </a>
+    )}
 
   </div>
 
@@ -2904,13 +3025,301 @@ data-liked-tags="[]"
 
                 <p>{card.description}</p>
 
-                <span class="intent-link">View search ΓåÆ</span>
+                <span class="intent-link">View search →</span>
               </a>
             ))}
           </div>
         </section>
       </div>
-    </main>
+    
+<style is:global>
+/* featured-home-card-v1 */
+.locus-home-featured {
+  position: relative;
+  z-index: 3;
+  pointer-events: auto;
+  display: block;
+  width: min(100%, 380px);
+  align-self: center;
+  justify-self: end;
+  margin-right: clamp(20px, 2.5vw, 48px);
+  margin-top: 38px;
+  padding: 12px;
+  color: #102438;
+  text-decoration: none;
+  border: 1px solid rgba(15,38,57,.12);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 20px 55px rgba(0,0,0,.22);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.locus-home-featured:hover {
+  color: #102438;
+  transform: translateY(-3px);
+  box-shadow: 0 25px 64px rgba(0,0,0,.27);
+}
+
+.locus-home-featured__eyebrow {
+  position: absolute;
+  z-index: 2;
+  top: 24px;
+  left: 24px;
+  display: inline-flex;
+  width: auto;
+  padding: 7px 10px;
+  color: #fff;
+  border-radius: 999px;
+  background: rgba(13,34,53,.88);
+  font-size: .62rem;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.locus-home-featured__eyebrow span {
+  display: none;
+}
+
+.locus-home-featured__body {
+  display: block;
+  margin: 0;
+}
+
+.locus-home-featured__image {
+  display: block;
+  width: 100%;
+  height: 154px;
+  border-radius: 11px;
+  object-fit: cover;
+}
+
+.locus-home-featured__copy {
+  padding: 13px 5px 2px;
+}
+
+.locus-home-featured__copy strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #102438;
+  font-size: 1.58rem;
+  line-height: 1;
+  letter-spacing: -.03em;
+}
+
+.locus-home-featured__area,
+.locus-home-featured__stats {
+  display: block;
+}
+
+.locus-home-featured__area {
+  color: #263d50;
+  font-size: .88rem;
+  font-weight: 700;
+}
+
+.locus-home-featured__stats {
+  margin-top: 4px;
+  color: #68798a;
+  font-size: .78rem;
+}
+
+.locus-home-featured__link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 12px 14px;
+  color: #fff;
+  border-radius: 9px;
+  background: #102438;
+  font-size: .84rem;
+  font-weight: 800;
+}
+
+.locus-home-featured__link span {
+  color: #fff;
+}
+
+@media (max-width: 760px) {
+  .locus-home-featured {
+    display: none;
+  }
+}
+</style>
+
+<style is:global>
+/* featured-home-card-white-v1 */
+.locus-home-featured {
+  width: min(100%, 350px);
+  padding: 12px;
+  color: #0d2235;
+  border: 1px solid rgba(13,34,53,.12);
+  border-radius: 18px;
+  background: rgba(255,255,255,.97);
+  box-shadow: 0 20px 55px rgba(0,0,0,.20);
+  backdrop-filter: blur(14px);
+}
+
+.locus-home-featured:hover {
+  color: #0d2235;
+  transform: translateY(-3px);
+  box-shadow: 0 25px 64px rgba(0,0,0,.27);
+}
+
+.locus-home-featured__eyebrow {
+  position: absolute;
+  z-index: 1;
+  top: 24px;
+  left: 24px;
+  display: inline-flex;
+  width: auto;
+  gap: 8px;
+  padding: 7px 10px;
+  color: #fff;
+  border-radius: 999px;
+  background: rgba(10,28,43,.86);
+  font-size: .62rem;
+  letter-spacing: .1em;
+}
+
+.locus-home-featured__eyebrow span {
+  display: none;
+}
+
+.locus-home-featured__body {
+  display: block;
+  margin: 0;
+}
+
+.locus-home-featured__image {
+  display: block;
+  width: 100%;
+  height: 142px;
+  border-radius: 11px;
+  object-fit: cover;
+}
+
+.locus-home-featured__copy {
+  padding: 13px 5px 3px;
+}
+
+.locus-home-featured__copy strong {
+  color: #0d2235;
+  font-size: 1.55rem;
+}
+
+.locus-home-featured__area {
+  color: #20384b;
+}
+
+.locus-home-featured__stats {
+  color: #647384;
+}
+
+.locus-home-featured__link {
+  display: flex;
+  margin-top: 9px;
+  padding: 11px 13px;
+  color: #fff;
+  border: 0;
+  border-radius: 9px;
+  background: #0d2235;
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+.locus-home-featured__link span {
+  color: #fff;
+}
+</style>
+
+<style is:global>
+/* featured-home-card-white-v1 */
+.locus-home-featured {
+  width: min(100%, 350px);
+  padding: 12px;
+  color: #0d2235;
+  border: 1px solid rgba(13,34,53,.12);
+  border-radius: 18px;
+  background: rgba(255,255,255,.97);
+  box-shadow: 0 20px 55px rgba(0,0,0,.20);
+  backdrop-filter: blur(14px);
+}
+
+.locus-home-featured:hover {
+  color: #0d2235;
+  transform: translateY(-3px);
+  box-shadow: 0 25px 64px rgba(0,0,0,.27);
+}
+
+.locus-home-featured__eyebrow {
+  position: absolute;
+  z-index: 1;
+  top: 24px;
+  left: 24px;
+  display: inline-flex;
+  width: auto;
+  gap: 8px;
+  padding: 7px 10px;
+  color: #fff;
+  border-radius: 999px;
+  background: rgba(10,28,43,.86);
+  font-size: .62rem;
+  letter-spacing: .1em;
+}
+
+.locus-home-featured__eyebrow span {
+  display: none;
+}
+
+.locus-home-featured__body {
+  display: block;
+  margin: 0;
+}
+
+.locus-home-featured__image {
+  display: block;
+  width: 100%;
+  height: 142px;
+  border-radius: 11px;
+  object-fit: cover;
+}
+
+.locus-home-featured__copy {
+  padding: 13px 5px 3px;
+}
+
+.locus-home-featured__copy strong {
+  color: #0d2235;
+  font-size: 1.55rem;
+}
+
+.locus-home-featured__area {
+  color: #20384b;
+}
+
+.locus-home-featured__stats {
+  color: #647384;
+}
+
+.locus-home-featured__link {
+  display: flex;
+  margin-top: 9px;
+  padding: 11px 13px;
+  color: #fff;
+  border: 0;
+  border-radius: 9px;
+  background: #0d2235;
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+.locus-home-featured__link span {
+  color: #fff;
+}
+</style>
+</main>
 
 
 <style is:global>
@@ -6938,7 +7347,7 @@ const HOME_INTENT_COLLECTIONS = JSON.parse(
       <span class="intent-type">${esc(card.type)}</span>
       <h3>${esc(card.title)}</h3>
       <p>${esc(card.description)}</p>
-      <span class="intent-link">View search ΓåÆ</span>
+      <span class="intent-link">View search →</span>
     </a>
   `).join("");
 }
@@ -9495,6 +9904,90 @@ document.documentElement.style.visibility = "";
 }
 </style>
 
+
+<style is:global>
+/* final-white-featured-card-v2 */
+.locus-home-featured {
+  position: relative !important;
+  display: block !important;
+  width: min(100%, 380px) !important;
+  padding: 12px !important;
+  color: #102438 !important;
+  border: 1px solid rgba(15,38,57,.12) !important;
+  border-radius: 18px !important;
+  background: #fff !important;
+  box-shadow: 0 20px 55px rgba(0,0,0,.22) !important;
+}
+
+.locus-home-featured:hover {
+  color: #102438 !important;
+}
+
+.locus-home-featured__eyebrow {
+  position: absolute !important;
+  z-index: 2 !important;
+  top: 24px !important;
+  left: 24px !important;
+  display: inline-flex !important;
+  width: auto !important;
+  padding: 7px 10px !important;
+  color: #fff !important;
+  border-radius: 999px !important;
+  background: rgba(13,34,53,.88) !important;
+  font-size: .62rem !important;
+  letter-spacing: .1em !important;
+}
+
+.locus-home-featured__eyebrow span {
+  display: none !important;
+}
+
+.locus-home-featured__body {
+  display: block !important;
+  margin: 0 !important;
+}
+
+.locus-home-featured__image {
+  display: block !important;
+  width: 100% !important;
+  height: 154px !important;
+  border-radius: 11px !important;
+  object-fit: cover !important;
+}
+
+.locus-home-featured__copy {
+  padding: 13px 5px 2px !important;
+}
+
+.locus-home-featured__copy strong {
+  color: #102438 !important;
+  font-size: 1.58rem !important;
+}
+
+.locus-home-featured__area {
+  color: #263d50 !important;
+}
+
+.locus-home-featured__stats {
+  color: #68798a !important;
+}
+
+.locus-home-featured__link {
+  display: flex !important;
+  margin-top: 10px !important;
+  padding: 12px 14px !important;
+  color: #fff !important;
+  border: 0 !important;
+  border-radius: 9px !important;
+  background: #102438 !important;
+  font-size: .84rem !important;
+  font-weight: 800 !important;
+}
+
+.locus-home-featured__link span {
+  color: #fff !important;
+}
+</style>
 </Layout>
 
 
@@ -10407,3 +10900,47 @@ intro h2,
   padding-top: 22px;
   border-top: 1px solid rgba(7, 31, 52, .13);
 }</style>
+
+<script is:inline>
+(() => {
+  const featuredCard = document.querySelector(
+    ".locus-home-featured[data-featured-listing-id]"
+  );
+
+  if (!(featuredCard instanceof HTMLAnchorElement)) return;
+
+  featuredCard.addEventListener("click", async (event) => {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) return;
+
+    const listingId = String(
+      featuredCard.dataset.featuredListingId || ""
+    ).trim();
+
+    if (!listingId) return;
+
+    event.preventDefault();
+    featuredCard.setAttribute("aria-busy", "true");
+
+    try {
+      const card = typeof window.ensureHomeListingCard === "function"
+        ? await window.ensureHomeListingCard(listingId)
+        : null;
+
+      if (card && typeof window.openSheet === "function") {
+        window.openSheet(card);
+      } else {
+        window.location.assign(featuredCard.href);
+      }
+    } finally {
+      featuredCard.removeAttribute("aria-busy");
+    }
+  });
+})();
+</script>

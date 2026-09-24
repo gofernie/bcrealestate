@@ -1182,12 +1182,23 @@ const siteId = String(Astro.params.id || "");
                   id="homepageHeroStatus"
                   aria-live="polite"
                 ></span>
+              </div>              <div class="field">
+                <label>Featured home</label>
+                <div style="display:flex;gap:10px;align-items:center;">
+                  <input
+                    name="featuredListingMls"
+                    inputmode="numeric"
+                    placeholder="Paste MLS #, e.g. 1032478"
+                    style="flex:1;"
+                  />
+                  <button type="button" class="btn btn--ghost" id="pickRandomFeaturedListing">
+                    Random pick
+                  </button>
+                </div>
+                <p class="hint" id="featuredListingHint">
+                  Paste an MLS number, or choose a random active home in this site’s primary market.
+                </p>
               </div>
-              <div class="grid-2">
-                <div class="field"><label>Agent pick title</label><input name="agentPickTitle" /></div>
-                <div class="field"><label>Featured MLS #</label><input name="featuredListingMls" inputmode="numeric" placeholder="e.g. 1032478" /></div>
-              </div>
-              <div class="field"><label>Agent pick text</label><textarea name="agentPickText"></textarea></div>
             </div>
           </div>
 
@@ -2636,3 +2647,62 @@ loadPage();
 })();</script>
 </body>
 </html>
+
+
+<script>
+(() => {
+  const button = document.getElementById("pickRandomFeaturedListing");
+  const input = document.querySelector('input[name="featuredListingMls"]');
+  const hint = document.getElementById("featuredListingHint");
+  const cityInput = document.querySelector('[name="city"]');
+
+  if (!(button instanceof HTMLButtonElement) || !(input instanceof HTMLInputElement)) return;
+
+  button.addEventListener("click", async () => {
+    const city = String(cityInput?.value || "").trim().toLowerCase();
+
+    if (!city) {
+      if (hint) hint.textContent = "Save/select a primary market first.";
+      return;
+    }
+
+    button.disabled = true;
+    const originalLabel = button.textContent;
+    button.textContent = "Choosing…";
+
+    try {
+      const response = await fetch(
+        `/api/home-listings?city=${encodeURIComponent(city)}&limit=200`
+      );
+
+      if (!response.ok) throw new Error("Could not load active homes.");
+
+      const payload = await response.json();
+      const choices = (payload.listings || []).filter(
+        (listing) => String(listing?.mls_number || listing?.mls || "").trim()
+      );
+
+      if (!choices.length) throw new Error("No active homes found in this market.");
+
+      const listing = choices[Math.floor(Math.random() * choices.length)];
+      const mls = String(listing.mls_number || listing.mls).trim();
+
+      input.value = mls;
+
+      const address = String(
+        listing.address ||
+        listing.street_address ||
+        listing.display_address ||
+        "Selected home"
+      ).trim();
+
+      if (hint) hint.textContent = `Selected: ${address} — MLS #${mls}. Click Save changes.`;
+    } catch (error) {
+      if (hint) hint.textContent = error?.message || "Could not choose a home.";
+    } finally {
+      button.disabled = false;
+      button.textContent = originalLabel;
+    }
+  });
+})();
+</script>
