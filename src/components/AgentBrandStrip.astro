@@ -1,12 +1,30 @@
 ---
 import { getAgentForSite } from "../lib/getAgentForSite";
 
-const { site = null, city = "nanaimo" } = Astro.props;
+const { site = null, city = "nanaimo", variant = "contact" } = Astro.props;
 const agent = await getAgentForSite(site);
+const isIntro = variant === "intro";
 
 const first = (...values) =>
   values.find((value) => String(value || "").trim()) || "";
 
+const introCopy =
+  first(
+    site?.bio,
+    agent?.intro,
+    agent?.short_bio,
+    site?.agent_intro,
+    site?.agent_bio
+  ) ||
+  "A local guide to homes, neighbourhoods, and the questions that come with a move. Browse at your own pace, then reach out when you’d like a straight answer.";
+
+const contactCopy =
+  first(
+    site?.contact_copy,
+    agent?.contact_copy,
+    agent?.contactCopy
+  ) ||
+  "Real listings, local context, and straightforward advice when you need it. Browse freely or reach out - I’m always happy to help.";
 const agentName = first(
   agent?.name,
   site?.agent_name,
@@ -55,6 +73,16 @@ const photo = first(
   site?.headshot_url
 );
 
+const originalPhoto = first(
+  agent?.photo_original_url,
+  agent?.original_photo_url,
+  site?.agent_photo_original_url,
+  site?.agent_original_photo_url
+);
+const introBackground = first(
+  site?.agent_intro_background_url
+);
+
 const cityLabel = String(city || "nanaimo")
   .replace(/-/g, " ")
   .replace(/\b\w/g, (character) => character.toUpperCase());
@@ -73,6 +101,7 @@ const initials = String(
 <section
   class:list={[
     "agent-brand-strip",
+    isIntro && "agent-brand-strip--intro",
     photo && "agent-brand-strip--has-photo"
   ]}
   aria-label="Your local real estate guide"
@@ -83,7 +112,7 @@ const initials = String(
     </span>
 
     <div>
-      <span class="agent-brand-strip__eyebrow">LOCAL GUIDANCE</span>
+      <span class="agent-brand-strip__eyebrow">{isIntro ? "MEET YOUR LOCAL GUIDE" : "LOCAL GUIDANCE"}</span>
 
       <h2>
         {agentName
@@ -92,11 +121,17 @@ const initials = String(
       </h2>
 
       {brokerage && <p class="agent-brand-strip__brokerage">{brokerage}</p>}
+
+      {isIntro && (
+        <p class="agent-brand-strip__intro-copy">
+          {introCopy}
+        </p>
+      )}
     </div>
   </div>
 
     {photo && (
-    <div class="agent-brand-strip__portrait" aria-hidden="true">
+    <div class="agent-brand-strip__portrait" aria-hidden="true" style={`--agent-photo: url("${photo}"); --agent-original-photo: url("${originalPhoto || photo}"); --agent-intro-background: url("${introBackground}")`}>
       <div class="agent-brand-strip__portrait-halo"></div>
       <img
         src={photo}
@@ -108,8 +143,7 @@ const initials = String(
   )}
 <div class="agent-brand-strip__content">
   <p class="agent-brand-strip__copy">
-    Real listings, local context, and straightforward advice when you
-    need it. Browse freely or ask about a property, neighbourhood, or move.
+    {contactCopy}
   </p>
 
   <div class="agent-brand-strip__actions">
@@ -559,4 +593,221 @@ const initials = String(
     .agent-brand-strip--has-photo .agent-brand-strip__actions {
       margin-left: 34px;
     }
-  }</style>
+  }
+  /* Homepage introduction variant */
+  .agent-brand-strip--intro {
+    min-height: 220px;
+    background: #f4fbff;
+  }
+
+  .agent-brand-strip--intro .agent-brand-strip__eyebrow {
+    color: var(--accent);
+    letter-spacing: .14em;
+  }
+
+  .agent-brand-strip--intro .agent-brand-strip__copy {
+    max-width: 520px;
+    font-size: .98rem;
+    line-height: 1.55;
+  }
+
+  .agent-brand-strip--intro .agent-brand-strip__content {
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  @media (max-width: 720px) {
+    .agent-brand-strip--intro {
+      min-height: 0;
+    }
+
+    .agent-brand-strip--intro .agent-brand-strip__copy {
+      font-size: .9rem;
+    }
+  }
+  /* Intro layout: portrait left, introduction centre, contact right */
+  .agent-brand-strip--intro.agent-brand-strip--has-photo {
+    position: relative;
+    grid-template-columns: 300px minmax(360px, 1fr) minmax(320px, .88fr);
+    gap: 0;
+    min-height: 225px;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .agent-brand-strip--intro .agent-brand-strip__portrait {
+    position: relative;
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+    min-width: 0;
+    height: 225px;
+    overflow: hidden;
+    border-radius: 10px 0 0 10px;
+  }
+
+  .agent-brand-strip--intro .agent-brand-strip__portrait-halo {
+    display: none;
+  }
+
+  .agent-brand-strip--intro .agent-brand-strip__portrait img {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: auto;
+    max-width: none;
+    height: 100%;
+    transform: translateX(-50%);
+  }
+
+  .agent-brand-strip--intro .agent-brand-strip__initials {
+    position: absolute;
+    z-index: 3;
+    top: 26px;
+    left: 26px;
+  }
+
+  .agent-brand-strip--intro .agent-brand-strip__identity {
+    display: block;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    padding: 28px 32px;
+  }
+
+  .agent-brand-strip--intro .agent-brand-strip__intro-copy {
+    max-width: 430px;
+    padding-top: 15px;
+    margin: 14px 0 0;
+    border-top: 1px solid rgba(34, 110, 156, .18);
+    color: var(--muted);
+    font-size: .94rem;
+    line-height: 1.5;
+  }
+
+  .agent-brand-strip--intro .agent-brand-strip__content {
+    display: flex;
+    grid-column: 3;
+    grid-row: 1;
+    align-self: stretch;
+    flex-direction: column;
+    justify-content: center;
+    padding: 28px 32px;
+    border-left: 1px solid rgba(34, 110, 156, .18);
+  }
+
+  @media (max-width: 860px) {
+    .agent-brand-strip--intro.agent-brand-strip--has-photo {
+      grid-template-columns: 1fr;
+      min-height: 0;
+    }
+
+    .agent-brand-strip--intro .agent-brand-strip__portrait {
+      display: none;
+    }
+
+    .agent-brand-strip--intro .agent-brand-strip__identity,
+    .agent-brand-strip--intro .agent-brand-strip__content {
+      grid-column: 1;
+      padding: 24px;
+    }
+
+    .agent-brand-strip--intro .agent-brand-strip__content {
+      border-top: 1px solid rgba(34, 110, 156, .18);
+      border-left: 0;
+    }
+
+    .agent-brand-strip--intro .agent-brand-strip__initials {
+      position: static;
+      display: inline-flex;
+      margin-bottom: 14px;
+    }
+  }
+  /* intro-layout-lock-v1 */
+  .agent-brand-strip--intro.agent-brand-strip--has-photo {
+    display: grid !important;
+    grid-template-columns: 300px minmax(360px, 1fr) minmax(320px, .88fr) !important;
+    gap: 0 !important;
+    min-height: 225px !important;
+    padding: 0 !important;
+  }
+
+  .agent-brand-strip--intro .agent-brand-strip__portrait {
+    position: relative !important;
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 225px !important;
+  }
+
+  .agent-brand-strip--intro .agent-brand-strip__identity {
+    display: block !important;
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    padding: 28px 32px !important;
+  }
+
+  .agent-brand-strip--intro .agent-brand-strip__content {
+    display: flex !important;
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+    align-self: stretch !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    padding: 28px 32px !important;
+    border-left: 1px solid rgba(34, 110, 156, .18) !important;
+  }
+  /* intro-portrait-final-v13 */
+.agent-brand-strip--intro .agent-brand-strip__portrait {
+  isolation: isolate;
+  overflow: hidden !important;
+  background: #e8f3f7 !important;
+}
+
+.agent-brand-strip--intro .agent-brand-strip__portrait::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  display: block !important;
+  content: "" !important;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(232, 246, 252, .18),
+      rgba(232, 246, 252, .08)
+    ),
+    var(--agent-intro-background) center / cover no-repeat,
+    url("https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=78")
+      center / cover no-repeat !important;
+}
+
+.agent-brand-strip--intro .agent-brand-strip__portrait img {
+  position: absolute !important;
+  z-index: 1 !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: 0 !important;
+  left: 50% !important;
+  width: auto !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  object-position: center bottom !important;
+  transform: translateX(-50%) !important;
+}
+
+.agent-brand-strip--intro .agent-brand-strip__initials {
+  display: none !important;
+}
+
+@media (min-width: 701px) {
+  .agent-brand-strip--intro .agent-brand-strip__portrait {
+    height: 100% !important;
+    align-self: stretch !important;
+  }
+}</style>

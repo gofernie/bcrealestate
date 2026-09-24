@@ -896,7 +896,7 @@ const siteId = String(Astro.params.id || "");
                 <div class="field"><label>Email</label><input name="email" /></div>
               </div>
               <div class="field"><label>City</label><input name="city" /></div>
-              <!-- agent-photo-drop-v1 -->
+<!-- agent-photo-drop-v1 -->
               <div class="agent-photo-editor">
                 <div class="agent-photo-editor__preview">
                   <div
@@ -948,7 +948,56 @@ const siteId = String(Astro.params.id || "");
                   ></div>
                 </div>
               </div>
-            </div>
+
+              <div class="agent-photo-editor">
+                <div class="agent-photo-editor__preview">
+                  <div
+                    class="agent-photo-editor__placeholder"
+                    id="agentIntroBackgroundPlaceholder"
+                  >
+                    BACKGROUND
+                  </div>
+
+                  <img
+                    id="agentIntroBackgroundPreview"
+                    alt="Intro background preview"
+                    hidden
+                  />
+                </div>
+
+                <div class="agent-photo-editor__content">
+                  <strong>Homepage intro background</strong>
+
+                  <p>
+                    The soft background behind the agent cutout.
+                    Upload it once here; it stays in your site media.
+                  </p>
+
+                  <label
+                    class="agent-photo-drop"
+                    id="agentIntroBackgroundDrop"
+                    for="agentIntroBackgroundInput"
+                  >
+                    <span id="agentIntroBackgroundDropLabel">
+                      Drop background here or click to browse
+                    </span>
+
+                    <small>JPG, PNG or WebP - maximum 8 MB</small>
+                  </label>
+
+                  <input
+                    type="file"
+                    id="agentIntroBackgroundInput"
+                    accept="image/jpeg,image/png,image/webp"
+                    hidden
+                  />
+
+                  <div
+                    class="agent-photo-editor__status"
+                    id="agentIntroBackgroundStatus"
+                  ></div>
+                </div>
+              </div>            </div>
           </div>
 
           <!-- Colour -->
@@ -1362,14 +1411,21 @@ const siteId = String(Astro.params.id || "");
               <div class="section__trigger-left">
 <div class="section__icon">BIO</div>
                 <div>
-                  <div class="section__title">Agent bio</div>
-                  <div class="section__subtitle">About section</div>
+                  <div class="section__title">Homepage card copy</div>
+                  <div class="section__subtitle">Intro and contact copy</div>
                 </div>
               </div>
               <svg class="section__chevron" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 7.5l5 5 5-5"/></svg>
             </button>
             <div class="section__body">
-              <div class="field"><label>Bio</label><textarea name="agentBio" style="min-height:120px;"></textarea></div>
+              <div class="field">
+  <label>Intro copy</label>
+  <textarea name="agentBio" rows="4"></textarea>
+</div>
+<div class="field">
+  <label>Contact copy</label>
+  <textarea name="agentContactCopy" rows="3"></textarea>
+</div>
             </div>
           </div>
 
@@ -1413,6 +1469,7 @@ const siteId = window.location.pathname.split("/").filter(Boolean)[2];
         socialFeedType: "", socialFeedUrl: "", socialFeedEmbed: "",
         cityIntro: "", cityNotes: "",
         agentBio: "A local real estate advisor helping buyers make sense of the market with clear, curated listing guidance.",
+        agentContactCopy: "Real listings, local context, and straightforward advice when you need it. Browse freely or reach out - I’m always happy to help.",
         newListingsTitle: "New listings.", newListingsIntro: "The latest homes to hit the market.",
         newListingsCity: "", newListingsArea: "", newListingsType: "",
         newListingsMinPrice: "", newListingsMaxPrice: "", newListingsSort: "newest", newListingsLimit: "6",
@@ -1712,6 +1769,13 @@ rmv.style.cssText = "position:absolute;top:-6px;right:-6px;width:20px;height:20p
           return isBlank ? fallback : { ...fallback, ...saved };
         });
         const merged = { ...defaults, ...(data || {}), groups: mergedGroups };
+
+/* homepage-card-copy-bind-v1 */
+merged.agentBio = data?.bio || data?.agentBio || defaults.agentBio;
+merged.agentContactCopy =
+  data?.contact_copy ||
+  data?.agentContactCopy ||
+  defaults.agentContactCopy;
 
         setSelectedTemplate(merged.template || "brutal");
 
@@ -2462,6 +2526,113 @@ loadPage();
 
   loadExisting();
 })();
-</script>
+
+/* agent-intro-background-upload-ui-v1 */
+(() => {
+  const input = document.getElementById("agentIntroBackgroundInput");
+  const drop = document.getElementById("agentIntroBackgroundDrop");
+  const preview = document.getElementById("agentIntroBackgroundPreview");
+  const placeholder = document.getElementById("agentIntroBackgroundPlaceholder");
+  const status = document.getElementById("agentIntroBackgroundStatus");
+  const label = document.getElementById("agentIntroBackgroundDropLabel");
+
+  if (
+    !(input instanceof HTMLInputElement) ||
+    !(drop instanceof HTMLElement) ||
+    !(preview instanceof HTMLImageElement) ||
+    !(placeholder instanceof HTMLElement) ||
+    !(status instanceof HTMLElement)
+  ) return;
+
+  const siteId = window.location.pathname.split("/").filter(Boolean)[2] || "";
+
+  const showBackground = (src) => {
+    preview.hidden = !src;
+    placeholder.hidden = Boolean(src);
+    if (src) preview.src = src;
+  };
+
+  const setStatus = (message, type = "") => {
+    status.textContent = message;
+    status.classList.remove("is-success", "is-error");
+    if (type) status.classList.add(type);
+  };
+
+  const loadExisting = async () => {
+    if (!siteId) return;
+
+    try {
+      const response = await fetch(
+        `/api/admin/agent-intro-background?siteId=${encodeURIComponent(siteId)}`
+      );
+      const result = await response.json();
+
+      if (response.ok && result?.background_url) {
+        showBackground(result.background_url);
+        if (label) label.textContent = "Replace intro background";
+      }
+    } catch {}
+  };
+
+  const upload = async (file) => {
+    if (!(file instanceof File)) return;
+
+    if (!file.type.startsWith("image/") || file.size > 8 * 1024 * 1024) {
+      setStatus("Choose an image smaller than 8 MB.", "is-error");
+      return;
+    }
+
+    showBackground(URL.createObjectURL(file));
+    setStatus("Uploading...");
+    if (label) label.textContent = "Uploading background...";
+
+    const form = new FormData();
+    form.append("siteId", siteId);
+    form.append("background", file);
+
+    try {
+      const response = await fetch("/api/admin/agent-intro-background", {
+        method: "POST",
+        body: form,
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error || "Could not upload background.");
+      }
+
+      showBackground(result.background_url);
+      setStatus("Intro background saved.", "is-success");
+      if (label) label.textContent = "Replace intro background";
+    } catch (error) {
+      setStatus(error?.message || "Could not upload background.", "is-error");
+      if (label) label.textContent = "Try background upload again";
+    }
+  };
+
+  input.addEventListener("change", () => upload(input.files?.[0]));
+
+  ["dragenter", "dragover"].forEach((eventName) =>
+    drop.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      drop.classList.add("is-dragging");
+    })
+  );
+
+  ["dragleave", "drop"].forEach((eventName) =>
+    drop.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      drop.classList.remove("is-dragging");
+    })
+  );
+
+  drop.addEventListener("drop", (event) => {
+    const file = event.dataTransfer?.files?.[0];
+    if (file) upload(file);
+  });
+
+  loadExisting();
+})();</script>
 </body>
 </html>

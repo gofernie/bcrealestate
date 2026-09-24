@@ -150,7 +150,8 @@ export const POST: APIRoute = async ({ request }) => {
         hero_heading: data.heroHeading,
         hero_copy: data.heroIntro,
         intro_copy: data.cityIntro,
-        bio: data.agentBio,
+        bio: String(data.agentBio || "").trim() || null,
+        contact_copy: String(data.agentContactCopy || "").trim() || null,
         secondary_markets: secondaryMarkets,
       })
       .eq("id", siteId);
