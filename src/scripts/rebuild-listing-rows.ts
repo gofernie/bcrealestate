@@ -2236,6 +2236,9 @@ images: finalImages,
 
         listing_brokerage: String(
           listing?.office?.brokerageName ||
+          listing?.office?.name ||
+          listing?.office?.officeName ||
+          listing?.office?.brokerage ||
           listing?.agents?.brokerage?.name ||
           (
             Array.isArray(listing?.agents)

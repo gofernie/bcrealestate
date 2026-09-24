@@ -319,6 +319,7 @@ export const POST: APIRoute = async ({ request }) => {
         .from("agents")
         .update({
           photo_url: photoUrl,
+          photo_original_url: originalUrl,
           updated_at: new Date().toISOString(),
         })
         .eq("id", site.agent_id);

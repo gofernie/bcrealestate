@@ -97,6 +97,16 @@ const normalizeListing = (listing: any) => {
     type,
     year: listing.year_built || listing.yearBuilt || listing.details?.yearBuilt || "",
     lotSize: listing.lot_size || listing.lotSize || listing.details?.lotSize || "",
+    brokerage: String(
+      listing.listing_brokerage ||
+      listing.brokerage ||
+      listing.details?.listing_brokerage ||
+      listing.details?.listingBrokerage ||
+      listing.raw?.listing_brokerage ||
+      listing.raw?.listingBrokerage ||
+      listing.raw?.brokerage ||
+      ""
+    ).trim(),
     area:
       listing.normalized_area || listing.area || listing.neighborhood || listing.addressObj?.neighborhood || listing.details?.area || "",
     oceanView: String(listing.ocean_view || ""),
@@ -149,6 +159,7 @@ function polygonContainsPoint(geojson: any, lat: number, lng: number) {
 
   return false;
 }
+
 export const GET: APIRoute = async ({ request }) => {
   const url = new URL(request.url);
   const city = String(url.searchParams.get("city") || "nanaimo").trim().toLowerCase();
