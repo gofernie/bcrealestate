@@ -9,6 +9,7 @@ import SiteNav from "../../components/SiteNav.astro";
 import "../../styles/intent-modal.css";
 import "../../styles/page-hero.css";
 import { getNavIntentPages } from "../../lib/getNavIntentPages";
+import { getAgentForSite } from "../../lib/getAgentForSite";
 
 export const prerender = false;
 
@@ -293,6 +294,45 @@ const site = {
   hero_heading: siteRow?.hero_heading || `${cityLabel} Homes For Sale`,
   hero_copy: siteRow?.hero_copy || "Browse active homes for sale, including houses, condos, and townhomes.",
 };
+
+const homepageNudgeAgent = await getAgentForSite(siteRow || site);
+
+const homepageNudgeName = String(
+  homepageNudgeAgent?.name ||
+  siteRow?.agent_name ||
+  siteRow?.realtor_name ||
+  siteRow?.owner_name ||
+  ""
+).trim();
+
+const homepageNudgeFirstName =
+  homepageNudgeName.split(/\s+/)[0] || "";
+
+const homepageNudgePhone = String(
+  homepageNudgeAgent?.phone ||
+  siteRow?.agent_phone ||
+  siteRow?.phone ||
+  siteRow?.contact_phone ||
+  ""
+).trim();
+
+const homepageNudgeEmail = String(
+  homepageNudgeAgent?.email ||
+  siteRow?.agent_email ||
+  siteRow?.email ||
+  siteRow?.contact_email ||
+  ""
+).trim();
+
+const homepageNudgeInitials = String(
+  homepageNudgeName || site.site_name || cityLabel
+)
+  .split(/\s+/)
+  .filter(Boolean)
+  .slice(0, 2)
+  .map((word) => word[0])
+  .join("")
+  .toUpperCase();
 
 const siteCity = site.city;
 const siteName = site.site_name;
@@ -2988,7 +3028,50 @@ data-liked-tags="[]"
 
 </div>
 
-        <AgentBrandStrip site={siteRow || site} city={routeCity} />
+        <section class="homepage-agent-nudge" aria-label="Contact your local agent">
+  <div class="homepage-agent-nudge__identity">
+    <span class="homepage-agent-nudge__initials" aria-hidden="true">
+      {homepageNudgeInitials}
+    </span>
+
+    <div>
+      <span class="homepage-agent-nudge__eyebrow">YOUR LOCAL GUIDE</span>
+      <h2>
+        {homepageNudgeFirstName
+          ? "Ask " + homepageNudgeFirstName + " about any home."
+          : "Questions about a home?"}
+      </h2>
+    </div>
+  </div>
+
+  <p class="homepage-agent-nudge__copy">
+    {homepageNudgeFirstName
+      ? "Ask " + homepageNudgeFirstName + " for local context and a straight answer."
+      : "Local context and a straight answer whenever you want one."}
+  </p>
+
+  <div class="homepage-agent-nudge__actions">
+    {homepageNudgeEmail && (
+      <a
+        class="homepage-agent-nudge__email"
+        href={`mailto:${homepageNudgeEmail}`}
+      >
+        {homepageNudgeFirstName
+          ? "Email " + homepageNudgeFirstName
+          : "Ask a question"}
+      </a>
+    )}
+
+    {homepageNudgePhone && (
+      <a
+        class="homepage-agent-nudge__phone"
+        href={`tel:${homepageNudgePhone.replace(/[^\d+]/g, "")}`}
+      >
+        Call {homepageNudgePhone}
+      </a>
+    )}
+  </div>
+</section>
 
 <section class="locus-home-final-cta">
 
@@ -10899,7 +10982,107 @@ intro h2,
   margin-top: 36px;
   padding-top: 22px;
   border-top: 1px solid rgba(7, 31, 52, .13);
-}</style>
+}
+  /* Stable homepage-only agent prompt. */
+  .homepage-agent-nudge {
+    box-sizing: border-box;
+    width: 100%;
+    margin: 28px auto 32px;
+    padding: 16px 20px;
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(220px, .8fr) auto;
+    align-items: center;
+    gap: 26px;
+    border: 1px solid var(--line-warm);
+    border-radius: 10px;
+    background: linear-gradient(110deg, color-mix(in srgb, var(--accent) 7%, white), white 62%);
+  }
+
+  .homepage-agent-nudge__identity {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .homepage-agent-nudge__initials {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    flex: 0 0 42px;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    font-size: .76rem;
+    font-weight: 850;
+    letter-spacing: .04em;
+  }
+
+  .homepage-agent-nudge__eyebrow {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--muted);
+    font-size: .61rem;
+    font-weight: 850;
+    letter-spacing: .12em;
+  }
+
+  .homepage-agent-nudge h2 {
+    margin: 0;
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 1.08rem;
+    line-height: 1.15;
+  }
+
+  .homepage-agent-nudge__copy {
+    margin: 0;
+    color: var(--ink);
+    font-size: .84rem;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  .homepage-agent-nudge__actions {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    white-space: nowrap;
+  }
+
+  .homepage-agent-nudge__email {
+    display: inline-flex;
+    align-items: center;
+    min-height: 38px;
+    padding: 0 15px;
+    border-radius: 7px;
+    background: var(--ink);
+    color: white;
+    font-size: .76rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .homepage-agent-nudge__phone {
+    color: var(--ink);
+    font-size: .78rem;
+    font-weight: 800;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+
+  @media (max-width: 760px) {
+    .homepage-agent-nudge {
+      grid-template-columns: 1fr;
+      gap: 12px;
+      padding: 16px;
+    }
+
+    .homepage-agent-nudge__actions {
+      flex-wrap: wrap;
+    }
+  }</style>
 
 <script is:inline>
 (() => {
