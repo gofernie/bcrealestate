@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { createClient } from "@supabase/supabase-js";
-import twilio from "twilio";
+import { Resend } from "resend";
 
 export const prerender = false;
 
@@ -139,39 +139,106 @@ const message = String(body.message || "").trim();
       }
     }
 
-    const sid = import.meta.env.TWILIO_ACCOUNT_SID;
-    const token = import.meta.env.TWILIO_AUTH_TOKEN;
-    const from = import.meta.env.TWILIO_FROM_NUMBER;
-    const notifyPhone = import.meta.env.AGENT_PHONE_NUMBER;
+    // Email the configured agent for this site instead of sending an SMS.
+    const resendApiKey = import.meta.env.RESEND_API_KEY;
+    const leadEmailFrom =
+      import.meta.env.LEAD_EMAIL_FROM ||
+      "Locus Leads <onboarding@resend.dev>";
 
-    if (sid && token && from && notifyPhone) {
-      const client = twilio(sid, token);
+    let agentEmail = "";
+    let agentName = "Your agent";
+    let siteName = "your real estate site";
 
-       await client.messages.create({
-        from,
-        to: notifyPhone,
-        body:
-          `New intent lead\n\n` +
-          `Source: ${body.source || "intent_refined_search"}\n` +
-          `Name: ${name || "Not provided"}\n` +
-          `Email: ${email || "Not provided"}\n` +
-          `Phone: ${phone || "Not provided"}\n` +
-          `City: ${lead.city || "Not provided"}\n` +
-          `Page: ${lead.slug || "Not provided"}\n` +
-          `Address: ${body.address || "Not provided"}\n` +
-          `Price: ${body.price || "Not provided"}\n` +
-`MLS: ${body.mls_number || "Not provided"}\n` +
-`${question ? `Question: ${question}\n` : ""}` +
-`${message ? `Message: ${message}\n` : ""}` +
-`\n` +
-`${new URL(request.url).origin}/admin/leads?${
-  siteId
-    ? `site_id=${encodeURIComponent(siteId)}`
-    : ""
-}`,
-      });
+    if (siteId) {
+      const { data: siteForLead, error: siteLookupError } = await supabase
+        .from("sites")
+        .select("agent_id, site_name")
+        .eq("id", siteId)
+        .maybeSingle();
+
+      if (siteLookupError) {
+        console.error("Lead notification site lookup failed:", siteLookupError.message);
+      }
+
+      siteName = String(siteForLead?.site_name || siteName).trim();
+
+      const agentId = String(siteForLead?.agent_id || "").trim();
+
+      if (agentId) {
+        const { data: agentForLead, error: agentLookupError } = await supabase
+          .from("agents")
+          .select("name, email")
+          .eq("id", agentId)
+          .maybeSingle();
+
+        if (agentLookupError) {
+          console.error("Lead notification agent lookup failed:", agentLookupError.message);
+        }
+
+        agentName = String(agentForLead?.name || agentName).trim();
+        agentEmail = String(agentForLead?.email || "").trim();
+      }
     }
 
+    if (resendApiKey && agentEmail) {
+      const source = String(body.source || "intent_refined_search");
+      const adminUrl =
+        `${new URL(request.url).origin}/admin/leads?${
+          siteId ? `site_id=${encodeURIComponent(siteId)}` : ""
+        }`;
+
+      const leadText = [
+        "New website lead",
+        "",
+        `Site: ${siteName}`,
+        `Source: ${source}`,
+        `Name: ${name || "Not provided"}`,
+        `Email: ${email || "Not provided"}`,
+        `Phone: ${phone || "Not provided"}`,
+        `City: ${lead.city || "Not provided"}`,
+        `Page: ${lead.slug || "Not provided"}`,
+        `Address: ${body.address || "Not provided"}`,
+        `Price: ${body.price || "Not provided"}`,
+        `MLS: ${body.mls_number || "Not provided"}`,
+        question ? `Question: ${question}` : "",
+        message ? `Message: ${message}` : "",
+        "",
+        `View lead: ${adminUrl}`,
+      ].filter(Boolean).join("\n");
+
+      try {
+        const resend = new Resend(resendApiKey);
+
+        await resend.emails.send({
+          from: leadEmailFrom,
+          to: [agentEmail],
+          replyTo: email || undefined,
+          subject: `New lead from ${siteName}`,
+          text: leadText,
+          html: `
+            <div style="font-family:Arial,Helvetica,sans-serif;max-width:620px;margin:0 auto;padding:28px 20px;color:#17202a;line-height:1.55;">
+              <p style="margin:0 0 8px;color:#667085;font-size:13px;text-transform:uppercase;letter-spacing:.08em;">New website lead</p>
+              <h2 style="margin:0 0 22px;">${name || "New enquiry"}</h2>
+              <p><strong>Site:</strong> ${siteName}</p>
+              <p><strong>Source:</strong> ${source}</p>
+              <p><strong>Email:</strong> ${email || "Not provided"}</p>
+              <p><strong>Phone:</strong> ${phone || "Not provided"}</p>
+              ${question ? `<p><strong>Question:</strong><br>${question}</p>` : ""}
+              ${message ? `<p><strong>Message:</strong><br>${message.replace(/\n/g, "<br>")}</p>` : ""}
+              <p style="margin-top:26px;">
+                <a href="${adminUrl}" style="display:inline-block;padding:11px 16px;border-radius:7px;background:#143958;color:#fff;text-decoration:none;font-weight:700;">
+                  View lead in admin
+                </a>
+              </p>
+            </div>
+          `,
+        });
+      } catch (notificationError) {
+        console.error("Lead email notification failed:", notificationError);
+      }
+    } else if (!agentEmail) {
+      console.warn("Lead saved, but no agent email is configured for this site.");
+    }
     return new Response(JSON.stringify({ ok: true, lead: data }), {    
       status: 200,
     });
