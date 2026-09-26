@@ -886,7 +886,7 @@ const features = featureRows.map(
 );
 const { data: areaBoundaryRows = [] } = await supabase
   .from("area_boundaries")
-  .select("id, area_slug, area_name")
+  .select("id, area_slug, area_name, polygon_geojson")
   .eq("city", city);
 
 const currentAreaBoundary =
@@ -1157,12 +1157,12 @@ const navAreaCounts = new Map<string, number>();
     .trim()
     .toLowerCase();
 
-  if (!areaKey) return;
-
-  navAreaCounts.set(
-    areaKey,
-    (navAreaCounts.get(areaKey) || 0) + 1
-  );
+  if (areaKey) {
+    navAreaCounts.set(
+      areaKey,
+      (navAreaCounts.get(areaKey) || 0) + 1
+    );
+  }
 });
 
 const rankedNavAreas = [...areas].sort((a, b) => {
@@ -1242,6 +1242,48 @@ const hasActiveSearchFilters =
   !!filterViewType ||
   !!filterWaterfrontType ||
   (filterSort !== "" && filterSort !== "newest");
+
+/*
+ * Dedicated Area and property-type pages use the same lightweight
+ * pagination path as the homepage. Intent pages retain their full,
+ * server-side result set because their filters can be more specific.
+ */
+const fastListingSlug = String(slug || "").toLowerCase();
+const fastListingCity = String(city || "").toLowerCase();
+const fastListingSlugWithoutCity =
+  fastListingSlug.startsWith(`${fastListingCity}-`)
+    ? fastListingSlug.slice(fastListingCity.length + 1)
+    : fastListingSlug;
+
+// The browser URL is the reliable source for the dedicated type routes.
+// Some site records use a different internal slug/id and must not fall back
+// to the old, server-only pagination path.
+const fastTypeRouteSlugs = new Set([
+  "homes",
+  "houses",
+  "condos",
+  "condo",
+  "townhomes",
+  "townhouses",
+  "mobile-homes",
+  "mobiles",
+  "land",
+  "lots",
+]);
+
+const pathnameTypeSlug = String(
+  Astro.url.pathname.split("/").filter(Boolean).pop() || ""
+).toLowerCase();
+
+const usesFastTypeListingPage =
+  fastTypeRouteSlugs.has(pathnameTypeSlug) ||
+  String(page?.id || "").startsWith(`type-${city}-`);
+
+const useHomepageListingPipeline =
+  pageKind === "area" ||
+  usesFastTypeListingPage ||
+  fastTypeRouteSlugs.has(fastListingSlugWithoutCity);
+
 const listingCardFields = `
   id,
   mls_number,
@@ -1289,7 +1331,7 @@ const polygonCandidateFields = `
 let query = supabase
   .from("listing_rows")
   .select(
-    hasPolygonSearch
+    hasPolygonSearch && !useHomepageListingPipeline
       ? polygonCandidateFields
       : listingCardFields
   )
@@ -1297,7 +1339,7 @@ let query = supabase
   .in("normalized_city", cityDatabaseKeys)
   .neq("property_type", "Lease");
 
-if (page.area && !hasPolygonSearch) {
+if (page.area && (!hasPolygonSearch || useHomepageListingPipeline)) {
 const normalizedPageArea = String(page.area)
     .toLowerCase()
     .trim()
@@ -1341,20 +1383,20 @@ const typeAreaCounts = new Map<string, number>();
     .trim()
     .toLowerCase();
 
-  if (rowType !== normalizedPropertyType) return;
+  if (rowType === normalizedPropertyType) {
+    const areaKey = String(row.normalized_area || "")
+      .replace(/-/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
 
-  const areaKey = String(row.normalized_area || "")
-    .replace(/-/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-
-  if (!areaKey) return;
-
-  typeAreaCounts.set(
-    areaKey,
-    (typeAreaCounts.get(areaKey) || 0) + 1
-  );
+    if (areaKey) {
+      typeAreaCounts.set(
+        areaKey,
+        (typeAreaCounts.get(areaKey) || 0) + 1
+      );
+    }
+  }
 });
 
 const rankedAreaFilterOptions = areaFilterOptions
@@ -1480,8 +1522,10 @@ if (filterWaterfrontType === "any") {
   query = query.eq("waterfront_type", filterWaterfrontType);
 }
 
-const { data: priceBandInventoryRows = [] } =
-  await query;
+const priceBandInventoryRows =
+  useHomepageListingPipeline
+    ? []
+    : (await query).data || [];
 
 const priceUnderMatch =
   String(filterPrice || "").match(
@@ -1598,7 +1642,7 @@ console.log("INTENT QUERY DEBUG", {
 
 
 
-const listingLimit = 1000;
+const listingLimit = useHomepageListingPipeline ? 24 : 1000;
 
 const defaultSort =
   filterSort ||
@@ -1622,7 +1666,7 @@ const listingQueryStartedAt = performance.now();
 let rawListings: any[] = [];
 let listingsError: any = null;
 
-if (hasPolygonSearch) {
+if (hasPolygonSearch && !useHomepageListingPipeline) {
   const polygonBatchSize = 1000;
 
   for (
@@ -1749,7 +1793,7 @@ function pointInPolygon(
   });
 }
 
-if (hasPolygonSearch) {
+if (hasPolygonSearch && !useHomepageListingPipeline) {
   const beforePolygon = listings.length;
   const polygonFilterStartedAt = performance.now();
 
@@ -1794,7 +1838,7 @@ if (hasPolygonSearch) {
  * Polygon pages initially contain only id/lat/lng.
  * Fetch full listing-card data for the matching IDs.
  */
-if (hasPolygonSearch && listings.length > 0) {
+if (hasPolygonSearch && !useHomepageListingPipeline && listings.length > 0) {
   const orderedPolygonIds = listings
     .map((listing) =>
       String(listing.id || "")
@@ -2224,6 +2268,35 @@ function normalizeImageUrl(url: any) {
   if (value.startsWith("vreb/")) return `https://cdn.repliers.io/${value}`;
 
   return value;
+}
+
+/* Keep the card's first visible image and its modal gallery in sync. */
+function listingImageUrls(listing: any) {
+  const sourceImages = Array.isArray(listing?.images)
+    ? listing.images
+    : [];
+
+  const candidates = [
+    listing?.image_url,
+    listing?.image,
+    ...sourceImages,
+  ];
+
+  return [
+    ...new Set(
+      candidates
+        .map((image) =>
+          normalizeImageUrl(
+            image?.highRes ||
+            image?.mediumRes ||
+            image?.lowRes ||
+            image?.url ||
+            image
+          )
+        )
+        .filter(Boolean)
+    ),
+  ];
 }
 
 const listingCount = listings?.length || 0;
@@ -8838,6 +8911,17 @@ grid-template-columns: 30px minmax(0, 1fr);
   data-area-center-lat={String(osmLat || "")}
   data-area-center-lng={String(osmLng || "")}
 >
+<script
+  type="application/json"
+  id="map-area-boundaries-data"
+  set:html={JSON.stringify(
+    areaBoundaryRows.map((boundary) => ({
+      slug: boundary.area_slug || "",
+      name: boundary.area_name || "",
+      polygon: boundary.polygon_geojson || null,
+    }))
+  )}
+></script>
 <style is:global>
   /* premium-explore-callout-final */
   .explore-callout {
@@ -10664,10 +10748,9 @@ Approximate driving times from{" "}
   <span
     class="results-bar"
     data-total-listings={listings.length}
-    style="margin-left:auto;font-size:0.82rem;color:var(--muted);font-weight:600;white-space:nowrap;"
-  >
-    {listings.length} listings found
-  </span>
+    hidden
+    style="display:none !important;"
+  ></span>
 </section>
 
 <div
@@ -10886,7 +10969,7 @@ Approximate driving times from{" "}
 
           const image =
             normalizeImageUrl(firstImage) ||
-            "https://placehold.co/800x600?text=Listing";
+            "https://placehold.co/800x600?text=Photos+coming+soon";
 
           return (
             <>
@@ -10966,15 +11049,7 @@ data-rooms={JSON.stringify(
   ) || []
 )}
 data-images={JSON.stringify(
-  [
-    ...(Array.isArray(listing?.images)
-      ? listing.images.map((img) =>
-          normalizeImageUrl(
-            img?.highRes || img?.mediumRes || img?.lowRes || img?.url || img
-          )
-        )
-      : []),
-  ].filter(Boolean)
+  [...new Set([image, ...listingImageUrls(listing)].filter(Boolean))]
 )}                data-price={formatPrice(listing.price)}
                 data-sort-index={index}
 data-raw-price={String(listing?.price || 0)}
@@ -11079,11 +11154,27 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
   )}
 ></script>
 
-{listings.length > 30 && (
+{(listings.length > 30 || useHomepageListingPipeline) && (
   <>
     <script
       type="application/json"
       id="remaining-listings-data"
+      data-fast-listings={useHomepageListingPipeline ? "true" : "false"}
+      data-city={city}
+      data-area={
+        pageKind === "area"
+          ? String(page.area || slug || "")
+          : ""
+      }
+      data-type={effectivePropertyType || ""}
+      data-beds={filterBeds || ""}
+      data-baths={filterBaths || ""}
+      data-min-sqft={filterMinSqft || ""}
+      data-min-year={filterMinYear || ""}
+      data-view-type={filterViewType || ""}
+      data-waterfront-type={filterWaterfrontType || ""}
+      data-price={filterPrice || ""}
+      data-sort={defaultSort || "newest"}
       set:html={JSON.stringify(
         listings.slice(30).map((listing) => ({
           id: listing.id,
@@ -11114,48 +11205,104 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
 
     <div
       id="show-more-listings-wrap"
+      hidden={useHomepageListingPipeline}
       style="
-        margin:30px 0 10px;
-        display:grid;
-        gap:14px;
-        text-align:center;
+        margin:34px 0 18px;
       "
     >
-      <div style="height:1px;background:rgba(0,0,0,.13);"></div>
+      <section
+        aria-live="polite"
+        style="
+          max-width:680px;
+          margin:0 auto;
+          padding:28px clamp(20px,4vw,42px);
+          border:1px solid color-mix(in srgb,var(--accent) 24%,#d7dde0);
+          border-radius:14px;
+          background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 9%,white),#fff 64%);
+          box-shadow:0 12px 30px rgba(8,36,58,.06);
+          text-align:center;
+        "
+      >
+        <p
+          id="show-more-listings-eyebrow"
+          style="
+            margin:0 0 8px;
+            color:var(--accent);
+            font-size:.68rem;
+            font-weight:850;
+            letter-spacing:.12em;
+            text-transform:uppercase;
+          "
+        >More to explore</p>
 
-      <div>
-        <div
+        <h2
+          id="show-more-listings-title"
+          style="
+            margin:0 0 8px;
+            color:var(--ink);
+            font-family:var(--serif);
+            font-size:clamp(1.35rem,2.5vw,1.8rem);
+            line-height:1.12;
+          "
+        >Keep browsing</h2>
+
+        <p
           id="show-more-listings-copy"
           style="
-            margin-bottom:10px;
-            font-family:var(--serif);
-            font-size:clamp(1.05rem,2vw,1.35rem);
-            color:var(--ink);
+            max-width:520px;
+            margin:0 auto 18px;
+            color:var(--muted);
+            font-size:.96rem;
+            line-height:1.55;
           "
         >
-          {listings.length - 30} more {typePageLabel.toLowerCase()} available
-        </div>
+          {useHomepageListingPipeline
+            ? ""
+            : `${listings.length - 30} more ${typePageLabel.toLowerCase()} available`}
+        </p>
 
         <button
           type="button"
           id="show-more-listings-btn"
           style="
             appearance:none;
-            border:0;
-            background:transparent;
-            padding:6px 10px;
-            color:var(--accent);
+            min-height:44px;
+            border:1px solid var(--accent);
+            border-radius:999px;
+            background:var(--accent);
+            padding:10px 18px;
+            color:#fff;
             font:inherit;
-            font-size:.9rem;
-            font-weight:750;
+            font-size:.86rem;
+            font-weight:800;
             cursor:pointer;
+            box-shadow:0 5px 14px color-mix(in srgb,var(--accent) 26%,transparent);
           "
         >
           Continue browsing <span aria-hidden="true">&rarr;</span>
         </button>
-      </div>
 
-      <div style="height:1px;background:rgba(0,0,0,.13);"></div>
+        <button
+          type="button"
+          id="show-nearby-area-listings-btn"
+          hidden
+          style="
+            min-height:44px;
+            margin-left:8px;
+            border:1px solid var(--accent);
+            border-radius:999px;
+            background:transparent;
+            padding:10px 18px;
+            color:var(--accent);
+            font:inherit;
+            font-size:.86rem;
+            font-weight:800;
+            cursor:pointer;
+          "
+        >
+          Search 2 km beyond this area
+        </button>
+      </section>
     </div>
   </>
 )}
@@ -11171,12 +11318,27 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
     const copy =
       document.getElementById("show-more-listings-copy");
 
+    const title =
+      document.getElementById("show-more-listings-title");
+
+    const eyebrow =
+      document.getElementById("show-more-listings-eyebrow");
+
+    const nearbyButton =
+      document.getElementById("show-nearby-area-listings-btn");
+
     const dataEl =
       document.getElementById("remaining-listings-data");
 
-    if (!button || !wrapper || !copy || !dataEl) return;
+    if (!button || !nearbyButton || !wrapper || !copy || !title || !eyebrow || !dataEl) return;
+
+    const useFastListings =
+      dataEl.dataset.fastListings === "true";
 
     let remainingListings = [];
+    let fastOffset = 24;
+    let fastTotal = 0;
+    let expandedAreaKm = 0;
 
     try {
       remainingListings = JSON.parse(dataEl.textContent || "[]");
@@ -11184,8 +11346,99 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
       remainingListings = [];
     }
 
-    const batchSize = 16;
+    const batchSize = useFastListings ? 24 : 16;
     const grid = document.querySelector(".grid");
+    let nextPriceOffset = 0;
+
+    const setWrapperVisible = (visible) => {
+      wrapper.hidden = !visible;
+      // The wrapper has an inline display:grid declaration, which otherwise
+      // overrides the browser's [hidden] rule.
+      wrapper.style.display = visible ? "grid" : "none";
+    };
+
+    const priceCeiling = () => {
+      const price = String(dataEl.dataset.price || "");
+      const range = price.match(/^(\d+)-(\d+)$/);
+      const under = price.match(/^under-(\d+)$/);
+
+      if (range) return Number(range[2]) * 1000;
+      if (under) return Number(under[1]) * 1000;
+      return 0;
+    };
+
+    const formatBudget = (amount) =>
+      `$${Number(amount || 0).toLocaleString()}`;
+
+    const nextPriceHomeLabel = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const filterValue = (name) =>
+        dataEl.dataset[name] ||
+        urlParams.get(name) ||
+        document.querySelector(`[name="${name}"]`)?.value ||
+        "";
+      const beds = Number(filterValue("beds") || 0);
+      const baths = Number(filterValue("baths") || 0);
+      const type = String(filterValue("type") || "").trim().toLowerCase();
+      const typeLabels = {
+        house: "homes",
+        homes: "homes",
+        condo: "condos",
+        condos: "condos",
+        townhouse: "townhomes",
+        townhomes: "townhomes",
+        mobile: "mobile homes",
+        land: "land listings",
+      };
+      const filters = [];
+
+      if (beds > 0) filters.push(`${beds}+ bed`);
+      if (baths > 0) filters.push(`${baths}+ bath`);
+
+      return `${filters.length ? `${filters.join(", ")} ` : ""}${
+        typeLabels[type] || "homes"
+      }`;
+    };
+
+    const hasSelectedArea = () => {
+      if (dataEl.dataset.area) return true;
+
+      const select = document.querySelector(".area-filter-select");
+      return select instanceof HTMLSelectElement &&
+        Array.from(select.selectedOptions).some(
+          (option) => option.value && option.value !== "all"
+        );
+    };
+
+    const selectedAreaDetails = () => {
+      const selects = Array.from(
+        document.querySelectorAll('select.area-filter-select, select[name="area"]')
+      );
+      const selected = selects.flatMap((select) =>
+        Array.from(select.selectedOptions)
+          .filter((option) => option.value && option.value !== "all")
+          .map((option) => ({ value: option.value, label: option.textContent?.trim() || option.value }))
+      );
+
+      if (selected.length) return selected;
+
+      if (dataEl.dataset.area) {
+        const raw = dataEl.dataset.area;
+        return [{
+          value: raw,
+          label: raw.replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
+        }];
+      }
+
+      return [];
+    };
+
+    const selectedAreaLabel = () => {
+      const areas = selectedAreaDetails();
+      if (areas.length === 1) return areas[0].label;
+      if (areas.length > 1) return "your chosen areas";
+      return "this area";
+    };
 
     function fmtAddr(v) {
       if (!v) return "";
@@ -11201,36 +11454,50 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
     }
 
     function formatPriceClient(price) {
-      return `$${Number(price || 0).toLocaleString()}`;
+      const raw = String(price || "").trim();
+      if (raw.startsWith("$")) return raw;
+
+      const amount = Number(raw.replace(/[^\d.-]/g, ""));
+      return amount ? `$${amount.toLocaleString()}` : "";
     }
 
     function buildShowMoreCard(listing) {
-      const image = listing.image || "https://placehold.co/800x600?text=Listing";
-      const cityRaw = String(listing.normalized_city || "nanaimo");
+      const image = listing.image || "https://placehold.co/800x600?text=Photos+coming+soon";
+      const images = [
+        image,
+        ...(Array.isArray(listing.images) ? listing.images : []),
+      ]
+        .map((value) =>
+          typeof value === "string"
+            ? value
+            : value?.highRes || value?.mediumRes || value?.lowRes || value?.url || ""
+        )
+        .filter(Boolean);
+      const cityRaw = String(listing.normalized_city || listing.city || dataEl.dataset.city || "nanaimo");
       const cityLabel = cityRaw.charAt(0).toUpperCase() + cityRaw.slice(1);
 
       const article = document.createElement("article");
       article.className = "card original-card";
-      article.dataset.itemId = String(listing.id || listing.mls_number || "");
-      article.dataset.cardId = String(listing.id || listing.mls_number || "");
-      article.dataset.listingId = String(listing.id || listing.mls_number || "");
-      article.dataset.mls = String(listing.mls_number || listing.id || "");
+      article.dataset.itemId = String(listing.id || listing.mls_number || listing.mls || "");
+      article.dataset.cardId = String(listing.id || listing.mls_number || listing.mls || "");
+      article.dataset.listingId = String(listing.id || listing.mls_number || listing.mls || "");
+      article.dataset.mls = String(listing.mls_number || listing.mls || listing.id || "");
       article.dataset.image = image;
       article.dataset.floorplans = "[]";
       article.dataset.rooms = "[]";
-      article.dataset.images = "[]";
+      article.dataset.images = JSON.stringify([...new Set(images)]);
       article.dataset.price = formatPriceClient(listing.price);
-      article.dataset.rawPrice = String(listing.price || 0);
-      article.dataset.listedAt = String(listing.listed_at || listing.created_at || "");
+      article.dataset.rawPrice = String(listing.rawPrice || listing.price || 0);
+      article.dataset.listedAt = String(listing.listedAt || listing.listed_at || listing.created_at || "");
       article.dataset.address = fmtAddr(listing.address);
       article.dataset.beds = String(listing.beds || "-");
       article.dataset.baths = String(listing.baths || "-");
       article.dataset.sqft = String(listing.sqft || "");
-      article.dataset.type = String(listing.normalized_type || "Home");
+      article.dataset.type = String(listing.normalized_type || listing.type || "Home");
       article.dataset.lat = listing.lat || "";
       article.dataset.lng = listing.lng || "";
       article.dataset.city = cityRaw;
-      article.dataset.area = String(listing.normalized_area || "").toLowerCase();
+      article.dataset.area = String(listing.normalized_area || listing.area || "").toLowerCase();
       article.dataset.decision = "";
       article.dataset.likedTags = "[]";
       article.dataset.isFavourite = "false";
@@ -11255,19 +11522,329 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
       return article;
     }
 
+    /* The filter controls below use the same card renderer when they fetch
+       a fresh result set from the homepage endpoint. */
+    window.__homepageListingCard = buildShowMoreCard;
+
     const updateRemainingCopy = () => {
-      const remaining = remainingListings.length;
+      const remaining = useFastListings
+        ? Math.max(0, fastTotal - fastOffset)
+        : remainingListings.length;
 
       if (remaining === 0) {
-        wrapper.hidden = true;
+        const ceiling = priceCeiling();
+
+        // A price-only search has reached its real end. Offer the buyer a
+        // deliberate next budget step rather than mixing in unrelated cards.
+        if (useFastListings && fastTotal > 0 && ceiling && !hasSelectedArea()) {
+          setWrapperVisible(true);
+          nearbyButton.hidden = true;
+          eyebrow.textContent = "Search complete";
+          title.textContent = "You’ve seen every match";
+          copy.textContent =
+            `We found ${fastTotal} ${nextPriceHomeLabel()} up to ` +
+            `${formatBudget(ceiling)}. The next closest matches start just above that.`;
+          button.hidden = false;
+          button.dataset.action = "next-price";
+          button.textContent =
+            `See 6 more ${nextPriceHomeLabel()} above ${formatBudget(ceiling)}`;
+          return;
+        }
+
+        if (useFastListings && fastTotal > 0 && ceiling && hasSelectedArea()) {
+          setWrapperVisible(true);
+          eyebrow.textContent = expandedAreaKm
+            ? "Nearby search complete"
+            : "Search complete";
+          title.textContent = expandedAreaKm
+            ? "You’ve seen every nearby match"
+            : "You’ve seen every match in this area";
+          copy.textContent = expandedAreaKm
+            ? `That includes ${nextPriceHomeLabel()} in ${selectedAreaLabel()} and up to ${expandedAreaKm} km beyond it.`
+            : `We found ${fastTotal} ${nextPriceHomeLabel()} in ${selectedAreaLabel()} up to ${formatBudget(ceiling)}. Where would you like to expand next?`;
+          button.hidden = false;
+          button.dataset.action = "next-price";
+          button.textContent =
+            `See 6 more ${nextPriceHomeLabel()} above ${formatBudget(ceiling)}`;
+          nearbyButton.hidden = expandedAreaKm > 0;
+          nearbyButton.textContent = `Search 2 km beyond ${selectedAreaLabel()}`;
+          return;
+        }
+
+        setWrapperVisible(false);
         return;
       }
 
+      setWrapperVisible(true);
       const listingLabel = remaining === 1 ? "listing" : "listings";
-      copy.textContent = `${remaining} more ${listingLabel} available`;
+      eyebrow.textContent = "More to explore";
+      title.textContent = "Keep browsing";
+      nearbyButton.hidden = true;
+      copy.textContent = `${remaining} more ${listingLabel} match this search.`;
+      button.hidden = false;
+      button.dataset.action = "load-more";
+      button.innerHTML =
+        'Continue browsing <span aria-hidden="true">&rarr;</span>';
     };
 
-    button.addEventListener("click", () => {
+    document.addEventListener("homepage-fast-results-replaced", (event) => {
+      fastTotal = Number(event.detail?.total || 0);
+      fastOffset = Number(event.detail?.visible || 0);
+      updateRemainingCopy();
+    });
+
+    const fastParams = (offset) => {
+      const params = new URLSearchParams({
+        city: dataEl.dataset.city || "nanaimo",
+        offset: String(offset),
+        limit: String(batchSize),
+        sort:
+          dataEl.dataset.sort === "price-asc"
+            ? "price-low"
+            : dataEl.dataset.sort === "price-desc"
+            ? "price-high"
+            : "newest",
+      });
+
+      const selectedAreas = selectedAreaDetails();
+      if (selectedAreas.length) {
+        params.set("areas", selectedAreas.map((area) => area.value).join("|"));
+      } else if (dataEl.dataset.area) {
+        params.set("area", dataEl.dataset.area);
+      }
+      if (expandedAreaKm > 0) {
+        params.set("areaBufferKm", String(expandedAreaKm));
+      }
+      if (dataEl.dataset.type) params.set("type", dataEl.dataset.type);
+      if (dataEl.dataset.beds) params.set("beds", dataEl.dataset.beds);
+      if (dataEl.dataset.baths) params.set("baths", dataEl.dataset.baths);
+      if (dataEl.dataset.minSqft) params.set("minSqft", dataEl.dataset.minSqft);
+      if (dataEl.dataset.minYear) params.set("minYear", dataEl.dataset.minYear);
+      if (dataEl.dataset.viewType) params.set("viewType", dataEl.dataset.viewType);
+      if (dataEl.dataset.waterfrontType) {
+        params.set("waterfrontType", dataEl.dataset.waterfrontType);
+      }
+
+      const price = String(dataEl.dataset.price || "");
+      const under = price.match(/^under-(\d+)$/);
+      const range = price.match(/^(\d+)-(\d+)$/);
+      const plus = price.match(/^(\d+)-plus$/);
+      const over = price.match(/^over-(\d+)$/);
+
+      if (under) params.set("maxPrice", String(Number(under[1]) * 1000));
+      if (range) {
+        params.set("minPrice", String(Number(range[1]) * 1000));
+        params.set("maxPrice", String(Number(range[2]) * 1000));
+      }
+      if (plus || over) {
+        params.set("minPrice", String(Number((plus || over)[1]) * 1000));
+      }
+
+      return params;
+    };
+
+    const storeFastMarkers = (markers) => {
+      const visibleIds = new Set(
+        Array.from(grid?.querySelectorAll(".original-card") || []).map(
+          (card) => String(card.dataset.listingId || card.dataset.mls || "")
+        )
+      );
+
+      dataEl.textContent = JSON.stringify(
+        (Array.isArray(markers) ? markers : []).filter(
+          (marker) =>
+            !visibleIds.has(
+              String(marker.id || marker.mls_number || "")
+            )
+        )
+      );
+    };
+
+    const loadFastPage = async (offset, append) => {
+      const response = await fetch(
+        `/api/home-listings?${fastParams(offset).toString()}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Listing request failed: ${response.status}`);
+      }
+
+      const payload = await response.json();
+      const listings = Array.isArray(payload.listings)
+        ? payload.listings
+        : [];
+
+      fastTotal = Number(payload.total || 0);
+      storeFastMarkers(payload.markers);
+
+      if (!append) {
+        /* Replace the short SSR preview with the homepage API's exact first page. */
+        grid?.replaceChildren(
+          ...listings.map((listing) => buildShowMoreCard(listing))
+        );
+        fastOffset = listings.length;
+
+        document.querySelectorAll(".type-stats article:first-child strong")
+          .forEach((element) => {
+            element.textContent = String(fastTotal);
+          });
+      } else {
+        const fragment = document.createDocumentFragment();
+        listings.forEach((listing) => {
+          fragment.appendChild(buildShowMoreCard(listing));
+        });
+        grid?.appendChild(fragment);
+        fastOffset += listings.length;
+      }
+
+      // The SSR preview can be broader than the live API result (for
+      // example, when a price band is in the URL). Always publish the
+      // API's exact total so the footer never advertises stale listings.
+      document.dispatchEvent(new CustomEvent("homepage-fast-results-replaced", {
+        detail: { total: fastTotal, visible: fastOffset },
+      }));
+
+      updateRemainingCopy();
+    };
+
+    const loadNextPriceHomes = async () => {
+      const ceiling = priceCeiling();
+      if (!ceiling) return;
+
+      const params = fastParams(nextPriceOffset);
+      params.delete("maxPrice");
+      params.set("minPrice", String(ceiling + 1));
+      params.set("limit", "6");
+      // "Next" here means closest above the buyer's budget, not merely
+      // newest homes in a higher price range.
+      params.set("sort", "price-low");
+
+      const response = await fetch(`/api/home-listings?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Listing request failed: ${response.status}`);
+      }
+
+      const payload = await response.json();
+      const nextHomes = Array.isArray(payload.listings)
+        ? payload.listings
+        : [];
+
+      if (!nextHomes.length) {
+        setWrapperVisible(false);
+        return;
+      }
+
+      const divider = document.createElement("div");
+      divider.className = "next-price-listings-heading";
+      divider.textContent = `Just above ${formatBudget(ceiling)}`;
+      divider.style.cssText =
+        "grid-column:1 / -1;margin:18px 0 0;font-weight:800;font-size:1.05rem;";
+      grid?.appendChild(divider);
+
+      const fragment = document.createDocumentFragment();
+      nextHomes.forEach((listing) => {
+        fragment.appendChild(buildShowMoreCard(listing));
+      });
+      grid?.appendChild(fragment);
+
+      nextPriceOffset += nextHomes.length;
+      const totalAbove = Number(payload.total || 0);
+      const remainingAbove = Math.max(0, totalAbove - nextPriceOffset);
+
+      copy.textContent =
+        remainingAbove > 0
+          ? `There are ${remainingAbove} more ${nextPriceHomeLabel()} above ${formatBudget(ceiling)}.`
+          : `Those are the closest ${nextPriceHomeLabel()} above ${formatBudget(ceiling)}.`;
+
+      eyebrow.textContent = "Expanded price range";
+      title.textContent = remainingAbove > 0
+        ? "Keep exploring"
+        : "You’ve reached the closest matches";
+
+      if (remainingAbove > 0) {
+        nearbyButton.hidden = true;
+        button.hidden = false;
+        button.dataset.action = "next-price";
+        button.textContent =
+          `See 6 more ${nextPriceHomeLabel()} above ${formatBudget(ceiling)}`;
+      } else {
+        button.hidden = true;
+      }
+    };
+
+    const loadNearbyAreaHomes = async () => {
+      const areas = selectedAreaDetails();
+      if (!areas.length) return;
+
+      expandedAreaKm = 2;
+      const params = fastParams(0);
+      const response = await fetch(`/api/home-listings?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Nearby listing request failed: ${response.status}`);
+      }
+
+      const payload = await response.json();
+      const listings = Array.isArray(payload.listings) ? payload.listings : [];
+      if (!listings.length) {
+        expandedAreaKm = 0;
+        return;
+      }
+
+      grid?.replaceChildren(...listings.map((listing) => buildShowMoreCard(listing)));
+      fastTotal = Number(payload.total || 0);
+      fastOffset = listings.length;
+      storeFastMarkers(payload.markers);
+      document.body.dataset.areaExpansionKm = String(expandedAreaKm);
+      document.dispatchEvent(new CustomEvent("homepage-fast-results-replaced", {
+        detail: { total: fastTotal, visible: fastOffset },
+      }));
+      window.dispatchEvent(new Event("listing-filters-updated"));
+      document.getElementById("listing-results-anchor")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    };
+
+    button.addEventListener("click", async () => {
+      if (button.dataset.action === "next-price") {
+        button.disabled = true;
+        button.textContent = "Loading…";
+
+        try {
+          await loadNextPriceHomes();
+          if (typeof updateViewedBadges === "function") updateViewedBadges();
+        } catch (error) {
+          console.warn("Could not load homes above the selected budget:", error);
+          button.hidden = false;
+          button.textContent = "Try again";
+        } finally {
+          button.disabled = false;
+        }
+
+        return;
+      }
+
+      if (useFastListings) {
+        if (fastOffset >= fastTotal) return;
+
+        button.disabled = true;
+        button.textContent = "Loading…";
+
+        try {
+          await loadFastPage(fastOffset, true);
+          if (typeof applySort === "function") applySort();
+          if (typeof updateViewedBadges === "function") updateViewedBadges();
+        } catch (error) {
+          console.warn("Could not load more listings:", error);
+        } finally {
+          button.disabled = false;
+          button.innerHTML =
+            'Continue browsing <span aria-hidden="true">&rarr;</span>';
+        }
+
+        return;
+      }
+
       const nextBatch = remainingListings.splice(0, batchSize);
       const fragment = document.createDocumentFragment();
 
@@ -11283,7 +11860,31 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
       updateRemainingCopy();
     });
 
-    updateRemainingCopy();
+    nearbyButton.addEventListener("click", async () => {
+      nearbyButton.disabled = true;
+      const originalText = nearbyButton.textContent;
+      nearbyButton.textContent = "Searching nearby homes…";
+
+      try {
+        await loadNearbyAreaHomes();
+      } catch (error) {
+        console.error(error);
+        nearbyButton.textContent = "Couldn’t load nearby homes — try again";
+      } finally {
+        nearbyButton.disabled = false;
+        if (nearbyButton.textContent === "Searching nearby homes…") {
+          nearbyButton.textContent = originalText || "Search 2 km beyond this area";
+        }
+      }
+    });
+
+    if (useFastListings) {
+      loadFastPage(0, false).catch((error) => {
+        console.warn("Could not prepare fast listing results:", error);
+      });
+    } else {
+      updateRemainingCopy();
+    }
   })();
 </script>
 <RelatedIntentCards city={city} pages={relatedIntentPages} />
@@ -12193,6 +12794,7 @@ function ensureMarkerCluster() {
 let amenityMarkers = [];
 let polygonLayer = null;
 let maskLayer = null;
+let selectedAreaBoundaryLayer = null;
 let refinedLeafletMap = null;
 let refinedMarkers = [];
 let currentIntentMapBounds = null;
@@ -12200,6 +12802,16 @@ let currentIntentMapBounds = null;
 const searchAreaGeojson = JSON.parse(
   document.querySelector("[data-search-area-geojson]")?.dataset.searchAreaGeojson || "null"
 );
+
+const mapAreaBoundaries = (() => {
+  try {
+    return JSON.parse(
+      document.getElementById("map-area-boundaries-data")?.textContent || "[]"
+    );
+  } catch {
+    return [];
+  }
+})();
 
 const accentColor = getComputedStyle(document.documentElement)
   .getPropertyValue("--accent").trim() || "#2f6f73";
@@ -12469,6 +13081,86 @@ function drawSearchPolygon(map) {
   return L.latLngBounds(coords);
 }
 
+function drawSelectedAreaBoundaries(map) {
+  selectedAreaBoundaryLayer?.remove();
+  selectedAreaBoundaryLayer = null;
+
+  const select = document.querySelector(".area-filter-select");
+  const selectedFromControl = select instanceof HTMLSelectElement
+    ? Array.from(select.selectedOptions)
+        .map((option) => String(option.value || "").trim().toLowerCase())
+        .filter((value) => value && value !== "all")
+    : [];
+
+  // The custom multi-select is progressively enhanced. On first map paint
+  // its hidden native select may not yet reflect the URL, so use both.
+  const selectedFromUrl = new URLSearchParams(window.location.search)
+    .getAll("area")
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  const normalise = (value) => String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  // URLSearchParams turns `north+nanaimo` into `north nanaimo`, while
+  // boundaries are usually stored as `north-nanaimo`. Compare normalised
+  // forms so both labels match the same boundary.
+  const selectedValues = Array.from(
+    new Set([...selectedFromControl, ...selectedFromUrl].map(normalise))
+  );
+
+  if (!selectedValues.length || !mapAreaBoundaries.length) return null;
+
+  const features = mapAreaBoundaries
+    .filter((boundary) =>
+      selectedValues.includes(normalise(boundary.slug)) ||
+      selectedValues.includes(normalise(boundary.name))
+    )
+    .map((boundary) => {
+      let geometry = boundary.polygon;
+
+      if (typeof geometry === "string") {
+        try {
+          geometry = JSON.parse(geometry);
+        } catch {
+          return null;
+        }
+      }
+
+      if (geometry?.type === "Feature") return geometry;
+      if (!geometry?.type) return null;
+
+      return {
+        type: "Feature",
+        properties: { name: boundary.name },
+        geometry,
+      };
+    })
+    .filter(Boolean);
+
+  if (!features.length) return null;
+
+  selectedAreaBoundaryLayer = L.geoJSON(
+    { type: "FeatureCollection", features },
+    {
+      interactive: false,
+      style: {
+        color: accentColor,
+        weight: 2,
+        opacity: 0.82,
+        fillColor: accentColor,
+        fillOpacity: 0.09,
+        dashArray: "5 5",
+      },
+    }
+  ).addTo(map);
+
+  return selectedAreaBoundaryLayer.getBounds();
+}
+
 // --- Init main map ---
 function initLeafletMap(mode = "all") {
   if (!intentMapEl) return;
@@ -12656,7 +13348,9 @@ function initLeafletMap(mode = "all") {
       maskLayer = null;
     }
     // Draw polygon
-    const areaBounds = drawSearchPolygon(leafletMap);
+    const areaBounds =
+      drawSearchPolygon(leafletMap) ||
+      drawSelectedAreaBoundaries(leafletMap);
 
     // Add listing markers
     points.forEach(({ card, latlng }) => {
@@ -13190,6 +13884,12 @@ if (areaIntelligenceSection && intentMapEl) {
 // Show more listings
 let visibleListingCount = 12;
 document.getElementById("show-more-listings-btn")?.addEventListener("click", () => {
+  if (
+    document.getElementById("remaining-listings-data")?.dataset.fastListings === "true"
+  ) {
+    return;
+  }
+
   visibleListingCount += 12;
   const cards = Array.from(document.querySelectorAll(".original-card"));
   cards.forEach((card, index) => { if (index < visibleListingCount) card.hidden = false; });
@@ -13704,11 +14404,169 @@ function updateSearchFromFilters() {
 showFilterLoadingState();
 const nextSearch = params.toString();
 
-window.location.assign(
-  `${window.location.pathname}${
-    nextSearch ? `?${nextSearch}` : ""
-  }#listing-results-anchor`
-);
+  const fastData = document.getElementById("remaining-listings-data");
+
+  /* Area and dedicated type pages intentionally behave like the homepage:
+     update the URL and results in place instead of asking Astro to re-render
+     the entire page for every filter change. */
+  if (fastData?.dataset.fastListings === "true") {
+    const apiParams = new URLSearchParams({
+      city: fastData.dataset.city || "nanaimo",
+      offset: "0",
+      limit: "24",
+      sort:
+        sortSelect?.value === "price-asc"
+          ? "price-low"
+          : sortSelect?.value === "price-desc"
+            ? "price-high"
+            : "newest",
+    });
+
+    const selectedAreas = areaSelect instanceof HTMLSelectElement
+      ? Array.from(areaSelect.selectedOptions)
+          .map((option) => String(option.value || "").trim())
+          .filter((value) => value && value !== "all")
+      : [];
+
+    if (selectedAreas.length) {
+      apiParams.set("areas", selectedAreas.join("|"));
+    } else if (fastData.dataset.area) {
+      apiParams.set("area", fastData.dataset.area);
+    }
+
+    const selectedType = String(typeSelect?.value || fastData.dataset.type || "")
+      .trim()
+      .toLowerCase();
+    if (selectedType && selectedType !== "all") apiParams.set("type", selectedType);
+
+    if (bedsSelect?.value && bedsSelect.value !== "all") {
+      apiParams.set("beds", bedsSelect.value);
+    }
+    if (bathsSelect?.value && bathsSelect.value !== "all") {
+      apiParams.set("baths", bathsSelect.value);
+    }
+    if (minSqftSelect?.value) apiParams.set("minSqft", minSqftSelect.value);
+    if (minYearSelect?.value) apiParams.set("minYear", minYearSelect.value);
+    if (viewTypeSelect?.value) apiParams.set("viewType", viewTypeSelect.value);
+    if (waterfrontTypeSelect?.value) {
+      apiParams.set("waterfrontType", waterfrontTypeSelect.value);
+    }
+    if (primaryMainFilter?.checked) apiParams.set("primaryOnMain", "true");
+    if (threeFloorFilter?.checked) apiParams.set("threeSameFloor", "true");
+    if (fourFloorFilter?.checked) apiParams.set("fourSameFloor", "true");
+
+    const price = String(priceSelect?.value || "");
+    const under = price.match(/^under-(\d+)$/);
+    const range = price.match(/^(\d+)-(\d+)$/);
+    const plus = price.match(/^(\d+)-plus$/);
+    const over = price.match(/^over-(\d+)$/);
+
+    if (under) apiParams.set("maxPrice", String(Number(under[1]) * 1000));
+    if (range) {
+      apiParams.set("minPrice", String(Number(range[1]) * 1000));
+      apiParams.set("maxPrice", String(Number(range[2]) * 1000));
+    }
+    if (plus || over) apiParams.set("minPrice", String(Number((plus || over)[1]) * 1000));
+
+    window.history.replaceState(
+      {},
+      "",
+      `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}#listing-results-anchor`
+    );
+
+    fetch(`/api/home-listings?${apiParams.toString()}`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Listing request failed: ${response.status}`);
+        return response.json();
+      })
+      .then((payload) => {
+        const pageListings = Array.isArray(payload.listings) ? payload.listings : [];
+        const grid = document.querySelector(".grid");
+        const makeCard = window.__homepageListingCard;
+
+        if (grid && typeof makeCard === "function") {
+          grid.replaceChildren(...pageListings.map((listing) => makeCard(listing)));
+        }
+
+        const visibleIds = new Set(
+          pageListings.map((listing) => String(listing.id || listing.mls || listing.mls_number || ""))
+        );
+        fastData.textContent = JSON.stringify(
+          (Array.isArray(payload.markers) ? payload.markers : []).filter(
+            (marker) => !visibleIds.has(String(marker.id || marker.mls || marker.mls_number || ""))
+          )
+        );
+
+        fastData.dataset.area = selectedAreas.length ? "" : (fastData.dataset.area || "");
+        fastData.dataset.type = selectedType === "all" ? "" : selectedType;
+        fastData.dataset.beds = bedsSelect?.value === "all" ? "" : (bedsSelect?.value || "");
+        fastData.dataset.baths = bathsSelect?.value === "all" ? "" : (bathsSelect?.value || "");
+        fastData.dataset.price = price === "all" ? "" : price;
+        fastData.dataset.minSqft = minSqftSelect?.value || "";
+        fastData.dataset.minYear = minYearSelect?.value || "";
+        fastData.dataset.viewType = viewTypeSelect?.value || "";
+        fastData.dataset.waterfrontType = waterfrontTypeSelect?.value || "";
+        fastData.dataset.sort = sortSelect?.value || "newest";
+
+        const total = Number(payload.total || 0);
+        const resultsBar = document.querySelector(".results-bar");
+        if (resultsBar) {
+          resultsBar.dataset.totalListings = String(total);
+          resultsBar.textContent = `${total} listings found`;
+        }
+
+        document.querySelectorAll(".type-stats article:first-child strong")
+          .forEach((element) => { element.textContent = String(total); });
+
+        document.dispatchEvent(new CustomEvent("homepage-fast-results-replaced", {
+          detail: { total, visible: pageListings.length },
+        }));
+
+        updateResultsHeading(getCurrentFilters(), total);
+        document.querySelector(".intent-controls")?.classList.remove("is-filter-loading");
+        grid?.classList.remove("is-filter-loading");
+        intentMapEl?.classList.remove("is-filter-loading");
+
+        // A filter change starts a new result set. Return the viewer to the
+        // first card, leaving enough room for the fixed nav and search rail.
+        const firstCard = grid?.querySelector(".original-card");
+        if (firstCard) {
+          requestAnimationFrame(() => {
+            const railBottom =
+              document.querySelector(".listing-filter-rail")
+                ?.getBoundingClientRect().bottom ||
+              document.querySelector(".site-nav")
+                ?.getBoundingClientRect().bottom ||
+              0;
+
+            window.scrollTo({
+              top: Math.max(
+                0,
+                firstCard.getBoundingClientRect().top + window.scrollY - railBottom - 14
+              ),
+              behavior: "smooth",
+            });
+          });
+        }
+
+        if (typeof updateViewedBadges === "function") updateViewedBadges();
+        window.dispatchEvent(new CustomEvent("listing-filters-updated"));
+      })
+      .catch((error) => {
+        console.warn("Could not update listings:", error);
+        document.querySelector(".intent-controls")?.classList.remove("is-filter-loading");
+        document.querySelector(".grid")?.classList.remove("is-filter-loading");
+        intentMapEl?.classList.remove("is-filter-loading");
+      });
+
+    return;
+  }
+
+  window.location.assign(
+    `${window.location.pathname}${
+      nextSearch ? `?${nextSearch}` : ""
+    }#listing-results-anchor`
+  );
 }
 
 areaSelect?.addEventListener("change", updateSearchFromFilters);
@@ -14001,7 +14859,16 @@ const normalizePhotoUrl = (url) => {
           listing.image ||
           listing.image_url ||
           ""
-        ) || "https://placehold.co/800x600?text=Listing";
+        ) || "https://placehold.co/800x600?text=Photos+coming+soon";
+
+        const images = [
+          image,
+          ...(Array.isArray(listing.images) ? listing.images : []),
+        ]
+          .map((value) => normalizePhotoUrl(
+            value?.highRes || value?.mediumRes || value?.lowRes || value?.url || value
+          ))
+          .filter(Boolean);
 
      const viewedAddresses = new Set(getViewedIntentAddresses());
 const viewedKeys = new Set(getViewedIntentListingKeys());
@@ -14061,7 +14928,7 @@ class="card refined-card" style="border-radius:6px;overflow:hidden;transition:tr
             data-mls="${listing.mls_number || listing.id || ""}"
 data-listing-url="/${String(listing.normalized_city || listing.city || 'nanaimo').toLowerCase().replace(/\s+/g, '-')}/listing/${encodeURIComponent(String(listing.mls_number || listing.id || ''))}"
             data-image="${image}"
-            data-images='${JSON.stringify(listing.images || [])}'
+            data-images='${JSON.stringify([...new Set(images)])}'
             data-price="${refinedPrice}"
             data-raw-price="${String(listing.price || listing.raw_price || listing.price_text || "").replace(/[^0-9]/g, "")}"
 data-sort-index="${index}"
@@ -16433,6 +17300,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
     left: 0;
     width: min(360px, calc(100vw - 32px));
     max-height: 430px;
+    padding-bottom: 72px;
     overflow-y: auto;
     border: 1px solid var(--line);
     border-radius: 10px;
@@ -16461,8 +17329,12 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   }
 
   .type-area-multi__footer {
+    position: absolute;
+    right: 0;
     bottom: 0;
+    left: 0;
     border-top: 1px solid var(--line);
+    box-shadow: 0 -8px 18px rgba(25, 20, 35, .08);
   }
 
   .type-area-multi__clear {
@@ -16496,6 +17368,15 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
     font-weight: 750;
   }
 
+  .type-area-multi.is-all-selected .type-area-multi__option.is-selected {
+    background: #eef0f2;
+    color: #56616a;
+  }
+
+  .type-area-multi.is-all-selected .type-area-multi__check {
+    color: #66717a;
+  }
+
   .type-area-multi__count {
     color: var(--muted);
     font-size: 0.78rem;
@@ -16508,16 +17389,19 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
     text-align: right;
   }
 
-  .type-area-multi__apply {
-    width: 100%;
-    padding: 11px 16px;
-    border: 0;
-    border-radius: 7px;
-    background: var(--accent);
-    color: white;
-    font: inherit;
-    font-weight: 800;
-    cursor: pointer;
+  .type-area-multi__apply,
+  .type-area-multi__done {
+    display: block !important;
+    width: 100% !important;
+    min-height: 42px !important;
+    padding: 11px 16px !important;
+    border: 0 !important;
+    border-radius: 7px !important;
+    background: var(--accent) !important;
+    color: #fff !important;
+    font: inherit !important;
+    font-weight: 800 !important;
+    cursor: pointer !important;
   }
 </style>
 
@@ -16560,15 +17444,25 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
     head.className = "type-area-multi__head";
 
     const title = document.createElement("strong");
-    title.textContent = "Select areas";
+    title.textContent = "Choose one or more areas";
 
     const clear = document.createElement("button");
     clear.type = "button";
     clear.className = "type-area-multi__clear";
-    clear.textContent = "All areas";
+    clear.textContent = "Select all";
 
     head.append(title, clear);
     menu.appendChild(head);
+
+    const footer = document.createElement("div");
+    footer.className = "type-area-multi__footer";
+
+    const done = document.createElement("button");
+    done.type = "button";
+    done.className = "type-area-multi__done";
+    done.textContent = "Done";
+
+    footer.appendChild(done);
 
     const areaOptions = Array.from(select.options)
       .filter((option) => option.value !== "all");
@@ -16614,6 +17508,16 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
           : selected.length === 1
             ? selected[0].textContent
             : `${selected.length} areas`;
+
+      wrapper.classList.toggle(
+        "is-all-selected",
+        selected.length === areaOptions.length && areaOptions.length > 0
+      );
+
+      clear.textContent =
+        selected.length === areaOptions.length && areaOptions.length > 0
+          ? "Clear all"
+          : "Select all";
 
       menu
         .querySelectorAll(".type-area-multi__option")
@@ -16669,6 +17573,17 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
       areaSelectionDirty = false;
       window.clearTimeout(automaticAreaTimer);
 
+      /* Fast Type pages use the same in-place results request as Price and
+         Beds. The hidden native select is the single source of truth. */
+      if (
+        document.getElementById("remaining-listings-data")?.dataset.fastListings === "true"
+      ) {
+        select.dispatchEvent(
+          new Event("change", { bubbles: true })
+        );
+        return;
+      }
+
       const nextUrl = new URL(window.location.href);
 
       nextUrl.searchParams.delete("area");
@@ -16704,12 +17619,22 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
     };
 
     clear.addEventListener("click", () => {
+      const selectAll = areaOptions.some(
+        (option) => !option.selected
+      );
+
       areaOptions.forEach((option) => {
-        option.selected = false;
+        option.selected = selectAll;
       });
 
       sync();
       scheduleAreaApply();
+    });
+
+    done.addEventListener("click", () => {
+      menu.hidden = true;
+      trigger.setAttribute("aria-expanded", "false");
+      finishPendingAreaSelection();
     });
 
     trigger.addEventListener("click", (event) => {
@@ -16768,6 +17693,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
     });
 
 
+    menu.appendChild(footer);
     wrapper.append(trigger, menu);
     select.insertAdjacentElement("afterend", wrapper);
 
@@ -17542,6 +18468,14 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  /* Fast Area/Type pages do not load the full inventory just to calculate
+     percentiles. Keep their normal, useful price bands instead. */
+  if (
+    document.getElementById("remaining-listings-data")?.dataset.fastListings === "true"
+  ) {
+    return;
+  }
+
   priceSelect.dataset.inventoryPricingReady = "true";
 
   const normalizeType = (value) => {
@@ -18190,3 +19124,170 @@ document.addEventListener("click", (event) => {
   background: transparent !important;
   box-shadow: none !important;
 }</style>
+
+<style is:global>
+/* Homepage-style sticky search for fast Area and Type result pages. */
+.listing-filter-rail {
+  position: fixed;
+  right: 0;
+  left: 0;
+  z-index: 9000;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.listing-filter-rail .intent-controls {
+  box-sizing: border-box;
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+}
+
+@media (max-width: 768px) {
+  .listing-filter-rail {
+    display: none !important;
+  }
+}
+</style>
+
+<script is:inline>
+  (() => {
+    const start = () => {
+      const controls = document.querySelector(".intent-controls");
+      const moreFiltersPanel = document.getElementById("type-more-filters");
+      const fastData = document.getElementById("remaining-listings-data");
+
+      if (
+        !controls ||
+        !fastData ||
+        fastData.dataset.fastListings !== "true" ||
+        controls.dataset.stickyResultFilters === "true"
+      ) return;
+
+      controls.dataset.stickyResultFilters = "true";
+
+      const marker = document.createElement("div");
+      marker.className = "listing-filter-original-position";
+      marker.setAttribute("aria-hidden", "true");
+      controls.before(marker);
+
+      const rail = document.createElement("div");
+      rail.className = "listing-filter-rail";
+      rail.setAttribute("aria-hidden", "true");
+      document.body.appendChild(rail);
+
+      let docked = false;
+      let frame = 0;
+      let hideTimer = 0;
+
+      const navBottom = () => Math.max(
+        0,
+        document.querySelector(".site-nav")?.getBoundingClientRect().bottom || 0
+      );
+
+      const showRail = () => {
+        window.clearTimeout(hideTimer);
+        rail.style.top = `${navBottom()}px`;
+        rail.style.visibility = "visible";
+        rail.style.pointerEvents = "auto";
+        requestAnimationFrame(() => {
+          rail.style.opacity = "1";
+          rail.style.transform = "translateY(0)";
+        });
+      };
+
+      const hideRail = () => {
+        rail.style.opacity = "0";
+        rail.style.pointerEvents = "none";
+        rail.style.transform = "translateY(-8px)";
+        hideTimer = window.setTimeout(() => {
+          rail.style.visibility = "hidden";
+        }, 160);
+      };
+
+      const dock = () => {
+        if (docked) return;
+
+        // Preserve the exact desktop bar geometry before moving it to the
+        // fixed rail. This keeps every control in the same place on screen.
+        const bounds = controls.getBoundingClientRect();
+        controls.style.setProperty("width", `${bounds.width}px`, "important");
+        controls.style.setProperty("margin-left", `${bounds.left}px`, "important");
+        controls.style.setProperty("margin-right", "0", "important");
+        controls.style.setProperty("margin-top", "0", "important");
+        controls.style.setProperty("margin-bottom", "0", "important");
+        rail.appendChild(controls);
+
+        // The expanded panel is a sibling in normal page flow. Move it with
+        // the bar so it remains directly below “More filters” while docked.
+        if (moreFiltersPanel) {
+          moreFiltersPanel.style.setProperty(
+            "width",
+            `${bounds.width}px`,
+            "important"
+          );
+          moreFiltersPanel.style.setProperty(
+            "margin-left",
+            `${bounds.left}px`,
+            "important"
+          );
+          moreFiltersPanel.style.setProperty(
+            "margin-right",
+            "0",
+            "important"
+          );
+          rail.appendChild(moreFiltersPanel);
+        }
+        docked = true;
+        showRail();
+      };
+
+      const restore = () => {
+        if (!docked) return;
+        marker.after(controls);
+        controls.style.removeProperty("width");
+        controls.style.removeProperty("margin-left");
+        controls.style.removeProperty("margin-right");
+        controls.style.removeProperty("margin-top");
+        controls.style.removeProperty("margin-bottom");
+
+        if (moreFiltersPanel) {
+          controls.after(moreFiltersPanel);
+          moreFiltersPanel.style.removeProperty("width");
+          moreFiltersPanel.style.removeProperty("margin-left");
+          moreFiltersPanel.style.removeProperty("margin-right");
+        }
+        docked = false;
+        hideRail();
+      };
+
+      const update = () => {
+        frame = 0;
+        if (window.innerWidth < 769) return restore();
+
+        if (marker.getBoundingClientRect().top <= navBottom()) {
+          dock();
+          rail.style.top = `${navBottom()}px`;
+        } else {
+          restore();
+        }
+      };
+
+      const requestUpdate = () => {
+        if (!frame) frame = requestAnimationFrame(update);
+      };
+
+      window.addEventListener("scroll", requestUpdate, { passive: true });
+      window.addEventListener("resize", requestUpdate, { passive: true });
+      requestUpdate();
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", start, { once: true });
+    } else {
+      start();
+    }
+  })();
+</script>
