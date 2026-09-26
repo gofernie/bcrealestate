@@ -5,17 +5,35 @@ export const prerender = false;
 
 const normalizeImageUrl = (value: any) => {
   if (!value) return "";
+
   const raw =
     typeof value === "string"
-      ? value
-      : value.highRes || value.mediumRes || value.lowRes || value.url || value.src || value.href || value.path || "";
+      ? value.trim()
+      : String(
+          value.highRes ||
+            value.high_res ||
+            value.mediumRes ||
+            value.medium_res ||
+            value.lowRes ||
+            value.low_res ||
+            value.url ||
+            value.src ||
+            value.href ||
+            value.path ||
+            value.imageUrl ||
+            value.image_url ||
+            ""
+        ).trim();
+
   if (!raw) return "";
   if (/^https?:\/\//i.test(raw)) return raw;
-  const cleaned = raw.startsWith("/") ? raw : `/${raw}`;
-  if (cleaned.startsWith("/vreb/") || cleaned.startsWith("/crea2/")) {
-    return `https://cdn.repliers.io${cleaned}`;
-  }
-  return cleaned;
+
+  // Repliers supplies many MLS photos as relative CDN paths. They are not
+  // paths on this site, so always send them to the Repliers image CDN.
+  if (raw.startsWith("/")) return `https://cdn.repliers.io${raw}`;
+  if (/^(vreb|crea2)\//i.test(raw)) return `https://cdn.repliers.io/${raw}`;
+
+  return raw;
 };
 
 const formatAddress = (value: any): string => {
@@ -42,23 +60,56 @@ const formatAddress = (value: any): string => {
     .trim();
 };
 
+const toImageItems = (value: any): any[] => {
+  if (!value) return [];
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+      try {
+        return toImageItems(JSON.parse(trimmed));
+      } catch {
+        return [trimmed];
+      }
+    }
+
+    return [trimmed];
+  }
+
+  if (Array.isArray(value)) return value.flatMap(toImageItems);
+
+  if (typeof value === "object") {
+    const nested =
+      value.images ||
+      value.photos ||
+      value.photo_urls ||
+      value.items ||
+      value.results;
+
+    return nested ? toImageItems(nested) : [value];
+  }
+
+  return [];
+};
+
 const listingImages = (listing: any) => {
-  const rawImages = listing.images || listing.photo_urls || listing.photos || listing.raw?.images || [];
-  const normalized = Array.isArray(rawImages)
-    ? rawImages
-        .map((image: any) =>
-          normalizeImageUrl(
-            typeof image === "string"
-              ? image
-              : image.highRes || image.mediumRes || image.lowRes || image.url || image.src || image.href || image.path
-          )
-        )
-        .filter(Boolean)
-    : [];
-  const first = normalizeImageUrl(
-    listing.image_url || listing.image || listing.photo || listing.images?.[0] || listing.raw?.images?.[0]
+  const candidates = [
+    listing.image_url,
+    listing.image,
+    listing.photo,
+    ...toImageItems(listing.images),
+    ...toImageItems(listing.photo_urls),
+    ...toImageItems(listing.photos),
+    ...toImageItems(listing.raw?.images),
+    ...toImageItems(listing.raw?.photo_urls),
+    ...toImageItems(listing.raw?.photos),
+  ];
+
+  return Array.from(
+    new Set(candidates.map(normalizeImageUrl).filter(Boolean))
   );
-  return Array.from(new Set([first, ...normalized].filter(Boolean)));
 };
 
 const normalizeListing = (listing: any) => {
@@ -160,6 +211,61 @@ function polygonContainsPoint(geojson: any, lat: number, lng: number) {
   return false;
 }
 
+/* Returns true when a point is inside a boundary or within the requested
+   distance of its outer edge. This deliberately works from the drawn area
+   geometry—not an MLS area label—so nearby homes are not missed. */
+function polygonContainsOrIsNearPoint(
+  geojson: any,
+  lat: number,
+  lng: number,
+  bufferKm: number
+) {
+  if (polygonContainsPoint(geojson, lat, lng)) return true;
+  if (!geojson || bufferKm <= 0) return false;
+
+  const geometry = geojson.type === "Feature" ? geojson.geometry : geojson;
+  if (!geometry) return false;
+
+  const polygons = geometry.type === "Polygon"
+    ? [geometry.coordinates]
+    : geometry.type === "MultiPolygon"
+      ? geometry.coordinates
+      : [];
+
+  const pointToSegmentKm = (
+    pointLat: number,
+    pointLng: number,
+    a: any[],
+    b: any[]
+  ) => {
+    const scaleX = 111.32 * Math.cos((pointLat * Math.PI) / 180);
+    const scaleY = 110.57;
+    const ax = (Number(a[0]) - pointLng) * scaleX;
+    const ay = (Number(a[1]) - pointLat) * scaleY;
+    const bx = (Number(b[0]) - pointLng) * scaleX;
+    const by = (Number(b[1]) - pointLat) * scaleY;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSquared = dx * dx + dy * dy;
+    const t = lengthSquared
+      ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / lengthSquared))
+      : 0;
+    const x = ax + t * dx;
+    const y = ay + t * dy;
+    return Math.hypot(x, y);
+  };
+
+  return polygons.some((polygon: any[]) => {
+    const outerRing = polygon?.[0];
+    if (!Array.isArray(outerRing) || outerRing.length < 2) return false;
+
+    return outerRing.some((point: any[], index: number) => {
+      const next = outerRing[(index + 1) % outerRing.length];
+      return pointToSegmentKm(lat, lng, point, next) <= bufferKm;
+    });
+  });
+}
+
 export const GET: APIRoute = async ({ request }) => {
   const url = new URL(request.url);
   const city = String(url.searchParams.get("city") || "nanaimo").trim().toLowerCase();
@@ -171,6 +277,10 @@ export const GET: APIRoute = async ({ request }) => {
   const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
   const limit = Math.min(48, Math.max(1, Number(url.searchParams.get("limit") || 24)));
   const area = String(url.searchParams.get("area") || "").trim().toLowerCase();
+  const areaBufferKm = Math.min(
+    5,
+    Math.max(0, Number(url.searchParams.get("areaBufferKm") || 0))
+  );
   const areas = String(url.searchParams.get("areas") || "")
     .split("|")
     .map((value) => value.trim().toLowerCase())
@@ -267,7 +377,12 @@ export const GET: APIRoute = async ({ request }) => {
 
       if (
         !selectedAreaBoundaries.some((boundary) =>
-          polygonContainsPoint(boundary.polygon_geojson, lat, lng)
+          polygonContainsOrIsNearPoint(
+            boundary.polygon_geojson,
+            lat,
+            lng,
+            areaBufferKm
+          )
         )
       ) {
         return false;

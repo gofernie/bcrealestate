@@ -1524,7 +1524,45 @@ if (filterWaterfrontType === "any") {
 
 const priceBandInventoryRows =
   useHomepageListingPipeline
-    ? []
+    // navRows is already loaded for the fast page's navigation and area
+    // counts. Reuse its lightweight price data rather than running another
+    // listing-card query just to build the price menu.
+    ? (navRows || []).filter((listing) => {
+        const listingType = String(
+          listing.normalized_type || ""
+        ).trim().toLowerCase();
+
+        if (
+          effectivePropertyType &&
+          listingType !== effectivePropertyType
+        ) {
+          return false;
+        }
+
+        const scopedAreas =
+          filterAreas.length > 0
+            ? filterAreas
+            : page.area
+              ? [String(page.area)]
+              : [];
+
+        if (!scopedAreas.length) return true;
+
+        const normaliseArea = (value: unknown) =>
+          String(value || "")
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "");
+
+        const listingArea = normaliseArea(
+          listing.normalized_area
+        );
+
+        return scopedAreas.some(
+          (area) => listingArea === normaliseArea(area)
+        );
+      })
     : (await query).data || [];
 
 const priceUnderMatch =
@@ -12795,6 +12833,9 @@ let amenityMarkers = [];
 let polygonLayer = null;
 let maskLayer = null;
 let selectedAreaBoundaryLayer = null;
+let selectedAreaHaloLayer = null;
+let selectedAreaHaloMap = null;
+let selectedAreaHaloZoomHandler = null;
 let refinedLeafletMap = null;
 let refinedMarkers = [];
 let currentIntentMapBounds = null;
@@ -13082,6 +13123,13 @@ function drawSearchPolygon(map) {
 }
 
 function drawSelectedAreaBoundaries(map) {
+  if (selectedAreaHaloMap && selectedAreaHaloZoomHandler) {
+    selectedAreaHaloMap.off("zoomend", selectedAreaHaloZoomHandler);
+  }
+  selectedAreaHaloMap = null;
+  selectedAreaHaloZoomHandler = null;
+  selectedAreaHaloLayer?.remove();
+  selectedAreaHaloLayer = null;
   selectedAreaBoundaryLayer?.remove();
   selectedAreaBoundaryLayer = null;
 
@@ -13142,6 +13190,53 @@ function drawSelectedAreaBoundaries(map) {
     .filter(Boolean);
 
   if (!features.length) return null;
+
+  // The backend is now returning listings within the chosen area plus the
+  // selected distance. Make that expanded-search state visible without
+  // pretending this screen-space glow is a precise second boundary.
+  const expansionKm = Number(document.body.dataset.areaExpansionKm || "0");
+
+  if (expansionKm > 0) {
+    // Leaflet strokes are measured in screen pixels. Convert the requested
+    // geographic radius to pixels at the current map latitude and zoom. The
+    // stroke is centred on the boundary, hence twice the requested radius
+    // gives a 2 km outer edge when `areaExpansionKm` is 2.
+    const metresPerPixel =
+      156543.03392 *
+      Math.cos((map.getCenter().lat * Math.PI) / 180) /
+      Math.pow(2, map.getZoom());
+
+    const haloWeight = Math.max(
+      4,
+      (expansionKm * 1000 * 2) / Math.max(metresPerPixel, 0.01)
+    );
+
+    selectedAreaHaloLayer = L.geoJSON(
+      { type: "FeatureCollection", features },
+      {
+        interactive: false,
+        style: {
+          className: "locus-area-expansion-halo",
+          color: accentColor,
+          weight: haloWeight,
+          opacity: 0.11,
+          fill: false,
+          lineCap: "round",
+          lineJoin: "round",
+        },
+      }
+    ).addTo(map);
+
+    selectedAreaHaloLayer.getLayers().forEach((layer) => {
+      layer.bringToBack?.();
+    });
+
+    // Recalculate the pixel thickness after zooming so the outer edge keeps
+    // representing the same real-world distance.
+    selectedAreaHaloMap = map;
+    selectedAreaHaloZoomHandler = () => drawSelectedAreaBoundaries(map);
+    map.on("zoomend", selectedAreaHaloZoomHandler);
+  }
 
   selectedAreaBoundaryLayer = L.geoJSON(
     { type: "FeatureCollection", features },
@@ -13347,10 +13442,11 @@ function initLeafletMap(mode = "all") {
       maskLayer.remove();
       maskLayer = null;
     }
-    // Draw polygon
-    const areaBounds =
-      drawSearchPolygon(leafletMap) ||
-      drawSelectedAreaBoundaries(leafletMap);
+    // Keep the page's own boundary when present, but also draw a selected
+    // search-area halo after the buyer expands beyond that area.
+    const searchAreaBounds = drawSearchPolygon(leafletMap);
+    const selectedAreaBounds = drawSelectedAreaBoundaries(leafletMap);
+    const areaBounds = searchAreaBounds || selectedAreaBounds;
 
     // Add listing markers
     points.forEach(({ card, latlng }) => {
@@ -14527,27 +14623,9 @@ const nextSearch = params.toString();
         grid?.classList.remove("is-filter-loading");
         intentMapEl?.classList.remove("is-filter-loading");
 
-        // A filter change starts a new result set. Return the viewer to the
-        // first card, leaving enough room for the fixed nav and search rail.
-        const firstCard = grid?.querySelector(".original-card");
-        if (firstCard) {
-          requestAnimationFrame(() => {
-            const railBottom =
-              document.querySelector(".listing-filter-rail")
-                ?.getBoundingClientRect().bottom ||
-              document.querySelector(".site-nav")
-                ?.getBoundingClientRect().bottom ||
-              0;
-
-            window.scrollTo({
-              top: Math.max(
-                0,
-                firstCard.getBoundingClientRect().top + window.scrollY - railBottom - 14
-              ),
-              behavior: "smooth",
-            });
-          });
-        }
+        // Keep the viewer at their current position. The results change in
+        // place, so a filter adjustment should not pull them to the first
+        // card or replay the page's results anchor.
 
         if (typeof updateViewedBadges === "function") updateViewedBadges();
         window.dispatchEvent(new CustomEvent("listing-filters-updated"));
@@ -17299,9 +17377,10 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
     top: calc(100% + 8px);
     left: 0;
     width: min(360px, calc(100vw - 32px));
-    max-height: 430px;
-    padding-bottom: 72px;
-    overflow-y: auto;
+    height: min(430px, calc(100dvh - 140px));
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     border: 1px solid var(--line);
     border-radius: 10px;
     background: white;
@@ -17314,7 +17393,6 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
 
   .type-area-multi__head,
   .type-area-multi__footer {
-    position: sticky;
     z-index: 2;
     display: flex;
     justify-content: space-between;
@@ -17324,17 +17402,21 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   }
 
   .type-area-multi__head {
-    top: 0;
+    flex: 0 0 auto;
     border-bottom: 1px solid var(--line);
   }
 
   .type-area-multi__footer {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    left: 0;
+    flex: 0 0 auto;
     border-top: 1px solid var(--line);
     box-shadow: 0 -8px 18px rgba(25, 20, 35, .08);
+  }
+
+  .type-area-multi__options {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .type-area-multi__clear {
@@ -17454,6 +17536,10 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
     head.append(title, clear);
     menu.appendChild(head);
 
+    const optionsList = document.createElement("div");
+    optionsList.className = "type-area-multi__options";
+    menu.appendChild(optionsList);
+
     const footer = document.createElement("div");
     footer.className = "type-area-multi__footer";
 
@@ -17482,6 +17568,15 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
             (option) => option.value === b.dataset.value
           );
 
+          // Keep the buyer's current choices immediately visible whenever
+          // this multi-select reopens. Sort the remaining choices by their
+          // available-listing count as before.
+          const selectedDifference =
+            Number(Boolean(bOption?.selected)) -
+            Number(Boolean(aOption?.selected));
+
+          if (selectedDifference) return selectedDifference;
+
           const countDifference =
             Number(bOption?.dataset.count || 0) -
             Number(aOption?.dataset.count || 0);
@@ -17494,7 +17589,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
           );
         })
         .forEach((button) => {
-          menu.appendChild(button);
+          optionsList.appendChild(button);
         });
     };
     const sync = () => {
@@ -17563,7 +17658,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
         scheduleAreaApply();
       });
 
-      menu.appendChild(button);
+      optionsList.appendChild(button);
     });
 
     let automaticAreaTimer;
@@ -17644,7 +17739,6 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
 
       if (opening) {
         sortSelectedAreasFirst();
-        menu.scrollTop = 0;
       }
 
       menu.hidden = !opening;
@@ -17652,6 +17746,14 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
         "aria-expanded",
         String(opening)
       );
+
+      if (opening) {
+        // Reset only after the browser has made the list visible; otherwise
+        // it restores the old scroll position when `hidden` is removed.
+        requestAnimationFrame(() => {
+          optionsList.scrollTop = 0;
+        });
+      }
 
       if (!opening) {
         finishPendingAreaSelection();
@@ -17694,6 +17796,29 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
 
 
     menu.appendChild(footer);
+
+    // Make the three regions explicit in inline styles. This protects the
+    // dropdown from older page-level overflow rules: only the middle list
+    // may scroll; the header and Done action always remain at the edges.
+    menu.style.setProperty(
+      "grid-template-rows",
+      "auto minmax(0, 1fr) auto",
+      "important"
+    );
+    menu.style.setProperty(
+      "height",
+      "min(430px, calc(100dvh - 140px))",
+      "important"
+    );
+    menu.style.setProperty("overflow", "hidden", "important");
+
+    head.style.setProperty("grid-row", "1", "important");
+    optionsList.style.setProperty("grid-row", "2", "important");
+    optionsList.style.setProperty("min-height", "0", "important");
+    optionsList.style.setProperty("overflow-y", "auto", "important");
+    footer.style.setProperty("grid-row", "3", "important");
+    footer.style.setProperty("position", "static", "important");
+
     wrapper.append(trigger, menu);
     select.insertAdjacentElement("afterend", wrapper);
 
@@ -18464,14 +18589,6 @@ document.addEventListener("click", (event) => {
   if (
     !(priceSelect instanceof HTMLSelectElement) ||
     priceSelect.dataset.inventoryPricingReady === "true"
-  ) {
-    return;
-  }
-
-  /* Fast Area/Type pages do not load the full inventory just to calculate
-     percentiles. Keep their normal, useful price bands instead. */
-  if (
-    document.getElementById("remaining-listings-data")?.dataset.fastListings === "true"
   ) {
     return;
   }
