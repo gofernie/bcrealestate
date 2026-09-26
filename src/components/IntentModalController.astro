@@ -629,6 +629,7 @@ html {
     <div class="panel__desc-wrap">
   <p class="panel__desc" id="sheet-description"></p>
   <button type="button" class="panel__desc-toggle" id="sheet-desc-toggle" hidden>Read more</button>
+<div id="sheet-video" hidden></div>
 </div>
 
 
@@ -2445,6 +2446,7 @@ if (
     card.dataset.realtorCaUrl = String(
       data?.listing?.realtor_ca_url || ""
     ).trim();
+    card.dataset.videoUrl = String(data?.listing?.video_url || '').trim();
 
     card.dataset.detailHydrated = "true";
 
@@ -2731,9 +2733,20 @@ fetchListingDetailIfNeeded(card).then((wasUpdated) => {
 
   // Refresh the sheet now that the full listing detail is available.
   renderCard(card);
+
+if (sheetDescription) {
+  sheetDescription.textContent = card.dataset.description || "";
+}
+
+const descriptionToggle = document.getElementById("sheet-desc-toggle");
+if (descriptionToggle) {
+  descriptionToggle.hidden = !(card.dataset.description || "").trim();
+}
+
 syncMobileMediaCounts(); // intentionally disabled
 
   hydrateRoomMeasurements(card);
+
   syncRealtorCaBadge(card);
   refreshFloorplanButtonVisibility();
 syncMobileMediaCounts();
@@ -2974,6 +2987,7 @@ async function openListingDeepLink() {
     card.dataset.realtorCaUrl = String(
       listing.realtor_ca_url || ""
     ).trim();
+    card.dataset.videoUrl = String(listing.video_url || '').trim();
 
     card.dataset.propertyType = String(
       listing.property_type ||
@@ -3432,6 +3446,52 @@ if (sheetAddress) sheetAddress.textContent = card.dataset.address || "Address";
     "is-collapsed",
     isMobile
   );
+}
+
+const videoContainer = document.getElementById("sheet-video");
+if (videoContainer) {
+  videoContainer.replaceChildren();
+  videoContainer.hidden = true;
+
+  try {
+    const videoUrl = new URL(card.dataset.videoUrl || "");
+    if (videoUrl.protocol === "https:") {
+      const youtubeId =
+        videoUrl.hostname === "youtu.be"
+          ? videoUrl.pathname.slice(1).split("/")[0]
+          : ["youtube.com", "www.youtube.com", "m.youtube.com"].includes(videoUrl.hostname)
+            ? videoUrl.pathname.startsWith("/shorts/")
+              ? videoUrl.pathname.split("/")[2]
+              : videoUrl.searchParams.get("v")
+            : null;
+
+      const heading = document.createElement("h3");
+      heading.textContent = "Property video";
+      videoContainer.appendChild(heading);
+
+      if (youtubeId && /^[A-Za-z0-9_-]{11}$/.test(youtubeId)) {
+        const frame = document.createElement("iframe");
+        frame.src = `https://www.youtube-nocookie.com/embed/${youtubeId}`;
+        frame.title = "Property video";
+        frame.loading = "lazy";
+        frame.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+        frame.allowFullscreen = true;
+        frame.style.cssText = "display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:12px;";
+        videoContainer.appendChild(frame);
+      } else {
+        const link = document.createElement("a");
+        link.href = videoUrl.href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "Watch property video";
+        videoContainer.appendChild(link);
+      }
+
+      videoContainer.hidden = false;
+    }
+  } catch {
+    // No valid video URL for this listing.
+  }
 }
 
 syncRealtorCaBadge(card);

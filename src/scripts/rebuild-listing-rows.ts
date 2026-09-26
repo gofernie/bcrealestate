@@ -2232,6 +2232,18 @@ status: "A",
 image_url: finalImageUrl,
 images: finalImages,
 
+video_url: (() => {
+  const value = String(
+    listing?.details?.virtualTourUrl ||
+    listing?.details?.alternateURLVideoLink ||
+    listing?.raw?.details?.virtualTourUrl ||
+    listing?.raw?.details?.alternateURLVideoLink ||
+    ""
+  ).trim();
+
+  return /^https?:\/\//i.test(value) ? value : null;
+})(),
+
         description: getDescription(listing),
 
         listing_brokerage: String(
