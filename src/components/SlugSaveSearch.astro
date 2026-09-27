@@ -49,7 +49,7 @@ const {
     <div class="slug-saved-list__items" data-slug-saved-list-items></div>
     <p data-slug-saved-list-empty hidden>No searches saved here yet. Save a search to see it here.</p>
     <p data-slug-saved-list-error hidden>This browser is blocking saved searches.</p>
-    <p class="slug-saved-list__note">These shortcuts stay on this device. Removing one here won’t cancel a request you sent us.</p>
+    <p class="slug-saved-list__note">These searches are available on this browser only.</p>
   </dialog>
 
   <form class="slug-save-search__panel" data-slug-save-form hidden>
@@ -138,6 +138,22 @@ const {
     const savedEmpty = root.querySelector("[data-slug-saved-list-empty]");
     const savedError = root.querySelector("[data-slug-saved-list-error]");
     const savedKey = "locus:buyer-saved-searches:v1";
+    const contactKey = "locus:buyer-search-contact:v1";
+
+    const prefillContact = () => {
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(contactKey) || "null");
+        if (!saved || typeof saved !== "object") return;
+        for (const field of ["name", "email", "phone"]) {
+          const input = form.querySelector(`input[name="${field}"]`);
+          if (input && !input.value.trim() && typeof saved[field] === "string") {
+            input.value = saved[field];
+          }
+        }
+      } catch {
+        // The form still works if browser storage is unavailable.
+      }
+    };
 
     const readSavedSearches = () => {
       const data = JSON.parse(localStorage.getItem(savedKey) || "[]");
@@ -182,19 +198,7 @@ const {
         const open = document.createElement("a");
         open.href = url.href;
         open.textContent = "View homes";
-        const remove = document.createElement("button");
-        remove.type = "button";
-        remove.textContent = "Remove shortcut";
-        remove.setAttribute("aria-label", `Remove ${title.textContent} from this browser`);
-        remove.addEventListener("click", () => {
-          try {
-            localStorage.setItem(savedKey, JSON.stringify(readSavedSearches().filter((entry) => entry?.id !== search.id)));
-            renderSavedSearches();
-          } catch {
-            savedError.hidden = false;
-          }
-        });
-        actions.append(open, remove);
+        actions.append(open);
         item.appendChild(actions);
         savedItems.appendChild(item);
       }
@@ -317,6 +321,7 @@ const {
 
       if (open) {
         updateReadback();
+        prefillContact();
         const searchNameInput = form.querySelector('input[name="searchName"]');
         if (searchNameInput && !searchNameInput.value.trim()) {
           searchNameInput.value = getLiveSearch().summary;
@@ -383,6 +388,12 @@ const {
 
         if (!response.ok) {
           throw new Error(`Save request failed (${response.status})`);
+        }
+
+        try {
+          sessionStorage.setItem(contactKey, JSON.stringify({ name, email, phone }));
+        } catch {
+          // The search was submitted even if browser storage is unavailable.
         }
 
         let savedInBrowser = false;
@@ -619,8 +630,7 @@ const {
   .slug-saved-list__item h3 { margin: 0 0 7px; font-size: 1.05rem; }
   .slug-saved-list__item p { margin: 0 0 10px; color: #53615a; }
   .slug-saved-list__actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 12px; }
-  .slug-saved-list__actions a, .slug-saved-list__actions button { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 40px; padding: 0 14px; border-radius: 999px; font: inherit; font-size: .84rem; font-weight: 700; text-decoration: none; cursor: pointer; }
+  .slug-saved-list__actions a { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 40px; padding: 0 14px; border-radius: 999px; font: inherit; font-size: .84rem; font-weight: 700; text-decoration: none; cursor: pointer; }
   .slug-saved-list__actions a { border: 1px solid #315d62; background: #315d62; color: #fff; }
-  .slug-saved-list__actions button { border: 1px solid #d8dfdb; background: #fff; color: #41504a; }
   .slug-saved-list__note { margin: 24px 0 0; color: #53615a; font-size: .8rem; line-height: 1.5; }
 </style>
