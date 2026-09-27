@@ -1,0 +1,127 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout title="My searches | BC Real Estate">
+  <main class="saved-searches">
+    <a class="saved-searches__back" href="/">← Browse homes</a>
+    <header>
+      <p class="saved-searches__eyebrow">Your searches</p>
+      <h1>My searches</h1>
+      <p>Reopen searches you saved on this browser.</p>
+    </header>
+
+    <section aria-label="Saved searches">
+      <div id="saved-searches-list" class="saved-searches__list" aria-live="polite"></div>
+      <p id="saved-searches-empty" hidden>No searches saved on this browser yet. Find homes and select “Save this search” to add one here.</p>
+      <p id="saved-searches-unavailable" hidden>This browser is blocking saved searches. Check your browser storage settings.</p>
+    </section>
+
+    <p class="saved-searches__note">These shortcuts are stored on this device. They won’t appear on another device, and removing a shortcut here won’t cancel a request you sent us.</p>
+  </main>
+
+  <script is:inline>
+    (() => {
+      const key = "locus:buyer-saved-searches:v1";
+      const list = document.getElementById("saved-searches-list");
+      const empty = document.getElementById("saved-searches-empty");
+      const unavailable = document.getElementById("saved-searches-unavailable");
+
+      const read = () => {
+        const data = JSON.parse(localStorage.getItem(key) || "[]");
+        return Array.isArray(data) ? data : [];
+      };
+
+      const render = () => {
+        let searches;
+        try {
+          searches = read();
+        } catch {
+          list.replaceChildren();
+          empty.hidden = true;
+          unavailable.hidden = false;
+          return;
+        }
+
+        list.replaceChildren();
+        empty.hidden = searches.length > 0;
+        unavailable.hidden = true;
+
+        searches.forEach((search) => {
+          if (!search || typeof search.url !== "string") return;
+          let url;
+          try {
+            url = new URL(search.url);
+          } catch {
+            return;
+          }
+          if (url.origin !== window.location.origin || !/^https?:$/.test(url.protocol)) return;
+
+          const card = document.createElement("article");
+          card.className = "saved-searches__card";
+          const details = document.createElement("div");
+          const title = document.createElement("h2");
+          title.textContent = String(search.name || search.summary || "Saved search");
+          details.appendChild(title);
+
+          if (search.summary && search.summary !== search.name) {
+            const summary = document.createElement("p");
+            summary.textContent = String(search.summary);
+            details.appendChild(summary);
+          }
+
+          if (search.savedAt && Number.isFinite(Date.parse(search.savedAt))) {
+            const date = document.createElement("small");
+            date.textContent = `Saved ${new Date(search.savedAt).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" })}`;
+            details.appendChild(date);
+          }
+
+          const actions = document.createElement("div");
+          actions.className = "saved-searches__actions";
+          const open = document.createElement("a");
+          open.href = url.href;
+          open.textContent = "View homes";
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.textContent = "Remove shortcut";
+          remove.setAttribute("aria-label", `Remove ${title.textContent} from this browser`);
+          remove.addEventListener("click", () => {
+            try {
+              localStorage.setItem(key, JSON.stringify(read().filter((item) => item?.id !== search.id)));
+              render();
+            } catch {
+              unavailable.hidden = false;
+            }
+          });
+          actions.append(open, remove);
+          card.append(details, actions);
+          list.appendChild(card);
+        });
+        empty.hidden = list.childElementCount > 0;
+      };
+
+      render();
+      window.addEventListener("storage", (event) => {
+        if (event.key === key) render();
+      });
+    })();
+  </script>
+
+  <style>
+    .saved-searches { box-sizing: border-box; max-width: 1000px; min-height: 65vh; margin: 0 auto; padding: clamp(32px, 6vw, 72px) 20px; color: #172019; }
+    .saved-searches__back { color: #315d62; font-weight: 700; text-decoration: none; }
+    .saved-searches__eyebrow { margin: 40px 0 8px; color: #527370; font-size: .8rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    .saved-searches h1 { margin: 0 0 8px; font-size: clamp(2rem, 5vw, 3.4rem); }
+    .saved-searches header > p:last-child { margin: 0 0 32px; color: #53615a; }
+    .saved-searches__list { display: grid; gap: 14px; }
+    .saved-searches__card { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 18px; padding: 22px; border: 1px solid #dfe4e1; border-radius: 16px; background: #fff; box-shadow: 0 10px 24px rgba(17,34,28,.05); }
+    .saved-searches__card h2 { margin: 0 0 7px; font-size: 1.1rem; }
+    .saved-searches__card p { margin: 0 0 7px; color: #53615a; }
+    .saved-searches__card small { color: #697971; }
+    .saved-searches__actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .saved-searches__actions a, .saved-searches__actions button { min-height: 42px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 16px; border-radius: 999px; font: inherit; font-size: .86rem; font-weight: 700; cursor: pointer; text-decoration: none; }
+    .saved-searches__actions a { border: 1px solid #315d62; background: #315d62; color: #fff; }
+    .saved-searches__actions button { border: 1px solid #d8dfdb; background: #fff; color: #41504a; }
+    .saved-searches__note { max-width: 680px; margin: 28px 0 0; color: #53615a; font-size: .87rem; line-height: 1.6; }
+  </style>
+</Layout>

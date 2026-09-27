@@ -25,14 +25,17 @@ const {
   data-requires-waterfront={String(Boolean(requiresWaterfront))}
   data-requires-ocean-view={String(Boolean(requiresOceanView))}
 >
-  <button
-    type="button"
-    class="slug-save-search__open"
-    data-slug-save-open
-    aria-expanded="false"
-  >
-    Save this search
-  </button>
+  <div class="slug-save-search__links">
+    <button
+      type="button"
+      class="slug-save-search__open"
+      data-slug-save-open
+      aria-expanded="false"
+    >
+      Save this search
+    </button>
+    <a href="/my-searches" class="slug-save-search__mine">My searches</a>
+  </div>
 
   <form class="slug-save-search__panel" data-slug-save-form hidden>
     <div class="slug-save-search__heading">
@@ -288,8 +291,34 @@ const {
           throw new Error(`Save request failed (${response.status})`);
         }
 
+        let savedInBrowser = false;
+        try {
+          const key = "locus:buyer-saved-searches:v1";
+          const existing = JSON.parse(localStorage.getItem(key) || "[]");
+          const searches = Array.isArray(existing) ? existing : [];
+          const searchUrl = new URL(window.location.href);
+          searchUrl.hash = "listing-results-anchor";
+          const entry = {
+            id: crypto.randomUUID(),
+            name: searchName,
+            summary,
+            url: searchUrl.href,
+            city: root.dataset.city || "",
+            savedAt: new Date().toISOString(),
+          };
+          localStorage.setItem(key, JSON.stringify([
+            entry,
+            ...searches.filter((item) => item?.url !== entry.url).slice(0, 99),
+          ]));
+          savedInBrowser = true;
+        } catch (error) {
+          console.warn("Search submitted, but could not save it in this browser:", error);
+        }
+
         status.textContent =
-          "Search saved. We’ll follow up when relevant listings appear.";
+          savedInBrowser
+            ? "Search sent. You can reopen it from My searches on this browser."
+            : "Search sent, but this browser could not keep a shortcut. Bookmark this page to return to it.";
         status.classList.add("is-success");
         status.hidden = false;
 
@@ -319,6 +348,33 @@ const {
   .slug-save-search button,
   .slug-save-search input {
     font: inherit;
+  }
+
+  .slug-save-search__links {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .slug-save-search__mine {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 18px;
+    border: 1px solid #d8d8d4;
+    border-radius: 999px;
+    background: #fff;
+    color: #172019;
+    font-size: .86rem;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .slug-save-search__mine:hover,
+  .slug-save-search__mine:focus-visible {
+    border-color: var(--accent, #2f6f73);
+    color: var(--accent, #2f6f73);
   }
 
   .slug-save-search__open {
