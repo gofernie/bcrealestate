@@ -34,8 +34,23 @@ const {
     >
       Save this search
     </button>
-    <a href="/my-searches" class="slug-save-search__mine">My searches</a>
+    <button type="button" class="slug-save-search__mine" data-slug-saved-list-open>My searches</button>
   </div>
+
+  <dialog class="slug-saved-list" data-slug-saved-list aria-label="My searches">
+    <div class="slug-saved-list__header">
+      <div>
+        <p class="slug-saved-list__eyebrow">Your searches</p>
+        <h2>My searches</h2>
+      </div>
+      <button type="button" class="slug-saved-list__close" data-slug-saved-list-close aria-label="Close my searches">×</button>
+    </div>
+    <p class="slug-saved-list__intro">Reopen searches you saved on this browser.</p>
+    <div class="slug-saved-list__items" data-slug-saved-list-items></div>
+    <p data-slug-saved-list-empty hidden>No searches saved here yet. Save a search to see it here.</p>
+    <p data-slug-saved-list-error hidden>This browser is blocking saved searches.</p>
+    <p class="slug-saved-list__note">These shortcuts stay on this device. Removing one here won’t cancel a request you sent us.</p>
+  </dialog>
 
   <form class="slug-save-search__panel" data-slug-save-form hidden>
     <div class="slug-save-search__heading">
@@ -118,6 +133,85 @@ const {
     const status = root.querySelector("[data-slug-save-status]");
     const submitButton = root.querySelector(".slug-save-search__submit");
     const readback = root.querySelector("[data-slug-save-readback]");
+    const savedList = root.querySelector("[data-slug-saved-list]");
+    const savedItems = root.querySelector("[data-slug-saved-list-items]");
+    const savedEmpty = root.querySelector("[data-slug-saved-list-empty]");
+    const savedError = root.querySelector("[data-slug-saved-list-error]");
+    const savedKey = "locus:buyer-saved-searches:v1";
+
+    const readSavedSearches = () => {
+      const data = JSON.parse(localStorage.getItem(savedKey) || "[]");
+      return Array.isArray(data) ? data : [];
+    };
+
+    const renderSavedSearches = () => {
+      let searches;
+      try {
+        searches = readSavedSearches();
+      } catch {
+        savedItems.replaceChildren();
+        savedEmpty.hidden = true;
+        savedError.hidden = false;
+        return;
+      }
+
+      savedItems.replaceChildren();
+      savedError.hidden = true;
+      for (const search of searches) {
+        if (!search || typeof search.url !== "string") continue;
+        let url;
+        try {
+          url = new URL(search.url);
+        } catch {
+          continue;
+        }
+        if (url.origin !== location.origin || !/^https?:$/.test(url.protocol)) continue;
+
+        const item = document.createElement("article");
+        item.className = "slug-saved-list__item";
+        const title = document.createElement("h3");
+        title.textContent = String(search.name || search.summary || "Saved search");
+        item.appendChild(title);
+        if (search.summary && search.summary !== search.name) {
+          const summary = document.createElement("p");
+          summary.textContent = String(search.summary);
+          item.appendChild(summary);
+        }
+        const actions = document.createElement("div");
+        actions.className = "slug-saved-list__actions";
+        const open = document.createElement("a");
+        open.href = url.href;
+        open.textContent = "View homes";
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "Remove shortcut";
+        remove.setAttribute("aria-label", `Remove ${title.textContent} from this browser`);
+        remove.addEventListener("click", () => {
+          try {
+            localStorage.setItem(savedKey, JSON.stringify(readSavedSearches().filter((entry) => entry?.id !== search.id)));
+            renderSavedSearches();
+          } catch {
+            savedError.hidden = false;
+          }
+        });
+        actions.append(open, remove);
+        item.appendChild(actions);
+        savedItems.appendChild(item);
+      }
+      savedEmpty.hidden = savedItems.childElementCount > 0;
+    };
+
+    root.querySelector("[data-slug-saved-list-open]")?.addEventListener("click", () => {
+      renderSavedSearches();
+      savedList.showModal();
+    });
+    root.querySelector("[data-slug-saved-list-close]")?.addEventListener("click", () => savedList.close());
+    savedList?.addEventListener("click", (event) => {
+      if (event.target === savedList) savedList.close();
+    });
+    window.addEventListener("storage", (event) => {
+      if (event.key === savedKey && savedList?.open) renderSavedSearches();
+    });
 
     const getLiveSearch = () => {
       const params = new URLSearchParams(window.location.search);
@@ -499,4 +593,34 @@ const {
       flex-direction: column;
     }
   }
+</style>
+
+<style is:global>
+  .slug-saved-list {
+    box-sizing: border-box;
+    width: min(620px, calc(100vw - 28px));
+    max-height: min(720px, calc(100dvh - 36px));
+    overflow-y: auto;
+    padding: clamp(20px, 4vw, 32px);
+    border: 1px solid #dfe4e1;
+    border-radius: 20px;
+    background: #fff;
+    color: #172019;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .24);
+  }
+  .slug-saved-list::backdrop { background: rgba(12, 25, 24, .55); }
+  .slug-saved-list__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+  .slug-saved-list__eyebrow { margin: 0 0 6px; font-size: .72rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #466c68; }
+  .slug-saved-list h2 { margin: 0; font-size: clamp(1.6rem, 5vw, 2.2rem); }
+  .slug-saved-list__intro { margin: 10px 0 20px; color: #53615a; }
+  .slug-saved-list__close { display: grid; place-items: center; flex: none; width: 40px; height: 40px; padding: 0; border: 1px solid #d8dfdb; border-radius: 50%; background: #fff; color: #172019; font-size: 1.5rem; cursor: pointer; }
+  .slug-saved-list__items { display: grid; gap: 12px; }
+  .slug-saved-list__item { padding: 18px; border: 1px solid #dfe4e1; border-radius: 14px; background: #f9fbfa; }
+  .slug-saved-list__item h3 { margin: 0 0 7px; font-size: 1.05rem; }
+  .slug-saved-list__item p { margin: 0 0 10px; color: #53615a; }
+  .slug-saved-list__actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 12px; }
+  .slug-saved-list__actions a, .slug-saved-list__actions button { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 40px; padding: 0 14px; border-radius: 999px; font: inherit; font-size: .84rem; font-weight: 700; text-decoration: none; cursor: pointer; }
+  .slug-saved-list__actions a { border: 1px solid #315d62; background: #315d62; color: #fff; }
+  .slug-saved-list__actions button { border: 1px solid #d8dfdb; background: #fff; color: #41504a; }
+  .slug-saved-list__note { margin: 24px 0 0; color: #53615a; font-size: .8rem; line-height: 1.5; }
 </style>
