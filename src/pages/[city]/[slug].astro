@@ -1734,10 +1734,31 @@ if (hasPolygonSearch && !useHomepageListingPipeline) {
     }
   }
 } else {
-  const result = await query.limit(listingLimit);
+  // Cards are still rendered in small batches, but counts and maps need
+  // every matching listing rather than the initial listingLimit rows.
+  const listingBatchSize = Math.max(
+    1000,
+    Number(listingLimit) || 0
+  );
 
-  rawListings = result.data || [];
-  listingsError = result.error;
+  for (let from = 0; ; from += listingBatchSize) {
+    const { data: batch, error: batchError } = await query.range(
+      from,
+      from + listingBatchSize - 1
+    );
+
+    if (batchError) {
+      listingsError = batchError;
+      break;
+    }
+
+    const rows = Array.isArray(batch) ? batch : [];
+    rawListings.push(...rows);
+
+    if (rows.length < listingBatchSize) {
+      break;
+    }
+  }
 }
 
 console.log("INTENT QUERY RESULT DEBUG", {
@@ -15007,10 +15028,44 @@ function showAreaHomesMap() {
 
   waitForLeaflet(() => {
     const cards = Array.from(gridEl?.querySelectorAll(".card") || []);
-    const points = cards
+    let points = cards
       .filter((card) => card.style.display !== "none")
       .map((card) => ({ card, latlng: getCardLatLng(card) }))
       .filter(({ latlng }) => latlng);
+
+    try {
+      const remainingDataEl = document.getElementById("remaining-listings-data");
+      const remainingListings = JSON.parse(remainingDataEl?.textContent || "[]");
+
+      const remainingPoints = remainingListings
+        .map((listing) => {
+          const lat = Number(listing.lat || "");
+          const lng = Number(listing.lng || "");
+          if (!Number.isFinite(lat) || !Number.isFinite(lng) || !lat || !lng) {
+            return null;
+          }
+
+          const card = document.createElement("article");
+          card.dataset.listingId = String(listing.id || listing.mls_number || "");
+          card.dataset.mls = String(listing.mls_number || listing.id || "");
+          card.dataset.price = listing.price
+            ? `$${Number(listing.price).toLocaleString()}`
+            : "";
+          card.dataset.address = typeof listing.address === "string" ? listing.address : "";
+          card.dataset.beds = String(listing.beds || "");
+          card.dataset.baths = String(listing.baths || "");
+          card.dataset.image = String(listing.image || "");
+          card.dataset.lat = String(lat);
+          card.dataset.lng = String(lng);
+
+          return { card, latlng: [lat, lng] };
+        })
+        .filter(Boolean);
+
+      points = [...points, ...remainingPoints];
+    } catch (error) {
+      console.warn("Could not parse remaining listings for area map:", error);
+    }
 
     if (!points.length) {
       areaHomesMapEl.innerHTML =
