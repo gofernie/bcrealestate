@@ -9530,6 +9530,66 @@ grid-template-columns: 30px minmax(0, 1fr);
           <h2>Living in {titleCase(page.area || city)}</h2>
           <p>{page.neighbourhood_copy || page.intro_copy || page.seo_intro || `${titleCase(page.area || city)} is a neighbourhood in ${titleCase(city)} with homes, local services and everyday amenities nearby.`}</p>
           <a href="#type-listings">See {listingCount} homes for sale →</a>
+
+<!-- census-in-area-overview -->
+{(censusData?.population_2021 || censusData?.pop_change_pct != null || censusData?.median_age || censusData?.pct_owned != null) && (
+  <div class="area-flow__census" aria-label="Neighbourhood census snapshot">
+    {censusData?.population_2021 && (
+      <div>
+        <strong>{Number(censusData.population_2021).toLocaleString()}</strong>
+        <span>Population · 2021</span>
+      </div>
+    )}
+    {censusData?.pop_change_pct != null && (
+      <div>
+        <strong>{Number(censusData.pop_change_pct) > 0 ? "+" : ""}{censusData.pop_change_pct}%</strong>
+        <span>Growth · 2016–2021</span>
+      </div>
+    )}
+    {censusData?.median_age && (
+      <div>
+        <strong>{censusData.median_age}</strong>
+        <span>Median age</span>
+      </div>
+    )}
+    {censusData?.pct_owned != null && (
+      <div>
+        <strong>{censusData.pct_owned}%</strong>
+        <span>Owner-occupied</span>
+      </div>
+    )}
+  </div>
+)}
+
+<style is:global>
+  .area-flow__overview .area-flow__census {
+    display:grid; grid-template-columns:repeat(4,minmax(0,1fr));
+    margin:18px 0; padding:14px 0;
+    border-top:1px solid rgba(18,58,90,.13);
+    border-bottom:1px solid rgba(18,58,90,.13);
+  }
+  .area-flow__census > div {
+    min-width:0; padding:0 12px;
+    border-left:1px solid rgba(18,58,90,.13);
+  }
+  .area-flow__census > div:first-child { padding-left:0; border-left:0; }
+  .area-flow__census strong, .area-flow__census span { display:block; }
+  .area-flow__census strong { color:var(--ink); font-size:1rem; line-height:1.1; }
+  .area-flow__census span {
+    margin-top:4px; color:var(--muted);
+    font-size:.68rem; line-height:1.25;
+  }
+  .area-page-content > .area-census-snapshot { display:none !important; }
+
+  @media (max-width:700px) {
+    .area-flow__overview .area-flow__census {
+      grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 0;
+    }
+    .area-flow__census > div:nth-child(3) {
+      padding-left:0; border-left:0;
+    }
+  }
+</style>
         </article>
 
         <aside class="area-flow__nearby">
@@ -12945,6 +13005,57 @@ style="display:grid;grid-template-columns:1fr 1fr;gap:18px;"
   })();
 </script>
 <!-- tap-to-activate-area-map -->
+<script is:inline>
+  (() => {
+    const toolbar = document.querySelector('.area-map-toolbar--overlay');
+    if (!toolbar) return;
+
+    toolbar.querySelectorAll('.map-nearby-menu, .map-toolbar-amenities').forEach(
+      (item) => item.remove()
+    );
+
+    const select = document.createElement('select');
+    select.className = 'map-nearby-select';
+    select.setAttribute('aria-label', 'Choose nearby places');
+
+    [
+      ['', '⌖ Nearby'],
+      ['schools', 'Schools'],
+      ['restaurants', 'Food & cafés'],
+      ['grocery', 'Grocery'],
+      ['parks', 'Parks'],
+      ['medical', 'Medical']
+    ].forEach(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      select.appendChild(option);
+    });
+
+    select.style.height = '34px';
+    select.style.padding = '0 27px 0 10px';
+    select.style.border = '1px solid rgba(20,28,38,.16)';
+    select.style.borderRadius = '7px';
+    select.style.background = 'rgba(255,255,255,.97)';
+    select.style.color = '#1d2730';
+    select.style.fontFamily = 'inherit';
+    select.style.fontSize = '.75rem';
+    select.style.fontWeight = '750';
+    select.style.boxShadow = '0 2px 8px rgba(20,28,38,.10)';
+    select.style.cursor = 'pointer';
+
+    select.addEventListener('change', () => {
+      if (!select.value) return;
+
+      document.querySelector(
+        `.amenity-chip[data-amenity="${select.value}"]`
+      )?.click();
+    });
+
+    toolbar.insertBefore(select, toolbar.firstChild);
+  })();
+</script>
+<!-- native-nearby-dropdown -->
 </main>
 
 
@@ -14857,6 +14968,50 @@ function initRefinedLeafletMap() {
 const areaHomesMapEl = document.getElementById("area-homes-map");
 let areaHomesLeafletMap = null;
 let areaHomesMarkerLayer = null;
+let areaHomesMapTouchModeBound = false;
+
+function installAreaHomesMapTouchMode() {
+  if (!areaHomesLeafletMap || !areaHomesMapEl) return;
+
+  const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
+
+  const passive = () => {
+    if (!isMobile()) return;
+    areaHomesLeafletMap.dragging.disable();
+    areaHomesLeafletMap.touchZoom.disable();
+    areaHomesMapEl.dataset.mapMode = 'passive';
+  };
+
+  const active = () => {
+    if (!isMobile()) return;
+    areaHomesLeafletMap.dragging.enable();
+    areaHomesLeafletMap.touchZoom.enable();
+    areaHomesMapEl.dataset.mapMode = 'active';
+  };
+
+  if (!areaHomesMapTouchModeBound) {
+    areaHomesMapTouchModeBound = true;
+
+    // A deliberate tap activates the map. A swipe before that scrolls the page.
+    areaHomesMapEl.addEventListener('click', active);
+
+    // Touching anywhere outside the map returns it to normal page scrolling.
+    document.addEventListener('touchstart', (event) => {
+      if (!areaHomesMapEl.contains(event.target)) passive();
+    }, { passive: true });
+
+    window.addEventListener('resize', () => {
+      if (isMobile()) {
+        passive();
+      } else {
+        areaHomesLeafletMap.dragging.enable();
+        areaHomesLeafletMap.touchZoom.enable();
+      }
+    }, { passive: true });
+  }
+
+  if (isMobile()) passive();
+}
 
 function showAreaHomesMap() {
   if (!areaHomesMapEl) return;
@@ -14891,6 +15046,9 @@ function showAreaHomesMap() {
       }).addTo(areaHomesLeafletMap);
       areaHomesMarkerLayer = L.layerGroup().addTo(areaHomesLeafletMap);
     }
+
+
+    installAreaHomesMapTouchMode();
 
     areaHomesMarkerLayer.clearLayers();
 
