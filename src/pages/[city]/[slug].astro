@@ -9414,7 +9414,7 @@ grid-template-columns: 30px minmax(0, 1fr);
             <div>
               <strong>{listingCount}</strong>
               <span>{typePageLabel} for sale</span>
-              <small>Active on the MLS|</small>
+              <small>Active on the MLS</small>
             </div>
           </article>
 
@@ -10591,6 +10591,30 @@ Approximate driving times from{" "}
 )}
 
 
+
+  <script is:inline>
+    document.addEventListener("homepage-fast-results-replaced", (event) => {
+      const output = document.getElementById("filter-match-count");
+      if (!output) return;
+
+      const total = Math.max(0, Number(event.detail?.total) || 0);
+      output.textContent = `${total} ${total === 1 ? "home" : "homes"}`;
+
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        output.animate(
+          [
+            { opacity: 0.55, transform: "translateY(4px) scale(0.96)" },
+            { opacity: 1, transform: "translateY(0) scale(1)" }
+          ],
+          { duration: 280, easing: "ease-out" }
+        );
+      }
+      output.setAttribute(
+        "aria-label",
+        `${total} ${total === 1 ? "listing" : "listings"} found`
+      );
+    });
+  </script>
 {isDedicatedTypePage && rankedAreaFilterOptions.length > 0 && (
   <select
     class="area-filter-select" multiple
@@ -10791,6 +10815,39 @@ Approximate driving times from{" "}
   ></span>
 </section>
 
+  <output
+    id="filter-match-count"
+    aria-label={`${listings.length} listings found`}
+    style="display:block;margin:12px 0 0;font-size:.9rem;font-weight:600;color:#355c64;font-variant-numeric:tabular-nums;"
+  >{listings.length} {listings.length === 1 ? "home" : "homes"}</output>
+<script is:inline>
+  const placeFilterMatchCount = () => {
+    const count = document.getElementById("filter-match-count");
+    const button = document.querySelector(
+      ".slug-save-search [data-slug-save-open]"
+    );
+    if (!count || !button || button.parentElement?.classList.contains("filter-save-row")) return;
+
+    const row = document.createElement("div");
+    row.className = "filter-save-row";
+    row.style.cssText = "display:flex;align-items:center;gap:10px;flex-wrap:wrap;";
+    button.before(row);
+    row.append(count, button);
+
+    count.style.cssText =
+      "display:inline-flex;align-items:center;width:max-content;margin:0;" +
+      "padding:8px 13px;border:1px solid #cfe3df;border-radius:999px;" +
+      "background:#edf6f3;color:#2f6f73;font-size:.85rem;font-weight:700;" +
+      "font-variant-numeric:tabular-nums;white-space:nowrap;box-sizing:border-box;";
+    count.style.height = `${button.getBoundingClientRect().height}px`;
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", placeFilterMatchCount, { once: true });
+  } else {
+    placeFilterMatchCount();
+  }
+</script>
 <div
   class="type-more-filters-panel"
   id="type-more-filters"
@@ -10971,16 +11028,7 @@ Approximate driving times from{" "}
   </div>
 </div>
 
-  {pageKind !== "area" && (
-  <div
-    id="intent-map"
-    class="intent-map"
-    hidden
-    style="margin-bottom:22px;"
-  ></div>
-)}
-
-    {
+  {
   (pageKind === "intent" || hasActiveSearchFilters) && (
     <SlugSaveSearch
       siteId={site?.id}
@@ -10995,6 +11043,15 @@ Approximate driving times from{" "}
     />
   )
 }
+
+  {pageKind !== "area" && (
+  <div
+    id="intent-map"
+    class="intent-map"
+    hidden
+    style="margin-bottom:22px;"
+  ></div>
+)}
 <section class="grid">
      {listings.slice(0, 30).map((listing, index) => {
           const firstImage =
@@ -11338,7 +11395,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
             cursor:pointer;
           "
         >
-          Search 2 km beyond this area
+          Search 1 km beyond this area
         </button>
       </section>
     </div>
@@ -11605,7 +11662,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
           button.textContent =
             `See 6 more ${nextPriceHomeLabel()} above ${formatBudget(ceiling)}`;
           nearbyButton.hidden = expandedAreaKm > 0;
-          nearbyButton.textContent = `Search 2 km beyond ${selectedAreaLabel()}`;
+          nearbyButton.textContent = `Search 1 km beyond ${selectedAreaLabel()}`;
           return;
         }
 
@@ -11722,10 +11779,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
         );
         fastOffset = listings.length;
 
-        document.querySelectorAll(".type-stats article:first-child strong")
-          .forEach((element) => {
-            element.textContent = String(fastTotal);
-          });
+        
       } else {
         const fragment = document.createDocumentFragment();
         listings.forEach((listing) => {
@@ -11814,7 +11868,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
       const areas = selectedAreaDetails();
       if (!areas.length) return;
 
-      expandedAreaKm = 2;
+      expandedAreaKm = 1;
       const params = fastParams(0);
       const response = await fetch(`/api/home-listings?${params.toString()}`);
       if (!response.ok) {
@@ -11911,7 +11965,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
       } finally {
         nearbyButton.disabled = false;
         if (nearbyButton.textContent === "Searching nearby homes…") {
-          nearbyButton.textContent = originalText || "Search 2 km beyond this area";
+          nearbyButton.textContent = originalText || "Search 1 km beyond this area";
         }
       }
     });
@@ -12636,7 +12690,11 @@ function prepareTypeHeroMap() {
       );
 
     const openFeaturedListing = () => {
-      if (featuredCard instanceof HTMLElement) {
+      if (!(featuredCard instanceof HTMLElement)) return;
+
+      if (typeof window.openSheet === "function") {
+        window.openSheet(featuredCard);
+      } else {
         featuredCard.click();
       }
     };
@@ -13352,6 +13410,7 @@ function initLeafletMap(mode = "all") {
       L.tileLayer(window.__JAWG_TILE_URL__, { maxZoom: 19, attribution: window.__JAWG_ATTRIBUTION__ }).addTo(leafletMap);
 
       L.control.attribution({ prefix: false }).addAttribution('| <a href="https://openstreetmap.org">OSM</a>').addTo(leafletMap);
+      if (points.length) leafletMap.setView(points[0].latlng, 12);
     }
 
     // Clear and rebuild the listing layer.
@@ -13933,7 +13992,15 @@ mapViewBtn?.addEventListener("click", () => {
   gridEl?.classList.add("map-hidden");
   mapViewBtn.classList.add("active");
   listViewBtn?.classList.remove("active");
-  requestAnimationFrame(() => initLeafletMap());
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      initLeafletMap();
+      window.setTimeout(() => {
+        leafletMap?.invalidateSize();
+      }, 300);
+    });
+  });
 });
 
 // Area intelligence map initializes only when it approaches the viewport.
@@ -14611,8 +14678,7 @@ const nextSearch = params.toString();
           resultsBar.textContent = `${total} listings found`;
         }
 
-        document.querySelectorAll(".type-stats article:first-child strong")
-          .forEach((element) => { element.textContent = String(total); });
+        
 
         document.dispatchEvent(new CustomEvent("homepage-fast-results-replaced", {
           detail: { total, visible: pageListings.length },

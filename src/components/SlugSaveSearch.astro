@@ -40,6 +40,11 @@ const {
       <span>Leave your details and we’ll follow up when relevant listings appear.</span>
     </div>
 
+    <div data-slug-save-readback
+      aria-live="polite"
+      style="margin:16px 0;padding:14px 16px;border:1px solid #cfe3df;border-radius:12px;background:#f0f7f5;color:#2f4f50;line-height:1.5;">
+    </div>
+
     <div class="slug-save-search__fields">
       <label>
         <span>Search name</span>
@@ -109,6 +114,104 @@ const {
     const cancelButton = root.querySelector("[data-slug-save-cancel]");
     const status = root.querySelector("[data-slug-save-status]");
     const submitButton = root.querySelector(".slug-save-search__submit");
+    const readback = root.querySelector("[data-slug-save-readback]");
+
+    const getLiveSearch = () => {
+      const params = new URLSearchParams(window.location.search);
+      const select = (selector) => document.querySelector(selector);
+      const value = (selector, key) =>
+        select(selector)?.value || params.get(key) || "";
+
+      const areaSelect = select(".area-filter-select");
+      const chosenAreas = areaSelect instanceof HTMLSelectElement
+        ? [...areaSelect.selectedOptions]
+            .filter((option) => option.value !== "all")
+            .map((option) => ({
+              value: option.value,
+              label: option.textContent.trim(),
+            }))
+        : params.getAll("area").map((area) => ({
+            value: area,
+            label: area.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+          }));
+
+      if (!chosenAreas.length && root.dataset.area) {
+        chosenAreas.push({
+          value: root.dataset.area,
+          label: root.dataset.area.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        });
+      }
+
+      const priceSelect = select(".price-filter-select");
+      const priceBand = value(".price-filter-select", "price");
+      const hasPriceBand = priceBand && priceBand !== "all";
+      const priceLabel = hasPriceBand
+        ? priceSelect?.selectedOptions?.[0]?.textContent?.trim() || priceBand
+        : root.dataset.maxPrice
+          ? `Up to $${Number(root.dataset.maxPrice).toLocaleString("en-CA")}`
+          : root.dataset.minPrice
+            ? `From $${Number(root.dataset.minPrice).toLocaleString("en-CA")}`
+            : "";
+
+      const beds = value(".beds-filter-select", "beds");
+      const baths = value(".baths-filter-select", "baths");
+      const type = value(".type-filter-select", "type") ||
+        root.dataset.propertyType || "";
+      const expansionKm = Number(document.body.dataset.areaExpansionKm || 0);
+
+      const criteria = {
+        url: window.location.href,
+        area: params.getAll("area").length
+          ? params.getAll("area")
+          : root.dataset.area || "",
+        propertyType: params.get("type") || root.dataset.propertyType || "",
+        price: params.get("price") || "",
+        beds: params.get("beds") || "",
+        baths: params.get("baths") || "",
+        minSqft: params.get("minSqft") || "",
+        minYear: params.get("minYear") || "",
+        viewType: params.get("viewType") || "",
+        waterfrontType: params.get("waterfrontType") || root.dataset.waterfrontType || "",
+        primaryOnMain: params.get("primaryOnMain") === "true",
+        threeSameFloor: params.get("threeSameFloor") === "true",
+        fourSameFloor: params.get("fourSameFloor") === "true",
+        sort: params.get("sort") || "newest",
+      };
+
+      const parts = [
+        type && type !== "all"
+          ? type.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+          : "Homes",
+        chosenAreas.length
+          ? `in ${chosenAreas.map((area) => area.label).join(", ")}`
+          : `in ${(root.dataset.city || "this market").replace(/\b\w/g, (c) => c.toUpperCase())}`,
+        priceLabel,
+        criteria.beds ? `${criteria.beds}+ beds` : "",
+        criteria.baths ? `${criteria.baths}+ baths` : "",
+        expansionKm ? `${expansionKm} km beyond the selected area` : "",
+      ].filter(Boolean);
+
+      return { criteria, summary: parts.join(" · ") };
+    };
+
+    const updateReadback = () => {
+      if (!readback) return;
+      const { summary } = getLiveSearch();
+      readback.replaceChildren();
+      const title = document.createElement("strong");
+      title.textContent = "Your saved search";
+      title.style.display = "block";
+      title.style.marginBottom = "3px";
+      readback.append(title, document.createTextNode(summary));
+    };
+
+    root.addEventListener("change", updateReadback);
+    document.querySelector(".intent-controls")?.addEventListener("change", updateReadback);
+    window.addEventListener("listing-filters-updated", updateReadback);
+    window.addEventListener("popstate", updateReadback);
+    document.addEventListener("homepage-fast-results-replaced", updateReadback);
+    updateReadback();
+
 
     const setOpen = (open) => {
       form.hidden = !open;
@@ -116,7 +219,12 @@ const {
       openButton.textContent = open ? "Close saved search" : "Save this search";
 
       if (open) {
-        form.querySelector('input[name="searchName"]')?.focus();
+        updateReadback();
+        const searchNameInput = form.querySelector('input[name="searchName"]');
+        if (searchNameInput && !searchNameInput.value.trim()) {
+          searchNameInput.value = getLiveSearch().summary;
+        }
+        searchNameInput?.focus();
       }
     };
 
@@ -152,18 +260,7 @@ const {
       submitButton.disabled = true;
       submitButton.textContent = "Saving...";
 
-      const criteria = {
-        url: window.location.href,
-        area: root.dataset.area || "",
-        propertyType: root.dataset.propertyType || "",
-        minPrice: root.dataset.minPrice || "",
-        maxPrice: root.dataset.maxPrice || "",
-        waterfrontType: root.dataset.waterfrontType || "",
-        requiresWaterfront:
-          root.dataset.requiresWaterfront === "true",
-        requiresOceanView:
-          root.dataset.requiresOceanView === "true",
-      };
+      const { criteria, summary } = getLiveSearch();
 
       try {
         const response = await fetch("/api/intent-lead", {
@@ -183,7 +280,7 @@ const {
                 .pop() || "",
             source: "saved_search",
             message:
-              `${searchName}\nSearch URL: ${window.location.href}\nCriteria: ${JSON.stringify(criteria)}`,
+              `${searchName}\nSaved search: ${summary}\nSearch URL: ${window.location.href}\nCriteria: ${JSON.stringify(criteria)}`,
           }),
         });
 

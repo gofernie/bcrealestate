@@ -761,7 +761,7 @@ html {
         const sheetPrice = document.getElementById("sheet-price");
         const sheetAddress = document.getElementById("sheet-address");
         const sheetMeta = document.getElementById("sheet-meta");
-        const sheetDescription = document.getElementById("sheet-description");
+        let sheetDescription = document.getElementById("sheet-description");
         const sheetListingBrokerage =
           document.getElementById("sheet-listing-brokerage");
         const sheetRealtorCaBadge =
@@ -3289,6 +3289,7 @@ function preloadNearbyListingPhotos(currentCard) {
   preloadImages(urls);
 }
 function renderCard(card) {
+  sheetDescription = document.getElementById("sheet-description");
   isFloorplanMode = false;
   // floorplan-state-reset
   sheetImage?.classList.remove("is-floorplan");
@@ -3454,46 +3455,87 @@ if (videoContainer) {
   videoContainer.hidden = true;
 
   try {
-    const videoUrl = new URL(card.dataset.videoUrl || "");
-    if (videoUrl.protocol === "https:") {
-      const youtubeId =
-        videoUrl.hostname === "youtu.be"
-          ? videoUrl.pathname.slice(1).split("/")[0]
-          : ["youtube.com", "www.youtube.com", "m.youtube.com"].includes(videoUrl.hostname)
-            ? videoUrl.pathname.startsWith("/shorts/")
-              ? videoUrl.pathname.split("/")[2]
-              : videoUrl.searchParams.get("v")
-            : null;
+    const sourceUrl = new URL(card.dataset.videoUrl || "");
 
-      const heading = document.createElement("h3");
-      heading.textContent = "Property video";
-      videoContainer.appendChild(heading);
+    if (sourceUrl.protocol === "https:") {
+      const host = sourceUrl.hostname.toLowerCase();
+      let embedUrl = null;
+      let title = "Virtual tour";
 
-      if (youtubeId && /^[A-Za-z0-9_-]{11}$/.test(youtubeId)) {
-        const frame = document.createElement("iframe");
-        frame.src = `https://www.youtube-nocookie.com/embed/${youtubeId}`;
-        frame.title = "Property video";
-        frame.loading = "lazy";
-        frame.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
-        frame.allowFullscreen = true;
-        frame.style.cssText = "display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:12px;";
-        videoContainer.appendChild(frame);
-      } else {
-        const link = document.createElement("a");
-        link.href = videoUrl.href;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = "Watch property video";
-        videoContainer.appendChild(link);
+      if (host === "youtu.be" ||
+          ["youtube.com", "www.youtube.com", "m.youtube.com"].includes(host)) {
+        const youtubeId = host === "youtu.be"
+          ? sourceUrl.pathname.split("/")[1]
+          : sourceUrl.pathname.startsWith("/shorts/")
+            ? sourceUrl.pathname.split("/")[2]
+            : sourceUrl.pathname.startsWith("/embed/")
+              ? sourceUrl.pathname.split("/")[2]
+              : sourceUrl.searchParams.get("v");
+
+        if (youtubeId && /^[A-Za-z0-9_-]{11}$/.test(youtubeId)) {
+          embedUrl = `https://www.youtube-nocookie.com/embed/${youtubeId}`;
+          title = "Property video";
+        }
+      } else if (
+        host === "my.matterport.com" &&
+        sourceUrl.pathname === "/show/"
+      ) {
+        const modelId = sourceUrl.searchParams.get("m");
+        if (modelId && /^[A-Za-z0-9_-]+$/.test(modelId)) {
+          embedUrl = `https://my.matterport.com/show/?m=${modelId}`;
+        }
+      } else if (
+        ["youriguide.com", "www.youriguide.com",
+         "unbranded.youriguide.com"].includes(host)
+      ) {
+        embedUrl = sourceUrl.href;
+      } else if (
+        host === "realsee.ai" &&
+        /^\/[A-Za-z0-9_-]+\/?$/.test(sourceUrl.pathname)
+      ) {
+        embedUrl = sourceUrl.origin + sourceUrl.pathname;
+      } else if (host === "drive.google.com") {
+        const driveMatch = sourceUrl.pathname.match(
+          /^\/file\/d\/([A-Za-z0-9_-]+)\/(?:view|preview)\/?$/
+        );
+        if (driveMatch) {
+          embedUrl =
+            `https://drive.google.com/file/d/${driveMatch[1]}/preview`;
+          title = "Property video";
+        }
       }
 
+      const heading = document.createElement("h3");
+      heading.textContent = title;
+      videoContainer.appendChild(heading);
+
+      if (embedUrl) {
+        const frame = document.createElement("iframe");
+        frame.src = embedUrl;
+        frame.title = title;
+        frame.loading = "lazy";
+        frame.allow =
+          "autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen; web-share";
+        frame.allowFullscreen = true;
+        frame.style.cssText =
+          "display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:12px;";
+        videoContainer.appendChild(frame);
+      }
+
+      const link = document.createElement("a");
+      link.href = sourceUrl.href;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = embedUrl
+        ? "Open full screen ↗"
+        : "Open virtual tour ↗";
+      videoContainer.appendChild(link);
       videoContainer.hidden = false;
     }
   } catch {
-    // No valid video URL for this listing.
+    // No valid media URL for this listing.
   }
 }
-
 syncRealtorCaBadge(card);
 
 const chips = getHighlightChips(card.dataset.description || "");
@@ -4729,52 +4771,97 @@ const favoritePicsHtml = favoriteCards.length
   `
   : "";
 
-sheetSummary.innerHTML = `
-  <div class="review-complete">
-    <div class="review-complete__header">
-      <div class="eyebrow">Shortlist reviewed</div>
+const pageMoreButton = document.getElementById("show-more-listings-btn");
+const pageNearbyButton = document.getElementById("show-nearby-area-listings-btn");
+const resultsWrapper = document.getElementById("show-more-listings-wrap");
 
-      <h2 class="review-complete__title">
-        You've reviewed all the homes.
+const moreAction =
+  resultsWrapper && !resultsWrapper.hidden && pageMoreButton && !pageMoreButton.hidden
+    ? pageMoreButton.dataset.action
+    : "";
+
+const canSearchNearby =
+  resultsWrapper && !resultsWrapper.hidden &&
+  pageNearbyButton && !pageNearbyButton.hidden;
+
+const hasMoreMatches = moreAction === "load-more";
+const hasPriceStep = moreAction === "next-price";
+const hasSearchChoice = hasMoreMatches || hasPriceStep || canSearchNearby;
+
+sheetSummary.innerHTML = `
+  <div style="box-sizing:border-box;width:min(100%,680px);margin:28px auto;padding:clamp(20px,4vw,36px);">
+    <div style="border:1px solid #b8d2d3;border-radius:18px;background:linear-gradient(135deg,#f0f6f5,#fff);padding:clamp(22px,4vw,36px);text-align:center;">
+      <div style="color:#2f6f73;font-size:.73rem;font-weight:900;letter-spacing:.13em;text-transform:uppercase;">
+        ${hasSearchChoice ? "Search complete" : "Shortlist reviewed"}
+      </div>
+
+      <h2 style="margin:12px 0 10px;color:#201d1b;font-size:clamp(1.65rem,4vw,2.25rem);line-height:1.12;letter-spacing:-.035em;">
+        ${hasMoreMatches ? "Ready for more homes?" : hasSearchChoice ? "You’ve seen every match here" : "You’ve reviewed all the homes"}
       </h2>
 
-      <p class="review-complete__sub">
-        Here are your favourites. Want to take the next step?
+      <p style="max-width:470px;margin:0 auto 22px;color:#5e6261;line-height:1.55;">
+        ${hasMoreMatches
+          ? "There are more homes matching this search."
+          : hasSearchChoice
+            ? "You can look just above your budget or widen the area."
+            : "You can revisit your favourites or ask for help with the next step."}
       </p>
+
+      <div style="display:flex;justify-content:center;flex-wrap:wrap;gap:10px;">
+        ${moreAction ? `
+          <button type="button" data-end-action="page-more"
+            style="min-height:46px;padding:11px 19px;border:1px solid #2f6f73;border-radius:999px;background:#2f6f73;color:white;font:inherit;font-size:.88rem;font-weight:800;cursor:pointer;">
+          </button>` : ""}
+
+        ${canSearchNearby ? `
+          <button type="button" data-end-action="page-nearby"
+            style="min-height:46px;padding:11px 19px;border:1px solid #2f6f73;border-radius:999px;background:white;color:#2f6f73;font:inherit;font-size:.88rem;font-weight:800;cursor:pointer;">
+          </button>` : ""}
+      </div>
     </div>
 
     ${favoritePicsHtml}
 
-    <div class="review-complete__note">
-      <h4>What would you like to do next?</h4>
-
-      <div class="quick-actions">
-        <button type="button" data-end-action="unlock-more">
-          Unlock more expensive homes
-        </button>
-
-        <button type="button" data-end-action="book-showings">
-          Book showings
-        </button>
-
-        <button type="button" data-end-action="ask-question">
-          Ask a question
-        </button>
-      </div>
-
-      <div class="modal-intent-actions" style="margin-top:18px;">
-        <button type="button" class="modal-intent-secondary" id="end-close-btn">
-          Close
-        </button>
+    <div style="margin-top:24px;text-align:center;">
+      <p style="margin:0 0 12px;color:#615e5a;font-size:.85rem;">
+        Want help with a home you liked?
+      </p>
+      <div style="display:flex;justify-content:center;flex-wrap:wrap;gap:10px;">
+        <button type="button" data-end-action="book-showings" class="modal-intent-secondary">Book showings</button>
+        <button type="button" data-end-action="ask-question" class="modal-intent-secondary">Ask a question</button>
+        <button type="button" class="modal-intent-secondary" id="end-close-btn">Close</button>
       </div>
     </div>
   </div>
 `;
 
- document.querySelectorAll("[data-end-action]").forEach((btn) => {
+const modalMoreButton = sheetSummary.querySelector('[data-end-action="page-more"]');
+const modalNearbyButton = sheetSummary.querySelector('[data-end-action="page-nearby"]');
+if (modalMoreButton && pageMoreButton) {
+  modalMoreButton.textContent = pageMoreButton.textContent.trim();
+}
+if (modalNearbyButton && pageNearbyButton) {
+  modalNearbyButton.textContent = pageNearbyButton.textContent.trim();
+}
+document.querySelectorAll("[data-end-action]").forEach((btn) => {
   btn.addEventListener("click", async () => {
     const action = btn.dataset.endAction;
 
+    if (action === "page-more" || action === "page-nearby") {
+      const target = action === "page-more" ? pageMoreButton : pageNearbyButton;
+      if (!target || target.hidden || target.disabled) return;
+
+      closeSheet({ force: true });
+      target.click();
+
+      if (action === "page-more") {
+        document.getElementById("show-more-listings-wrap")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+      return;
+    }
     if (action === "book-showings") {
       showLeadCaptureForm({
         kicker: "Book showings",
@@ -4911,8 +4998,10 @@ if (index >= cards.length - 1) {
 syncListingUrl(activeCard, "replace");
 renderCard(activeCard);
 syncMobileMediaCounts();
-fetchListingDetailIfNeeded(activeCard).then((wasUpdated) => {
-  if (!wasUpdated || !activeCard) return;
+const navigatedCard = activeCard;
+fetchListingDetailIfNeeded(navigatedCard).then((wasUpdated) => {
+  if (!wasUpdated || activeCard !== navigatedCard) return;
+  renderCard(navigatedCard);
 
   hydrateRoomMeasurements(activeCard);
   refreshFloorplanButtonVisibility();
@@ -4965,8 +5054,10 @@ requestAnimationFrame(() => {
 syncListingUrl(activeCard, "replace");
 renderCard(activeCard);
 syncMobileMediaCounts();
-fetchListingDetailIfNeeded(activeCard).then((wasUpdated) => {
-  if (!wasUpdated || !activeCard) return;
+const navigatedCard = activeCard;
+fetchListingDetailIfNeeded(navigatedCard).then((wasUpdated) => {
+  if (!wasUpdated || activeCard !== navigatedCard) return;
+  renderCard(navigatedCard);
 
   hydrateRoomMeasurements(activeCard);
   refreshFloorplanButtonVisibility();
