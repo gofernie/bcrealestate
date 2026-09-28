@@ -1103,7 +1103,7 @@ const filterWaterfrontType =
 let navRowsQuery = supabase
   .from("listing_rows")
   .select(
-    "normalized_type, normalized_area, price, beds"
+    "normalized_type, normalized_area, price, beds, waterfront, waterfront_type"
   )
   .in("normalized_city", cityDatabaseKeys)
   .eq("status", "A")
@@ -1784,6 +1784,39 @@ console.log(
 );
 
 let listings = rawListings || [];
+
+/* keep-house-counts-in-sync-with-home-api */
+if (
+  useHomepageListingPipeline &&
+  effectivePropertyType === "house"
+) {
+  const listingText = (value: unknown) => {
+    if (typeof value === "string") return value;
+    if (value && typeof value === "object") {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return "";
+      }
+    }
+    return "";
+  };
+
+  listings = listings.filter((listing) => {
+    const address = listingText(listing.address);
+    const landSignalText =
+      `${address} ${listing.property_type || ""} ${listing.description || ""}`
+        .trim()
+        .toLowerCase();
+
+    const looksLikeLand =
+      /^\s*(lot|lt)\b/i.test(address) ||
+      /\b(vacant land|bare land|building lot|residential lot|development lot|land only|lot for sale)\b/i.test(landSignalText) ||
+      /\b(vacant|bare|building|residential|serviced)\s+lot\b/i.test(landSignalText);
+
+    return !looksLikeLand;
+  });
+}
 
 console.log("AREA LISTING DEBUG BEFORE POLYGON", {
   city,
@@ -5013,69 +5046,6 @@ color: var(--accent) !important;
 
 
 
-.related-intents {
-  margin-top: 56px;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.related-intents__head p {
-  margin: 0 0 10px;
-  color: var(--accent);
-  font-size: 0.72rem;
-  font-weight: 900;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.related-intents__head h2 {
-  margin: 0 0 24px;
-  font-family: var(--serif);
-  font-size: clamp(2rem, 4vw, 3.2rem);
-  line-height: 1;
-  letter-spacing: -0.05em;
-}
-
-.related-intents__grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.related-intent-card {
-  display: block;
-  padding: 20px;
-  border: 0.5px solid rgba(0,0,0,0.1);
-  border-radius: 6px;
-  background: var(--surface);
-  text-decoration: none;
-}
-
-.related-intent-card h3 {
-  margin: 0 0 10px;
-  font-family: var(--serif);
-  font-size: 1.3rem;
-}
-
-.related-intent-card p {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.45;
-}
-
-@media (max-width: 900px) {
-  .related-intents {
-    margin: 36px 14px 0;
-    padding: 0;
-  }
-
-  .related-intents__grid {
-    grid-template-columns: 1fr;
-  }
-}
 .area-neighbourhood-map,
 .intent-map {
   isolation: isolate;
@@ -9005,7 +8975,7 @@ grid-template-columns: 30px minmax(0, 1fr);
   data-intent-page-id={page.id}
   data-city={city}
   data-slug={slug}
-  data-search-area-geojson={JSON.stringify(page.polygon_geojson || null)}
+  data-search-area-geojson={JSON.stringify(pagePolygonGeojson || null)}
   data-area-center-lat={String(osmLat || "")}
   data-area-center-lng={String(osmLng || "")}
 >
@@ -9522,7 +9492,7 @@ grid-template-columns: 30px minmax(0, 1fr);
 </span>
 
         <div>
-          <strong>{listingCount}</strong>
+          <strong>{listings.length}</strong>
       <span>{typePageLabel} for sale</span>
           <small>Active MLS listings</small>
         </div>
@@ -9758,7 +9728,7 @@ grid-template-columns: 30px minmax(0, 1fr);
   </svg>
 </span>
             <div>
-              <strong>{listingCount}</strong>
+              <strong>{listings.length}</strong>
               <span>{typePageLabel} for sale</span>
               <small>Active on the MLS</small>
             </div>
@@ -10848,37 +10818,6 @@ Approximate driving times from{" "}
 </div>
 )}
 
-<div class="property-type-pills" style="display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px;">
-  {listingTypeCounts.house > 0 ? (
-    <button type="button" class="property-type-pill" data-property-type="house">
-      ?? <strong>{listingTypeCounts.house}</strong> Homes
-    </button>
-  ) : null}
-
-  {listingTypeCounts.condo > 0 ? (
-    <button type="button" class="property-type-pill" data-property-type="condo">
-      ?? <strong>{listingTypeCounts.condo}</strong> Condos
-    </button>
-  ) : null}
-
-  {listingTypeCounts.townhouse > 0 ? (
-    <button type="button" class="property-type-pill" data-property-type="townhouse">
-      ??? <strong>{listingTypeCounts.townhouse}</strong> Townhomes
-    </button>
-  ) : null}
-
-  {listingTypeCounts.mobile > 0 ? (
-    <button type="button" class="property-type-pill" data-property-type="mobile">
-      ?? <strong>{listingTypeCounts.mobile}</strong> Mobile Homes
-    </button>
-  ) : null}
-
-  {listingTypeCounts.land > 0 ? (
-    <button type="button" class="property-type-pill" data-property-type="land">
-      ?? <strong>{listingTypeCounts.land}</strong> Lot / Land
-    </button>
-  ) : null}
-</div>
 
 {
     pageKind === "intent" &&
@@ -11174,6 +11113,8 @@ Approximate driving times from{" "}
     const button = document.querySelector(
       ".slug-save-search [data-slug-save-open]"
     );
+    const sortSelect = document.querySelector(".sort-filter-select");
+
     if (!count || !button || button.parentElement?.classList.contains("filter-save-row")) return;
 
     const row = document.createElement("div");
@@ -11181,6 +11122,31 @@ Approximate driving times from{" "}
     row.style.cssText = "display:flex;align-items:center;gap:10px;flex-wrap:wrap;";
     button.before(row);
     row.append(count, button);
+
+    if (sortSelect instanceof HTMLSelectElement) {
+      const sortPill = document.createElement("label");
+      sortPill.className = "filter-sort-pill";
+      sortPill.style.cssText =
+        "display:inline-flex;align-items:center;gap:7px;height:40px;" +
+        "padding:0 11px 0 13px;border:1px solid #d8dfdd;border-radius:999px;" +
+        "background:#fff;color:#355c64;font-size:.85rem;font-weight:700;" +
+        "white-space:nowrap;box-sizing:border-box;";
+
+      const sortLabel = document.createElement("span");
+      sortLabel.textContent = "Sort";
+
+      const chevron = document.createElement("span");
+      chevron.textContent = "⌄";
+      chevron.setAttribute("aria-hidden", "true");
+      chevron.style.cssText = "font-size:1rem;line-height:1;";
+
+      sortSelect.style.cssText =
+        "appearance:none;border:0;outline:0;background:transparent;" +
+        "padding:0;min-width:0;color:#355c64;font:inherit;cursor:pointer;";
+
+      sortPill.append(sortLabel, sortSelect, chevron);
+      row.insertBefore(sortPill, button);
+    }
 
     count.style.cssText =
       "display:inline-flex;align-items:center;width:max-content;margin:0;" +
@@ -11196,6 +11162,123 @@ Approximate driving times from{" "}
     placeFilterMatchCount();
   }
 </script>
+{pageKind === "intent" && (
+  <script is:inline>
+    /* intent-sort-pill-layout-v2 */
+    (() => {
+      const placeIntentSort = () => {
+        const row = document.querySelector(".filter-save-row");
+        const saveButton = document.querySelector(
+          ".slug-save-search [data-slug-save-open]"
+        );
+        const sortSelect = document.querySelector(".sort-filter-select");
+        const customSort = document.querySelector(".filter-dd--sort");
+        const oldSortPill = document.querySelector(".filter-sort-pill");
+
+        if (!row || !saveButton || !customSort) return false;
+
+        if (
+          oldSortPill instanceof HTMLElement &&
+          sortSelect instanceof HTMLSelectElement &&
+          oldSortPill.contains(sortSelect)
+        ) {
+          oldSortPill.before(sortSelect);
+          oldSortPill.remove();
+        }
+
+        row.insertBefore(customSort, saveButton);
+
+        customSort.classList.add("intent-sort-pill");
+        customSort.style.cssText =
+          "position:relative;display:inline-flex;width:auto;min-width:0;" +
+          "height:40px;align-self:auto;";
+
+        const trigger = customSort.querySelector(".filter-dd__trigger");
+        const label = customSort.querySelector(".filter-dd__label");
+        const value = customSort.querySelector(".filter-dd__value");
+
+        if (trigger instanceof HTMLElement) {
+          trigger.style.cssText =
+            "width:auto;min-height:40px;padding:0 30px 0 13px;" +
+            "border:1px solid #d8dfdd;border-radius:999px;" +
+            "background:#fff;color:#355c64;font:inherit;" +
+            "font-size:.85rem;font-weight:700;";
+        }
+
+        if (label instanceof HTMLElement) {
+          label.textContent = "Sort";
+          label.style.cssText =
+            "display:inline;color:#111;font:inherit;" +
+            "font-size:.85rem;font-weight:800;";
+        }
+
+        const syncSortText = () => {
+          if (
+            value instanceof HTMLElement &&
+            sortSelect instanceof HTMLSelectElement
+          ) {
+            value.textContent =
+              sortSelect.options[sortSelect.selectedIndex]
+                ?.textContent?.trim() || "Newest first";
+          }
+        };
+
+        if (value instanceof HTMLElement) {
+          value.style.cssText =
+            "display:inline;margin-left:6px;color:#355c64;font:inherit;" +
+            "font-size:.85rem;font-weight:600;";
+        }
+
+        syncSortText();
+        sortSelect?.addEventListener("change", syncSortText);
+        return true;
+      };
+
+      const run = () => {
+        placeIntentSort();
+        setTimeout(placeIntentSort, 100);
+        setTimeout(placeIntentSort, 350);
+      };
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", run, { once: true });
+      } else {
+        run();
+      }
+    })();
+  </script>
+<style is:global>
+  /* intent-filter-row-left-v1 */
+  [data-intent-page-id] .filter-save-row {
+    display: flex !important;
+    flex: 0 0 100% !important;
+    width: 100% !important;
+    max-width: none !important;
+    box-sizing: border-box !important;
+    justify-self: stretch !important;
+    justify-content: flex-start !important;
+    align-self: stretch !important;
+    gap: 10px !important;
+    margin: 16px 0 22px !important;
+  }
+
+  /* restore-filter-count-pill-v1 */
+  [data-intent-page-id] #filter-match-count {
+    visibility: visible !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    min-height: 40px !important;
+    padding: 0 13px !important;
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, white) !important;
+    border-radius: 999px !important;
+    background: color-mix(in srgb, var(--accent) 12%, white) !important;
+    color: var(--accent) !important;
+    font: inherit !important;
+    font-size: .85rem !important;
+    font-weight: 800 !important;
+    white-space: nowrap !important;
+  }</style>
+)}
 <div
   class="type-more-filters-panel"
   id="type-more-filters"
@@ -11377,7 +11460,7 @@ Approximate driving times from{" "}
 </div>
 
   {
-  (pageKind === "intent" || hasActiveSearchFilters) && (
+  (pageKind === "area" || pageKind === "intent" || hasActiveSearchFilters) && (
     <SlugSaveSearch
       siteId={site?.id}
       city={city}
@@ -12009,7 +12092,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
           return;
         }
 
-        if (useFastListings && fastTotal > 0 && ceiling && hasSelectedArea()) {
+        if (useFastListings && fastTotal > 0 && hasSelectedArea()) {
           setWrapperVisible(true);
           eyebrow.textContent = expandedAreaKm
             ? "Nearby search complete"
@@ -12017,15 +12100,30 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
           title.textContent = expandedAreaKm
             ? "You’ve seen every nearby match"
             : "You’ve seen every match in this area";
-          copy.textContent = expandedAreaKm
-            ? `That includes ${nextPriceHomeLabel()} in ${selectedAreaLabel()} and up to ${expandedAreaKm} km beyond it.`
-            : `We found ${fastTotal} ${nextPriceHomeLabel()} in ${selectedAreaLabel()} up to ${formatBudget(ceiling)}. Where would you like to expand next?`;
-          button.hidden = false;
-          button.dataset.action = "next-price";
-          button.textContent =
-            `See 6 more ${nextPriceHomeLabel()} above ${formatBudget(ceiling)}`;
-          nearbyButton.hidden = expandedAreaKm > 0;
-          nearbyButton.textContent = `Search 1 km beyond ${selectedAreaLabel()}`;
+
+          if (expandedAreaKm > 0) {
+            copy.textContent =
+              `That includes all current ${nextPriceHomeLabel()} in ${selectedAreaLabel()} and up to ${expandedAreaKm} km beyond it.`;
+            button.hidden = true;
+            nearbyButton.hidden = true;
+            return;
+          }
+
+          copy.textContent = ceiling
+            ? `We found ${fastTotal} ${nextPriceHomeLabel()} in ${selectedAreaLabel()} up to ${formatBudget(ceiling)}. Where would you like to expand next?`
+            : `We found all ${fastTotal} current ${nextPriceHomeLabel()} in ${selectedAreaLabel()}. Want to see homes within 1 km?`;
+
+          button.hidden = !ceiling;
+
+          if (ceiling) {
+            button.dataset.action = "next-price";
+            button.textContent =
+              `See 6 more ${nextPriceHomeLabel()} above ${formatBudget(ceiling)}`;
+          }
+
+          nearbyButton.hidden = false;
+          nearbyButton.textContent =
+            `Search 1 km beyond ${selectedAreaLabel()}`;
           return;
         }
 
@@ -12061,6 +12159,10 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
             ? "price-low"
             : dataEl.dataset.sort === "price-desc"
             ? "price-high"
+            : dataEl.dataset.sort === "beds-desc"
+            ? "beds-high"
+            : dataEl.dataset.sort === "sqft-desc"
+            ? "sqft-high"
             : "newest",
       });
 
@@ -12342,7 +12444,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
     }
   })();
 </script>
-<RelatedIntentCards city={city} pages={relatedIntentPages} />
+<RelatedIntentCards city={city} pages={relatedIntentPages} inventory={navRows} currentType={effectivePropertyType} />
 {pageKind === "area" && listings.length > 0 && (
   <section style="margin-top:40px;">
     <div id="area-dashboard"
@@ -14046,9 +14148,16 @@ let refinedLeafletMap = null;
 let refinedMarkers = [];
 let currentIntentMapBounds = null;
 
-const searchAreaGeojson = JSON.parse(
+const searchAreaGeojsonRaw = JSON.parse(
   document.querySelector("[data-search-area-geojson]")?.dataset.searchAreaGeojson || "null"
 );
+
+const searchAreaGeojson =
+  searchAreaGeojsonRaw?.type === "Feature"
+    ? searchAreaGeojsonRaw.geometry
+    : searchAreaGeojsonRaw?.type === "FeatureCollection"
+      ? searchAreaGeojsonRaw.features?.[0]?.geometry || null
+      : searchAreaGeojsonRaw;
 
 const mapAreaBoundaries = (() => {
   try {
@@ -14301,31 +14410,44 @@ if (!window.__mapListingPopupClickBound) {
   );
 }
 function drawSearchPolygon(map) {
-  if (!searchAreaGeojson?.coordinates?.[0]) return null;
+  const currentSlug = String(
+    document.querySelector("[data-slug]")?.dataset.slug || ""
+  )
+    .trim()
+    .toLowerCase();
 
-  const coords = searchAreaGeojson.coordinates[0].map(([lng, lat]) => [lat, lng]);
+  const savedBoundary = mapAreaBoundaries.find(
+    (boundary) =>
+      String(boundary.slug || "").trim().toLowerCase() === currentSlug
+  );
 
-  // Mask (darken outside polygon)
-  const worldCoords = [
-    [[-85, -180], [-85, 180], [85, 180], [85, -180]],
-    coords,
-  ];
-  maskLayer = L.polygon(worldCoords, {
-    color: "none",
-    fillColor: "#000",
-    fillOpacity: 0.06,
+  let geometry = searchAreaGeojson || savedBoundary?.polygon || null;
+
+  if (typeof geometry === "string") {
+    try {
+      geometry = JSON.parse(geometry);
+    } catch {
+      geometry = null;
+    }
+  }
+
+  if (!geometry?.type) return null;
+
+  polygonLayer = L.geoJSON(geometry, {
     interactive: false,
+    style: {
+      color: accentColor,
+      weight: 2,
+      opacity: 0.82,
+      fillColor: accentColor,
+      fillOpacity: 0.09,
+      dashArray: "5 5",
+    },
   }).addTo(map);
 
-  // Outline
-  polygonLayer = L.polygon(coords, {
-    color: accentColor,
-    weight: 3,
-    fillOpacity: 0.02,
-    interactive: false,
-  }).addTo(map);
+  const bounds = polygonLayer.getBounds();
 
-  return L.latLngBounds(coords);
+  return bounds.isValid() ? bounds : null;
 }
 
 function drawSelectedAreaBoundaries(map) {
@@ -15117,6 +15239,8 @@ function initRefinedLeafletMap() {
 const areaHomesMapEl = document.getElementById("area-homes-map");
 let areaHomesLeafletMap = null;
 let areaHomesMarkerLayer = null;
+let areaHomesBoundaryLayer = null;
+let areaHomesHaloLayer = null;
 let areaHomesMapTouchModeBound = false;
 
 function installAreaHomesMapTouchMode() {
@@ -15235,6 +15359,78 @@ function showAreaHomesMap() {
 
     areaHomesMarkerLayer.clearLayers();
 
+    areaHomesBoundaryLayer?.remove();
+    areaHomesBoundaryLayer = null;
+    areaHomesHaloLayer?.remove();
+    areaHomesHaloLayer = null;
+
+    let areaHomeGeometry = searchAreaGeojson;
+
+    if (!areaHomeGeometry?.type) {
+      const currentAreaSlug = String(
+        document.querySelector("[data-search-area-geojson]")?.dataset.slug || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      areaHomeGeometry = mapAreaBoundaries.find(
+        (boundary) =>
+          String(boundary.slug || "").trim().toLowerCase() === currentAreaSlug
+      )?.polygon || null;
+    }
+
+    if (typeof areaHomeGeometry === "string") {
+      try {
+        areaHomeGeometry = JSON.parse(areaHomeGeometry);
+      } catch {
+        areaHomeGeometry = null;
+      }
+    }
+
+    if (areaHomeGeometry?.type) {
+      const expansionKm = Number(
+        document.body.dataset.areaExpansionKm || "0"
+      );
+
+      if (expansionKm > 0) {
+        const metresPerPixel =
+          156543.03392 *
+          Math.cos((areaHomesLeafletMap.getCenter().lat * Math.PI) / 180) /
+          Math.pow(2, areaHomesLeafletMap.getZoom());
+
+        areaHomesHaloLayer = L.geoJSON(areaHomeGeometry, {
+          interactive: false,
+          style: {
+            color: accentColor,
+            weight: Math.max(
+              4,
+              (expansionKm * 1000 * 2) / Math.max(metresPerPixel, 0.01)
+            ),
+            opacity: 0.11,
+            fill: false,
+            lineCap: "round",
+            lineJoin: "round",
+          },
+        }).addTo(areaHomesLeafletMap);
+
+        areaHomesHaloLayer.bringToBack?.();
+      }
+
+      areaHomesBoundaryLayer = L.geoJSON(areaHomeGeometry, {
+        interactive: false,
+        style: {
+          color: accentColor,
+          weight: 2,
+          opacity: 0.82,
+          fillColor: accentColor,
+          fillOpacity: 0.09,
+          dashArray: "5 5",
+        },
+      }).addTo(areaHomesLeafletMap);
+
+      areaHomesBoundaryLayer.bringToBack?.();
+    }
+
     points.forEach(({ card, latlng }) => {
       L.marker(latlng, { icon: makeListingIcon() })
         .bindPopup(buildListingPopup(card), {
@@ -15244,8 +15440,12 @@ function showAreaHomesMap() {
         .addTo(areaHomesMarkerLayer);
     });
 
+    const areaHomeBounds = areaHomesBoundaryLayer?.getBounds();
+
     areaHomesLeafletMap.fitBounds(
-      L.latLngBounds(points.map(({ latlng }) => latlng)),
+      areaHomeBounds?.isValid()
+        ? areaHomeBounds
+        : L.latLngBounds(points.map(({ latlng }) => latlng)),
       { padding: [28, 28], maxZoom: 15 }
     );
 
@@ -15888,7 +16088,11 @@ const nextSearch = params.toString();
           ? "price-low"
           : sortSelect?.value === "price-desc"
             ? "price-high"
-            : "newest",
+            : sortSelect?.value === "beds-desc"
+              ? "beds-high"
+              : sortSelect?.value === "sqft-desc"
+                ? "sqft-high"
+                : "newest",
     });
 
     const selectedAreas = areaSelect instanceof HTMLSelectElement
@@ -19328,6 +19532,160 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   min-width: 150px;
 }
 </style>
+<script is:inline>
+/* sort-pill-custom-menu-v1 */
+(() => {
+  const moveSort = () => {
+    const row = document.querySelector(".filter-save-row");
+    const dropdown = document.querySelector(".filter-dd--sort");
+    const native = document.querySelector(".sort-filter-select");
+    const saveButton = document.querySelector(".slug-save-search [data-slug-save-open]");
+
+    if (!row || !dropdown || !native || !saveButton) return;
+
+    const oldPill = native.closest(".filter-sort-pill");
+    if (oldPill instanceof HTMLElement) oldPill.style.display = "none";
+
+    native.style.display = "none";
+    row.insertBefore(dropdown, saveButton);
+
+    dropdown.style.cssText =
+      "position:relative;display:inline-flex;min-width:0;height:40px;align-self:auto;";
+
+    const trigger = dropdown.querySelector(".filter-dd__trigger");
+    const label = dropdown.querySelector(".filter-dd__label");
+    const value = dropdown.querySelector(".filter-dd__value");
+
+    if (trigger instanceof HTMLElement) {
+      trigger.style.cssText =
+        "width:auto;min-height:40px;padding:0 30px 0 13px;border:1px solid #d8dfdd;" +
+        "border-radius:999px;background:#fff;color:#355c64;font:inherit;font-size:.85rem;font-weight:700;";
+    }
+
+    if (label instanceof HTMLElement) {
+      label.style.cssText = "display:inline;font:inherit;font-size:.85rem;font-weight:800;";
+      label.textContent = "Sort";
+    }
+
+    if (value instanceof HTMLElement) {
+      value.style.cssText =
+        "display:inline;margin:0 0 0 6px;font:inherit;font-size:.85rem;font-weight:600;color:#355c64;";
+    }
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", moveSort, { once: true });
+  } else {
+    moveSort();
+  }
+})();
+</script>
+<script is:inline>/* area-search-actions-v1 */(() => { const place = () => { const row = document.querySelector(".filter-save-row"); const save = document.querySelector(".slug-save-search [data-slug-save-open]"); const native = document.querySelector(".sort-filter-select"); const dropdown = document.querySelector(".filter-dd--sort"); const typePills = document.querySelector(".property-type-pills"); if (row && save && native && dropdown) { const oldPill = native.closest(".filter-sort-pill"); if (oldPill instanceof HTMLElement) oldPill.style.display = "none"; native.style.display = "none"; row.insertBefore(dropdown, save); dropdown.style.cssText = "position:relative;display:inline-flex;min-width:0;height:40px;align-self:auto;"; const trigger = dropdown.querySelector(".filter-dd__trigger"); const label = dropdown.querySelector(".filter-dd__label"); const value = dropdown.querySelector(".filter-dd__value"); if (trigger instanceof HTMLElement) trigger.style.cssText = "width:auto;min-height:40px;padding:0 30px 0 13px;border:1px solid #d8dfdd;border-radius:999px;background:#fff;color:#355c64;font:inherit;font-size:.85rem;font-weight:700;"; if (label instanceof HTMLElement) { label.style.cssText = "display:inline;font:inherit;font-size:.85rem;font-weight:800;"; label.textContent = "Sort"; } if (value instanceof HTMLElement) value.style.cssText = "display:inline;margin:0 0 0 6px;font:inherit;font-size:.85rem;font-weight:600;color:#355c64;"; } if (row && typePills instanceof HTMLElement) { typePills.style.setProperty("display", "flex", "important"); typePills.style.setProperty("margin", "10px 0 12px", "important"); row.insertAdjacentElement("afterend", typePills); } }; if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", place, { once: true }); } else { place(); } })();</script>
+<script is:inline>
+  /* final-left-search-actions-v2 */
+  (() => {
+    let queued = false;
+
+    const place = () => {
+      const row = document.querySelector(".filter-save-row");
+      if (!(row instanceof HTMLElement)) return;
+
+      row.style.setProperty("display", "flex", "important");
+      row.style.setProperty("width", "100%", "important");
+      row.style.setProperty("max-width", "none", "important");
+      row.style.setProperty("box-sizing", "border-box", "important");
+      row.style.setProperty("justify-content", "flex-start", "important");
+      row.style.setProperty("align-items", "center", "important");
+      row.style.setProperty("flex-wrap", "wrap", "important");
+      row.style.setProperty("gap", "10px", "important");
+      row.style.setProperty("margin", "16px 0 22px", "important");
+
+      const mySearches = Array.from(
+        document.querySelectorAll("a, button")
+      ).find(
+        (element) =>
+          String(element.textContent || "")
+            .replace(/\s+/g, " ")
+            .trim() === "My searches"
+      );
+
+      if (
+        mySearches instanceof HTMLElement &&
+        !row.contains(mySearches)
+      ) {
+        row.append(mySearches);
+      }
+    };
+
+    const schedule = () => {
+      if (queued) return;
+      queued = true;
+
+      queueMicrotask(() => {
+        queued = false;
+        place();
+      });
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", schedule, {
+        once: true,
+      });
+    } else {
+      schedule();
+    }
+
+    new MutationObserver(schedule).observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+  })();
+</script>
+<style is:global>
+  html.listing-count-pending #filter-match-count,
+  html.listing-count-pending .type-stats article:first-child strong {
+    visibility: hidden;
+  }
+</style>
+
+<script is:inline>
+  /* listing-count-client-sync-v1 */
+  (() => {
+    const root = document.documentElement;
+    root.classList.add("listing-count-pending");
+
+    function applyListingTotal(total) {
+      if (!Number.isFinite(total) || total < 0) return;
+
+      const count = document.getElementById("filter-match-count");
+
+      if (count) {
+        count.textContent = `${total} ${total === 1 ? "home" : "homes"}`;
+        count.setAttribute(
+          "aria-label",
+          `${total} ${total === 1 ? "listing" : "listings"} found`
+        );
+      }
+
+      document.querySelectorAll(".type-stats article").forEach((article) => {
+        const label = String(article.querySelector("span")?.textContent || "");
+
+        if (/homes?\s+for\s+sale/i.test(label)) {
+          const number = article.querySelector("strong");
+          if (number) number.textContent = String(total);
+        }
+      });
+
+      root.classList.remove("listing-count-pending");
+    }
+
+    document.addEventListener(
+      "homepage-fast-results-replaced",
+      (event) => applyListingTotal(Number(event.detail?.total)),
+      { once: true }
+    );
+  })();
+</script>
 </Layout>
 
 <style>
@@ -21036,3 +21394,234 @@ document.addEventListener("click", (event) => {
   min-width: 150px;
 }
 </style>
+<style is:global>
+/* desktop-nearby-layer-buttons-v1 */
+@media (min-width: 901px) {
+  .area-map-toolbar--overlay {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: auto !important;
+  }
+
+  .area-map-toolbar--overlay .map-nearby-select {
+    display: none !important;
+  }
+
+  .map-nearby-buttons {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .map-nearby-buttons button {
+    min-height: 34px;
+    padding: 0 10px;
+    border: 1px solid rgba(20, 28, 38, .16);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, .97);
+    color: #1d2730;
+    box-shadow: 0 2px 8px rgba(20, 28, 38, .10);
+    cursor: pointer;
+    font: inherit;
+    font-size: .75rem;
+    font-weight: 750;
+    white-space: nowrap;
+  }
+
+  .map-nearby-buttons button:hover,
+  .map-nearby-buttons button.is-active {
+    border-color: color-mix(in srgb, var(--accent) 45%, white);
+    background: color-mix(in srgb, var(--accent) 12%, white);
+    color: var(--accent);
+  }
+}
+
+@media (max-width: 900px) {
+  .map-nearby-buttons {
+    display: none !important;
+  }
+}
+</style>
+
+<script is:inline>
+  /* desktop-nearby-layer-buttons-v1 */
+  (() => {
+    const mount = () => {
+      const toolbar = document.querySelector(".area-map-toolbar--overlay");
+      const hideListings = document.getElementById("toggle-listings-btn");
+
+      if (!toolbar || !hideListings || toolbar.querySelector(".map-nearby-buttons")) {
+        return;
+      }
+
+      const buttons = document.createElement("div");
+      buttons.className = "map-nearby-buttons";
+      buttons.setAttribute("aria-label", "Nearby places");
+
+      const activeAmenity =
+        document.querySelector(".area-flow__nearby-choice.active")
+          ?.getAttribute("data-amenity") || "schools";
+
+      [
+        ["schools", "Schools"],
+        ["restaurants", "Food & cafés"],
+        ["grocery", "Grocery"],
+        ["parks", "Parks"],
+        ["medical", "Medical"],
+      ].forEach(([amenity, label]) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.dataset.amenity = amenity;
+        button.classList.toggle("is-active", amenity === activeAmenity);
+
+        button.addEventListener("click", () => {
+          document
+            .querySelector(
+              `.area-flow__nearby-choice[data-amenity="${amenity}"]`
+            )
+            ?.click();
+
+          buttons.querySelectorAll("button").forEach((item) => {
+            item.classList.toggle(
+              "is-active",
+              item.dataset.amenity === amenity
+            );
+          });
+        });
+
+        buttons.appendChild(button);
+      });
+
+      toolbar.insertBefore(buttons, hideListings);
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", mount, { once: true });
+    } else {
+      mount();
+    }
+  })();
+</script>
+<script is:inline>
+  /* polish-desktop-nearby-buttons-v1 */
+  (() => {
+    const polish = () => {
+      const desktop = window.matchMedia("(min-width: 901px)").matches;
+      const toolbar = document.querySelector(".area-map-toolbar--overlay");
+      const select = toolbar?.querySelector(".map-nearby-select");
+      const buttons = toolbar?.querySelector(".map-nearby-buttons");
+
+      if (!toolbar || !select || !buttons) return;
+
+      select.style.display = desktop ? "none" : "";
+
+      if (!desktop) {
+        buttons.style.display = "none";
+        return;
+      }
+
+      buttons.style.display = "inline-flex";
+      buttons.style.alignItems = "center";
+      buttons.style.gap = "3px";
+      buttons.style.padding = "4px";
+      buttons.style.border = "1px solid rgba(20, 28, 38, .15)";
+      buttons.style.borderRadius = "10px";
+      buttons.style.background = "rgba(255, 255, 255, .94)";
+      buttons.style.boxShadow = "0 4px 14px rgba(20, 28, 38, .10)";
+      buttons.style.backdropFilter = "blur(8px)";
+
+      buttons.querySelectorAll("button").forEach((button) => {
+        button.style.minHeight = "32px";
+        button.style.padding = "0 10px";
+        button.style.border = "0";
+        button.style.borderRadius = "7px";
+        button.style.background = "transparent";
+        button.style.color = "#40505b";
+        button.style.font = "inherit";
+        button.style.fontSize = ".76rem";
+        button.style.fontWeight = "750";
+        button.style.whiteSpace = "nowrap";
+        button.style.cursor = "pointer";
+
+        const active = button.classList.contains("is-active");
+
+        if (active) {
+          button.style.background = "var(--accent)";
+          button.style.color = "#fff";
+          button.style.boxShadow = "0 2px 5px rgba(20, 28, 38, .16)";
+        }
+      });
+    };
+
+    const start = () => {
+      polish();
+      window.addEventListener("resize", polish, { passive: true });
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", start, { once: true });
+    } else {
+      start();
+    }
+  })();
+</script>
+<script is:inline>
+  /* nearby-button-selection-fix-v1 */
+  (() => {
+    const start = () => {
+      const toolbar = document.querySelector(".area-map-toolbar--overlay");
+      const buttons = toolbar?.querySelector(".map-nearby-buttons");
+
+      if (!buttons) return;
+
+      const applyStyle = () => {
+        buttons.style.padding = "0";
+        buttons.style.gap = "8px";
+        buttons.style.border = "0";
+        buttons.style.borderRadius = "0";
+        buttons.style.background = "transparent";
+        buttons.style.boxShadow = "none";
+        buttons.style.backdropFilter = "none";
+
+        buttons.querySelectorAll("button").forEach((button) => {
+          const active = button.classList.contains("is-active");
+
+          button.style.minHeight = "34px";
+          button.style.padding = "0 12px";
+          button.style.border = "0";
+          button.style.borderRadius = "7px";
+          button.style.background = active
+            ? "var(--accent)"
+            : "rgba(255,255,255,.97)";
+          button.style.color = active ? "#fff" : "#1d2730";
+          button.style.boxShadow = "0 2px 8px rgba(20,28,38,.10)";
+          button.style.font = "inherit";
+          button.style.fontSize = ".75rem";
+          button.style.fontWeight = "750";
+          button.style.whiteSpace = "nowrap";
+          button.style.cursor = "pointer";
+        });
+      };
+
+      buttons.querySelectorAll("button").forEach((button) => {
+        button.addEventListener("click", () => {
+          buttons.querySelectorAll("button").forEach((item) => {
+            item.classList.toggle("is-active", item === button);
+          });
+
+          requestAnimationFrame(applyStyle);
+        });
+      });
+
+      applyStyle();
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", start, { once: true });
+    } else {
+      start();
+    }
+  })();
+</script>
