@@ -2391,6 +2391,51 @@ function listingImageUrls(listing: any) {
   ];
 }
 
+/* type-hero-ssr-collage-lcp-v1 */
+function optimizeTypeHeroImage(
+  value: any,
+  width: number,
+  quality = 68
+): string {
+  const normalized = normalizeImageUrl(value);
+
+  if (!normalized) return "";
+
+  if (/^https:\/\/cdn\.repliers\.io\//i.test(normalized)) {
+    return `https://img.fernie.homes/cdn-cgi/image/width=${width},quality=${quality},format=auto,fit=scale-down/${normalized}`;
+  }
+
+  return normalized;
+}
+
+const typeHeroListingImages = listingImageUrls(
+  listings?.[0] || null
+);
+
+const typeHeroFallbackImage =
+  normalizeImageUrl(page.hero_image_url) ||
+  "/images/maps/nanaimo-static-map.webp";
+
+const typeHeroImageOne =
+  optimizeTypeHeroImage(
+    typeHeroListingImages[0] || typeHeroFallbackImage,
+    960,
+    68
+  ) || typeHeroFallbackImage;
+
+const typeHeroImageTwo =
+  optimizeTypeHeroImage(
+    typeHeroListingImages[1] || typeHeroImageOne,
+    400,
+    64
+  ) || typeHeroImageOne;
+
+const typeHeroImageThree =
+  optimizeTypeHeroImage(
+    typeHeroListingImages[2] || typeHeroImageTwo,
+    400,
+    64
+  ) || typeHeroImageTwo;
 const listingCount = listings?.length || 0;
 
 const listingPrices = listings
@@ -9468,11 +9513,92 @@ grid-template-columns: 30px minmax(0, 1fr);
 
       <div class="type-map-card">
         <div
+
           id="type-hero-map"
+
           class="type-map-card__canvas"
+
           data-area-hero-image={page.hero_image_url || ""}
+
           aria-label={`${titleCase(page.area || slug)} neighbourhood preview`}
-        ></div>
+
+        >
+
+          <div
+
+            class="area-hero-visual"
+
+            data-ssr-type-hero
+
+            aria-hidden="true"
+
+          >
+
+            <div class="area-hero-collage">
+
+              <img
+
+                class="area-hero-collage__main"
+
+                src={typeHeroImageOne}
+
+                alt=""
+
+                width="960"
+
+                height="640"
+
+                loading="eager"
+
+                fetchpriority="high"
+
+                decoding="async"
+
+              />
+
+              <img
+
+                class="area-hero-collage__secondary"
+
+                src={typeHeroImageTwo}
+
+                alt=""
+
+                width="400"
+
+                height="280"
+
+                loading="lazy"
+
+                decoding="async"
+
+              />
+
+              <img
+
+                class="area-hero-collage__secondary"
+
+                src={typeHeroImageThree}
+
+                alt=""
+
+                width="400"
+
+                height="280"
+
+                loading="lazy"
+
+                decoding="async"
+
+              />
+
+            </div>
+
+            <div class="area-hero-visual__shade"></div>
+
+          </div>
+
+        </div>
       </div>
     </section>
 
@@ -13881,6 +14007,22 @@ function prepareTypeHeroMap() {
         ?.textContent
         ?.trim() || fallback;
 
+    const optimizeCollageImage = (
+      value,
+      width,
+      quality = 68
+    ) => {
+      const image = String(value || "").trim();
+
+      if (!image) return "";
+
+      if (/^https:\/\/cdn\.repliers\.io\//i.test(image)) {
+        return `https://img.fernie.homes/cdn-cgi/image/width=${width},quality=${quality},format=auto,fit=scale-down/${image}`;
+      }
+
+      return image;
+    };
+
     heroMapEl.innerHTML = `
       <div
         class="area-hero-visual"
@@ -13892,7 +14034,7 @@ function prepareTypeHeroMap() {
         <div class="area-hero-collage">
           <img
             class="area-hero-collage__main"
-            src="${imageOne}"
+            src="${optimizeCollageImage(imageOne, 960, 68)}"
             alt=""
             loading="eager"
             fetchpriority="high"
@@ -13901,7 +14043,7 @@ function prepareTypeHeroMap() {
 
           <img
             class="area-hero-collage__secondary"
-            src="${imageTwo}"
+            src="${optimizeCollageImage(imageTwo, 400, 64)}"
             alt=""
             loading="lazy"
             decoding="async"
@@ -13909,7 +14051,7 @@ function prepareTypeHeroMap() {
 
           <img
             class="area-hero-collage__secondary"
-            src="${imageThree}"
+            src="${optimizeCollageImage(imageThree, 400, 64)}"
             alt=""
             loading="lazy"
             decoding="async"
@@ -21625,3 +21767,33 @@ document.addEventListener("click", (event) => {
     }
   })();
 </script>
+<style is:global>
+/* intent-search-midwidth-wrap-v1 */
+@media (min-width: 761px) and (max-width: 1120px) {
+  [data-intent-page-id] .intent-controls {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  [data-intent-page-id] .intent-controls > * {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  [data-intent-page-id] .intent-controls select,
+  [data-intent-page-id] .intent-controls button {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  [data-intent-page-id] .intent-controls .view-toggle {
+    justify-self: start;
+  }
+}
+</style>

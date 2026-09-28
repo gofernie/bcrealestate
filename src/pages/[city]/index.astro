@@ -2,6 +2,7 @@
 import { createClient } from "@supabase/supabase-js";
 import Layout from "../../layouts/Layout.astro";
 import AgentBrandStrip from "../../components/AgentBrandStrip.astro";
+import RelatedIntentCards from "../../components/RelatedIntentCards.astro";
 
 import IntentModalController from "../../components/IntentModalController.astro";
 import SlugSaveSearch from "../../components/SlugSaveSearch.astro";
@@ -855,6 +856,12 @@ if (site?.id) {
 }
 
 const { data: intentPageRows } = await intentPagesQuery;
+
+const { data: relatedIntentCardInventory = [] } = await supabase
+  .from("listing_rows")
+  .select("normalized_type, property_type, normalized_area, price, waterfront, waterfront_type, view_type")
+  .in("normalized_city", cityDatabaseKeys)
+  .eq("status", "A");
 
 function shortenIntentTitle(title: string) {
   const t = title.toLowerCase();
@@ -1843,6 +1850,16 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
   class="locus-home-hero"
   style={`--hero-image: url("${homepageHeroImageUrl}")`}
 >
+  <img
+    class="locus-home-hero__image"
+    src={homepageHeroImageUrl}
+    srcset={homepageHeroImageSrcSet}
+    sizes="100vw"
+    alt=""
+    aria-hidden="true"
+    fetchpriority="high"
+    decoding="async"
+  />
   <div class="locus-home-hero__overlay"></div>
 
   <div class="locus-home-hero__inner">
@@ -3826,30 +3843,13 @@ data-liked-tags="[]"
   </a>
 
 </section>
-<section class="intent-collections">
-          <div class="intent-collections-head">
-            <h2>Search by what matters.</h2>
-
-            <p>
-              Explore focused search paths based on lifestyle,
-              property type, price point, and buyer priorities.
-            </p>
-          </div>
-
-                            <div class="intent-collections-grid" id="intent-collections-grid">
-  {intentCollections.map((card) => (
-              <a href={card.href} class="intent-card" data-type={card.type}>
-                <span class="intent-type">{card.type}</span>
-
-                <h3>{card.title}</h3>
-
-                <p>{card.description}</p>
-
-                <span class="intent-link">View search →</span>
-              </a>
-            ))}
-          </div>
-        </section>
+<RelatedIntentCards
+          city={city}
+          pages={intentPageRows || []}
+          inventory={relatedIntentCardInventory || []}
+          currentType={type}
+          title="Search by what matters."
+        />
       </div>
     
 <style is:global>
@@ -11083,6 +11083,21 @@ document.documentElement.style.visibility = "";
   box-shadow: 0 -8px 18px rgba(25, 20, 35, .08) !important;
 }
 </style>
+
+<style is:global>
+/* hero-lcp-image-v1 */
+.locus-home-hero {
+  background-image: none !important;
+}
+
+.locus-home-hero__image {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  transform: none !important;
+  transition: none !important;
+}
+</style>
 </Layout>
 
 
@@ -13757,5 +13772,53 @@ html[data-theme="dark"] #home-hero-search.locus-home-search > :is(
   background: #fff !important;
   padding: 10px 14px !important;
   box-shadow: 0 -8px 18px rgba(25, 20, 35, .08) !important;
+}
+</style>
+<style is:global>
+/* keep-home-area-done-visible-v1 */
+#home-hero-search [data-area-multiselect] .area-multiselect__done-footer {
+  display: flex !important;
+  position: sticky !important;
+  bottom: 0 !important;
+  z-index: 20 !important;
+  align-items: center !important;
+  padding: 10px 14px !important;
+  background: var(--card-bg, #fff) !important;
+  border-top: 1px solid var(--line, #e4e7e7) !important;
+  box-shadow: 0 -8px 18px rgba(25, 20, 35, .08) !important;
+}
+
+#home-hero-search [data-area-multiselect] .area-multiselect__done {
+  display: inline-flex !important;
+  width: 100% !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+</style>
+<style is:global>
+/* home-area-menu-visible-done-v2 */
+#home-hero-search [data-area-multiselect]
+  .area-multiselect__menu:not([hidden]) {
+  display: flex !important;
+  flex-direction: column !important;
+  max-height: min(500px, calc(100dvh - 190px)) !important;
+  overflow: hidden !important;
+}
+
+#home-hero-search [data-area-multiselect]
+  .area-multiselect__scroll {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+}
+
+#home-hero-search [data-area-multiselect]
+  .area-multiselect__done-footer {
+  flex: 0 0 auto !important;
+  display: flex !important;
+  position: relative !important;
+  bottom: auto !important;
+  z-index: 20 !important;
 }
 </style>
