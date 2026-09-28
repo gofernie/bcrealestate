@@ -2,22 +2,206 @@
 const {
   city = "nanaimo",
   pages = [],
-  title = "Explore Similar Searches",
+  inventory = [],
+  title = "",
+  currentType = "",
 } = Astro.props;
+
+const titleCase = (value: unknown) =>
+  String(value || "")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .trim();
+
+const normalise = (value: unknown) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+const typeLabels: Record<string, string> = {
+  house: "Homes",
+  condo: "Condos",
+  townhouse: "Townhomes",
+  mobile: "Mobile Homes",
+  land: "Lots",
+};
+
+
+const currentPath =
+  Astro.url.pathname.replace(/\/+$/, "") || "/";
+
+const seenTargets = new Set<string>();
+const cards: any[] = [];
+const activeType = normalise(currentType);
+
+for (const intent of pages) {
+  const href = `/${city}/${String(intent.slug || "").replace(/^\/+/, "")}`
+    .replace(/\/+$/, "");
+
+  const type = normalise(intent.property_type);
+  const area = normalise(intent.area);
+  const cardIdentity = type ? `type:${type}:${area || "all"}` : href;
+
+  if (
+    !intent.slug ||
+    href === currentPath ||
+    (type && activeType && type === activeType && !area) ||
+    seenTargets.has(cardIdentity)
+  ) {
+    continue;
+  }
+
+  seenTargets.add(cardIdentity);
+  let matching = Array.isArray(inventory) ? [...inventory] : [];
+
+  if (type) {
+    matching = matching.filter(
+      (listing) => normalise(listing.normalized_type || listing.property_type) === type
+    );
+  }
+
+  if (area) {
+    matching = matching.filter(
+      (listing) => normalise(listing.normalized_area || listing.area) === area
+    );
+  }
+
+  const waterfrontType =
+    String(intent.waterfront_type || "").trim().toLowerCase() ||
+    (/lakefront/i.test(
+      `${intent.slug || ""} ${intent.hero_heading || ""} ${intent.seo_heading || ""}`
+    )
+      ? "lakefront"
+      : "");
+
+  if (waterfrontType) {
+    matching = matching.filter(
+      (listing) =>
+        String(listing.waterfront_type || "").trim().toLowerCase() ===
+        waterfrontType
+    );
+  } else if (intent.requires_waterfront === true) {
+    matching = matching.filter((listing) =>
+      ["true", "yes", "y", "1"].includes(
+        String(listing.waterfront ?? "").trim().toLowerCase()
+      )
+    );
+  }
+
+  const minPrice = Number(intent.price_min || 0);
+  const maxPrice = Number(intent.price_max || 0);
+
+  if (minPrice) matching = matching.filter((listing) => Number(listing.price || 0) >= minPrice);
+  if (maxPrice) matching = matching.filter((listing) => Number(listing.price || 0) <= maxPrice);
+
+  const prices = matching
+    .map((listing) => Number(listing.price || 0))
+    .filter((price) => price > 0)
+    .sort((a, b) => a - b);
+
+  const median = prices.length
+    ? prices[Math.floor(prices.length / 2)]
+    : 0;
+
+  const sourceCopy = String(
+    intent.intro_copy ||
+    intent.meta_description ||
+    ""
+  ).replace(/\s+/g, " ").trim();
+
+  const copyIsThin = sourceCopy.split(/\s+/).filter(Boolean).length <= 4;
+
+  const cardType =
+    type ||
+    (/lakefront|waterfront|oceanfront/i.test(
+      `${intent.slug || ""} ${intent.hero_heading || ""} ${intent.seo_heading || ""}`
+    )
+      ? "waterfront"
+      : "listing");
+
+  const label =
+    waterfrontType === "lakefront"
+      ? "Lakefront homes"
+      : cardType === "waterfront"
+        ? "Waterfront homes"
+        : typeLabels[type] ||
+          titleCase(intent.property_type || intent.area || "Listings");
+
+  const count = matching.length;
+
+  const generatedCopy =
+    count && median
+      ? `${count} ${label.toLowerCase()} for sale, with a median asking price of $${median.toLocaleString()}.`
+      : count
+        ? `${count} active ${label.toLowerCase()} currently for sale.`
+        : `Browse current ${label.toLowerCase()} and compare new opportunities as they come to market.`;
+
+
+  cards.push({
+    href,
+    label,
+    count,
+    type: cardType,
+    title:
+      intent.hero_heading ||
+      intent.seo_heading ||
+      `${titleCase(city)} ${label}`,
+    copy: copyIsThin ? generatedCopy : sourceCopy,
+  });
+}
+
+
+const cardIcons: Record<string, string> = {
+  house: '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m3 11 9-7 9 7"/><path d="M5.5 10v10h13V10"/><path d="M9.5 20v-6h5v6"/></svg>',
+  condo: '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2M11 21v-3h2v3"/></svg>',
+  townhouse: '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m2 11 5-4 5 4v9H2Z"/><path d="m12 11 5-4 5 4v9h-10Z"/><path d="M6 20v-5h2v5M16 20v-5h2v5"/></svg>',
+  mobile: '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="16" height="10" rx="1"/><path d="M19 11h2v6h-2M6 10h5M8 17v2M17 17v2"/><circle cx="7" cy="20" r="1"/><circle cx="17" cy="20" r="1"/></svg>',
+  land: '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 20h16M5 16c3-4 6-4 9-1 2 2 4 1 5 0"/><path d="M10 16V4l7 3-7 3"/></svg>',
+  waterfront: '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 11 8-6 8 6"/><path d="M7 10v5h10v-5"/><path d="M2 18c2 1.5 4 1.5 6 0s4-1.5 6 0 4 1.5 6 0"/></svg>',
+  listing: '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8"/><path d="m15 9-2 4-4 2 2-4 4-2Z"/></svg>',
+};
+const heading = title || `Keep looking in ${titleCase(city)}`;
 ---
 
-{pages.length > 0 && (
+{cards.length > 0 && (
   <section class="related-intents">
     <div class="related-intents__head">
-      <p>Next Searches</p>
-      <h2>{title}</h2>
+      <div>
+        <p>Next searches</p>
+        <h2>{heading}</h2>
+      </div>
+
+      <span>Each search stays live. Save one and we’ll tell you when something new fits.</span>
     </div>
 
     <div class="related-intents__grid">
-      {pages.map((intent) => (
-        <a class="related-intent-card" href={`/${city}/${intent.slug}`}>
-          <h3>{intent.hero_heading || intent.seo_heading}</h3>
-          <p>{intent.intro_copy || intent.meta_description || "View current listings for this search."}</p>
+      {cards.slice(0, 6).map((card) => (
+        <a class="related-intent-card" href={card.href}>
+          <div class="related-intent-card__stat">
+            <span
+              class="related-intent-card__icon"
+              aria-hidden="true"
+              set:html={cardIcons[card.type] || cardIcons.listing}
+            ></span>
+
+            <div class="related-intent-card__stat-copy">
+              <strong>{card.count || "—"}</strong>
+              <span>
+                {card.count
+                  ? `${card.label} for sale`
+                  : `Explore ${card.label}`}
+              </span>
+            </div>
+          </div>
+
+          <div class="related-intent-card__body">
+            <p class="related-intent-card__label">{card.label}</p>
+            <h3>{card.title}</h3>
+            <p class="related-intent-card__copy">{card.copy}</p>
+            <span class="related-intent-card__link">See {card.label.toLowerCase()} →</span>
+          </div>
         </a>
       ))}
     </div>
@@ -25,69 +209,194 @@ const {
 )}
 
 <style>
-.related-intents {
-  margin-top: 56px;
-  padding: 0 !important;
-  background: transparent !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-}
+  .related-intents {
+    margin-top: 56px;
+  }
 
-  .related-intents__head p {
-    margin: 0 0 10px;
+  .related-intents__head {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 22px;
+  }
+
+  .related-intents__head p,
+  .related-intent-card__label {
+    margin: 0;
     color: var(--accent);
-    font-size: 0.72rem;
+    font-size: .67rem;
     font-weight: 900;
-    letter-spacing: 0.14em;
+    letter-spacing: .14em;
     text-transform: uppercase;
   }
 
- .related-intents__head h2 {
-    margin: 0 0 24px;
-    font-family: "DM Sans", system-ui, sans-serif;
-    font-size: clamp(1.6rem, 3vw, 2.2rem);
-    font-weight: 700;
-    line-height: 1;
-    letter-spacing: -0.03em;
+  .related-intents__head h2 {
+    margin: 7px 0 0;
+    font-family: var(--serif, Georgia, serif);
+    font-size: clamp(1.7rem, 3vw, 2.35rem);
+    font-weight: 500;
+    letter-spacing: -.04em;
+  }
+
+  .related-intents__head > span {
+    max-width: 260px;
+    color: var(--muted);
+    font-size: .8rem;
+    line-height: 1.35;
   }
 
   .related-intents__grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
   }
 
   .related-intent-card {
-    display: block;
-    padding: 20px;
+    overflow: hidden;
     border: 1px solid var(--line-warm);
-    border-radius: 6px;
-    background: var(--surface-soft);
+    border-radius: 10px;
+    background: var(--card-bg, #fff);
+    color: var(--ink);
     text-decoration: none;
+    transition: transform .18s ease, box-shadow .18s ease;
+  }
+
+  .related-intent-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 24px rgba(10, 31, 45, .10);
+  }
+
+  .related-intent-card__stat {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    min-height: 70px;
+    padding: 14px 18px;
+    background: color-mix(in srgb, var(--accent) 10%, white);
+  }
+
+  .related-intent-card__icon {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    color: var(--accent);
+  }
+
+  .related-intent-card__icon :global(svg) {
+    width: 34px;
+    height: 34px;
+  }
+
+  .related-intent-card__stat-copy {
+    display: flex;
+    align-items: end;
+    gap: 8px;
+  }
+
+  .related-intent-card:nth-child(2n) .related-intent-card__stat {
+    background: #eef7f7;
+  }
+
+  .related-intent-card:nth-child(3n) .related-intent-card__stat {
+    background: #f4f0fa;
+  }
+
+  .related-intent-card:nth-child(4n) .related-intent-card__stat {
+    background: #f4f8ee;
+  }
+
+  .related-intent-card__stat-copy strong {
+    font-family: var(--serif, Georgia, serif);
+    font-size: 1.8rem;
+    font-weight: 500;
+    letter-spacing: -.05em;
+    line-height: .9;
+  }
+
+  .related-intent-card__stat-copy span {
+    padding-bottom: 2px;
+    color: var(--muted);
+    font-size: .6rem;
+    font-weight: 850;
+    letter-spacing: .10em;
+    text-transform: uppercase;
+  }
+
+  .related-intent-card__body {
+    padding: 16px 18px 17px;
   }
 
   .related-intent-card h3 {
-    margin: 0 0 10px;
-    font-family: "DM Sans", system-ui, sans-serif;
+    margin: 8px 0 8px;
+    font-family: var(--serif, Georgia, serif);
     font-size: 1.1rem;
-    font-weight: 700;
+    font-weight: 500;
+    line-height: 1.1;
+    letter-spacing: -.025em;
   }
 
-  .related-intent-card p {
+  .related-intent-card__copy {
+    display: -webkit-box;
+    overflow: hidden;
     margin: 0;
     color: var(--muted);
+    font-size: .82rem;
     line-height: 1.45;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
-  @media (max-width: 900px) {
+  .related-intent-card__link {
+    display: inline-block;
+    margin-top: 14px;
+    color: var(--accent);
+    font-size: .72rem;
+    font-weight: 850;
+  }
+
+  @media (max-width: 850px) {
+    .related-intents__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 620px) {
     .related-intents {
-  margin: 36px 14px 0;
-  padding: 0 !important;
-}
+      margin-top: 38px;
+    }
+
+    .related-intents__head {
+      display: block;
+    }
+
+    .related-intents__head > span {
+      display: block;
+      margin-top: 12px;
+    }
 
     .related-intents__grid {
       grid-template-columns: 1fr;
     }
   }
+
+/* Clear icon / count / label spacing in related cards */
+.related-intent-card__stat {
+  display: flex !important;
+  align-items: center !important;
+  gap: 11px !important;
+}
+
+.related-intent-card__stat strong + span {
+  margin-left: 0 !important;
+  white-space: nowrap;
+}
+
+/* Make the count label easier to scan */
+.related-intent-card__stat span {
+  font-size: 0.72rem !important;
+  letter-spacing: 0.08em !important;
+}
 </style>
