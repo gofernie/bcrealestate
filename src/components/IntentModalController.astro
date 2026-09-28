@@ -561,7 +561,7 @@ html {
   id="landscape-expand-hint"
   class="landscape-expand-hint"
   aria-label="Expand photo fullscreen"
->Tap to expand</button>
+><span aria-hidden="true">&#x26F6;</span><span class="sr-only">Expand photo fullscreen</span></button>
         <button type="button" class="photo-nav photo-nav--prev" id="photo-prev-btn">&#8249;</button>
         <button type="button" class="photo-nav photo-nav--next" id="photo-next-btn">&#8250;</button>
         <div class="panel__photo-count" id="sheet-photo-count">1 / 1 photos</div>
@@ -1544,8 +1544,66 @@ const sheetPhotoCount = document.getElementById("sheet-photo-count");
 const photoPrevBtn = document.getElementById("photo-prev-btn");
 const photoNextBtn = document.getElementById("photo-next-btn");
 const sheetImageOverlay = document.getElementById("sheet-image-overlay");
+const fullscreenPhotoThumbs = document.getElementById(
+  "fullscreen-photo-thumbs"
+);
+
+function renderFullscreenPhotoRail() {
+  if (!fullscreenPhotoThumbs) return;
+
+  const isFullscreenGallery =
+    sheet?.classList.contains("is-landscape-gallery");
+
+  fullscreenPhotoThumbs.hidden =
+    !isFullscreenGallery || activePhotoUrls.length < 2;
+
+  if (fullscreenPhotoThumbs.hidden) return;
+
+  fullscreenPhotoThumbs.replaceChildren();
+
+  activePhotoUrls.forEach((url, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "fullscreen-photo-thumb";
+    button.setAttribute(
+      "aria-label",
+      `Show photo ${index + 1} of ${activePhotoUrls.length}`
+    );
+    button.setAttribute(
+      "aria-current",
+      String(index === activePhotoIndex)
+    );
+
+    const image = document.createElement("img");
+    image.src = url;
+    image.alt = "";
+    image.loading = index < 8 ? "eager" : "lazy";
+
+    button.appendChild(image);
+
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+
+      if (index === activePhotoIndex) return;
+
+      activePhotoIndex = index;
+      showActivePhoto();
+    });
+
+    fullscreenPhotoThumbs.appendChild(button);
+  });
+
+  fullscreenPhotoThumbs
+    .querySelector('[aria-current="true"]')
+    ?.scrollIntoView({
+      block: "nearest",
+      inline: "center",
+      behavior: "smooth",
+    });
+}
 
 let photoOverlayTimer = null;
+let manualPhotoFullscreen = false;
 
 
 /* =========================================================
@@ -1576,9 +1634,14 @@ function isPhoneLikeDevice() {
 function shouldUseLandscapeGallery() {
   return (
     sheet?.classList.contains("open") &&
-    landscapeMediaQuery.matches &&
-    isPhoneLikeDevice() &&
-    activePhotoUrls.length > 0
+    activePhotoUrls.length > 0 &&
+    (
+      manualPhotoFullscreen ||
+      (
+        landscapeMediaQuery.matches &&
+        isPhoneLikeDevice()
+      )
+    )
   );
 }
 function syncLandscapeViewport() {
@@ -1658,6 +1721,7 @@ function updateLandscapeGalleryMode() {
 
   if (shouldBeGallery) {
     syncLandscapeViewport();
+    renderFullscreenPhotoRail();
     if (sheetMiniMap) {
       sheetMiniMap.hidden = true;
       sheetMiniMap.style.display = "none";
@@ -3251,8 +3315,15 @@ function getCardPhotoUrls(card) {
 const addSize = (url) => {
   if (!url) return url;
   if (url.includes("placehold.co")) return url;
-  if (url.includes("class=")) return url;
-  return url.includes("?") ? `${url}&class=medium` : `${url}?class=medium`;
+  if (url.includes("class=")) {
+  return url.replace(
+    /([?&]class=)[^&]*/i,
+    "$1large"
+  );
+}
+return url.includes("?")
+  ? `${url}&class=large`
+  : `${url}?class=large`;
 };
 
   const urls = rawImages
@@ -3260,8 +3331,8 @@ const addSize = (url) => {
       if (typeof img === "string") return normalizePhotoUrl(addSize(img));
 
       return normalizePhotoUrl(addSize(
-        img.mediumRes ||
         img.highRes ||
+        img.mediumRes ||
         img.lowRes ||
         img.url ||
         ""
@@ -3336,8 +3407,15 @@ resetChipProgressBar();
 const addSize = (url) => {
   if (!url) return url;
   if (url.includes("placehold.co")) return url;
-  if (url.includes("class=")) return url;
-  return url.includes("?") ? `${url}&class=medium` : `${url}?class=medium`;
+  if (url.includes("class=")) {
+  return url.replace(
+    /([?&]class=)[^&]*/i,
+    "$1large"
+  );
+}
+return url.includes("?")
+  ? `${url}&class=large`
+  : `${url}?class=large`;
 };
 
           activePhotoUrls = rawImages
@@ -3345,8 +3423,8 @@ const addSize = (url) => {
               if (typeof img === "string") return normalizePhotoUrl(addSize(img));
 
               return normalizePhotoUrl(addSize(
-                img.mediumRes ||
                 img.highRes ||
+        img.mediumRes ||
                 img.lowRes ||
                 img.url ||
                 ""
@@ -6413,6 +6491,7 @@ if (loadedImageUrls.has(targetSrc)) {
 }
 
   updatePhotoCounter();
+  renderFullscreenPhotoRail();
 
   if (photoPrevBtn) {
     photoPrevBtn.disabled = activePhotoIndex === 0;
@@ -6423,18 +6502,340 @@ if (loadedImageUrls.has(targetSrc)) {
       activePhotoIndex >= activePhotoUrls.length - 1;
   }
 }
+/* desktop-photo-overlay-v2 */
+let desktopPhotoOverlay = null;
+let desktopPhotoImage = null;
+let desktopPhotoCount = null;
+let desktopPhotoThumbs = null;
 
-   document
+function closeDesktopPhotoOverlay() {
+  if (!desktopPhotoOverlay) return;
+
+  desktopPhotoOverlay.hidden = true;
+  document.body.style.removeProperty("overflow");
+}
+
+function syncDesktopPhotoOverlay() {
+  if (
+    !desktopPhotoOverlay ||
+    desktopPhotoOverlay.hidden ||
+    !desktopPhotoImage
+  ) return;
+
+  const currentSource = sheetImage?.currentSrc || sheetImage?.src || "";
+
+  if (currentSource) {
+    desktopPhotoImage.src = currentSource;
+
+    const backdrop = desktopPhotoOverlay?.querySelector(
+      "[data-desktop-photo-backdrop]"
+    );
+
+    if (backdrop instanceof HTMLImageElement) {
+      backdrop.src = currentSource;
+    }
+  }
+
+  if (desktopPhotoCount) {
+    desktopPhotoCount.textContent =
+      `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
+  }
+
+  if (!desktopPhotoThumbs) return;
+
+  desktopPhotoThumbs.replaceChildren();
+
+  activePhotoUrls.forEach((url, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute(
+      "aria-label",
+      `Show photo ${index + 1} of ${activePhotoUrls.length}`
+    );
+    button.style.cssText =
+      "flex:0 0 124px;width:124px;height:88px;padding:0;overflow:hidden;" +
+      "border:2px solid " + (index === activePhotoIndex ? "#fff" : "transparent") + ";" +
+      "border-radius:7px;background:#101418;cursor:pointer;" +
+      "opacity:" + (index === activePhotoIndex ? "1" : ".68") + ";";
+
+    const thumb = document.createElement("img");
+    thumb.src = url;
+    thumb.alt = "";
+    thumb.draggable = false;
+    thumb.loading = "lazy";
+    thumb.style.cssText =
+      "display:block;width:100%;height:100%;object-fit:cover;pointer-events:none;";
+
+    thumb.addEventListener("error", () => {
+      button.style.display = "none";
+    });
+
+    button.appendChild(thumb);
+
+    button.addEventListener("click", () => {
+      if (index === activePhotoIndex) return;
+
+      activePhotoIndex = index;
+      showActivePhoto();
+
+      window.setTimeout(syncDesktopPhotoOverlay, 120);
+    });
+
+    desktopPhotoThumbs.appendChild(button);
+  });
+
+  desktopPhotoThumbs
+    .querySelector("button:nth-child(" + (activePhotoIndex + 1) + ")")
+    ?.scrollIntoView({ block: "nearest", inline: "center" });
+}
+
+function openDesktopPhotoOverlay() {
+  if (!sheetImage || !activePhotoUrls.length) return;
+
+  if (!desktopPhotoOverlay) {
+    desktopPhotoOverlay = document.createElement("div");
+    desktopPhotoOverlay.hidden = true;
+    desktopPhotoOverlay.id = "desktop-photo-overlay";
+    desktopPhotoOverlay.style.cssText =
+      "position:fixed;inset:0;z-index:2147483000;display:flex;" +
+      "align-items:center;justify-content:center;padding:22px 32px;" +
+      "background:rgba(11,18,24,.48);backdrop-filter:blur(12px);" +
+      "-webkit-backdrop-filter:blur(12px);";
+
+    const dialog = document.createElement("div");
+    dialog.style.cssText =
+      "position:relative;display:grid;grid-template-rows:minmax(0,1fr) auto;" +
+      "width:min(1500px,calc(100vw - 64px));height:min(920px,calc(100dvh - 44px));" +
+      "overflow:hidden;border:1px solid rgba(255,255,255,.16);border-radius:18px;" +
+      "background:#06090c;box-shadow:0 28px 80px rgba(0,0,0,.52);";
+
+    const backdrop = document.createElement("img");
+    backdrop.alt = "";
+    backdrop.setAttribute("aria-hidden", "true");
+    backdrop.dataset.desktopPhotoBackdrop = "true";
+    backdrop.style.cssText =
+      "position:absolute;inset:0 0 108px;z-index:0;width:100%;height:calc(100% - 108px);" +
+      "object-fit:cover;filter:blur(26px);transform:scale(1.08);opacity:.42;" +
+      "pointer-events:none;";
+
+    const image = document.createElement("img");
+    image.alt = "Listing photo";
+    image.style.cssText =
+      "position:relative;z-index:1;display:block;width:100%;height:100%;min-height:0;" +
+      "object-fit:contain;background:rgba(0,0,0,.18);";
+
+    const count = document.createElement("div");
+    count.style.cssText =
+      "position:absolute;z-index:2;top:17px;left:19px;color:#fff;" +
+      "font:700 12px system-ui,sans-serif;text-shadow:0 1px 3px #000;";
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.innerHTML = "&times;";
+    close.setAttribute("aria-label", "Return to listing");
+    close.dataset.desktopPhotoAction = "close";
+    close.style.cssText =
+      "position:absolute;z-index:3;top:13px;right:14px;width:38px;height:38px;" +
+      "border:1px solid rgba(255,255,255,.34);border-radius:10px;" +
+      "background:rgba(8,12,16,.58);color:#fff;font-size:27px;line-height:1;cursor:pointer;";
+    close.addEventListener("click", closeDesktopPhotoOverlay);
+
+    const previous = document.createElement("button");
+    previous.type = "button";
+    previous.innerHTML = "&#8249;";
+    previous.setAttribute("aria-label", "Previous photo");
+    previous.dataset.desktopPhotoAction = "previous";
+    previous.style.cssText =
+      "position:absolute;z-index:3;top:50%;left:20px;width:54px;height:54px;" +
+      "border:1px solid rgba(255,255,255,.46);border-radius:50%;" +
+      "background:rgba(8,12,16,.52);color:#fff;font-size:44px;line-height:.9;" +
+      "transform:translateY(-50%);cursor:pointer;";
+    previous.addEventListener("click", () => {
+      if (activePhotoIndex <= 0) return;
+
+      activePhotoIndex -= 1;
+      showActivePhoto();
+      window.setTimeout(syncDesktopPhotoOverlay, 120);
+    });
+
+    const next = document.createElement("button");
+    next.type = "button";
+    next.innerHTML = "&#8250;";
+    next.setAttribute("aria-label", "Next photo");
+    next.dataset.desktopPhotoAction = "next";
+    next.style.cssText =
+      "position:absolute;z-index:3;top:50%;right:20px;width:54px;height:54px;" +
+      "border:1px solid rgba(255,255,255,.46);border-radius:50%;" +
+      "background:rgba(8,12,16,.52);color:#fff;font-size:44px;line-height:.9;" +
+      "transform:translateY(-50%);cursor:pointer;";
+    next.addEventListener("click", () => {
+      if (activePhotoIndex >= activePhotoUrls.length - 1) return;
+
+      activePhotoIndex += 1;
+      showActivePhoto();
+      window.setTimeout(syncDesktopPhotoOverlay, 120);
+    });
+
+    const thumbs = document.createElement("div");
+    thumbs.className = "desktop-photo-thumbs";
+    thumbs.style.cursor = "grab";
+    thumbs.style.userSelect = "none";
+
+    let thumbDragPointerId = null;
+    let thumbDragStartX = 0;
+    let thumbDragStartLeft = 0;
+    let thumbRailWasDragged = false;
+
+    thumbs.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+
+      thumbDragPointerId = event.pointerId;
+      thumbDragStartX = event.clientX;
+      thumbDragStartLeft = thumbs.scrollLeft;
+      thumbRailWasDragged = false;
+      thumbs.setPointerCapture?.(event.pointerId);
+      thumbs.style.cursor = "grabbing";
+    });
+
+    thumbs.addEventListener("pointermove", (event) => {
+      if (event.pointerId !== thumbDragPointerId) return;
+
+      const distance = event.clientX - thumbDragStartX;
+
+      if (Math.abs(distance) > 3) {
+        thumbRailWasDragged = true;
+        thumbs.scrollLeft = thumbDragStartLeft - distance;
+      }
+    });
+
+    const finishThumbDrag = (event) => {
+      if (event.pointerId !== thumbDragPointerId) return;
+
+      const wasDragged = thumbRailWasDragged;
+
+      thumbs.releasePointerCapture?.(event.pointerId);
+      thumbDragPointerId = null;
+      thumbs.style.cursor = "grab";
+      thumbRailWasDragged = false;
+
+      if (event.type !== "pointerup" || wasDragged) return;
+
+      const target = document.elementFromPoint(
+        event.clientX,
+        event.clientY
+      );
+
+      const button = target?.closest(
+        ".desktop-photo-thumbs button"
+      );
+
+      if (!button) return;
+
+      const buttons = Array.from(
+        thumbs.querySelectorAll("button")
+      );
+
+      const index = buttons.indexOf(button);
+
+      if (index < 0 || index === activePhotoIndex) return;
+
+      activePhotoIndex = index;
+      showActivePhoto();
+      window.setTimeout(syncDesktopPhotoOverlay, 120);
+    };
+
+    thumbs.addEventListener("pointerup", finishThumbDrag);
+    thumbs.addEventListener("pointercancel", finishThumbDrag);
+
+    thumbs.style.cssText =
+      "display:flex;gap:8px;padding:10px 14px 12px;overflow-x:auto;" +
+      "background:rgba(0,0,0,.86);scrollbar-color:#93a1aa transparent;";
+
+    dialog.append(backdrop, count, close, previous, next, image, thumbs);
+    desktopPhotoOverlay.appendChild(dialog);
+
+    desktopPhotoOverlay.addEventListener("click", (event) => {
+      const target =
+        event.target instanceof Element ? event.target : null;
+
+      const action =
+        target?.closest("[data-desktop-photo-action]")
+          ?.getAttribute("data-desktop-photo-action");
+
+      if (action === "close") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        closeDesktopPhotoOverlay();
+        return;
+      }
+
+      if (event.target === desktopPhotoOverlay) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        closeDesktopPhotoOverlay();
+      }
+    }, true);
+
+    document.body.appendChild(desktopPhotoOverlay);
+
+    desktopPhotoImage = image;
+    desktopPhotoCount = count;
+    desktopPhotoThumbs = thumbs;
+
+    sheetImage.addEventListener("load", () => {
+      window.setTimeout(syncDesktopPhotoOverlay, 0);
+    });
+  }
+
+  desktopPhotoOverlay.hidden = false;
+  desktopPhotoOverlay.style.setProperty("display", "flex", "important");
+  document.body.style.setProperty("overflow", "hidden");
+  syncDesktopPhotoOverlay();
+}
+
+
+document.addEventListener("keydown", (event) => {
+  if (
+    event.key === "Escape" &&
+    desktopPhotoOverlay &&
+    !desktopPhotoOverlay.hidden
+  ) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closeDesktopPhotoOverlay();
+  }
+}, true);
+function openPhotoFullscreen() {
+  if (window.matchMedia("(pointer: fine)").matches) {
+    openDesktopPhotoOverlay();
+    return;
+  }
+
+  ensureLandscapeFullscreen();
+}
+
+document
   .getElementById("landscape-expand-hint")
   ?.addEventListener("click", (event) => {
     event.stopPropagation();
-    ensureLandscapeFullscreen();
+    openPhotoFullscreen();
   });
-sheetImage?.addEventListener("click", () => {
-  if (!sheet?.classList.contains("open")) return;
-  if (photoZoom > 1.02) return;
 
-  ensureLandscapeFullscreen();
+sheetImage?.addEventListener("click", () => {
+  if (!sheet?.classList.contains("open") || photoZoom > 1.02) return;
+
+  if (window.matchMedia("(pointer: fine)").matches) {
+    openPhotoFullscreen();
+  } else {
+    ensureLandscapeFullscreen();
+  }
+});
+
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement && manualPhotoFullscreen) {
+    manualPhotoFullscreen = false;
+    updateLandscapeGalleryMode();
+  }
 });
 sheetImage?.addEventListener("touchstart", (event) => {
   // Two fingers = start pinch zoom
@@ -8535,3 +8936,305 @@ html[data-theme="dark"] #preview-sheet #sheet-highlight-chips .panel__highlight-
   color: #c8d9e8 !important;
   box-shadow: none !important;
 }</style>
+<style is:global>
+/* desktop-photo-fullscreen-control */
+#preview-sheet .landscape-expand-hint {
+  display: inline-flex !important;
+  position: absolute !important;
+  z-index: 8 !important;
+  top: 14px !important;
+  right: 116px !important;
+  width: 38px !important;
+  height: 38px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  border: 1px solid rgba(255,255,255,.35) !important;
+  border-radius: 10px !important;
+  background: rgba(12,20,28,.58) !important;
+  color: #fff !important;
+  font-size: 1.2rem !important;
+  cursor: pointer !important;
+}
+
+#preview-sheet.is-landscape-gallery .landscape-expand-hint {
+  display: none !important;
+}
+</style>
+<style is:global>
+/* fullscreen-photo-gallery-controls */
+#preview-sheet.is-landscape-gallery .photo-nav {
+  position: fixed !important;
+  z-index: 80 !important;
+  top: 50% !important;
+  display: inline-flex !important;
+  width: 54px !important;
+  height: 54px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1px solid rgba(255,255,255,.44) !important;
+  border-radius: 999px !important;
+  background: rgba(8,12,16,.5) !important;
+  color: #fff !important;
+  font-size: 3rem !important;
+  line-height: 1 !important;
+  transform: translateY(-50%) !important;
+  cursor: pointer !important;
+}
+
+#preview-sheet.is-landscape-gallery .photo-nav--prev {
+  left: max(22px, env(safe-area-inset-left)) !important;
+}
+
+#preview-sheet.is-landscape-gallery .photo-nav--next {
+  right: max(22px, env(safe-area-inset-right)) !important;
+}
+
+#preview-sheet.is-landscape-gallery .photo-nav:disabled {
+  opacity: .22 !important;
+  cursor: default !important;
+}
+
+#preview-sheet.is-landscape-gallery .fullscreen-photo-thumbs {
+  position: fixed !important;
+  z-index: 81 !important;
+  left: 50% !important;
+  bottom: max(18px, env(safe-area-inset-bottom)) !important;
+  display: flex !important;
+  width: min(720px, calc(100vw - 40px)) !important;
+  gap: 8px !important;
+  padding: 8px !important;
+  overflow-x: auto !important;
+  border: 1px solid rgba(255,255,255,.18) !important;
+  border-radius: 12px !important;
+  background: rgba(8,12,16,.68) !important;
+  box-shadow: 0 12px 34px rgba(0,0,0,.28) !important;
+  transform: translateX(-50%) !important;
+  scrollbar-width: thin !important;
+}
+
+#preview-sheet.is-landscape-gallery .fullscreen-photo-thumb {
+  flex: 0 0 72px !important;
+  width: 72px !important;
+  height: 52px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: 2px solid transparent !important;
+  border-radius: 7px !important;
+  background: #111 !important;
+  cursor: pointer !important;
+  opacity: .65 !important;
+}
+
+#preview-sheet.is-landscape-gallery
+  .fullscreen-photo-thumb[aria-current="true"] {
+  border-color: #fff !important;
+  opacity: 1 !important;
+}
+
+#preview-sheet.is-landscape-gallery .fullscreen-photo-thumb img {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+</style>
+<style is:global>
+/* contained-photo-overlay-v1 */
+@media (min-width: 761px) {
+  #sheet-overlay.is-landscape-gallery {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 42px 54px !important;
+    background: rgba(5, 9, 13, .84) !important;
+  }
+
+  #preview-sheet.is-landscape-gallery {
+    position: relative !important;
+    display: block !important;
+    width: min(1280px, calc(100vw - 108px)) !important;
+    height: min(860px, calc(100dvh - 84px)) !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(255,255,255,.14) !important;
+    border-radius: 18px !important;
+    background: #05080b !important;
+    box-shadow: 0 28px 80px rgba(0,0,0,.52) !important;
+  }
+
+  #preview-sheet.is-landscape-gallery .panel__view,
+  #preview-sheet.is-landscape-gallery .panel__content,
+  #preview-sheet.is-landscape-gallery .panel__image-stage {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  #preview-sheet.is-landscape-gallery .panel__image-stage {
+    position: relative !important;
+    display: block !important;
+    background: #000 !important;
+  }
+
+  #preview-sheet.is-landscape-gallery #sheet-image {
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    object-fit: contain !important;
+  }
+
+  #preview-sheet.is-landscape-gallery .panel__photo-count {
+    top: 16px !important;
+    left: 18px !important;
+  }
+
+  #preview-sheet.is-landscape-gallery .fullscreen-photo-thumbs {
+    position: absolute !important;
+    z-index: 81 !important;
+    left: 50% !important;
+    bottom: 18px !important;
+    width: min(720px, calc(100% - 48px)) !important;
+    max-width: calc(100% - 48px) !important;
+    transform: translateX(-50%) !important;
+  }
+
+  #preview-sheet.is-landscape-gallery .photo-nav--prev {
+    left: 22px !important;
+  }
+
+  #preview-sheet.is-landscape-gallery .photo-nav--next {
+    right: 22px !important;
+  }
+}
+</style>
+<style is:global>
+/* hide-experimental-desktop-photo-expand */
+@media (min-width: 761px) {
+  #preview-sheet .landscape-expand-hint {
+    display: none !important;
+  }
+}
+</style>
+<script is:inline>
+  /* desktop-photo-overlay-click-fix */
+  (() => {
+    window.addEventListener("click", (event) => {
+      const overlay = document.getElementById("desktop-photo-overlay");
+
+      if (!overlay || overlay.hidden) return;
+
+      const target =
+        event.target instanceof Element ? event.target : null;
+
+      const button = target?.closest("button");
+      const label = button?.getAttribute("aria-label") || "";
+
+      if (label === "Return to listing" || target === overlay) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+
+        overlay.hidden = true;
+        overlay.style.setProperty("display", "none", "important");
+        document.body.style.removeProperty("overflow");
+        return;
+      }
+
+      if (label === "Previous photo") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        document.getElementById("photo-prev-btn")?.click();
+        return;
+      }
+
+      if (label === "Next photo") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        document.getElementById("photo-next-btn")?.click();
+      }
+    }, true);
+  })();
+</script>
+
+<style is:global>
+/* Fill the desktop photo viewer instead of showing side bars */
+.desktop-photo-overlay__image {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+}
+</style>
+<style is:global>
+/* Larger desktop photo thumbnails */
+.desktop-photo-overlay button[data-photo-index] {
+  width: 70px !important;
+  height: 56px !important;
+  flex: 0 0 70px !important;
+}
+
+.desktop-photo-overlay button[data-photo-index] img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+</style>
+<script is:inline>
+  (() => {
+    const button = document.getElementById("landscape-expand-hint");
+    if (!button) return;
+
+    button.innerHTML = "&#x26F6;";
+    button.setAttribute("aria-label", "Expand photo gallery");
+    button.setAttribute("title", "Expand photos");
+  })();
+</script>
+
+<style is:global>
+/* polished-expand-photo-control */
+#preview-sheet .landscape-expand-hint {
+  display: inline-flex !important;
+  position: absolute !important;
+  z-index: 20 !important;
+  top: 14px !important;
+  right: 14px !important;
+  left: auto !important;
+  bottom: auto !important;
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  min-height: 42px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(255,255,255,.42) !important;
+  border-radius: 11px !important;
+  background: rgba(10,18,25,.62) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  color: #fff !important;
+  font-family: system-ui, sans-serif !important;
+  font-size: 20px !important;
+  line-height: 1 !important;
+  text-indent: 0 !important;
+  white-space: nowrap !important;
+  cursor: pointer !important;
+  box-shadow: 0 6px 18px rgba(0,0,0,.22) !important;
+  transition: transform .16s ease, background .16s ease !important;
+}
+
+#preview-sheet .landscape-expand-hint:hover {
+  transform: scale(1.06) !important;
+  background: rgba(10,18,25,.84) !important;
+}
+
+#preview-sheet.is-landscape-gallery .landscape-expand-hint {
+  display: none !important;
+}
+</style>
