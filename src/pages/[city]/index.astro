@@ -3689,6 +3689,41 @@ data-liked-tags="[]"
             })}
                  </section>
 <button type="button" id="home-load-more" class="home-load-more-btn">Load more listings</button>
+
+<div
+  id="home-search-complete"
+  class="homepage-save-nudge"
+  hidden
+  aria-live="polite"
+  style="margin: 0 auto 32px;"
+>
+  <div class="homepage-save-nudge__copy">
+    <strong>You've seen every match</strong>
+    <span id="home-search-complete-copy">
+      Want to keep your search moving?
+    </span>
+  </div>
+
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <button
+      type="button"
+      class="interrupt-btn interrupt-primary"
+      id="home-more-budget-btn"
+      hidden
+    >
+      Raise budget
+    </button>
+
+    <button
+      type="button"
+      class="interrupt-btn"
+      id="home-change-neighbourhood-btn"
+      hidden
+    >
+      Change neighbourhood
+    </button>
+  </div>
+</div>
 <div class="homepage-save-nudge-slot" style="margin-top: 32px;" data-save-search-prompt hidden={!hasActiveSearch}>
   <div class="homepage-save-nudge">
     <div class="homepage-save-nudge__copy">
@@ -7971,6 +8006,7 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
    let homeOffset = document.querySelectorAll(".grid > .card").length;
    let homeTotal = Number(document.getElementById("results-count")?.textContent || 0);
    let homeLoading = false;
+let homeAreaBufferKm = 0;
 
     function getLoadMoreButton() {
       return document.getElementById("home-load-more");
@@ -8016,6 +8052,234 @@ function showMoreCards() {
       );
     }
     updateLoadMoreBtn();
+
+    /* homepage-search-next-step-v1 */
+    function syncHomeSearchComplete() {
+      const footer = document.getElementById("home-search-complete");
+      const title = footer?.querySelector("strong");
+      const copy = document.getElementById("home-search-complete-copy");
+      const budgetButton = document.getElementById("home-more-budget-btn");
+      const neighbourhoodButton = document.getElementById(
+        "home-change-neighbourhood-btn"
+      );
+
+      if (!footer || !form) return;
+
+      const selectedAreas = String(form.elements.storyAreas?.value || "")
+        .split("|")
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      const selectedArea = String(form.elements.area?.value || "").trim();
+      const storyBudget = Number(form.elements.storyMaxPrice?.value || 0);
+      const maxPrice = Number(form.elements.maxPrice?.value || 0);
+      const currentBudget = storyBudget || maxPrice;
+      const hasArea = selectedAreas.length > 0 || Boolean(selectedArea);
+
+      const typeValue = String(form.elements.type?.value || "").toLowerCase();
+      const typeLabel =
+        {
+          house: "homes",
+          condo: "condos",
+          townhouse: "townhomes",
+          mobile: "mobile homes",
+          land: "lots",
+          "multi-family": "multi-family homes",
+        }[typeValue] || "homes";
+
+      const titleCase = (value) =>
+        String(value || "")
+          .replace(/-/g, " ")
+          .replace(/\b\w/g, (character) => character.toUpperCase());
+
+      const areaLabel = selectedAreas.length
+        ? selectedAreas.map(titleCase).join(" & ")
+        : selectedArea
+          ? titleCase(selectedArea)
+          : "";
+
+      const budgetLabel = currentBudget >= 1000
+        ? `${(currentBudget / 1000).toFixed(1)}M`
+        : `${currentBudget}k`;
+
+      const isComplete =
+        !homeLoading &&
+        homeTotal > 0 &&
+        homeOffset >= homeTotal &&
+        (currentBudget > 0 || hasArea);
+
+      footer.hidden = !isComplete;
+
+      if (!isComplete) return;
+
+      if (title) {
+        title.textContent = areaLabel
+          ? `You've seen every match in ${areaLabel}`
+          : "You've seen every match";
+      }
+
+      if (copy) {
+        if (areaLabel && currentBudget) {
+          copy.textContent =
+            `We found ${homeTotal} ${typeLabel} in ${areaLabel} up to ${budgetLabel}. ` +
+            "Where would you like to expand next?";
+        } else if (currentBudget) {
+          copy.textContent =
+            `We found ${homeTotal} ${typeLabel} up to ${budgetLabel}. ` +
+            "The next closest matches start just above that.";
+        } else {
+          copy.textContent =
+            `We found ${homeTotal} ${typeLabel} in ${areaLabel}. ` +
+            "Where would you like to look next?";
+        }
+      }
+
+      if (budgetButton) {
+        budgetButton.hidden = !currentBudget;
+
+        if (currentBudget) {
+          budgetButton.textContent =
+            `See ${typeLabel} above ${budgetLabel}`;
+        }
+      }
+
+      if (neighbourhoodButton) {
+        neighbourhoodButton.hidden = !hasArea;
+      }
+    }
+
+    const originalUpdateLoadMoreBtn = updateLoadMoreBtn;
+
+    updateLoadMoreBtn = function () {
+      originalUpdateLoadMoreBtn();
+      syncHomeSearchComplete();
+    };
+
+    document.getElementById("home-more-budget-btn")?.addEventListener(
+      "click",
+      () => {
+        const currentBudget =
+          Number(form?.elements.storyMaxPrice?.value || 0) ||
+          Number(form?.elements.maxPrice?.value || 0);
+
+        if (!currentBudget) return;
+
+        const nextBudget =
+          Array.from(form.elements.maxPrice?.options || [])
+            .map((option) => Number(option.value || 0))
+            .filter((value) => value > currentBudget)
+            .sort((a, b) => a - b)[0] ||
+          Math.ceil((currentBudget * 1.25) / 25) * 25;
+
+        form.elements.storyMaxPrice.value = "";
+        form.elements.minPrice.value = String(currentBudget);
+        form.elements.maxPrice.value = options[0]
+          ? String(nextBudget)
+          : "";
+        fetchHomeListings({ append: false });
+      }
+    );
+
+    document.getElementById("home-change-neighbourhood-btn")?.addEventListener(
+      "click",
+      () => {
+        form?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        const trigger = document.querySelector("[data-area-trigger]");
+
+        if (
+          trigger instanceof HTMLButtonElement &&
+          trigger.getAttribute("aria-expanded") !== "true"
+        ) {
+          window.setTimeout(() => trigger.click(), 350);
+        }
+      }
+    );
+    syncHomeSearchComplete();
+
+    const originalSyncHomeSearchComplete = syncHomeSearchComplete;
+
+    syncHomeSearchComplete = function () {
+      originalSyncHomeSearchComplete();
+
+      const footer = document.getElementById("home-search-complete");
+      const title = footer?.querySelector("strong");
+      const copy = document.getElementById("home-search-complete-copy");
+      const nearbyButton = document.getElementById(
+        "home-change-neighbourhood-btn"
+      );
+
+      if (!footer || !form) return;
+
+      const selectedAreas = String(form.elements.storyAreas?.value || "")
+        .split("|")
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      const selectedArea = String(form.elements.area?.value || "").trim();
+
+      const titleCase = (value) =>
+        String(value || "")
+          .replace(/-/g, " ")
+          .replace(/\b\w/g, (character) => character.toUpperCase());
+
+      const areaLabel = selectedAreas.length
+        ? selectedAreas.map(titleCase).join(" & ")
+        : selectedArea
+          ? titleCase(selectedArea)
+          : "";
+
+      const hasArea = Boolean(areaLabel);
+
+      if (!hasArea) return;
+
+      if (title) {
+        title.textContent = homeAreaBufferKm
+          ? "You've seen every nearby match"
+          : `You've seen every match in ${areaLabel}`;
+      }
+
+      if (copy) {
+        copy.textContent = homeAreaBufferKm
+          ? `That includes all current matches in ${areaLabel} and up to ${homeAreaBufferKm} km beyond it.`
+          : `Where would you like to expand beyond ${areaLabel}?`;
+      }
+
+      if (nearbyButton) {
+        nearbyButton.hidden = homeAreaBufferKm > 0;
+        nearbyButton.textContent = `Search 1 km beyond ${areaLabel}`;
+      }
+    };
+
+    document.addEventListener(
+      "click",
+      (event) => {
+        const target = event.target;
+        const button =
+          target instanceof Element
+            ? target.closest("#home-change-neighbourhood-btn")
+            : null;
+
+        if (!button || homeLoading) return;
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+
+        homeAreaBufferKm = 1;
+        fetchHomeListings({ append: false });
+      },
+      true
+    );
+
+    form?.addEventListener(
+      "change",
+      () => {
+        homeAreaBufferKm = 0;
+      },
+      true
+    );
+
+    syncHomeSearchComplete();
 
    async function fetchHomeListings({ resetVisible = true, append = false } = {}) {
   syncSaveSearchPrompts();
@@ -8131,7 +8395,9 @@ const selectedFeatures = String(document.querySelector(".story-blank[data-story-
   const params = new URLSearchParams({ city, offset: String(requestOffset), limit: String(HOME_PAGE_SIZE), sort: sortVal });
   if (storyAreas.length) params.set("areas", storyAreas.join("|"));
   else if (areaVal) params.set("area", areaVal);
-  if (typeVal) params.set("type", typeVal);
+  if (homeAreaBufferKm && (storyAreas.length || areaVal)) {
+    params.set("areaBufferKm", String(homeAreaBufferKm));
+  }  if (typeVal) params.set("type", typeVal);
   if (minPriceVal) params.set("minPrice", String(minPriceVal));
   if (maxPriceVal) params.set("maxPrice", String(maxPriceVal));
   if (bedsVal) params.set("beds", String(bedsVal));
