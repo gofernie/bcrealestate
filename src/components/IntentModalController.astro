@@ -6541,6 +6541,24 @@ function syncDesktopPhotoOverlay() {
       `${activePhotoIndex + 1} / ${activePhotoUrls.length} photos`;
   }
 
+  const previousButton = desktopPhotoOverlay.querySelector(
+    '[data-desktop-photo-action="previous"]'
+  );
+  const nextButton = desktopPhotoOverlay.querySelector(
+    '[data-desktop-photo-action="next"]'
+  );
+
+  [
+    [previousButton, activePhotoIndex === 0],
+    [nextButton, activePhotoIndex >= activePhotoUrls.length - 1],
+  ].forEach(([button, disabled]) => {
+    if (!(button instanceof HTMLButtonElement)) return;
+
+    button.disabled = disabled;
+    button.style.opacity = disabled ? ".28" : "1";
+    button.style.cursor = disabled ? "default" : "pointer";
+  });
+
   if (!desktopPhotoThumbs) return;
 
   desktopPhotoThumbs.replaceChildren();
@@ -6642,14 +6660,20 @@ function openDesktopPhotoOverlay() {
 
     const previous = document.createElement("button");
     previous.type = "button";
-    previous.innerHTML = "&#8249;";
+    previous.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4.5 7 12l7.5 7.5"/></svg>';
     previous.setAttribute("aria-label", "Previous photo");
     previous.dataset.desktopPhotoAction = "previous";
     previous.style.cssText =
-      "position:absolute;z-index:3;top:50%;left:20px;width:54px;height:54px;" +
-      "border:1px solid rgba(255,255,255,.46);border-radius:50%;" +
-      "background:rgba(8,12,16,.52);color:#fff;font-size:44px;line-height:.9;" +
+      "position:absolute;z-index:3;top:50%;left:20px;width:48px;height:66px;" +
+      "display:grid;place-items:center;padding:0;" +
+      "border:1px solid rgba(255,255,255,.34);border-radius:12px;" +
+      "background:rgba(8,12,16,.64);color:#fff;" +
+      "box-shadow:0 6px 20px rgba(0,0,0,.22);" +
       "transform:translateY(-50%);cursor:pointer;";
+    previous.querySelector("svg").style.cssText =
+      "width:24px;height:24px;fill:none;stroke:currentColor;" +
+      "stroke-width:2.25;stroke-linecap:round;stroke-linejoin:round;";
     previous.addEventListener("click", () => {
       if (activePhotoIndex <= 0) return;
 
@@ -6660,14 +6684,20 @@ function openDesktopPhotoOverlay() {
 
     const next = document.createElement("button");
     next.type = "button";
-    next.innerHTML = "&#8250;";
+    next.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 4.5 7.5 7.5-7.5 7.5"/></svg>';
     next.setAttribute("aria-label", "Next photo");
     next.dataset.desktopPhotoAction = "next";
     next.style.cssText =
-      "position:absolute;z-index:3;top:50%;right:20px;width:54px;height:54px;" +
-      "border:1px solid rgba(255,255,255,.46);border-radius:50%;" +
-      "background:rgba(8,12,16,.52);color:#fff;font-size:44px;line-height:.9;" +
+      "position:absolute;z-index:3;top:50%;right:20px;width:48px;height:66px;" +
+      "display:grid;place-items:center;padding:0;" +
+      "border:1px solid rgba(255,255,255,.34);border-radius:12px;" +
+      "background:rgba(8,12,16,.64);color:#fff;" +
+      "box-shadow:0 6px 20px rgba(0,0,0,.22);" +
       "transform:translateY(-50%);cursor:pointer;";
+    next.querySelector("svg").style.cssText =
+      "width:24px;height:24px;fill:none;stroke:currentColor;" +
+      "stroke-width:2.25;stroke-linecap:round;stroke-linejoin:round;";
     next.addEventListener("click", () => {
       if (activePhotoIndex >= activePhotoUrls.length - 1) return;
 
@@ -8964,34 +8994,67 @@ html[data-theme="dark"] #preview-sheet #sheet-highlight-chips .panel__highlight-
 <style is:global>
 /* fullscreen-photo-gallery-controls */
 #preview-sheet.is-landscape-gallery .photo-nav {
-  position: fixed !important;
+  position: absolute !important;
   z-index: 80 !important;
   top: 50% !important;
   display: inline-flex !important;
-  width: 54px !important;
-  height: 54px !important;
+  width: 48px !important;
+  height: 48px !important;
   align-items: center !important;
   justify-content: center !important;
-  border: 1px solid rgba(255,255,255,.44) !important;
+  padding: 0 !important;
+  border: 1px solid rgba(255,255,255,.32) !important;
   border-radius: 999px !important;
-  background: rgba(8,12,16,.5) !important;
+  background: rgba(8,12,16,.58) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
   color: #fff !important;
-  font-size: 3rem !important;
+  font-size: 0 !important;
   line-height: 1 !important;
   transform: translateY(-50%) !important;
   cursor: pointer !important;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease !important;
+}
+
+#preview-sheet.is-landscape-gallery .photo-nav::before {
+  width: 10px !important;
+  height: 10px !important;
+  border-right: 2px solid currentColor !important;
+  border-bottom: 2px solid currentColor !important;
+  content: "" !important;
 }
 
 #preview-sheet.is-landscape-gallery .photo-nav--prev {
-  left: max(22px, env(safe-area-inset-left)) !important;
+  left: clamp(12px, 1.8vw, 24px) !important;
+}
+
+#preview-sheet.is-landscape-gallery .photo-nav--prev::before {
+  margin-left: 5px !important;
+  transform: rotate(135deg) !important;
 }
 
 #preview-sheet.is-landscape-gallery .photo-nav--next {
-  right: max(22px, env(safe-area-inset-right)) !important;
+  right: clamp(12px, 1.8vw, 24px) !important;
+}
+
+#preview-sheet.is-landscape-gallery .photo-nav--next::before {
+  margin-right: 5px !important;
+  transform: rotate(-45deg) !important;
+}
+
+#preview-sheet.is-landscape-gallery .photo-nav:hover:not(:disabled) {
+  border-color: rgba(255,255,255,.72) !important;
+  background: rgba(8,12,16,.82) !important;
+  transform: translateY(-50%) scale(1.06) !important;
+}
+
+#preview-sheet.is-landscape-gallery .photo-nav:focus-visible {
+  outline: 3px solid rgba(255,255,255,.9) !important;
+  outline-offset: 3px !important;
 }
 
 #preview-sheet.is-landscape-gallery .photo-nav:disabled {
-  opacity: .22 !important;
+  opacity: .2 !important;
   cursor: default !important;
 }
 
@@ -9053,10 +9116,15 @@ html[data-theme="dark"] #preview-sheet #sheet-highlight-chips .panel__highlight-
   #preview-sheet.is-landscape-gallery {
     position: relative !important;
     display: block !important;
-    width: min(1280px, calc(100vw - 108px)) !important;
-    height: min(860px, calc(100dvh - 84px)) !important;
+    width: min(
+      1280px,
+      calc(100vw - 108px),
+      calc((100dvh - 84px) * 1.6)
+    ) !important;
+    height: auto !important;
+    aspect-ratio: 16 / 10 !important;
     max-width: none !important;
-    max-height: none !important;
+    max-height: calc(100dvh - 84px) !important;
     overflow: hidden !important;
     border: 1px solid rgba(255,255,255,.14) !important;
     border-radius: 18px !important;
