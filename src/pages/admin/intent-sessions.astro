@@ -124,26 +124,42 @@ const leadBySessionId = new Map();
   }
 });
 
-const sessions = Object.values(
-  rows.reduce((acc, row) => {
-    const key = row.session_id;
-    if (!acc[key]) {
-      acc[key] = {
-        session_id: row.session_id,
-        slug: row.slug,
-        city: row.city || "nanaimo",
-        last_activity: row.created_at,
-        first_activity: row.created_at,
-        reactions: [],
-        lead: leadBySessionId.get(row.session_id) || null,
-      };
-    }
-    acc[key].reactions.push(row);
-    if (new Date(row.created_at) > new Date(acc[key].last_activity)) acc[key].last_activity = row.created_at;
-    if (new Date(row.created_at) < new Date(acc[key].first_activity)) acc[key].first_activity = row.created_at;
-    return acc;
-  }, {})
-).sort((a, b) => new Date(b.last_activity).getTime() - new Date(a.last_activity).getTime());
+const sessionMap = rows.reduce((acc, row) => {
+  const key = row.session_id;
+  if (!acc[key]) {
+    acc[key] = {
+      session_id: row.session_id,
+      slug: row.slug,
+      city: row.city || "nanaimo",
+      last_activity: row.created_at,
+      first_activity: row.created_at,
+      reactions: [],
+      lead: leadBySessionId.get(row.session_id) || null,
+    };
+  }
+  acc[key].reactions.push(row);
+  if (new Date(row.created_at) > new Date(acc[key].last_activity)) acc[key].last_activity = row.created_at;
+  if (new Date(row.created_at) < new Date(acc[key].first_activity)) acc[key].first_activity = row.created_at;
+  return acc;
+}, {});
+
+leadBySessionId.forEach((lead, sessionId) => {
+  if (sessionMap[sessionId]) return;
+
+  sessionMap[sessionId] = {
+    session_id: sessionId,
+    slug: lead.slug || "",
+    city: lead.city || "nanaimo",
+    last_activity: lead.created_at,
+    first_activity: lead.created_at,
+    reactions: [],
+    lead,
+  };
+});
+
+const sessions = Object.values(sessionMap).sort(
+  (a, b) => new Date(b.last_activity).getTime() - new Date(a.last_activity).getTime()
+);
 
 function fmtDate(value) {
   if (!value) return "";
@@ -1305,6 +1321,20 @@ const pageSlug =
               leadMessageLine(session.lead, "Property") ||
               String(session.lead?.address || "").trim();
             const leadRequest = leadRequestLabel(session.lead);
+            const matchedLeadReaction = session.reactions.find(
+              (reaction) =>
+                String(reaction.address || "").trim().toLowerCase() ===
+                leadProperty.toLowerCase()
+            );
+            const leadListingUrl =
+              leadMessageLine(session.lead, "Listing") ||
+              (matchedLeadReaction
+                ? `/${city}/${pageSlug}?listing_id=${encodeURIComponent(
+                    matchedLeadReaction.listing_id ||
+                    matchedLeadReaction.mls_number ||
+                    matchedLeadReaction.address || ""
+                  )}`
+                : "");
 
             // donut chart SVG for buyer profile
             const lifePct = profile.lifestyle;
@@ -1411,9 +1441,20 @@ const pageSlug =
                         </div>
 
                         {leadProperty && (
-                          <div style="margin-top:14px;font-weight:750;color:var(--ink);">
-                            Property: {leadProperty}
-                          </div>
+                          leadListingUrl ? (
+                            <a
+                              href={leadListingUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              style="display:inline-block;margin-top:14px;font-weight:750;color:#0f5f93;text-decoration:underline;text-underline-offset:3px;"
+                            >
+                              Open listing: {leadProperty}
+                            </a>
+                          ) : (
+                            <div style="margin-top:14px;font-weight:750;color:var(--ink);">
+                              Property: {leadProperty}
+                            </div>
+                          )
                         )}
 
                         {session.lead.question && (
