@@ -103,7 +103,7 @@ export const mobileHomeParks: MobileHomePark[] = [
     ],
   },
   {
-    name: "Ed’s Manufactured Home Park",
+    name: "EdΓÇÖs Manufactured Home Park",
     slug: "eds",
     address: "Honey Dr",
     city: "Nanaimo",
@@ -440,11 +440,11 @@ export const mobileHomeParks: MobileHomePark[] = [
     pets: "Small pets allowed",
     petType: "allowed",
     description:
-      "Also known as Brown’s Mobile Home Park, located in the Cedar area.",
+      "Also known as BrownΓÇÖs Mobile Home Park, located in the Cedar area.",
     features: [
       "Small pets",
       "Cedar area",
-      "Also called Brown’s MHP",
+      "Also called BrownΓÇÖs MHP",
     ],
   },
   {
