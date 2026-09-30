@@ -114,6 +114,33 @@ if (requestedSiteId) {
 const { data: leads } =
   await leadsQuery;
 
+// Lead-only sessions do not have an intent_listing_reactions row. Resolve their
+// property address directly so the admin can still open the listing.
+const leadAddresses = [...new Set(
+  (leads || [])
+    .map((lead) => {
+      const propertyMatch = String(lead.message || "").match(
+        /(?:^|\n)Property:\s*([^\n]+)/i
+      );
+      return String(propertyMatch?.[1] || lead.address || "").trim();
+    })
+    .filter(Boolean)
+)];
+
+const { data: leadListingRows } = leadAddresses.length
+  ? await supabase
+      .from("listing_rows")
+      .select("address, id, mls_number, normalized_city")
+      .in("address", leadAddresses.slice(0, 200))
+  : { data: [] };
+
+const leadListingByAddress = new Map(
+  (leadListingRows || []).map((row) => [
+    String(row.address || "").trim().toLowerCase(),
+    row,
+  ])
+);
+
 const leadBySessionId = new Map();
 
 (leads || []).forEach((lead) => {
@@ -1326,6 +1353,9 @@ const pageSlug =
                 String(reaction.address || "").trim().toLowerCase() ===
                 leadProperty.toLowerCase()
             );
+            const matchedLeadListing = leadListingByAddress.get(
+              leadProperty.toLowerCase()
+            );
             const leadListingUrl =
               leadMessageLine(session.lead, "Listing") ||
               (matchedLeadReaction
@@ -1334,7 +1364,17 @@ const pageSlug =
                     matchedLeadReaction.mls_number ||
                     matchedLeadReaction.address || ""
                   )}`
-                : "");
+                : matchedLeadListing
+                  ? `/${String(
+                      matchedLeadListing.normalized_city || city
+                    ).trim().toLowerCase().replace(/\s+/g, "-")}/listing/${encodeURIComponent(
+                      String(
+                        matchedLeadListing.mls_number ||
+                        matchedLeadListing.id ||
+                        ""
+                      )
+                    )}`
+                  : "");
 
             // donut chart SVG for buyer profile
             const lifePct = profile.lifestyle;

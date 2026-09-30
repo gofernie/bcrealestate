@@ -83,7 +83,14 @@ export const POST: APIRoute = async ({ request }) => {
     const email = String(body.email || "").trim();
    const phone = String(body.phone || "").trim();
 const question = String(body.question || "").trim();
-const message = String(body.message || "").trim();
+const originalMessage = String(body.message || "").trim();
+const submittedListingUrl = String(body.listing_url || "").trim();
+const message = [
+  originalMessage,
+  submittedListingUrl && !/(?:^|\n)Listing:\s*/i.test(originalMessage)
+    ? `Listing: ${submittedListingUrl}`
+    : "",
+].filter(Boolean).join("\n");
 
     if (!email && !phone) {
       return new Response(JSON.stringify({ ok: false, error: "Email or phone required" }), {
