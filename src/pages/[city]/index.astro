@@ -3692,26 +3692,34 @@ data-liked-tags="[]"
 
 <div
   id="home-search-complete"
-  class="homepage-save-nudge"
+  class="homepage-save-nudge home-search-complete-card"
   hidden
   aria-live="polite"
   style="margin: 0 auto 32px;"
 >
   <div class="homepage-save-nudge__copy">
+    <span
+      id="home-search-complete-eyebrow"
+      style="display:block;margin-bottom:4px;font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.66;"
+    >
+      Search complete
+    </span>
+
     <strong>You've seen every match</strong>
+
     <span id="home-search-complete-copy">
       Want to keep your search moving?
     </span>
   </div>
 
-  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
     <button
       type="button"
       class="interrupt-btn interrupt-primary"
       id="home-more-budget-btn"
       hidden
     >
-      Raise budget
+      See more homes
     </button>
 
     <button
@@ -3720,11 +3728,10 @@ data-liked-tags="[]"
       id="home-change-neighbourhood-btn"
       hidden
     >
-      Change neighbourhood
+      Search nearby
     </button>
   </div>
-</div>
-<div class="homepage-save-nudge-slot" style="margin-top: 32px;" data-save-search-prompt hidden={!hasActiveSearch}>
+</div><div class="homepage-save-nudge-slot" style="margin-top: 32px;" data-save-search-prompt hidden={!hasActiveSearch}>
   <div class="homepage-save-nudge">
     <div class="homepage-save-nudge__copy">
       <strong>Like these results?</strong>
@@ -6682,7 +6689,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
     );
     document.addEventListener(
       "click",
-      (event) => {
+      async (event) => {
         if (
           priceDropdown &&
           !priceDropdown.contains(event.target)
@@ -6923,7 +6930,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
           heroForm.requestSubmit();
     });
 
-    document.addEventListener("click", (event) => {
+    document.addEventListener("click", async (event) => {
       if (!multiselect.contains(event.target)) {
         closeMenu();
       }
@@ -8056,6 +8063,9 @@ function showMoreCards() {
     /* homepage-search-next-step-v1 */
     function syncHomeSearchComplete() {
       const footer = document.getElementById("home-search-complete");
+      const eyebrow = document.getElementById(
+        "home-search-complete-eyebrow"
+      );
       const title = footer?.querySelector("strong");
       const copy = document.getElementById("home-search-complete-copy");
       const budgetButton = document.getElementById("home-more-budget-btn");
@@ -8155,9 +8165,26 @@ function showMoreCards() {
       syncHomeSearchComplete();
     };
 
+        const scrollHomeListingsToStart = () => {
+      const firstListing = document.querySelector(
+        "#home-listings-grid > *"
+      );
+
+      if (!firstListing) return;
+
+      const top =
+        firstListing.getBoundingClientRect().top +
+        window.scrollY -
+        92;
+
+      window.scrollTo({
+        top: Math.max(0, top),
+        behavior: "smooth",
+      });
+    };
     document.getElementById("home-more-budget-btn")?.addEventListener(
       "click",
-      () => {
+      async () => {
         const currentBudget =
           Number(form?.elements.storyMaxPrice?.value || 0) ||
           Number(form?.elements.maxPrice?.value || 0);
@@ -8176,7 +8203,7 @@ function showMoreCards() {
         form.elements.maxPrice.value = options[0]
           ? String(nextBudget)
           : "";
-        fetchHomeListings({ append: false });
+        fetchHomeListings({ append: false }).then(() => scrollHomeListingsToStart());
       }
     );
 
@@ -8203,6 +8230,9 @@ function showMoreCards() {
       originalSyncHomeSearchComplete();
 
       const footer = document.getElementById("home-search-complete");
+      const eyebrow = document.getElementById(
+        "home-search-complete-eyebrow"
+      );
       const title = footer?.querySelector("strong");
       const copy = document.getElementById("home-search-complete-copy");
       const nearbyButton = document.getElementById(
@@ -8233,16 +8263,20 @@ function showMoreCards() {
 
       if (!hasArea) return;
 
+      if (eyebrow) {
+        eyebrow.textContent = homeAreaBufferKm
+          ? "Nearby search complete"
+          : "Search complete";
+      }
+
       if (title) {
         title.textContent = homeAreaBufferKm
           ? "You've seen every nearby match"
           : `You've seen every match in ${areaLabel}`;
       }
-
-      if (copy) {
-        copy.textContent = homeAreaBufferKm
-          ? `That includes all current matches in ${areaLabel} and up to ${homeAreaBufferKm} km beyond it.`
-          : `Where would you like to expand beyond ${areaLabel}?`;
+      if (copy && homeAreaBufferKm) {
+        copy.textContent =
+          `That includes all current matches in ${areaLabel} and up to ${homeAreaBufferKm} km beyond it.`;
       }
 
       if (nearbyButton) {
@@ -8266,7 +8300,7 @@ function showMoreCards() {
         event.stopImmediatePropagation();
 
         homeAreaBufferKm = 1;
-        fetchHomeListings({ append: false });
+        fetchHomeListings({ append: false }).then(() => scrollHomeListingsToStart());
       },
       true
     );
@@ -8281,7 +8315,55 @@ function showMoreCards() {
 
     syncHomeSearchComplete();
 
-   async function fetchHomeListings({ resetVisible = true, append = false } = {}) {
+   /* homepage-area-done-refresh-v1 */
+document.addEventListener(
+  "click",
+  (event) => {
+    const target = event.target;
+    const doneButton =
+      target instanceof Element
+        ? target.closest(
+            '.area-multiselect__done, [data-area-done], .area-multiselect__done-footer button'
+          )
+        : null;
+
+    if (
+      !(doneButton instanceof HTMLButtonElement) ||
+      doneButton.textContent?.trim().toLowerCase() !== "done" ||
+      homeLoading
+    ) return;
+
+    window.setTimeout(() => {
+      homeAreaBufferKm = 0;
+      fetchHomeListings({ append: false });
+    }, 0);
+  },
+  true
+);
+/* homepage-area-done-refresh-v2 */
+document.addEventListener(
+  "click",
+  (event) => {
+    const target = event.target;
+    const button =
+      target instanceof Element
+        ? target.closest("button, [role=button]")
+        : null;
+
+    if (
+      !(button instanceof HTMLElement) ||
+      button.textContent?.trim().toLowerCase() !== "done" ||
+      homeLoading
+    ) return;
+
+    window.setTimeout(() => {
+      homeAreaBufferKm = 0;
+      fetchHomeListings({ append: false });
+    }, 100);
+  },
+  true
+);
+async function fetchHomeListings({ resetVisible = true, append = false } = {}) {
   syncSaveSearchPrompts();
 
   const grid = document.getElementById("home-listings-grid");
@@ -14091,5 +14173,62 @@ html[data-theme="dark"] #home-hero-search.locus-home-search > :is(
   position: relative !important;
   bottom: auto !important;
   z-index: 20 !important;
+}
+</style>
+<style is:global>
+/* homepage-search-complete-card-v2 */
+#home-search-complete.home-search-complete-card {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  max-width: 980px !important;
+  padding: 20px 22px !important;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent) !important;
+  border-radius: 14px !important;
+  background: color-mix(in srgb, var(--accent) 6%, white) !important;
+  box-shadow: none !important;
+}
+
+#home-search-complete .homepage-save-nudge__copy {
+  display: block !important;
+}
+
+#home-search-complete-eyebrow {
+  margin-bottom: 5px !important;
+  color: var(--accent) !important;
+  font-size: .66rem !important;
+  font-weight: 850 !important;
+  letter-spacing: .13em !important;
+  opacity: 1 !important;
+}
+
+#home-search-complete strong {
+  display: block !important;
+  margin: 0 !important;
+  color: var(--ink) !important;
+  font-family: var(--serif, Georgia, serif) !important;
+  font-size: 1.35rem !important;
+  font-weight: 500 !important;
+  line-height: 1.15 !important;
+}
+
+#home-search-complete-copy {
+  display: block !important;
+  margin-top: 6px !important;
+  color: var(--muted) !important;
+  font-size: .84rem !important;
+  line-height: 1.45 !important;
+}
+
+@media (max-width: 680px) {
+  #home-search-complete.home-search-complete-card {
+    display: block !important;
+    padding: 18px !important;
+  }
+
+  #home-search-complete.home-search-complete-card > div:last-child {
+    margin-top: 16px !important;
+  }
 }
 </style>

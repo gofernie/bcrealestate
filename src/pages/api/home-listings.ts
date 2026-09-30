@@ -504,10 +504,10 @@ export const GET: APIRoute = async ({ request }) => {
       }
     }
     return true;
-  });
-
-  if (sort === "price-low") listings.sort((a, b) => a.rawPrice - b.rawPrice);
+  });  if (sort === "price-low") listings.sort((a, b) => a.rawPrice - b.rawPrice);
   else if (sort === "price-high") listings.sort((a, b) => b.rawPrice - a.rawPrice);
+  else if (sort === "beds-high") listings.sort((a, b) => Number(b.beds || 0) - Number(a.beds || 0));
+  else if (sort === "sqft-high") listings.sort((a, b) => Number(b.sqft || 0) - Number(a.sqft || 0));
   else listings.sort((a, b) => new Date(b.listedAt || 0).getTime() - new Date(a.listedAt || 0).getTime());
 
   const total = listings.length;
