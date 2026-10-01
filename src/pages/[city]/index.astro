@@ -978,12 +978,23 @@ const groupLabel = [  area || "",
 let areaOptions: string[] = [];
 let navAreaOptions: string[] = [];
 let homepageAreaCards: any[] = [];
+let homeMapAreaBoundaries: any[] = [];
 
 try {
    const { data: boundaries = [] } = await supabase
     .from("area_boundaries")
     .select("area_slug, area_name, polygon_geojson")
     .eq("city", clean(city || "nanaimo"));
+
+  homeMapAreaBoundaries = (boundaries || [])
+    .map((boundary: any) => ({
+      slug: String(boundary.area_slug || boundary.area_name || "")
+        .replace(/-/g, " ")
+        .toLowerCase()
+        .trim(),
+      geometry: boundary.polygon_geojson,
+    }))
+    .filter((boundary: any) => boundary.slug && boundary.geometry);
 
   const allowedAreas = (boundaries || [])
     .map((boundary: any) =>
@@ -1842,6 +1853,12 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
       address: (() => { const v = l.address; if (!v) return ""; if (typeof v === "string" && !v.startsWith("{")) return v; try { const o = typeof v === "string" ? JSON.parse(v) : v; return [o.streetNumber, o.streetName || o.streetAddress, o.streetSuffix].filter(Boolean).join(" ").trim(); } catch { return ""; } })(),
     })))}
   />
+  <script
+    id="home-area-boundaries-json"
+    type="application/json"
+    set:html={JSON.stringify(homeMapAreaBoundaries)}
+  />
+
   <div
     data-intent-page-id="homepage"
     data-city={city || "nanaimo"}
@@ -3725,7 +3742,7 @@ data-liked-tags="[]"
   class="homepage-save-nudge home-search-complete-card"
   hidden
   aria-live="polite"
-  style="margin: 0 auto 32px;"
+  style="margin: 32px auto;"
 >
   <div class="homepage-save-nudge__copy">
     <span
@@ -6994,6 +7011,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
   let mapRenderVersion = 0;
   window.currentHomeMapListings = [];
 
+
   function loadMapScript(src, ready) {
     if (ready()) return Promise.resolve();
 
@@ -7236,6 +7254,7 @@ const cardWaterfront = String(card.dataset.waterfront || "").toLowerCase();
       L.control.attribution({ prefix: false }).addAttribution('┬⌐ <a href="https://openstreetmap.org">OSM</a>').addTo(leafletMap);
     }
 
+
     const shouldCluster = points.length > 120;
 
     if (
@@ -7442,6 +7461,144 @@ const cardWaterfront = String(card.dataset.waterfront || "").toLowerCase();
       leafletMarkers.push(marker);
       latlngs.push([lat, lng]);
     });
+    // home-selected-area-overlay-safe-v3
+    // This runs after markers are made, so it cannot interrupt them.
+    try {
+      const boundaryData = document.getElementById(
+        "home-area-boundaries-json"
+      );
+
+      const normaliseArea = (value) =>
+        String(value || "")
+          .replace(/-/g, " ")
+          .toLowerCase()
+          .trim();
+
+      const mapForm = document.getElementById("home-filter-form");
+      const selectedAreas = [
+        ...String(mapForm?.elements?.storyAreas?.value || "")
+          .split("|")
+          .map(normaliseArea)
+          .filter(Boolean),
+        normaliseArea(mapForm?.elements?.area?.value || ""),
+      ].filter(Boolean);
+
+      window.__homeSelectedAreaLayer?.remove();
+      window.__homeAreaGlowLayer?.remove();
+      window.__homeSelectedAreaLayer = null;
+      window.__homeAreaGlowLayer = null;
+
+      if (boundaryData && selectedAreas.length) {
+        const boundaries = JSON.parse(boundaryData.textContent || "[]");
+
+        const features = (Array.isArray(boundaries) ? boundaries : [])
+          .filter((boundary) =>
+            selectedAreas.includes(normaliseArea(boundary.slug))
+          )
+          .map((boundary) => ({
+            type: "Feature",
+            properties: { slug: boundary.slug },
+            geometry:
+              boundary.geometry?.type === "Feature"
+                ? boundary.geometry.geometry
+                : boundary.geometry,
+          }))
+          .filter((feature) => feature.geometry);
+
+        if (features.length) {
+          const collection = {
+            type: "FeatureCollection",
+            features,
+          };
+
+          const accent =
+            getComputedStyle(document.documentElement)
+              .getPropertyValue("--accent")
+              .trim() || "#1f78b4";
+
+          if (
+            Number(window.__homeAreaBufferKm || 0) > 0
+          ) {
+            // home-true-1km-buffer-v2
+            // Build one smooth geographic buffer, rather than overlapping circles.
+            const getTurf = () => {
+              if (window.turf?.buffer) {
+                return Promise.resolve(window.turf);
+              }
+
+              return new Promise((resolve, reject) => {
+                const existing = document.querySelector(
+                  'script[data-home-turf-buffer]'
+                );
+
+                if (existing) {
+                  existing.addEventListener(
+                    "load",
+                    () => resolve(window.turf),
+                    { once: true }
+                  );
+                  existing.addEventListener(
+                    "error",
+                    () => reject(new Error("Turf failed to load.")),
+                    { once: true }
+                  );
+                  return;
+                }
+
+                const script = document.createElement("script");
+                script.src =
+                  "https://cdn.jsdelivr.net/npm/@turf/turf@7.3.5/turf.min.js";
+                script.dataset.homeTurfBuffer = "true";
+                script.onload = () => resolve(window.turf);
+                script.onerror = () =>
+                  reject(new Error("Turf failed to load."));
+                document.head.appendChild(script);
+              });
+            };
+
+            try {
+              const turf = await getTurf();
+              const oneKilometreBuffer = turf.buffer(collection, 1, {
+                units: "kilometers",
+                steps: 24,
+              });
+
+              window.__homeAreaGlowLayer = L.geoJSON(
+                oneKilometreBuffer,
+                {
+                  interactive: false,
+                  style: {
+                    color: accent,
+                    weight: 2,
+                    opacity: 0.35,
+                    dashArray: "5 7",
+                    fillColor: accent,
+                    fillOpacity: 0.11,
+                  },
+                }
+              ).addTo(leafletMap);
+            } catch (error) {
+              console.warn(
+                "Could not draw the 1 km nearby-search buffer:",
+                error
+              );
+            }
+          }
+          window.__homeSelectedAreaLayer = L.geoJSON(collection, {
+            interactive: false,
+            style: {
+              color: accent,
+              weight: 3,
+              opacity: 0.95,
+              fillColor: accent,
+              fillOpacity: 0.04,
+            },
+          }).addTo(leafletMap);
+        }
+      }
+    } catch (error) {
+      console.warn("Could not draw selected-area overlay:", error);
+    }
 
     if (latlngs.length) leafletMap.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] });
     setTimeout(() => leafletMap.invalidateSize(), 100);
@@ -8044,6 +8201,7 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
    let homeTotal = Number(document.getElementById("results-count")?.textContent || 0);
    let homeLoading = false;
 let homeAreaBufferKm = 0;
+      window.__homeAreaBufferKm = 0;
 
     function getLoadMoreButton() {
       return document.getElementById("home-load-more");
@@ -8142,11 +8300,18 @@ function showMoreCards() {
         ? `${(currentBudget / 1000).toFixed(1)}M`
         : `${currentBudget}k`;
 
+      const loadMoreButton = document.getElementById("home-load-more");
+
       const isComplete =
         !homeLoading &&
         homeTotal > 0 &&
         homeOffset >= homeTotal &&
-        (currentBudget > 0 || hasArea);
+        (currentBudget > 0 || hasArea) &&
+        (
+          !loadMoreButton ||
+          loadMoreButton.hidden ||
+          getComputedStyle(loadMoreButton).display === "none"
+        );
 
       footer.hidden = !isComplete;
 
@@ -8330,6 +8495,7 @@ function showMoreCards() {
         event.stopImmediatePropagation();
 
         homeAreaBufferKm = 1;
+        window.__homeAreaBufferKm = 1;
         fetchHomeListings({ append: false }).then(() => scrollHomeListingsToStart());
       },
       true
@@ -8339,6 +8505,7 @@ function showMoreCards() {
       "change",
       () => {
         homeAreaBufferKm = 0;
+      window.__homeAreaBufferKm = 0;
       },
       true
     );
@@ -8365,6 +8532,7 @@ document.addEventListener(
 
     window.setTimeout(() => {
       homeAreaBufferKm = 0;
+      window.__homeAreaBufferKm = 0;
       fetchHomeListings({ append: false });
     }, 0);
   },
@@ -8388,6 +8556,7 @@ document.addEventListener(
 
     window.setTimeout(() => {
       homeAreaBufferKm = 0;
+      window.__homeAreaBufferKm = 0;
       fetchHomeListings({ append: false });
     }, 100);
   },
