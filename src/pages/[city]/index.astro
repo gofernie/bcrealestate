@@ -8398,6 +8398,24 @@ function showMoreCards() {
               .filter((value) => value > currentBudget)
               .sort((a, b) => a - b)[0] || 0
           : 0;
+
+      const hasOpenEndedNextBand =
+        !nextBudget &&
+        currentBudget &&
+        priceSelect instanceof HTMLSelectElement &&
+        Array.from(priceSelect.options).some((option) => {
+          const match = String(option.textContent || "").match(
+            /^\s*over\s+\$?\s*([\d.]+)\s*([km])?\s*$/i
+          );
+
+          if (!match) return false;
+
+          const value =
+            Number(match[1]) *
+            (match[2]?.toLowerCase() === "m" ? 1000 : 1);
+
+          return value === currentBudget;
+        });
       const hasArea = selectedAreas.length > 0 || Boolean(selectedArea);
 
       const typeValue = String(form.elements.type?.value || "").toLowerCase();
@@ -8465,7 +8483,9 @@ function showMoreCards() {
             `We found ${homeTotal} ${typeLabel} up to ${budgetLabel}. ` +
             (nextBudget
               ? `Expand your search to include ${typeLabel} up to ${nextBudgetLabel}.`
-              : "There are no higher price bands available.");
+              : hasOpenEndedNextBand
+                ? `Expand your search to include ${typeLabel} over ${budgetLabel}.`
+                : "There are no higher price bands available.");
         } else {
           copy.textContent =
             `We found ${homeTotal} ${typeLabel} in ${areaLabel}. ` +
@@ -8474,11 +8494,14 @@ function showMoreCards() {
       }
 
       if (budgetButton) {
-        budgetButton.hidden = !nextBudget;
+        budgetButton.hidden = !nextBudget && !hasOpenEndedNextBand;
 
         if (nextBudget) {
           budgetButton.textContent =
             `See ${typeLabel} up to ${nextBudgetLabel}`;
+        } else if (hasOpenEndedNextBand) {
+          budgetButton.textContent =
+            `Show all ${typeLabel}`;
         }
       }
 
@@ -12046,6 +12069,82 @@ const navBottom = () => {
       if (!currentBudget) return;
 
       const priceSelect = resultsForm.elements.maxPrice;
+      const hasOpenEndedNextBand =
+        priceSelect instanceof HTMLSelectElement &&
+        Array.from(priceSelect.options).some((option) => {
+          const match = String(option.textContent || "").match(
+            /^\s*over\s+\$?\s*([\d.]+)\s*([km])?\s*$/i
+          );
+
+          if (!match) return false;
+
+          const value =
+            Number(match[1]) *
+            (match[2]?.toLowerCase() === "m" ? 1000 : 1);
+
+          return value === currentBudget;
+        });
+
+      if (hasOpenEndedNextBand) {
+        if (resultsForm.elements.storyMaxPrice) {
+          resultsForm.elements.storyMaxPrice.value = "";
+        }
+
+        if (resultsForm.elements.minPrice) {
+          resultsForm.elements.minPrice.value = "";
+        }
+
+        if (resultsForm.elements.maxPrice) {
+          resultsForm.elements.maxPrice.value = "";
+        }
+
+        const heroMinPrice = heroForm?.elements.namedItem("minPrice");
+        const heroMaxPrice = heroForm?.elements.namedItem("maxPrice");
+
+        if (heroMinPrice instanceof HTMLInputElement) {
+          heroMinPrice.value = "";
+        }
+
+        if (heroMaxPrice instanceof HTMLSelectElement) {
+          heroMaxPrice.value = "";
+
+          const summary = heroMaxPrice.parentElement?.querySelector(
+            ".hero-single-dropdown__summary"
+          );
+
+          if (summary) {
+            summary.textContent =
+              currentBudget >= 1000
+                ? `Over $${(currentBudget / 1000).toFixed(1)}M`
+                : `Over $${currentBudget}k`;
+          }
+        }
+
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.delete("minPrice");
+        nextUrl.searchParams.delete("maxPrice");
+        nextUrl.hash = "homepage-listings";
+
+        window.history.replaceState(
+          {},
+          "",
+          `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
+        );
+
+        resultsForm.dispatchEvent(
+          new Event("change", { bubbles: true })
+        );
+
+        window.requestAnimationFrame(() => {
+          document.getElementById("homepage-listings")?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        });
+
+        return;
+      }
+
       const nextBudget =
         priceSelect instanceof HTMLSelectElement
           ? Array.from(priceSelect.options)
