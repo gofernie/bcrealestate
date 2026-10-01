@@ -297,17 +297,21 @@ const getMobileHomePark = (address: unknown) => {
 
   if (!listingAddress) return undefined;
 
-  return mobileHomeParks.find((park) => {
-    const parkAddress = normaliseParkAddress(park.address);
-
-    return (
-      Boolean(parkAddress) &&
+  const matchingParks = mobileHomeParks
+    .map((park) => ({
+      park,
+      address: normaliseParkAddress(park.address),
+    }))
+    .filter(({ address }) =>
+      Boolean(address) &&
       (
-        listingAddress === parkAddress ||
-        listingAddress.includes(parkAddress)
+        listingAddress === address ||
+        listingAddress.includes(address)
       )
-    );
-  });
+    )
+    .sort((a, b) => b.address.length - a.address.length);
+
+  return matchingParks[0]?.park;
 };
 export const GET: APIRoute = async ({ request }) => {
   const url = new URL(request.url);
