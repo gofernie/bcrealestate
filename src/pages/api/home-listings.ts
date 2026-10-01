@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { createClient } from "@supabase/supabase-js";
+import { mobileHomeParks } from "../../data/mobileHomeParks";
 
 export const prerender = false;
 
@@ -266,6 +267,48 @@ function polygonContainsOrIsNearPoint(
   });
 }
 
+/* nanaimo-mobile-park-api-v3 */
+/* nanaimo-mobile-park-api-v3 */
+const normaliseParkAddress = (value: unknown) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[’'".,#]/g, "")
+    .replace(/^\s*(?:unit\s*)?\d{1,4}\s*-\s*(?=\d{1,5}\s)/, "")
+    .replace(/\bstreet\b/g, "st")
+    .replace(/\broad\b/g, "rd")
+    .replace(/\bavenue\b/g, "ave")
+    .replace(/\bfirst\b/g, "1st")
+    .replace(/\bsecond\b/g, "2nd")
+    .replace(/\bthird\b/g, "3rd")
+    .replace(/\bfourth\b/g, "4th")
+    .replace(/\bfifth\b/g, "5th")
+    .replace(/\bsixth\b/g, "6th")
+    .replace(/\bseventh\b/g, "7th")
+    .replace(/\beighth\b/g, "8th")
+    .replace(/\bninth\b/g, "9th")
+    .replace(/\btenth\b/g, "10th")
+    .replace(/\beleventh\b/g, "11th")
+    .replace(/\btwelfth\b/g, "12th")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getMobileHomePark = (address: unknown) => {
+  const listingAddress = normaliseParkAddress(address);
+
+  if (!listingAddress) return undefined;
+
+  return mobileHomeParks.find((park) => {
+    const parkAddress = normaliseParkAddress(park.address);
+
+    return (
+      Boolean(parkAddress) &&
+      (
+        listingAddress === parkAddress ||
+        listingAddress.includes(parkAddress)
+      )
+    );
+  });
+};
 export const GET: APIRoute = async ({ request }) => {
   const url = new URL(request.url);
   const city = String(url.searchParams.get("city") || "nanaimo").trim().toLowerCase();
@@ -290,7 +333,10 @@ export const GET: APIRoute = async ({ request }) => {
   const maxPrice = Number(url.searchParams.get("maxPrice") || 0);
   const beds = Number(url.searchParams.get("beds") || 0);
   const baths = Number(url.searchParams.get("baths") || 0);
-  const minSqft = Number(url.searchParams.get("minSqft") || 0);
+  const age55 = url.searchParams.get("age55") === "true";
+  const familyPark = url.searchParams.get("familyPark") === "true";
+  const petsAllowed = url.searchParams.get("petsAllowed") === "true";
+  const rulesUnconfirmed = url.searchParams.get("rulesUnconfirmed") === "true";const minSqft = Number(url.searchParams.get("minSqft") || 0);
   const minYear = Number(url.searchParams.get("minYear") || 0);
   const primaryOnMain =
     url.searchParams.get("primaryOnMain") === "true";
@@ -425,7 +471,40 @@ export const GET: APIRoute = async ({ request }) => {
         );
 
       if (!matches) return false;
+
+      if (
+        type === "mobile" &&
+        (
+          listing.mls === "1050567" ||
+          /^69\s+lake\s+place\b/i.test(String(listing.address || ""))
+        )
+      ) {
+        return false;
+      }
+
+      if (
+        type === "mobile" &&
+        (
+          listing.mls === "1050567" ||
+          /^69\s+lake\s+place\b/i.test(String(listing.address || ""))
+        )
+      ) {
+        return false;
+      }
     }
+    if (age55 || familyPark || petsAllowed || rulesUnconfirmed) {
+      const park = getMobileHomePark(listing.address);
+
+      if (rulesUnconfirmed) {
+        return !park;
+      }
+
+      if (!park) return false;
+      if (age55 && park.category !== "55-plus") return false;
+      if (familyPark && park.category !== "family") return false;
+      if (petsAllowed && park.petType === "none") return false;
+    }
+
     if (minPrice && listing.rawPrice < minPrice) return false;
     if (maxPrice && listing.rawPrice > maxPrice) return false;
     if (beds && Number(listing.beds || 0) < beds) return false;

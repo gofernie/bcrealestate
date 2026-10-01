@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import Layout from "../../layouts/Layout.astro";
 import AgentBrandStrip from "../../components/AgentBrandStrip.astro";
 import MobileParksHome from "../../components/sites/MobileParksHome.astro";
+import { mobileHomeParks } from "../../data/mobileHomeParks";
 import RelatedIntentCards from "../../components/RelatedIntentCards.astro";
 
 import IntentModalController from "../../components/IntentModalController.astro";
@@ -648,6 +649,8 @@ const planMode =
     : "");
 const beds = /^\d+$/.test(bedsSelection) ? Number(bedsSelection) : 0;
 const baths = Number(url.searchParams.get("baths") || 0);
+const age55 = url.searchParams.get("age55") === "true";
+const petsAllowed = url.searchParams.get("petsAllowed") === "true";
 const minSqft = Number(url.searchParams.get("minSqft") || 0);
 const minYear = Number(url.searchParams.get("minYear") || 0);
 const primaryOnMain = url.searchParams.get("primaryOnMain") === "true";
@@ -676,6 +679,8 @@ const hasActiveSearch =
   maxPrice > 0 ||
   beds > 0 ||
   baths > 0 ||
+  age55 ||
+  petsAllowed ||
   Boolean(waterfrontType) ||
   Boolean(viewType);
 
@@ -978,6 +983,7 @@ const groupLabel = [  area || "",
 let areaOptions: string[] = [];
 let navAreaOptions: string[] = [];
 let homepageAreaCards: any[] = [];
+let areaListingCounts = new Map<string, number>();
 let homeMapAreaBoundaries: any[] = [];
 
 try {
@@ -1015,7 +1021,27 @@ try {
     .not("lat", "is", null)
     .not("lng", "is", null);
 
-  if (isNanaimoMobilesSite) {
+  const normaliseParkAddress = (value: unknown) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[’'".,]/g, "")
+    .replace(/^\s*\d{1,4}\s*-\s*(?=\d{1,5}\s)/, "")
+    .replace(/\bstreet\b/g, "st")
+    .replace(/\broad\b/g, "rd")
+    .replace(/\bavenue\b/g, "ave")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getMobileHomePark = (listing: any) => {
+  const address = normaliseParkAddress(getListingAddress(listing));
+
+  return mobileHomeParks.find((park) => {
+    const parkAddress = normaliseParkAddress(park.address);
+    return parkAddress && address.endsWith(parkAddress);
+  });
+};
+
+if (isNanaimoMobilesSite) {
     areaCountQuery = areaCountQuery.eq("normalized_type", "mobile");
   }
 
@@ -1090,6 +1116,8 @@ try {
     areaCounts.set(slug, count);
   });
 
+  areaListingCounts = areaCounts;
+
   areaOptions = allowedAreas
     .filter((area) => areaCounts.has(area))
     .sort((a, b) => {
@@ -1100,7 +1128,10 @@ try {
         return aSelected ? -1 : 1;
       }
 
-      return a.localeCompare(b);
+      return (
+        (areaCounts.get(b) || 0) -
+        (areaCounts.get(a) || 0)
+      ) || a.localeCompare(b);
     });
 
   navAreaOptions = [...allowedAreas]
@@ -1304,6 +1335,26 @@ const getInventoryType = (listing: any) => {
   return isMisclassifiedEstate
     ? "house"
     : normalizedType;
+};
+
+const normaliseParkAddress = (value: unknown) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[’'".,]/g, "")
+    .replace(/^\s*\d{1,4}\s*-\s*(?=\d{1,5}\s)/, "")
+    .replace(/\bstreet\b/g, "st")
+    .replace(/\broad\b/g, "rd")
+    .replace(/\bavenue\b/g, "ave")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getMobileHomePark = (listing: any) => {
+  const address = normaliseParkAddress(getListingAddress(listing));
+
+  return mobileHomeParks.find((park) => {
+    const parkAddress = normaliseParkAddress(park.address);
+    return parkAddress && address.endsWith(parkAddress);
+  });
 };
 
 if (isNanaimoMobilesSite) {
@@ -1868,6 +1919,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
   >
 <SiteNav
   city={city}
+  listingCount={isNanaimoMobilesSite ? listings.length : null}
   site={site}
   areas={navAreaOptions.length ? navAreaOptions : areaOptions}
   types={propertyTypeOptions}
@@ -2145,7 +2197,31 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
       value={minPrice || ""}
     />
 
-    <div class="locus-home-search__field area-multiselect"
+    {isNanaimoMobilesSite && (
+  <div
+    class="locus-home-search__field locus-home-search__inventory-board"
+    aria-live="polite"
+  >
+    <span>Mobile homes</span>
+
+    <strong>
+      <b
+        class="nanaimo-flip-board"
+        data-nanaimo-hero-count
+        data-count={String(listings.length).padStart(2, "0")}
+        aria-label={`${listings.length} mobile homes for sale`}
+      >
+        {String(listings.length).padStart(2, "0").split("").map((digit, index) => (
+          <span class="nanaimo-flip-digit" data-flip-digit={index}>
+            {digit}
+          </span>
+        ))}
+      </b>
+      <small>for sale</small>
+    </strong>
+  </div>
+)}
+<div class="locus-home-search__field area-multiselect"
       data-area-multiselect
     >
       <span>Area / neighbourhood</span>
@@ -2215,7 +2291,10 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 
               <span>{titleCase(areaOption)}</span>
 
-              <span class="area-multiselect__check" aria-hidden="true">
+                            <span class="area-multiselect__count">
+                {areaListingCounts.get(areaOption) || 0}
+              </span>
+<span class="area-multiselect__check" aria-hidden="true">
                 {isSelected ? "\u2713" : ""}
               </span>
             </label>
@@ -2461,15 +2540,17 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
         </button>
       </div>
     </div>
-    <div class="locus-home-search__popular">
-      <span>Popular searches:</span>
+    {!isNanaimoMobilesSite && (
+  <div class="locus-home-search__popular">
+    <span>Popular searches:</span>
 
-      <a href={`/${city || "nanaimo"}/market-intelligence`}>Neighbourhoods</a>
-      <a href={`/${city || "nanaimo"}/homes`}>Family Homes</a>
-      <a href={`/${city || "nanaimo"}/condos`}>Condos</a>
-      <a href={`/${city || "nanaimo"}/townhomes`}>Townhomes</a>
-      <a href={`/${city || "nanaimo"}/mobile-homes`}>Mobile Homes</a>
-    </div>
+    <a href={`/${city || "nanaimo"}/market-intelligence`}>Neighbourhoods</a>
+    <a href={`/${city || "nanaimo"}/homes`}>Family Homes</a>
+    <a href={`/${city || "nanaimo"}/condos`}>Condos</a>
+    <a href={`/${city || "nanaimo"}/townhomes`}>Townhomes</a>
+    <a href={`/${city || "nanaimo"}/mobile-homes`}>Mobile Homes</a>
+  </div>
+)}
 
   </form>
 
@@ -3615,6 +3696,8 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 <input type="hidden" name="oceanViews" value="" />
 <input type="hidden" name="viewType" value={viewType} />
 <input type="hidden" name="waterfrontType" value={waterfrontType} />
+<input type="hidden" name="age55" value={age55 ? "true" : ""} />
+<input type="hidden" name="petsAllowed" value={petsAllowed ? "true" : ""} />
 <select name="sort" class="filter-select" aria-label="Sort">
   <option value="newest" selected={sort === "newest"}>Newest first</option>
   <option value="price-low" selected={sort === "price-low"}>Price low to high</option>
@@ -6745,63 +6828,84 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
         }
       }
     );
+    // Fast hero search: keep area changes on the page, like price/beds/baths.
     heroForm?.addEventListener("submit", (event) => {
       event.preventDefault();
-      rememberFilterScrollPosition();
 
-      const heroPriceSelect =
-        heroForm.querySelector('select[name="maxPrice"]');
+      if (!resultsForm) return;
 
-      const heroMinPriceInput =
-        heroForm.querySelector('input[name="minPrice"]');
+      const selectedAreas = Array.from(
+        heroForm.querySelectorAll('input[name="area"]:checked')
+      )
+        .map((input) => String(input.value || "").trim())
+        .filter(Boolean);
 
-      const heroPriceSelection =
-        String(heroPriceSelect?.value || "");
+      const storyAreasInput = resultsForm.elements.storyAreas;
+      const areaSelect = resultsForm.elements.area;
 
-      const heroOverPriceMatch =
-        heroPriceSelection.match(/^over-(\d+)$/);
+      if (storyAreasInput) {
+        storyAreasInput.value = selectedAreas.join("|");
+      }
 
-      if (
-        heroPriceSelect instanceof HTMLSelectElement &&
-        heroMinPriceInput instanceof HTMLInputElement
-      ) {
-        if (heroOverPriceMatch) {
-          heroMinPriceInput.value = heroOverPriceMatch[1];
-          heroPriceSelect.disabled = true;
-        } else {
-          heroMinPriceInput.value = "";
-          heroPriceSelect.disabled = false;
+      if (areaSelect) {
+        areaSelect.value = "";
+      }
+
+      ["type", "maxPrice", "beds", "baths", "minPrice"].forEach((name) => {
+        const heroField = heroForm.elements.namedItem(name);
+        const resultsField = resultsForm.elements.namedItem(name);
+
+        if (
+          heroField instanceof HTMLInputElement ||
+          heroField instanceof HTMLSelectElement
+        ) {
+          if (
+            resultsField instanceof HTMLInputElement ||
+            resultsField instanceof HTMLSelectElement
+          ) {
+            resultsField.value = heroField.value;
+          }
         }
+      });
+
+      if (resultsForm.elements.storyMaxPrice) {
+        resultsForm.elements.storyMaxPrice.value = "";
       }
 
-      const currentUrl =
-        new URL(window.location.href);
+      // Keep the URL shareable/back-button friendly without reloading the page.
+      const nextUrl = new URL(window.location.href);
 
-      const siteDomain =
-        currentUrl.searchParams.get("siteDomain");
+      ["area", "type", "maxPrice", "minPrice", "beds", "baths"].forEach(
+        (key) => nextUrl.searchParams.delete(key)
+      );
 
-      const nextUrl =
-        new URL(currentUrl.pathname, currentUrl.origin);
+      selectedAreas.forEach((selectedArea) => {
+        nextUrl.searchParams.append("area", selectedArea);
+      });
 
-      if (siteDomain) {
-        nextUrl.searchParams.set(
-          "siteDomain",
-          siteDomain
-        );
-      }
+      ["type", "maxPrice", "minPrice", "beds", "baths"].forEach((name) => {
+        const field = resultsForm.elements.namedItem(name);
 
-      const formData = new FormData(heroForm);
-
-      for (const [key, rawValue] of formData.entries()) {
-        const value = String(rawValue || "").trim();
-
-        if (value) {
-          nextUrl.searchParams.append(key, value);
+        if (
+          (field instanceof HTMLInputElement ||
+            field instanceof HTMLSelectElement) &&
+          field.value
+        ) {
+          nextUrl.searchParams.set(name, field.value);
         }
-      }
+      });
 
       nextUrl.hash = "homepage-listings";
-      window.location.assign(nextUrl.toString());
+
+      window.history.replaceState(
+        {},
+        "",
+        `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
+      );
+
+      resultsForm.dispatchEvent(
+        new Event("change", { bubbles: true })
+      );
     });
 
     const multiselect =
@@ -6885,7 +6989,14 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
             return aSelected ? -1 : 1;
           }
 
-          return labelText(a).localeCompare(labelText(b));
+          return (
+          Number(
+            b.querySelector(".area-multiselect__count")?.textContent || 0
+          ) -
+          Number(
+            a.querySelector(".area-multiselect__count")?.textContent || 0
+          )
+        ) || labelText(a).localeCompare(labelText(b));
         })
         .forEach((option) => optionsScroll.appendChild(option));
 
@@ -6910,7 +7021,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
         );
 
         if (check) {
-          check.textContent = input?.checked ? "\u2713" : "";
+          check.textContent = "";
         }
       });
 
@@ -6925,8 +7036,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
         );
 
       if (clearCheck) {
-        clearCheck.textContent =
-          selected.length === 0 ? "Γ£ô" : "";
+        clearCheck.textContent = "";
       }
 
       if (clearButton) {
@@ -6951,8 +7061,15 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
         event.target instanceof HTMLInputElement &&
         event.target.name === "area"
       ) {
+        const scrollPosition = menu.scrollTop;
         syncDropdown();
         areaSelectionDirty = true;
+        requestAnimationFrame(() => {
+          menu.scrollTop = scrollPosition;
+          window.setTimeout(() => {
+            menu.scrollTop = scrollPosition;
+          }, 0);
+        });
 
         requestAnimationFrame(() => {
           menu.scrollTop = 0;
@@ -8691,6 +8808,21 @@ const selectedFeatures = String(document.querySelector(".story-blank[data-story-
   if (oceanViewsVal) params.set("oceanViews", "true");
   if (viewTypeVal) params.set("viewType", viewTypeVal);
   if (waterfrontTypeVal) params.set("waterfrontType", waterfrontTypeVal);
+
+  // nanaimo-park-rule-request-v1
+  const age55Val =
+    String(form.elements.age55?.value || "") === "true";
+  const familyParkVal =
+    String(form.elements.familyPark?.value || "") === "true";
+  const petsAllowedVal =
+    String(form.elements.petsAllowed?.value || "") === "true";
+  const rulesUnconfirmedVal =
+    String(form.elements.rulesUnconfirmed?.value || "") === "true";
+
+  if (age55Val) params.set("age55", "true");
+  if (familyParkVal) params.set("familyPark", "true");
+  if (petsAllowedVal) params.set("petsAllowed", "true");
+  if (rulesUnconfirmedVal) params.set("rulesUnconfirmed", "true");
   if (planModeVal) params.set("planMode", planModeVal);
   if (selectedFeatures.includes("ocean views")) {
     params.set("viewType", "ocean");
@@ -8731,6 +8863,87 @@ if (summaryPriceRange) {
 }
   const resultsCount = document.getElementById("results-count");
   if (resultsCount) resultsCount.textContent = String(homeTotal);
+
+  const heroListingTotal = document.querySelector(
+    "[data-nanaimo-hero-count]"
+  );
+
+  if (heroListingTotal) {
+    const previousCount = Number(
+      heroListingTotal.dataset.count ||
+      heroListingTotal.textContent ||
+      0
+    );
+
+    const nextCount = Math.max(0, Number(homeTotal) || 0);
+    const width = Math.max(
+      2,
+      String(previousCount).length,
+      String(nextCount).length
+    );
+
+    const previousDigits = String(previousCount).padStart(width, "0");
+    const nextDigits = String(nextCount).padStart(width, "0");
+    const direction = nextCount >= previousCount ? 1 : -1;
+
+    const digitNodes = Array.from(
+      heroListingTotal.querySelectorAll("[data-flip-digit]")
+    );
+
+    if (digitNodes.length === nextDigits.length) {
+      digitNodes.forEach((digitNode, index) => {
+        const from = Number(previousDigits[index]);
+        const to = Number(nextDigits[index]);
+
+        if (from === to) {
+          digitNode.textContent = String(to);
+          return;
+        }
+
+        const steps =
+          direction > 0
+            ? (to - from + 10) % 10
+            : (from - to + 10) % 10;
+
+        let value = from;
+        let step = 0;
+
+        const flipNext = () => {
+          digitNode.classList.remove("is-flipping");
+          void digitNode.offsetWidth;
+          digitNode.classList.add("is-flipping");
+
+          window.setTimeout(() => {
+            value = (value + direction + 10) % 10;
+            digitNode.textContent = String(value);
+            step += 1;
+
+            if (step < steps) {
+              window.setTimeout(flipNext, 26);
+            } else {
+              digitNode.classList.remove("is-flipping");
+            }
+          }, 70);
+        };
+
+        flipNext();
+      });
+    }
+
+    heroListingTotal.dataset.count = String(nextCount);
+    heroListingTotal.setAttribute(
+      "aria-label",
+      `${nextCount} mobile homes for sale`
+    );
+  }
+
+  const navListingTotal = document.querySelector(
+    "[data-nanaimo-listing-total]"
+  );
+
+  if (navListingTotal) {
+    navListingTotal.textContent = String(homeTotal).padStart(2, "0");
+  }
   applySavedHomeDecisions();
   window.dispatchEvent(new CustomEvent("intent:cards-updated"));
   } catch (error) {
@@ -11229,7 +11442,7 @@ document.documentElement.style.visibility = "";
     box-shadow: none;
   }
 
-  .listing-filter-rail .locus-home-search > div:not(.area-multiselect):not(.locus-home-more-panel) {
+  .listing-filter-rail .locus-home-search > div:not(.area-multiselect):not(.locus-home-more-panel):not(.locus-home-search__inventory-board) {
     display: none !important;
   }
 
@@ -11675,6 +11888,421 @@ document.documentElement.style.visibility = "";
     window.setTimeout(removeNanaimoMobileTypeField, 100);
   })();
 </script>
+<style is:global>
+  /* nanaimo-hide-more-filters-v2 */
+  #home-hero-search:has(.locus-home-search__inventory-board)
+    .locus-home-more-toggle,
+  #home-hero-search:has(.locus-home-search__inventory-board)
+    .locus-home-more-panel {
+    display: none !important;
+  }
+
+  #home-hero-search:has(.locus-home-search__inventory-board) {
+    grid-template-columns: 150px 1.28fr 1fr .95fr .85fr !important;
+  }
+</style><script is:inline>
+  // nanaimo-fast-hero-filter-submit-v1
+  (() => {
+    const heroForm = document.getElementById("home-hero-search");
+    const resultsForm = document.getElementById("home-filter-form");
+
+    if (!heroForm || !resultsForm) return;
+
+    const syncAndRefresh = () => {
+      const selectedAreas = Array.from(
+        heroForm.querySelectorAll('input[name="area"]:checked')
+      )
+        .map((input) => String(input.value || "").trim())
+        .filter(Boolean);
+
+      if (resultsForm.elements.storyAreas) {
+        resultsForm.elements.storyAreas.value = selectedAreas.join("|");
+      }
+
+      if (resultsForm.elements.area) {
+        resultsForm.elements.area.value = "";
+      }
+
+      ["type", "maxPrice", "minPrice", "beds", "baths"].forEach((name) => {
+        const heroField = heroForm.elements.namedItem(name);
+        const resultsField = resultsForm.elements.namedItem(name);
+
+        if (
+          (heroField instanceof HTMLInputElement ||
+            heroField instanceof HTMLSelectElement) &&
+          (resultsField instanceof HTMLInputElement ||
+            resultsField instanceof HTMLSelectElement)
+        ) {
+          resultsField.value = heroField.value;
+        }
+      });
+
+      ["age55", "petsAllowed"].forEach((name) => {
+        const heroField = heroForm.querySelector(
+          `input[name="${name}"]`
+        );
+        const resultsField = resultsForm.elements.namedItem(name);
+
+        if (
+          heroField instanceof HTMLInputElement &&
+          resultsField instanceof HTMLInputElement
+        ) {
+          resultsField.value = heroField.checked ? "true" : "";
+        }
+      });
+
+      if (resultsForm.elements.storyMaxPrice) {
+        resultsForm.elements.storyMaxPrice.value = "";
+      }
+
+      const nextUrl = new URL(window.location.href);
+
+      ["area", "type", "maxPrice", "minPrice", "beds", "baths", "age55", "petsAllowed"]
+        .forEach((key) => nextUrl.searchParams.delete(key));
+
+      selectedAreas.forEach((selectedArea) => {
+        nextUrl.searchParams.append("area", selectedArea);
+      });
+
+      ["type", "maxPrice", "minPrice", "beds", "baths", "age55", "petsAllowed"]
+        .forEach((name) => {
+          const field = resultsForm.elements.namedItem(name);
+
+          if (
+            (field instanceof HTMLInputElement ||
+              field instanceof HTMLSelectElement) &&
+            field.value
+          ) {
+            nextUrl.searchParams.set(name, field.value);
+          }
+        });
+
+      nextUrl.hash = "homepage-listings";
+
+      window.history.replaceState(
+        {},
+        "",
+        `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
+      );
+
+      resultsForm.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+
+    heroForm.addEventListener(
+      "submit",
+      (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        syncAndRefresh();
+      },
+      true
+    );
+
+    heroForm
+      .querySelectorAll('input[name="age55"], input[name="petsAllowed"]')
+      .forEach((input) => {
+        input.addEventListener("change", () => heroForm.requestSubmit());
+      });
+  })();
+</script>
+<script is:inline>
+  // home-more-budget-click-fix-v1
+  document.addEventListener(
+    "click",
+    (event) => {
+      const button =
+        event.target instanceof Element
+          ? event.target.closest("#home-more-budget-btn")
+          : null;
+
+      if (!button) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      const resultsForm = document.getElementById("home-filter-form");
+      const heroForm = document.getElementById("home-hero-search");
+
+      if (!resultsForm) return;
+
+      const currentBudget =
+        Number(resultsForm.elements.storyMaxPrice?.value || 0) ||
+        Number(resultsForm.elements.maxPrice?.value || 0);
+
+      if (!currentBudget) return;
+
+      const priceSelect = resultsForm.elements.maxPrice;
+      const nextBudget =
+        priceSelect instanceof HTMLSelectElement
+          ? Array.from(priceSelect.options)
+              .map((option) => Number(option.value || 0))
+              .filter((value) => value > currentBudget)
+              .sort((a, b) => a - b)[0]
+          : 0;
+
+      const expandedBudget =
+        nextBudget ||
+        Math.ceil((currentBudget * 1.25) / 25) * 25;
+
+      if (resultsForm.elements.storyMaxPrice) {
+        resultsForm.elements.storyMaxPrice.value = "";
+      }
+
+      if (resultsForm.elements.minPrice) {
+        resultsForm.elements.minPrice.value = String(currentBudget);
+      }
+
+      if (resultsForm.elements.maxPrice) {
+        resultsForm.elements.maxPrice.value = String(expandedBudget);
+      }
+
+      const heroMinPrice = heroForm?.elements.namedItem("minPrice");
+      const heroMaxPrice = heroForm?.elements.namedItem("maxPrice");
+
+      if (heroMinPrice instanceof HTMLInputElement) {
+        heroMinPrice.value = String(currentBudget);
+      }
+
+      if (heroMaxPrice instanceof HTMLSelectElement) {
+        heroMaxPrice.value = String(expandedBudget);
+
+        const summary = heroMaxPrice.parentElement?.querySelector(
+          ".hero-single-dropdown__summary"
+        );
+
+        if (summary) {
+          summary.textContent =
+            heroMaxPrice.selectedOptions?.[0]?.textContent?.trim() ||
+            "Any Price";
+        }
+      }
+
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.set("minPrice", String(currentBudget));
+      nextUrl.searchParams.set("maxPrice", String(expandedBudget));
+      nextUrl.hash = "homepage-listings";
+
+      window.history.replaceState(
+        {},
+        "",
+        `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
+      );
+
+      resultsForm.dispatchEvent(
+        new Event("change", { bubbles: true })
+      );
+    },
+    true
+  );
+</script>
+<style is:global>
+  /* nanaimo-mobile-park-rule-bar-v1 */
+  .nanaimo-mobile-park-rule-bar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 2px 0 0;
+  }
+
+  .nanaimo-mobile-park-rule-bar__label {
+    color: #849099;
+    font-size: .67rem;
+    font-weight: 850;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+  }
+
+  .nanaimo-mobile-park-rule-bar__option {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 0 10px;
+    border: 1px solid #d8e0e4;
+    border-radius: 999px;
+    background: #f7f9fa;
+    color: #173a60;
+    cursor: pointer;
+    font-size: .74rem;
+    font-weight: 800;
+  }
+
+  .nanaimo-mobile-park-rule-bar__option:has(input:checked) {
+    border-color: #173a60;
+    background: #173a60;
+    color: #fff;
+  }
+
+  .nanaimo-mobile-park-rule-bar input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: currentColor;
+  }
+
+  @media (max-width: 620px) {
+    .nanaimo-mobile-park-rule-bar {
+      flex-wrap: wrap;
+    }
+  }
+</style>
+
+<script is:inline>
+  // nanaimo-mobile-park-rule-bar-v1
+  (() => {
+    const siteDomain = new URLSearchParams(window.location.search)
+      .get("siteDomain")
+      ?.toLowerCase()
+      .replace(/^www\./, "");
+
+    if (
+      location.hostname.toLowerCase().replace(/^www\./, "") !==
+        "nanaimomobiles.com" &&
+      siteDomain !== "nanaimomobiles.com"
+    ) {
+      return;
+    }
+
+    const heroForm = document.getElementById("home-hero-search");
+    const resultsForm = document.getElementById("home-filter-form");
+
+    if (!heroForm || !resultsForm) return;
+
+    const parkRuleAnchor = heroForm.querySelector(
+      ".locus-home-more-panel"
+    );
+
+    const params = new URLSearchParams(window.location.search);
+
+    const bar = document.createElement("div");
+    bar.className = "nanaimo-mobile-park-rule-bar";
+    bar.innerHTML = `
+      <span class="nanaimo-mobile-park-rule-bar__label">Park rules</span>
+      <label class="nanaimo-mobile-park-rule-bar__option">
+        <input type="checkbox" name="age55">
+        <span>55+ only</span>
+      </label>
+      <label class="nanaimo-mobile-park-rule-bar__option">
+        <input type="checkbox" name="familyPark">
+        <span>Family park</span>
+      </label>
+      <label class="nanaimo-mobile-park-rule-bar__option">
+        <input type="checkbox" name="rulesUnconfirmed">
+        <span>Rules unconfirmed</span>
+      </label>
+      <label class="nanaimo-mobile-park-rule-bar__option">
+        <input type="checkbox" name="petsAllowed">
+        <span>Pets allowed</span>
+      </label>
+    `;
+
+    if (parkRuleAnchor) {
+      parkRuleAnchor.before(bar);
+    } else {
+      heroForm.appendChild(bar);
+    }
+
+    const inputs = Array.from(
+      bar.querySelectorAll('input[type="checkbox"]')
+    );
+
+    const ensureResultField = (name) => {
+      let field = resultsForm.elements.namedItem(name);
+
+      if (!(field instanceof HTMLInputElement)) {
+        field = document.createElement("input");
+        field.type = "hidden";
+        field.name = name;
+        resultsForm.appendChild(field);
+      }
+
+      return field;
+    };
+
+    inputs.forEach((input) => {
+      input.checked = params.get(input.name) === "true";
+    });
+
+    bar.addEventListener(
+      "change",
+      (event) => {
+        const changed = event.target;
+
+        if (
+          !(changed instanceof HTMLInputElement) ||
+          !changed.checked ||
+          !["age55", "familyPark", "rulesUnconfirmed"].includes(changed.name)
+        ) {
+          return;
+        }
+
+        inputs.forEach((input) => {
+          if (
+            input !== changed &&
+            ["age55", "familyPark", "rulesUnconfirmed"].includes(input.name)
+          ) {
+            input.checked = false;
+          }
+        });
+      },
+      true
+    );
+    const refreshResults = () => {
+      // A park cannot be both 55+ and family/all-ages.
+      const age55 = bar.querySelector('input[name="age55"]');
+      const familyPark = bar.querySelector('input[name="familyPark"]');
+
+      if (
+        age55 instanceof HTMLInputElement &&
+        familyPark instanceof HTMLInputElement
+      ) {
+        if (age55.checked) familyPark.checked = false;
+        if (familyPark.checked) age55.checked = false;
+      }
+
+      inputs.forEach((input) => {
+        ensureResultField(input.name).value =
+          input.checked ? "true" : "";
+      });
+
+      const nextUrl = new URL(window.location.href);
+
+      inputs.forEach((input) => {
+        nextUrl.searchParams.delete(input.name);
+
+        if (input.checked) {
+          nextUrl.searchParams.set(input.name, "true");
+        }
+      });
+
+      window.history.replaceState(
+        {},
+        "",
+        `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
+      );
+
+      resultsForm.dispatchEvent(
+        new Event("change", { bubbles: true })
+      );
+    };
+
+    inputs.forEach((input) => {
+      input.addEventListener("change", refreshResults);
+    });
+
+    if (inputs.some((input) => input.checked)) {
+      requestAnimationFrame(refreshResults);
+    }
+  })();
+</script>
+<style is:global>
+  /* nanaimo-hide-popular-searches-v1 */
+  #home-hero-search:has(.nanaimo-mobile-park-rule-bar)
+    .locus-home-search__popular {
+    display: none !important;
+  }
+</style>
 </Layout>
 
 
@@ -12793,7 +13421,37 @@ intro h2,
     margin-bottom: 38px !important;
   }
 }
-  /* area-selection-check-css-v1 */
+    /* area-listing-counts-and-checks-v2 */
+  #home-hero-search .area-multiselect__option {
+    align-items: center !important;
+    display: flex !important;
+  }
+
+  #home-hero-search .area-multiselect__option > span:first-of-type {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  #home-hero-search .area-multiselect__count {
+    flex: 0 0 auto;
+    font-size: .78rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    margin-left: auto;
+    margin-right: 6px;
+    opacity: .68;
+  }
+
+  #home-hero-search .area-multiselect__check {
+    align-items: center;
+    display: inline-flex;
+    flex: 0 0 18px;
+    font-size: 0 !important;
+    justify-content: center;
+    margin: 0;
+    min-height: 18px;
+    min-width: 18px;
+  }
   .area-multiselect__check {
     display: inline-flex;
     width: 18px;
@@ -14455,4 +15113,396 @@ html[data-theme="dark"] #home-hero-search.locus-home-search > :is(
     margin-top: 16px !important;
   }
 }
+  /* area-count-check-inline-v1 */
+  #home-hero-search .area-multiselect__option {
+    display: flex !important;
+    align-items: center;
+  }
+
+  #home-hero-search .area-multiselect__option > span:first-of-type {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  #home-hero-search .area-multiselect__count {
+    flex: 0 0 auto;
+    margin-left: auto;
+    margin-right: 6px;
+  }
+
+  #home-hero-search .area-multiselect__check {
+    flex: 0 0 18px;
+    margin: 0;
+  }
+</style>
+<style is:global>
+  /* nanaimo-airport-counter-final-v1 */
+  .site-nav__listing-count {
+    align-items: center !important;
+    display: inline-flex !important;
+    gap: 8px !important;
+    margin-right: 8px !important;
+    text-decoration: none !important;
+  }
+
+  .site-nav__listing-digits {
+    align-items: center !important;
+    background: #163b61 !important;
+    background-image: linear-gradient(
+      to bottom,
+      #1d4a76 0%,
+      #1d4a76 48%,
+      #102d4b 49%,
+      #102d4b 52%,
+      #183e65 53%,
+      #183e65 100%
+    ) !important;
+    border: 1px solid rgba(255,255,255,.32) !important;
+    border-radius: 3px !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.18),
+      0 2px 5px rgba(8,32,55,.28) !important;
+    color: #fff !important;
+    display: inline-flex !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+    font-size: .88rem !important;
+    font-variant-numeric: tabular-nums !important;
+    font-weight: 900 !important;
+    justify-content: center !important;
+    letter-spacing: .12em !important;
+    line-height: 1 !important;
+    min-width: 2.8em !important;
+    padding: .48rem .3rem .42rem .43rem !important;
+    position: relative !important;
+    text-align: center !important;
+  }
+
+  .site-nav__listing-digits::after {
+    background: rgba(0,0,0,.28);
+    content: "";
+    height: 1px;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 50%;
+  }
+
+  .site-nav__listing-label {
+    font-size: .7rem !important;
+    font-weight: 800 !important;
+    letter-spacing: .08em !important;
+    text-transform: uppercase !important;
+  }
+
+  @media (max-width: 700px) {
+    .site-nav__listing-label {
+      display: none !important;
+    }
+  }
+</style>
+<style is:global>
+  /* nanaimo-hero-inventory-board-v1 */
+  #home-hero-search:has(.locus-home-search__inventory-board) {
+    grid-template-columns: 132px 1.25fr 1fr .9fr .8fr auto !important;
+  }
+
+  #home-hero-search .locus-home-search__inventory-board {
+    border-right: 1px solid var(--locus-line) !important;
+    padding: 2px 18px !important;
+  }
+
+  #home-hero-search .locus-home-search__inventory-board > span {
+    margin-bottom: 7px !important;
+  }
+
+  #home-hero-search .locus-home-search__inventory-board strong {
+    align-items: center;
+    display: flex;
+    gap: 7px;
+    white-space: nowrap;
+  }
+
+  #home-hero-search .locus-home-search__inventory-board b {
+    align-items: center;
+    background: linear-gradient(
+      to bottom,
+      #1c4a75 0%,
+      #1c4a75 48%,
+      #102d4b 49%,
+      #102d4b 52%,
+      #183d63 53%,
+      #183d63 100%
+    );
+    border: 1px solid rgba(255,255,255,.26);
+    border-radius: 3px;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.18),
+      0 2px 4px rgba(8,32,55,.2);
+    color: #fff;
+    display: inline-flex;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 1rem;
+    font-variant-numeric: tabular-nums;
+    justify-content: center;
+    letter-spacing: .1em;
+    line-height: 1;
+    min-width: 2.3em;
+    padding: .38rem .22rem .34rem .34rem;
+    position: relative;
+  }
+
+  #home-hero-search .locus-home-search__inventory-board b::after {
+    background: rgba(0,0,0,.28);
+    content: "";
+    height: 1px;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 50%;
+  }
+
+  #home-hero-search .locus-home-search__inventory-board small {
+    color: var(--locus-ink);
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+
+  @media (max-width: 900px) {
+    #home-hero-search:has(.locus-home-search__inventory-board) {
+      grid-template-columns: 1fr 1fr !important;
+    }
+  }
+</style>
+<style is:global>
+  /* nanaimo-hero-flip-counter-v1 */
+  #home-hero-search .nanaimo-flip-board {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    display: inline-flex !important;
+    gap: 2px !important;
+    letter-spacing: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+  }
+
+  #home-hero-search .nanaimo-flip-board::after {
+    display: none !important;
+  }
+
+  #home-hero-search .nanaimo-flip-digit {
+    align-items: center;
+    background: linear-gradient(
+      to bottom,
+      #1d4a76 0%,
+      #1d4a76 48%,
+      #102d4b 49%,
+      #102d4b 52%,
+      #183e65 53%,
+      #183e65 100%
+    );
+    border: 1px solid rgba(255,255,255,.28);
+    border-radius: 2px;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.18),
+      0 2px 4px rgba(8,32,55,.22);
+    color: #fff;
+    display: inline-flex;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 1rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 900;
+    height: 1.85em;
+    justify-content: center;
+    line-height: 1;
+    min-width: 1.18em;
+    overflow: hidden;
+    position: relative;
+    transform-origin: 50% 50%;
+  }
+
+  #home-hero-search .nanaimo-flip-digit::after {
+    background: rgba(0,0,0,.3);
+    content: "";
+    height: 1px;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 50%;
+  }
+
+  #home-hero-search .nanaimo-flip-digit.is-flipping {
+    animation: nanaimo-flip-digit .12s ease-in-out;
+  }
+
+  @keyframes nanaimo-flip-digit {
+    0% { transform: rotateX(0deg); }
+    50% { transform: rotateX(-88deg); }
+    100% { transform: rotateX(0deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #home-hero-search .nanaimo-flip-digit.is-flipping {
+      animation: none;
+    }
+  }
+</style>
+<style is:global>
+  /* nanaimo-nav-and-counter-spacing-v1 */
+  body:has(#home-hero-search .locus-home-search__inventory-board)
+  .site-nav__inner {
+    gap: 42px !important;
+  }
+
+  body:has(#home-hero-search .locus-home-search__inventory-board)
+  .site-nav__links {
+    gap: 16px !important;
+  }
+
+  body:has(#home-hero-search .locus-home-search__inventory-board)
+  .site-nav__links a {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  #home-hero-search:has(.locus-home-search__inventory-board) {
+    grid-template-columns: 150px 1.22fr 1fr .9fr .8fr auto !important;
+  }
+
+  #home-hero-search .locus-home-search__inventory-board {
+    padding-left: 20px !important;
+    padding-right: 22px !important;
+  }
+
+  #home-hero-search .locus-home-search__inventory-board strong {
+    gap: 10px !important;
+  }
+
+  @media (max-width: 900px) {
+    body:has(#home-hero-search .locus-home-search__inventory-board)
+    .site-nav__inner {
+      gap: 16px !important;
+    }
+
+    body:has(#home-hero-search .locus-home-search__inventory-board)
+    .site-nav__links {
+      gap: 4px !important;
+    }
+
+    #home-hero-search:has(.locus-home-search__inventory-board) {
+      grid-template-columns: 1fr 1fr !important;
+    }
+  }
+</style>
+<style is:global>
+  /* nanaimo-sticky-counter-match-v1 */
+  .listing-filter-rail .locus-home-search:has(
+    .locus-home-search__inventory-board
+  ) {
+    grid-template-columns: 150px 1.22fr 1fr .9fr .8fr auto !important;
+    width: min(1360px, calc(100% - 72px)) !important;
+  }
+
+  .listing-filter-rail .locus-home-search__inventory-board {
+    display: block !important;
+    min-height: 48px !important;
+    padding-left: 20px !important;
+    padding-right: 22px !important;
+  }
+
+  .listing-filter-rail
+  .locus-home-search__inventory-board
+  .nanaimo-flip-digit {
+    font-size: 1rem !important;
+  }
+
+  @media (max-width: 900px) {
+    .listing-filter-rail .locus-home-search:has(
+      .locus-home-search__inventory-board
+    ) {
+      grid-template-columns: 1fr 1fr !important;
+      width: 100% !important;
+    }
+  }
+</style>
+<script is:inline>
+  // nanaimo-sticky-counter-force-v1
+  (() => {
+    const syncStickyNanaimoCounter = () => {
+      const form = document.getElementById("home-hero-search");
+      const board = form?.querySelector(
+        ".locus-home-search__inventory-board"
+      );
+
+      if (!form || !board) return;
+
+      const isDocked = Boolean(
+        form.closest(".listing-filter-rail")
+      );
+
+      if (isDocked) {
+        board.style.setProperty("display", "block", "important");
+        board.style.setProperty("grid-column", "1", "important");
+        board.style.setProperty("min-height", "48px", "important");
+
+        form.style.setProperty(
+          "grid-template-columns",
+          "150px 1.22fr 1fr .9fr .8fr auto",
+          "important"
+        );
+      } else {
+        board.style.removeProperty("display");
+        board.style.removeProperty("grid-column");
+        board.style.removeProperty("min-height");
+        form.style.removeProperty("grid-template-columns");
+      }
+    };
+
+    const start = () => {
+      syncStickyNanaimoCounter();
+
+      const observer = new MutationObserver(() => {
+        window.requestAnimationFrame(syncStickyNanaimoCounter);
+      });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+      });
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", start, { once: true });
+    } else {
+      start();
+    }
+  })();
+</script>
+<style is:global>
+  /* nanaimo-hide-more-filters-v1 */
+  #home-hero-search:has(.locus-home-search__inventory-board)
+  .locus-home-more-toggle,
+  #home-hero-search:has(.locus-home-search__inventory-board)
+  .locus-home-more-panel {
+    display: none !important;
+  }
+
+  #home-hero-search:has(.locus-home-search__inventory-board) {
+    grid-template-columns: 150px 1.28fr 1fr .95fr .85fr !important;
+  }
+
+  .listing-filter-rail
+  #home-hero-search:has(.locus-home-search__inventory-board) {
+    grid-template-columns: 150px 1.28fr 1fr .95fr .85fr !important;
+  }
+
+  @media (max-width: 900px) {
+    #home-hero-search:has(.locus-home-search__inventory-board),
+    .listing-filter-rail
+    #home-hero-search:has(.locus-home-search__inventory-board) {
+      grid-template-columns: 1fr 1fr !important;
+    }
+  }
 </style>
