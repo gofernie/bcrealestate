@@ -8389,6 +8389,15 @@ function showMoreCards() {
       const storyBudget = Number(form.elements.storyMaxPrice?.value || 0);
       const maxPrice = Number(form.elements.maxPrice?.value || 0);
       const currentBudget = storyBudget || maxPrice;
+      const priceSelect = form.elements.maxPrice;
+      const nextBudget =
+        currentBudget &&
+        priceSelect instanceof HTMLSelectElement
+          ? Array.from(priceSelect.options)
+              .map((option) => Number(option.value || 0))
+              .filter((value) => value > currentBudget)
+              .sort((a, b) => a - b)[0] || 0
+          : 0;
       const hasArea = selectedAreas.length > 0 || Boolean(selectedArea);
 
       const typeValue = String(form.elements.type?.value || "").toLowerCase();
@@ -8413,9 +8422,15 @@ function showMoreCards() {
           ? titleCase(selectedArea)
           : "";
 
-      const budgetLabel = currentBudget >= 1000
-        ? `${(currentBudget / 1000).toFixed(1)}M`
-        : `${currentBudget}k`;
+      const formatBudgetLabel = (value) =>
+        value >= 1000
+          ? `${(value / 1000).toFixed(1)}M`
+          : `${value}k`;
+
+      const budgetLabel = formatBudgetLabel(currentBudget);
+      const nextBudgetLabel = nextBudget
+        ? formatBudgetLabel(nextBudget)
+        : "";
 
       const loadMoreButton = document.getElementById("home-load-more");
 
@@ -8448,7 +8463,9 @@ function showMoreCards() {
         } else if (currentBudget) {
           copy.textContent =
             `We found ${homeTotal} ${typeLabel} up to ${budgetLabel}. ` +
-            "The next closest matches start just above that.";
+            (nextBudget
+              ? `Expand your search to include ${typeLabel} up to ${nextBudgetLabel}.`
+              : "There are no higher price bands available.");
         } else {
           copy.textContent =
             `We found ${homeTotal} ${typeLabel} in ${areaLabel}. ` +
@@ -8457,11 +8474,11 @@ function showMoreCards() {
       }
 
       if (budgetButton) {
-        budgetButton.hidden = !currentBudget;
+        budgetButton.hidden = !nextBudget;
 
-        if (currentBudget) {
+        if (nextBudget) {
           budgetButton.textContent =
-            `See ${typeLabel} above ${budgetLabel}`;
+            `See ${typeLabel} up to ${nextBudgetLabel}`;
         }
       }
 
@@ -12046,7 +12063,7 @@ const navBottom = () => {
       }
 
       if (resultsForm.elements.minPrice) {
-        resultsForm.elements.minPrice.value = String(currentBudget);
+        resultsForm.elements.minPrice.value = "";
       }
 
       if (resultsForm.elements.maxPrice) {
@@ -12057,7 +12074,7 @@ const navBottom = () => {
       const heroMaxPrice = heroForm?.elements.namedItem("maxPrice");
 
       if (heroMinPrice instanceof HTMLInputElement) {
-        heroMinPrice.value = String(currentBudget);
+        heroMinPrice.value = "";
       }
 
       if (heroMaxPrice instanceof HTMLSelectElement) {
@@ -12075,7 +12092,7 @@ const navBottom = () => {
       }
 
       const nextUrl = new URL(window.location.href);
-      nextUrl.searchParams.set("minPrice", String(currentBudget));
+      nextUrl.searchParams.delete("minPrice");
       nextUrl.searchParams.set("maxPrice", String(expandedBudget));
       nextUrl.hash = "homepage-listings";
 
