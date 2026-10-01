@@ -298,10 +298,17 @@ const getMobileHomePark = (address: unknown) => {
   if (!listingAddress) return undefined;
 
   const matchingParks = mobileHomeParks
-    .map((park) => ({
-      park,
-      address: normaliseParkAddress(park.address),
-    }))
+    .flatMap((park) =>
+      [
+        park.address,
+        ...(Array.isArray(park.matchAddresses)
+          ? park.matchAddresses
+          : []),
+      ].map((value) => ({
+        park,
+        address: normaliseParkAddress(value),
+      }))
+    )
     .filter(({ address }) =>
       Boolean(address) &&
       (
