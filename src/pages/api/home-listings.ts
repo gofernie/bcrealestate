@@ -334,9 +334,8 @@ export const GET: APIRoute = async ({ request }) => {
   const beds = Number(url.searchParams.get("beds") || 0);
   const baths = Number(url.searchParams.get("baths") || 0);
   const age55 = url.searchParams.get("age55") === "true";
-  const familyPark = url.searchParams.get("familyPark") === "true";
-  const petsAllowed = url.searchParams.get("petsAllowed") === "true";
-  const rulesUnconfirmed = url.searchParams.get("rulesUnconfirmed") === "true";const minSqft = Number(url.searchParams.get("minSqft") || 0);
+  const otherPark = url.searchParams.get("otherPark") === "true";
+  const petsAllowed = url.searchParams.get("petsAllowed") === "true";const minSqft = Number(url.searchParams.get("minSqft") || 0);
   const minYear = Number(url.searchParams.get("minYear") || 0);
   const primaryOnMain =
     url.searchParams.get("primaryOnMain") === "true";
@@ -492,16 +491,12 @@ export const GET: APIRoute = async ({ request }) => {
         return false;
       }
     }
-    if (age55 || familyPark || petsAllowed || rulesUnconfirmed) {
+    if (age55 || otherPark || petsAllowed) {
       const park = getMobileHomePark(listing.address);
-
-      if (rulesUnconfirmed) {
-        return !park;
-      }
 
       if (!park) return false;
       if (age55 && park.category !== "55-plus") return false;
-      if (familyPark && park.category !== "family") return false;
+      if (otherPark && park.category === "55-plus") return false;
       if (petsAllowed && park.petType === "none") return false;
     }
 
