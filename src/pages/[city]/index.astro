@@ -995,13 +995,20 @@ try {
     .filter(Boolean)
     .sort();
 
-  const { data: listingsForAreaCounts = [] } = await supabase
+
+  let areaCountQuery = supabase
     .from("listing_rows")
     .select("lat,lng")
     .eq("status", "A")
     .in("normalized_city", cityDatabaseKeys)
     .not("lat", "is", null)
     .not("lng", "is", null);
+
+  if (isNanaimoMobilesSite) {
+    areaCountQuery = areaCountQuery.eq("normalized_type", "mobile");
+  }
+
+  const { data: listingsForAreaCounts = [] } = await areaCountQuery;
 
 
 
@@ -1291,7 +1298,10 @@ const getInventoryType = (listing: any) => {
 if (isNanaimoMobilesSite) {
   listings = listings.filter(
     (listing: any) =>
-      getInventoryType(listing) === "mobile"
+      getInventoryType(listing) === "mobile" &&
+      !/^69\s+lake\s+place\b/i.test(
+        String(getListingAddress(listing) || "")
+      )
   );
 }
 
@@ -2105,6 +2115,13 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
     method="get"
     action={`/${city || "nanaimo"}`}
   >
+    {isLocal && (
+      <input
+        type="hidden"
+        name="siteDomain"
+        value={effectiveSiteDomain}
+      />
+    )}
     <input
       type="hidden"
       name="minPrice"
@@ -2194,6 +2211,13 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
       </div>
     </div>
 
+{isNanaimoMobilesSite && (
+  <select name="type" hidden aria-hidden="true" tabindex="-1" style="display: none !important;">
+    <option value="mobile" selected>Mobile Homes</option>
+  </select>
+)}
+
+{!isNanaimoMobilesSite && (
     <label class="locus-home-search__field">
       <span>Property type</span>
 
@@ -2223,7 +2247,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
         ))}
       </select>
     </label>
-
+)}
     <label class="locus-home-search__field">
       <span>Price</span>
 
@@ -3500,7 +3524,10 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
     </option>
   ))}
 </select>
-<select name="type" class="filter-select" aria-label="Property type">
+{isNanaimoMobilesSite ? (
+  <input type="hidden" name="type" value="mobile" />
+) : (
+  <select name="type" class="filter-select" aria-label="Property type">
   <option value="" selected={!type}>All Types</option>
 
   {propertyTypeOptions.map((propertyType) => (
@@ -3517,6 +3544,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
     </option>
   ))}
 </select>
+)}
 
  <select name="maxPrice" class="filter-select" aria-label="Max price">
   <option value="" selected={!maxPrice}>Any Price</option>
@@ -10875,7 +10903,7 @@ document.documentElement.style.visibility = "";
 }
 </style>
 
-<script is:inline src="/home-search-dropdowns.js?v=22"></script>
+<script is:inline src="/home-search-dropdowns.js?v=23"></script>
 <style is:global>
   .homepage-save-search-form {
     grid-column: 1 / -1;
@@ -11453,6 +11481,31 @@ document.documentElement.style.visibility = "";
   transition: none !important;
 }
 </style>
+<!-- nanaimo-mobile-remove-type-dropdown-v1 -->
+<script is:inline>
+  (() => {
+    const removeNanaimoMobileTypeField = () => {
+      const params = new URLSearchParams(window.location.search);
+      const isNanaimoMobiles =
+        window.location.hostname === "nanaimomobiles.com" ||
+        params.get("siteDomain") === "nanaimomobiles.com";
+
+      if (!isNanaimoMobiles) return;
+
+      document
+        .querySelectorAll("#home-hero-search .locus-home-search__field")
+        .forEach((field) => {
+          if (field.querySelector('select[name="type"]')) {
+            field.remove();
+          }
+        });
+    };
+
+    removeNanaimoMobileTypeField();
+    requestAnimationFrame(removeNanaimoMobileTypeField);
+    window.setTimeout(removeNanaimoMobileTypeField, 100);
+  })();
+</script>
 </Layout>
 
 
