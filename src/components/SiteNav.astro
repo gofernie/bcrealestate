@@ -11,6 +11,7 @@ const {
   site = null,
   showAreaNav = false,
   activeSection = "",
+  listingCount = 0,
 } = Astro.props;
 
 const currentPath = Astro.url.pathname.replace(/\/$/, "") || "/";
@@ -149,7 +150,7 @@ const cleanAreaLabel = (value: string) =>
     .trim()
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
-const areaLinks: NavItem[] = areas.slice(0, 8).map((area: string) => ({
+const areaLinks: NavItem[] = areas.map((area: string) => ({
   label: cleanAreaLabel(area),
   href: `/${slugify(city)}/${slugify(area)}`,
 }));
@@ -259,6 +260,12 @@ const combinedNavLinks: NavItem[] =
     ).values()
   );
 
+const nanaimoListingCount = Math.max(0, Number(listingCount) || 0);
+const nanaimoListingCountText = nanaimoListingCount
+  .toLocaleString("en-CA")
+  .padStart(2, "0");
+
+// site-nav-listing-counter-v1
 const finalNavLinks: NavItem[] =
   isNanaimoMobilesSite
     ? typeLinks.filter(
@@ -303,7 +310,7 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
       <span class="site-nav__theme-label">Theme</span>
     </button>
     <div class="site-nav__links" id="site-nav-links">
-   <div class="site-nav__areas">
+<div class="site-nav__areas">
   <a
     class="site-nav__areas-desktop"
     class:list={{
@@ -334,7 +341,6 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
   <div
     class="site-nav__area-links"
     id="site-nav-area-links"
-    hidden
   >
     {areaLinks.map((item) => (
       <a
@@ -454,6 +460,8 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
 
 <script is:inline>
   /* dynamic-area-menu-handler-v3 */
+  const areaNav =
+    document.querySelector(".site-nav__areas");
   const areaMenuToggle =
     document.querySelector(
       ".site-nav__areas-toggle"
@@ -470,11 +478,11 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
       event.preventDefault();
       event.stopPropagation();
 
-      if (!areaMenu) return;
+      if (!areaNav || !areaMenu) return;
 
-      const willOpen = areaMenu.hidden;
+      const willOpen = !areaNav.classList.contains("is-open");
 
-      areaMenu.hidden = !willOpen;
+      areaNav.classList.toggle("is-open", willOpen);
 
       areaMenuToggle.setAttribute(
         "aria-expanded",
@@ -709,7 +717,6 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
       border: 1px solid var(--line-warm);
     }
   }
-  
   /* dynamic-mobile-area-menu-v1 */
   .site-nav__areas-toggle,
   .site-nav__area-links {
@@ -763,13 +770,13 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
     }
 
     .site-nav__area-links {
-      display: grid;
+      display: none;
       gap: 3px;
       padding: 5px 0 6px 12px;
     }
 
-    .site-nav__area-links[hidden] {
-      display: none !important;
+    .site-nav__areas.is-open .site-nav__area-links {
+      display: grid;
     }
 
     .site-nav__links.open
@@ -797,6 +804,7 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
       font-weight: 800;
     }
   }
+
   .site-nav__theme-toggle {
     display: none !important;
     display: none !important;
@@ -853,87 +861,114 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
     .site-nav__toggle {
       margin-left: 0;
     }
-  }</style>
+  }  /* site-nav-listing-counter-v1 */
+  .site-nav__listing-count {
+    align-items: center;
+    display: inline-flex !important;
+    gap: 8px;
+    margin-right: 8px;
+    text-decoration: none;
+  }
 
-<script is:inline>
-  // content-aware-nav-breakpoint
-  (() => {
-    const navInner =
-      document.querySelector(".site-nav__inner");
-
-    const brand =
-      document.querySelector(".site-nav__brand");
-
-    const links =
-      document.querySelector(".site-nav__links");
-
-    if (!navInner || !brand || !links) return;
-
-    function getMobileMediaRules() {
-      const matches = [];
-
-      for (const sheet of document.styleSheets) {
-        let rules;
-
-        try {
-          rules = sheet.cssRules;
-        } catch {
-          continue;
-        }
-
-        for (const rule of rules) {
-          if (
-            rule instanceof CSSMediaRule &&
-            /max-width:\s*(?:760|\d+)px/.test(
-              rule.media.mediaText
-            ) &&
-            Array.from(rule.cssRules).some((child) =>
-              child.cssText.includes("site-nav")
-            )
-          ) {
-            matches.push(rule);
-          }
-        }
-      }
-
-      return matches;
-    }
-
-    function setNaturalBreakpoint() {
-      const mediaRules = getMobileMediaRules();
-
-      if (!mediaRules.length) return;
-
-      // Temporarily expose the full desktop navigation for measurement.
-      mediaRules.forEach((rule) => {
-        rule.media.mediaText = "(max-width: 0px)";
-      });
-
-      requestAnimationFrame(() => {
-        const styles = getComputedStyle(navInner);
-        const gap = parseFloat(styles.columnGap || styles.gap) || 24;
-
-        const requiredShellWidth =
-          Math.ceil(
-            brand.getBoundingClientRect().width +
-            links.scrollWidth +
-            gap
-          );
-
-        // Desktop shell removes 40px from each side.
-        const breakpoint = requiredShellWidth + 80;
-
-        mediaRules.forEach((rule) => {
-          rule.media.mediaText =
-            `(max-width: ${breakpoint}px)`;
-        });
-      });
-    }
-
-    setNaturalBreakpoint();
-
-    document.fonts?.ready?.then(
-      setNaturalBreakpoint
+  .site-nav__listing-digits {
+    background: linear-gradient(
+      to bottom,
+      #173a60 0,
+      #173a60 48%,
+      #0d2a48 49%,
+      #0d2a48 52%,
+      #173a60 53%,
+      #173a60 100%
     );
-  })();
-</script>
+    border: 1px solid rgba(255, 255, 255, .25);
+    border-radius: 3px;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.18),
+      0 2px 5px rgba(8,32,55,.2);
+    color: #fff;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .86rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 900;
+    letter-spacing: .11em;
+    line-height: 1;
+    min-width: 2.75em;
+    padding: .46rem .34rem .4rem .45rem;
+    text-align: center;
+  }
+
+  .site-nav__listing-label {
+    font-size: .7rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  @media (max-width: 700px) {
+    .site-nav__listing-label {
+      display: none;
+    }
+  }
+
+  /* site-nav-area-list-scroll-v1 */
+  .site-nav__links.open {
+    overflow: visible !important;
+  }
+
+  .site-nav__links.open
+    .site-nav__areas:hover .site-nav__area-links,
+  .site-nav__areas:focus-within .site-nav__area-links,
+  .site-nav__area-links:not([hidden]) {
+    max-height: min(62dvh, 460px) !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+
+  /* site-nav-area-stack-v1 */
+  .site-nav__links.open .site-nav__areas {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .site-nav__links.open .site-nav__areas-toggle,
+  .site-nav__links.open .site-nav__area-links {
+    width: 100%;
+    box-sizing: border-box;
+  }
+</style>
+<style is:global>
+/* saved-desktop-areas-hover */
+@media (min-width: 761px) {
+  .site-nav__areas {
+    position: relative;
+  }
+
+  .site-nav__links {
+    overflow: visible !important;
+  }
+
+  .site-nav__area-links {
+    display: none !important;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 2147482002;
+    width: max-content;
+    min-width: 205px;
+    max-height: min(420px, calc(100vh - 76px));
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 0 0 12px 12px;
+    background: var(--card-bg);
+    box-shadow: 0 16px 34px rgba(10, 31, 45, .16);
+  }
+
+  .site-nav__areas:hover .site-nav__area-links,
+  .site-nav__areas:focus-within .site-nav__area-links {
+    display: grid !important;
+  }
+}
+</style>
