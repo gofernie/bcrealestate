@@ -974,6 +974,70 @@ const propertyTypeOrder = [
 const propertyTypeOptions = [
   ...propertyTypeOrder,
 ];
+const homepageTypeCounts = new Map<string, number>();
+
+const normaliseHomepageTypeKey = (value: unknown) => {
+  const typeKey = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, "-");
+
+  if (
+    [
+      "house",
+      "home",
+      "homes",
+      "detached",
+      "residential",
+      "single-family",
+      "single-family-home",
+      "single-family-residential",
+    ].includes(typeKey)
+  ) {
+    return "house";
+  }
+
+  return typeKey;
+};
+
+(relatedIntentCardInventory || []).forEach((row: any) => {
+  const typeKey = normaliseHomepageTypeKey(
+    row?.normalized_type || row?.property_type || ""
+  );
+
+  if (typeKey) {
+    homepageTypeCounts.set(
+      typeKey,
+      (homepageTypeCounts.get(typeKey) || 0) + 1
+    );
+  }
+});
+const homeTypeLabel = (value: string) =>
+  ({
+    house: "Homes",
+    condo: "Condos",
+    townhouse: "Townhomes",
+    mobile: "Mobile Homes",
+    land: "Lot / Land",
+    "lot-land": "Lot / Land",
+    "multi-family": "Multi-Family",
+  }[value] || titleCase(value));
+
+const homepageTypeCards = [
+  "house",
+  ...propertyTypeOptions.filter((value) => value !== "house"),
+]
+  .map((value) => ({
+    value,
+    label: homeTypeLabel(value),
+    count: homepageTypeCounts.get(value) || 0,
+  }))
+  .filter((card) => card.count > 0)
+  .sort(
+    (a, b) =>
+      b.count - a.count ||
+      a.label.localeCompare(b.label)
+  );
 const groupLabel = [  area || "",
   type ? type.replace(/-/g, " ") : "",
   maxPrice ? `under $${maxPrice}k` : "",
@@ -3404,59 +3468,245 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
   padding: 10px 14px !important;
   box-shadow: 0 -8px 18px rgba(25, 20, 35, .08) !important;
 }
-</style>
 
-<section class="locus-home-neighbourhoods">
+  /* home-explore-tabs-v2 */
+  .locus-home-explore {
+    display: grid;
+    grid-template-columns: minmax(230px, .78fr) minmax(0, 1.42fr);
+    margin: 42px auto 54px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--card-bg);
+  }
 
-  <div class="locus-home-neighbourhoods__intro">
-    <span class="locus-home-section-kicker">EXPLORE LOCALLY</span>
+  .locus-home-explore__intro {
+    padding: 34px 30px;
+    border-right: 1px solid var(--line);
+  }
 
-    <h2>Explore {cityName} Neighbourhoods</h2>
+  .locus-home-explore__intro h2 {
+    max-width: 9ch;
+    margin: 8px 0 12px;
+  }
 
+  .locus-home-explore__intro p {
+    max-width: 27ch;
+    margin: 0 0 22px;
+  }
+
+  .locus-home-explore__intro a {
+    color: var(--ink);
+    font-size: .82rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .locus-home-explore__panel {
+    min-width: 0;
+  }
+
+  .locus-home-explore__tabs {
+    display: flex;
+    gap: 4px;
+    padding: 13px 16px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .locus-home-explore__tabs button {
+    padding: 10px 12px 11px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: .8rem;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .locus-home-explore__tabs button.is-active {
+    border-bottom-color: var(--accent);
+    color: var(--ink);
+  }
+
+  .locus-home-explore__content[hidden] {
+    display: none !important;
+  }
+
+  .locus-home-explore__content .locus-home-neighbourhood-grid {
+    min-height: 100%;
+  }
+
+  @media (max-width: 760px) {
+    .locus-home-explore {
+      grid-template-columns: 1fr;
+      margin: 28px auto 38px;
+    }
+
+    .locus-home-explore__intro {
+      padding: 27px 22px 22px;
+      border-right: 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .locus-home-explore__intro h2 {
+      max-width: none;
+    }
+  }
+  /* home-explore-tabs-grid-fix */
+  .locus-home-explore__content
+    .locus-home-neighbourhood-card--all {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--line);
+  }</style>
+
+<section class="locus-home-explore">
+  <div class="locus-home-explore__intro">
+    <span class="locus-home-section-kicker">{cityName.toUpperCase()} HOME SEARCH</span>
+    <h2>Find your next home</h2>
     <p>
-      Know the area? Go straight to the homes there.
+      Explore {cityName} by neighbourhood or home type. See what is available now, then narrow in on the places that fit.
     </p>
-
-    <a href={`/${city || "nanaimo"}/areas`}>
-      View all neighbourhoods &rarr;
-    </a>
+    <a href={`/${city || "nanaimo"}`}>Explore all {cityName} listings &rarr;</a>
   </div>
 
-  <div class="locus-home-neighbourhood-grid">
-    {homepageAreaCards.slice(0, 7).map((card) => (
-      <a
-        href={card.href}
-        class="locus-home-neighbourhood-card"
-      >
-        <strong>
-          {titleCase(card.name).replace(/^Pq\s+/i, "")}
-        </strong>
-
-        <span>
-          {card.count} {card.count === 1 ? "listing" : "listings"}
-        </span>
-
-        <b aria-hidden="true">&rarr;</b>
-      </a>
-    ))}
-
-    <a
-      href={`/${city || "nanaimo"}/areas`}
-      class="locus-home-neighbourhood-card locus-home-neighbourhood-card--all"
+  <div class="locus-home-explore__panel">
+    <div
+      class="locus-home-explore__tabs"
+      role="tablist"
+      aria-label="Browse Nanaimo homes"
     >
-      <strong>
-        Every {cityName} neighbourhood
-      </strong>
+      <button
+        class="is-active"
+        id="explore-tab-areas"
+        type="button"
+        role="tab"
+        aria-selected="true"
+        aria-controls="explore-panel-areas"
+        data-explore-tab="areas"
+      >
+        Neighbourhoods
+      </button>
 
-      <span>Browse all areas</span>
+      {!isNanaimoMobilesSite && (
+        <button
+          id="explore-tab-types"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="explore-panel-types"
+          data-explore-tab="types"
+        >
+          Home types
+        </button>
+      )}
+    </div>
 
-      <b aria-hidden="true">&rarr;</b>
-    </a>
+    <div
+      class="locus-home-explore__content is-active"
+      id="explore-panel-areas"
+      role="tabpanel"
+      aria-labelledby="explore-tab-areas"
+      data-explore-panel="areas"
+    >
+      <div class="locus-home-neighbourhood-grid">
+        {homepageAreaCards.slice(0, 7).map((card) => (
+          <a
+            href={card.href}
+            class="locus-home-neighbourhood-card"
+          >
+            <strong>
+              {titleCase(card.name).replace(/^Pq\s+/i, "")}
+            </strong>
+            <span>
+              {card.count} {card.count === 1 ? "listing" : "listings"}
+            </span>
+            <b aria-hidden="true">&rarr;</b>
+          </a>
+        ))}
+
+        <a
+          href={`/${city || "nanaimo"}/areas`}
+          class="locus-home-neighbourhood-card locus-home-neighbourhood-card--all"
+        >
+          <strong>Every {cityName} neighbourhood</strong>
+          <span>Browse all areas</span>
+          <b aria-hidden="true">&rarr;</b>
+        </a>
+      </div>
+    </div>
+
+    {!isNanaimoMobilesSite && homepageTypeCards.length > 0 && (
+      <div
+        class="locus-home-explore__content"
+        id="explore-panel-types"
+        role="tabpanel"
+        aria-labelledby="explore-tab-types"
+        data-explore-panel="types"
+        hidden
+      >
+        <div class="locus-home-neighbourhood-grid">
+          {homepageTypeCards.slice(0, 7).map((card) => (
+            <a
+              href={buildFilterUrl({ type: card.value })}
+              class="locus-home-neighbourhood-card"
+            >
+              <strong>{card.label}</strong>
+              <span>
+                {card.count} {card.count === 1 ? "listing" : "listings"}
+              </span>
+              <b aria-hidden="true">&rarr;</b>
+            </a>
+          ))}
+
+          <a
+            href={`/${city || "nanaimo"}`}
+            class="locus-home-neighbourhood-card locus-home-neighbourhood-card--all"
+          >
+            <strong>All home types</strong>
+            <span>Browse all homes</span>
+            <b aria-hidden="true">&rarr;</b>
+          </a>
+        </div>
+      </div>
+    )}
   </div>
+</section><script is:inline>
+  (() => {
+    document
+      .querySelectorAll(".locus-home-explore")
+      .forEach((explore) => {
+        const tabs = Array.from(
+          explore.querySelectorAll("[data-explore-tab]")
+        );
 
-</section>
+        const panels = Array.from(
+          explore.querySelectorAll("[data-explore-panel]")
+        );
 
-<section class="locus-home-market">
+        tabs.forEach((tab) => {
+          tab.addEventListener("click", () => {
+            const target = tab.dataset.exploreTab;
+
+            tabs.forEach((item) => {
+              const active = item === tab;
+              item.classList.toggle("is-active", active);
+              item.setAttribute("aria-selected", String(active));
+            });
+
+            panels.forEach((panel) => {
+              const active =
+                panel.dataset.explorePanel === target;
+
+              panel.classList.toggle("is-active", active);
+              panel.toggleAttribute("hidden", !active);
+            });
+          });
+        });
+      });
+  })();
+</script><section class="locus-home-market">
 
   <div class="locus-home-market__stats">
 
