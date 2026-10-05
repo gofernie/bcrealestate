@@ -12,6 +12,7 @@ const {
   showAreaNav = false,
   activeSection = "",
   listingCount = 0,
+  areaListingCounts = {},
 } = Astro.props;
 
 const currentPath = Astro.url.pathname.replace(/\/$/, "") || "/";
@@ -155,8 +156,28 @@ const areaLinks: NavItem[] = areas.map((area: string) => ({
   href: `/${slugify(city)}/${slugify(area)}`,
 }));
 
+const areaListingCountLookup: Record<string, number> =
+  areaListingCounts &&
+  typeof areaListingCounts === "object"
+    ? (areaListingCounts as Record<string, number>)
+    : {};
 
+const hasAreaListingCounts =
+  Object.keys(areaListingCountLookup).length > 0;
 
+const getNavAreaCount = (label: string) =>
+  Math.max(
+    0,
+    Number(
+      areaListingCountLookup[
+        String(label || "")
+          .replace(/-/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .toLowerCase()
+      ] || 0
+    )
+  );
 const canonicalIntentHref = (pageSlug: string) => {
   const citySlug = slugify(city);
   const normalizedSlug = slugify(String(pageSlug || ""));
@@ -349,7 +370,17 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
         }}
         href={item.href}
       >
-        {item.label}
+        <span class="site-nav__area-label">{item.label}</span>
+        {hasAreaListingCounts && (
+          <span
+            class:list={{
+              "site-nav__area-count": true,
+              "is-zero": !getNavAreaCount(item.label),
+            }}
+          >
+            {getNavAreaCount(item.label)} listings
+          </span>
+        )}
       </a>
     ))}
 
@@ -805,6 +836,25 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
     }
   }
 
+  .site-nav__area-links a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .site-nav__area-count {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: .74rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
+
+  .site-nav__area-count.is-zero {
+    opacity: .52;
+    font-weight: 600;
+  }
   .site-nav__theme-toggle {
     display: none !important;
     display: none !important;
@@ -971,4 +1021,48 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
     display: grid !important;
   }
 }
-</style>
+
+  /* force-area-count-visibility */
+  .site-nav__area-links .site-nav__area-count {
+    display: inline-flex !important;
+    visibility: visible !important;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 2ch;
+    margin-left: auto !important;
+    color: var(--muted) !important;
+    opacity: 1 !important;
+    white-space: nowrap;
+  }
+
+  .site-nav__area-links .site-nav__area-count.is-zero {
+    opacity: .52 !important;
+
+  /* softer-area-listing-counts */
+  .site-nav__area-links .site-nav__area-count {
+    color: var(--muted) !important;
+    font-size: .70rem;
+    font-weight: 500 !important;
+    opacity: .68 !important;
+  }
+
+  .site-nav__area-links .site-nav__area-count.is-zero {
+    opacity: .42 !important;
+  }  }
+  /* area-count-whisper */
+  #site-nav-area-links .site-nav__area-count {
+    color: var(--muted) !important;
+    font-size: .68rem !important;
+    font-weight: 500 !important;
+    letter-spacing: .01em;
+    opacity: .68 !important;
+  }
+
+  #site-nav-area-links .site-nav__area-count.is-zero {
+    opacity: .42 !important;
+  }
+  /* active-area-count */
+  #site-nav-area-links a.active .site-nav__area-count {
+    color: #ffffff !important;
+    opacity: .82 !important;
+  }</style>
