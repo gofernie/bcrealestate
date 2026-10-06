@@ -2780,13 +2780,9 @@ sheet.setAttribute("aria-hidden", "false");
 sheet.removeAttribute("inert");
 document.body.style.overflow = "hidden";
 
-if (!modalHistoryPushed) {
-  modalReturnUrl = window.location.href;
-  modalHistoryPushed = true;
-  syncListingUrl(card, "push");
-} else {
-  syncListingUrl(card, "replace");
-}
+// Opening a sheet must not alter browser history. Astro's client router can
+// otherwise remount the page after close, leaving later cards unresponsive.
+modalHistoryPushed = false;
 
 window.requestAnimationFrame(() => {
   updateLandscapeGalleryMode();
@@ -3230,12 +3226,7 @@ if (mobileMediaNav) {
   setMobileMediaMode("photos");
 }
 
-if (modalHistoryPushed && !options.fromPopState) {
-  modalHistoryPushed = false;
-  history.back();
-} else {
-  modalHistoryPushed = false;
-}
+modalHistoryPushed = false;
 }
 const requestedImageUrls = new Set();
 const loadedImageUrls = new Set();
@@ -5218,37 +5209,54 @@ saveCurrentReaction();
 // keep modal position steady after decision
 }
 
-   document.addEventListener("click", (event) => {
-const card = event.target.closest(".original-card, .refined-card");
+   const openCardSheetFromClick = (event) => {
+  if (!(event.target instanceof Element)) return;
+
+  const card = event.target.closest(
+    ".original-card, .refined-card"
+  );
 
   if (!card) return;
 
- const interactive = event.target.closest("button, a, input, textarea, select");
+  const interactive = event.target.closest(
+    "button, a, input, textarea, select"
+  );
+
   if (interactive && interactive !== card) {
-    // Allow preview-btn and image-wrap clicks to open the modal
-    const isPreviewTrigger = interactive.classList.contains("preview-btn") ||
-      !!event.target.closest(".card__image-wrap");
+    const isPreviewTrigger =
+      interactive.classList.contains("preview-btn") ||
+      Boolean(event.target.closest(".card__image-wrap"));
+
     if (!isPreviewTrigger) return;
   }
 
-if (document.body.dataset.shortlistSendId && document.body.dataset.agentView === "true") return;
-
-  if (typeof openSheet === "function") {
-    openSheet(card);
-  } else {
-    let attempts = 0;
-    const retry = setInterval(() => {
-      attempts++;
-      if (typeof window.openSheet === "function") {
-        clearInterval(retry);
-        window.openSheet(card);
-      } else if (attempts > 50) {
-        clearInterval(retry);
-        console.error("openSheet never became available");
-      }
-    }, 20);
+  if (
+    document.body.dataset.shortlistSendId &&
+    document.body.dataset.agentView === "true"
+  ) {
+    return;
   }
-});
+
+  const open = window.openSheet;
+
+  if (typeof open !== "function") {
+    console.error("Listing modal is not ready.");
+    return;
+  }
+
+  // Card clicks belong to the listing sheet. Capture them before any
+  // older page/router handler can turn the click into navigation.
+  event.preventDefault();
+  event.stopImmediatePropagation();
+
+  open(card);
+};
+
+document.addEventListener(
+  "click",
+  openCardSheetFromClick,
+  true
+);
 
         closeBtn?.addEventListener("click", closeSheet);
 sheetShareBtn?.addEventListener("click", async (event) => {
