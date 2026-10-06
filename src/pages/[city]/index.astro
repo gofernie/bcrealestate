@@ -1249,27 +1249,59 @@ const isNewMatchesView =
   newMatchIds.length > 0;
 
 let listings: any[] = [];
+let homepageInventory: any[] = [];
 let errorMessage = "";
 
 try {
-let query =
-  supabase
-    .from("listing_rows")
-    .select("*")
-    .eq("status", "A")
-    .limit(1000);
+  const inventoryColumns = [
+    "id",
+    "mls_number",
+    "normalized_type",
+    "property_type",
+    "price",
+    "beds",
+    "normalized_area",
+    "address",
+    "listed_at",
+    "created_at",
+    "updated_at",
+  ].join(",");
+
+  let cardQuery =
+    supabase
+      .from("listing_rows")
+      .select("*")
+      .eq("status", "A")
+      .limit(48);
+
+  let inventoryQuery =
+    supabase
+      .from("listing_rows")
+      .select(inventoryColumns)
+      .eq("status", "A")
+      .limit(1000);
 
 if (city) {
-  query =
-    query.in(
+  cardQuery =
+    cardQuery.in(
+      "normalized_city",
+      cityDatabaseKeys
+    );
+  inventoryQuery =
+    inventoryQuery.in(
       "normalized_city",
       cityDatabaseKeys
     );
 }
 
 if (isNewMatchesView) {
-  query =
-    query.in(
+  cardQuery =
+    cardQuery.in(
+      "mls_number",
+      newMatchIds
+    );
+  inventoryQuery =
+    inventoryQuery.in(
       "mls_number",
       newMatchIds
     );
@@ -1277,20 +1309,36 @@ if (isNewMatchesView) {
 
 /* homepage-server-area-filter-v1 */
 if (areas.length > 0) {
-  query = query.in("normalized_area", areas);
+  cardQuery = cardQuery.in("normalized_area", areas);
+  inventoryQuery = inventoryQuery.in("normalized_area", areas);
 }
 
   // Homepage discovery preloads a broad pool.
   // Filters are applied client-side for instant UX.
 
-  if (sort === "price-low" || sort === "price-asc") query = query.order("price", { ascending: true });
-  else if (sort === "price-high" || sort === "price-desc") query = query.order("price", { ascending: false });
-  else if (sort === "beds-high") query = query.order("beds", { ascending: false });
-  else query = query.order("listed_at", { ascending: false });
+  if (sort === "price-low" || sort === "price-asc") {
+    cardQuery = cardQuery.order("price", { ascending: true });
+    inventoryQuery = inventoryQuery.order("price", { ascending: true });
+  } else if (sort === "price-high" || sort === "price-desc") {
+    cardQuery = cardQuery.order("price", { ascending: false });
+    inventoryQuery = inventoryQuery.order("price", { ascending: false });
+  } else if (sort === "beds-high") {
+    cardQuery = cardQuery.order("beds", { ascending: false });
+    inventoryQuery = inventoryQuery.order("beds", { ascending: false });
+  } else {
+    cardQuery = cardQuery.order("listed_at", { ascending: false });
+    inventoryQuery = inventoryQuery.order("listed_at", { ascending: false });
+  }
 
-  const { data, error } = await query;
-  if (error) throw error;
-  listings = (data || []).filter((listing: any) => {
+  const [cardResult, inventoryResult] = await Promise.all([
+    cardQuery,
+    inventoryQuery,
+  ]);
+
+  if (cardResult.error) throw cardResult.error;
+  if (inventoryResult.error) throw inventoryResult.error;
+
+  const keepHomepageListing = (listing: any) => {
     // structured-listing-classification-v1
     // Do not classify from marketing remarks: legitimate homes often
     // mention an office, business, retail, or commercial amenities.
@@ -1332,7 +1380,12 @@ if (areas.length > 0) {
       numericPrice < 50000;
 
     return !isCommercialOrLease && !isLeaseSizedPrice;
-  });
+  };
+
+  listings = (cardResult.data || []).filter(keepHomepageListing);
+  homepageInventory = (inventoryResult.data || []).filter(
+    keepHomepageListing
+  );
 
   if (isNewMatchesView) {
     listings.sort(
@@ -1343,6 +1396,11 @@ if (areas.length > 0) {
         newMatchIds.indexOf(
           String(b?.mls_number || "")
         )
+    );
+    homepageInventory.sort(
+      (a, b) =>
+        newMatchIds.indexOf(String(a?.mls_number || "")) -
+        newMatchIds.indexOf(String(b?.mls_number || ""))
     );
   }
 
@@ -1430,17 +1488,22 @@ const getMobileHomePark = (listing: any) => {
 };
 
 if (isNanaimoMobilesSite) {
-  listings = listings.filter(
-    (listing: any) =>
-      getInventoryType(listing) === "mobile" &&
-      !/^69\s+lake\s+place\b/i.test(
-        String(getListingAddress(listing) || "")
-      )
+  const keepNanaimoMobileListing = (listing: any) =>
+    getInventoryType(listing) === "mobile" &&
+    !/^69\s+lake\s+place\b/i.test(
+      String(getListingAddress(listing) || "")
+    );
+
+  listings = listings.filter(keepNanaimoMobileListing);
+  homepageInventory = homepageInventory.filter(
+    keepNanaimoMobileListing
   );
 }
 
+const homepageListingCount = homepageInventory.length;
+
 const getInventoryPrices = (inventoryType = "") =>
-  listings
+  homepageInventory
     .filter(
       (listing: any) =>
         !inventoryType ||
@@ -1567,7 +1630,7 @@ const buildPriceBandOptions = (
 const inventoryTypes = Array.from(
   new Set([
     "all",
-    ...listings
+    ...homepageInventory
       .map((listing: any) => getInventoryType(listing))
       .filter(Boolean),
   ])
@@ -1589,7 +1652,7 @@ const priceBandOptionsByType = Object.fromEntries(
 const bedroomThresholds = [2, 3, 4, 5];
 
 // price-aware-bedroom-options-v1
-const bedroomInventoryData = listings.map(
+const bedroomInventoryData = homepageInventory.map(
   (listing: any) => ({
     type: getInventoryType(listing),
     price: Number(
@@ -1609,7 +1672,7 @@ const bedroomInventoryData = listings.map(
 
 const bedroomOptionsByType = Object.fromEntries(
   inventoryTypes.map((inventoryType) => {
-    const inventoryBeds = listings
+    const inventoryBeds = homepageInventory
       .filter(
         (listing: any) =>
           inventoryType === "all" ||
@@ -1728,7 +1791,7 @@ const homepageFeaturedListings = listings
   .filter(isHomepageFeaturedCandidate)
   .slice(0, 4);
 
-const homepageListingPrices = listings
+const homepageListingPrices = homepageInventory
   .map((listing: any) => Number(String(listing.price ?? listing.listPrice ?? listing.priceNumber ?? listing.raw?.price ?? listing.raw?.listPrice ?? 0).replace(/[^0-9.-]/g, "")))
   .filter((price: number) => Number.isFinite(price) && price > 0)
   .sort((a: number, b: number) => a - b);
@@ -1737,7 +1800,7 @@ const homepageMedianPrice = homepageListingPrices.length
   ? homepageListingPrices[Math.floor(homepageListingPrices.length / 2)]
   : 0;
 
-const homepageNewThisWeek = listings.filter((listing: any) => {
+const homepageNewThisWeek = homepageInventory.filter((listing: any) => {
   const rawDate = listing?.listed_at || listing?.created_at || listing?.updated_at;
   if (!rawDate) return false;
 
@@ -1748,7 +1811,7 @@ const homepageNewThisWeek = listings.filter((listing: any) => {
 }).length;
 
 const homepageNeighbourhoodCount = new Set(
-  listings
+  homepageInventory
     .map((listing: any) =>
       String(listing?.normalized_area || "")
         .trim()
@@ -1764,7 +1827,7 @@ const homepageNeighbourhoodCount = new Set(
 if (homepageAreaCards.length === 0) {
   const fallbackAreaCounts = new Map<string, number>();
 
-  listings.forEach((listing: any) => {
+  homepageInventory.forEach((listing: any) => {
     const name = String(getListingArea(listing) || "")
       .replace(/-/g, " ")
       .trim()
@@ -1948,8 +2011,8 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
       "@context": "https://schema.org",
       "@type": "ItemList",
       "name": city ? `${city} ${type ? type.replace(/-/g, " ") + "s" : "homes"} for sale` : "Homes for sale",
-      "description": city ? `${listings.length} active listings in ${city}` : "Active real estate listings",
-      "numberOfItems": listings.length,
+      "description": city ? `${homepageListingCount} active listings in ${city}` : "Active real estate listings",
+      "numberOfItems": homepageListingCount,
       "url": Astro.url.href
     })}
   />
@@ -1958,24 +2021,6 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
     id="home-intent-collections-json"
     type="application/json"
     set:html={JSON.stringify(allIntentCollections)}
-  />
-<script
-    id="home-all-listings-json"
-    type="application/json"
-    set:html={JSON.stringify(listings.map((l: any) => ({
-      lat: l.lat,
-      lng: l.lng,
-      id: l.id || l.mls_number || "",
-      image: getListingImage(l),
-      beds: getListingBeds(l),
-      baths: getListingBaths(l),
-      id: l.id || l.mls_number || "",
-      image: getListingImage(l),
-      beds: getListingBeds(l),
-      baths: getListingBaths(l),
-      price: l.price ? `$${Number(l.price).toLocaleString()}` : "",
-      address: (() => { const v = l.address; if (!v) return ""; if (typeof v === "string" && !v.startsWith("{")) return v; try { const o = typeof v === "string" ? JSON.parse(v) : v; return [o.streetNumber, o.streetName || o.streetAddress, o.streetSuffix].filter(Boolean).join(" ").trim(); } catch { return ""; } })(),
-    })))}
   />
   <script
     id="home-area-boundaries-json"
@@ -1992,7 +2037,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
   >
 <SiteNav
   city={city}
-  listingCount={isNanaimoMobilesSite ? listings.length : null}
+  listingCount={isNanaimoMobilesSite ? homepageListingCount : null}
   site={site}
   areas={navAreaOptions.length ? navAreaOptions : areaOptions}
   areaListingCounts={Object.fromEntries(areaListingCounts)}
@@ -2282,10 +2327,10 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
       <b
         class="nanaimo-flip-board"
         data-nanaimo-hero-count
-        data-count={String(listings.length).padStart(2, "0")}
-        aria-label={`${listings.length} mobile homes for sale`}
+        data-count={String(homepageListingCount).padStart(2, "0")}
+        aria-label={`${homepageListingCount} mobile homes for sale`}
       >
-        {String(listings.length).padStart(2, "0").split("").map((digit, index) => (
+        {String(homepageListingCount).padStart(2, "0").split("").map((digit, index) => (
           <span class="nanaimo-flip-digit" data-flip-digit={index}>
             {digit}
           </span>
@@ -2603,9 +2648,9 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
       <div class="locus-home-more-panel__actions">
         {/* hero-more-results-count-v1 */}
         <div class="locus-home-more-results">
-          <strong data-hero-more-results-count>{listings.length}</strong>
+          <strong data-hero-more-results-count>{homepageListingCount}</strong>
           <span data-hero-more-results-label>
-            {listings.length === 1 ? "matching listing" : "matching listings"}
+            {homepageListingCount === 1 ? "matching listing" : "matching listings"}
           </span>
         </div>
 
@@ -3802,7 +3847,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 
       <div class="locus-home-market__primary">
         <span>AVAILABLE NOW</span>
-        <strong>{listings.length.toLocaleString()}
+        <strong>{homepageListingCount.toLocaleString()}
 
 </strong>
         <small>homes for sale in {cityName}</small>
@@ -4050,10 +4095,10 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
          id={isNewMatchesView ? "new-matches" : undefined}
        >
   <p id="results-update-note">
-    <span id="results-count">{listings.length}</span>
+    <span id="results-count">{homepageListingCount}</span>
     {
       isNewMatchesView
-        ? listings.length === 1
+        ? homepageListingCount === 1
           ? " New Match"
           : " New Matches"
         : " Active Listings"
@@ -4063,7 +4108,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 
         {errorMessage && <div class="empty">{errorMessage}</div>}
 
-               {!errorMessage && listings.length === 0 && (
+               {!errorMessage && homepageListingCount === 0 && (
           <div class="empty">
             {
               isNewMatchesView
@@ -4073,11 +4118,11 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
           </div>
         )}
 
-      {!errorMessage && listings.length > 0 && (
+      {!errorMessage && homepageListingCount > 0 && (
   <>
     <div id="intent-map" class="intent-map" hidden></div>
 
-<section id="home-listings-grid" class="grid" aria-label={`${listings.length} listings${city ? ` in ${city}` : ""}`}> {listings.slice(0, 24).map((listing: any) => {              const image = getListingImage(listing);
+<section id="home-listings-grid" class="grid" aria-label={`${homepageListingCount} listings${city ? ` in ${city}` : ""}`}> {listings.slice(0, 24).map((listing: any) => {              const image = getListingImage(listing);
               const address = getListingAddress(listing);
               const price = getListingPrice(listing);
               const beds = getListingBeds(listing);
@@ -7536,8 +7581,6 @@ await loadMapScript(
     let mapListings = Array.isArray(window.currentHomeMapListings)
       ? window.currentHomeMapListings
       : [];
-// Use all-listings JSON for unfiltered map, visible cards when filtered
-    const allListingsEl = document.getElementById("home-all-listings-json");
     const hasActiveFilters = (() => {
       const form = document.getElementById("home-filter-form");
       if (!form) return false;
@@ -7559,6 +7602,38 @@ await loadMapScript(
         )
       ).length > 0;
     })();
+
+    // Keep the initial document light. The full marker collection is only
+    // requested when someone explicitly opens the map.
+    if (!hasActiveFilters && !mapListings.length) {
+      try {
+        const form = document.getElementById("home-filter-form");
+        const params = new URLSearchParams(window.location.search);
+        const cityValue = String(form?.elements?.city?.value || "").trim();
+        const sortValue = String(form?.elements?.sort?.value || "newest").trim();
+
+        if (cityValue) params.set("city", cityValue);
+        params.set("offset", "0");
+        params.set("limit", "1");
+        params.set("sort", sortValue || "newest");
+
+        const response = await fetch(
+          `/api/home-listings?${params.toString()}`
+        );
+
+        if (!response.ok) {
+          throw new Error(`Map request failed (${response.status})`);
+        }
+
+        const payload = await response.json();
+        mapListings = Array.isArray(payload.markers)
+          ? payload.markers
+          : [];
+        window.currentHomeMapListings = mapListings;
+      } catch (error) {
+        console.warn("Could not load initial map markers:", error);
+      }
+    }
 
     if (hasActiveFilters && !mapListings.length) {
       // Only show markers for cards matching current filters (ignore hidden/pagination)
@@ -7656,8 +7731,6 @@ const cardWaterfront = String(card.dataset.waterfront || "").toLowerCase();
         .filter((listing) =>
           listing.lat && listing.lng
         );
-    } else if (!hasActiveFilters && allListingsEl) {
-      try { mapListings = JSON.parse(allListingsEl.textContent || "[]"); } catch {}
     }
 
     if (!mapListings.length) {
@@ -11913,7 +11986,7 @@ document.documentElement.style.visibility = "";
 }
 </style>
 
-<script is:inline src="/home-search-dropdowns.js?v=23"></script>
+<script is:inline data-astro-rerun src="/home-search-dropdowns.js?v=24"></script>
 <style is:global>
   .homepage-save-search-form {
     grid-column: 1 / -1;
@@ -13418,6 +13491,55 @@ const navBottom = () => {
     });
 
     removeDuplicates();
+  })();
+</script>
+<script is:inline>
+  /* reload-searched-home-logo-v1 */
+  (() => {
+    document.addEventListener(
+      "click",
+      (event) => {
+        const logo =
+          event.target instanceof Element
+            ? event.target.closest(".site-nav__brand")
+            : null;
+
+        if (!(logo instanceof HTMLAnchorElement)) return;
+
+        const destination = new URL(logo.href);
+        if (destination.pathname !== window.location.pathname) return;
+
+        const currentParams = new URLSearchParams(
+          window.location.search
+        );
+
+        const hasActiveHomeSearch = [
+          "area",
+          "type",
+          "maxPrice",
+          "minPrice",
+          "beds",
+          "baths",
+          "sort",
+          "planMode",
+        ].some((name) => currentParams.has(name));
+
+        if (!hasActiveHomeSearch) return;
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+
+        const siteDomain = currentParams.get("siteDomain");
+        if (siteDomain) {
+          destination.searchParams.set("siteDomain", siteDomain);
+        }
+
+        window.location.assign(
+          `${destination.pathname}${destination.search}${destination.hash}`
+        );
+      },
+      true
+    );
   })();
 </script></Layout>
 
