@@ -3676,7 +3676,10 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
       aria-labelledby="explore-tab-areas"
       data-explore-panel="areas"
     >
-      <div class="locus-home-neighbourhood-grid">
+      <div
+        class="locus-home-neighbourhood-grid"
+        data-home-neighbourhood-grid
+      >
         {homepageAreaCards.slice(0, 7).map((card) => (
           <a
             href={card.href}
@@ -13666,9 +13669,6 @@ const navBottom = () => {
 <script is:inline data-astro-rerun>
   /* defer-home-area-counts-v1 */
   (() => {
-    if (window.__homeAreaCountsHydrating) return;
-    window.__homeAreaCountsHydrating = true;
-
     const city = String(
       document.querySelector(
         '#home-filter-form [name="city"]'
@@ -13767,6 +13767,8 @@ const navBottom = () => {
           return;
         }
 
+        const resolvedCards = [];
+
         boundaries.forEach((boundary) => {
           const slug = normalise(boundary.slug);
           if (!slug) return;
@@ -13778,6 +13780,8 @@ const navBottom = () => {
               Number(marker.lng)
             )
           ).length;
+
+          resolvedCards.push({ slug, count });
 
           document
             .querySelectorAll("[data-area-option]")
@@ -13822,6 +13826,52 @@ const navBottom = () => {
               }
             });
         });
+
+        const neighbourhoodGrid = document.querySelector(
+          "[data-home-neighbourhood-grid]"
+        );
+        const allAreasCard = neighbourhoodGrid?.querySelector(
+          ".locus-home-neighbourhood-card--all"
+        );
+
+        if (neighbourhoodGrid && allAreasCard) {
+          neighbourhoodGrid
+            .querySelectorAll(
+              ".locus-home-neighbourhood-card:not(.locus-home-neighbourhood-card--all)"
+            )
+            .forEach((card) => card.remove());
+
+          resolvedCards
+            .filter((card) => card.count > 0)
+            .sort(
+              (a, b) =>
+                b.count - a.count || a.slug.localeCompare(b.slug)
+            )
+            .slice(0, 7)
+            .forEach((card) => {
+              const link = document.createElement("a");
+              link.className = "locus-home-neighbourhood-card";
+              link.href = `/${city}/${card.slug.replace(/\s+/g, "-")}`;
+
+              const title = document.createElement("strong");
+              title.textContent = card.slug
+                .replace(/-/g, " ")
+                .replace(/\b\w/g, (letter) => letter.toUpperCase())
+                .replace(/^Pq\s+/i, "");
+
+              const count = document.createElement("span");
+              count.textContent = `${card.count} ${
+                card.count === 1 ? "listing" : "listings"
+              }`;
+
+              const arrow = document.createElement("b");
+              arrow.setAttribute("aria-hidden", "true");
+              arrow.textContent = "→";
+
+              link.append(title, count, arrow);
+              neighbourhoodGrid.insertBefore(link, allAreasCard);
+            });
+        }
       } catch {
         // Counts arrive after paint; search remains fully usable.
       }
