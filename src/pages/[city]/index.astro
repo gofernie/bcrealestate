@@ -1338,7 +1338,7 @@ if (areas.length > 0) {
     );
   }
 
- 
+
 
 } catch (error: any) {
   errorMessage = error?.message || "Could not load listings.";
@@ -1979,7 +1979,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
     data-city={city || "nanaimo"}
     data-site-id={String(site?.id || "")}
     data-slug="homepage"
-   
+
   >
 <SiteNav
   city={city}
@@ -3184,7 +3184,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 
     <main class="section">
       <div class="intent-content-shell">
-           
+
 
 
 
@@ -4350,7 +4350,7 @@ data-liked-tags="[]"
           title="Search by what matters."
         />
       </div>
-    
+
 <style is:global>
 /* featured-home-card-v1 */
 .locus-home-featured {
@@ -6008,8 +6008,8 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
 </style>
 
 
- 
-  
+
+
 <script is:inline>
   (() => {
     const results =
@@ -8194,7 +8194,7 @@ if (step === "area") {
 }
   });
 
-  
+
 }
 function positionStoryPanel(step) {
   if (!panel) return;
@@ -8834,6 +8834,11 @@ function showMoreCards() {
 
       if (neighbourhoodButton) {
         neighbourhoodButton.hidden = !hasArea;
+
+        if (hasArea) {
+          neighbourhoodButton.textContent =
+            `Search 1 km beyond ${areaLabel}`;
+        }
       }
     }
 
@@ -8845,19 +8850,19 @@ function showMoreCards() {
     };
 
         const scrollHomeListingsToStart = () => {
-      const firstListing = document.querySelector(
-        "#home-listings-grid > *"
+      const listingsStart = document.getElementById(
+        "homepage-listings"
       );
 
-      if (!firstListing) return;
-
-      const top =
-        firstListing.getBoundingClientRect().top +
-        window.scrollY -
-        92;
+      if (!listingsStart) return;
 
       window.scrollTo({
-        top: Math.max(0, top),
+        top: Math.max(
+          0,
+          listingsStart.getBoundingClientRect().top +
+            window.scrollY -
+            92
+        ),
         behavior: "smooth",
       });
     };
@@ -8882,7 +8887,14 @@ function showMoreCards() {
         form.elements.maxPrice.value = options[0]
           ? String(nextBudget)
           : "";
-        fetchHomeListings({ append: false }).then(() => scrollHomeListingsToStart());
+        const areaLabel = String(button.textContent || "")
+          .replace(/^Search\s+1\s*km\s+beyond\s*/i, "")
+          .trim() || "your selected area";
+
+        window.__homeProgressiveExpansionLabel =
+          `New matches within 1 km of ${areaLabel}`;
+
+        fetchHomeListings({ append: false });
       }
     );
 
@@ -8909,28 +8921,36 @@ function showMoreCards() {
       originalSyncHomeSearchComplete();
 
       const footer = document.getElementById("home-search-complete");
-      const eyebrow = document.getElementById(
-        "home-search-complete-eyebrow"
-      );
+
+
       const title = footer?.querySelector("strong");
       const copy = document.getElementById("home-search-complete-copy");
+      const budgetButton = document.getElementById(
+        "home-more-budget-btn"
+      );
       const nearbyButton = document.getElementById(
         "home-change-neighbourhood-btn"
       );
 
-      if (!footer || !form) return;
+      if (!footer || !form || footer.hidden) return;
 
-      const selectedAreas = String(form.elements.storyAreas?.value || "")
+      const selectedAreas = String(
+        form.elements.storyAreas?.value || ""
+      )
         .split("|")
         .map((value) => value.trim())
         .filter(Boolean);
 
-      const selectedArea = String(form.elements.area?.value || "").trim();
+      const selectedArea = String(
+        form.elements.area?.value || ""
+      ).trim();
 
       const titleCase = (value) =>
         String(value || "")
           .replace(/-/g, " ")
-          .replace(/\b\w/g, (character) => character.toUpperCase());
+          .replace(/\b\w/g, (character) =>
+            character.toUpperCase()
+          );
 
       const areaLabel = selectedAreas.length
         ? selectedAreas.map(titleCase).join(" & ")
@@ -8938,30 +8958,80 @@ function showMoreCards() {
           ? titleCase(selectedArea)
           : "";
 
-      const hasArea = Boolean(areaLabel);
+      const currentBudget =
+        Number(form.elements.storyMaxPrice?.value || 0) ||
+        Number(form.elements.maxPrice?.value || 0);
 
-      if (!hasArea) return;
+      /* exhausted-nearby-search-v2 */
+      const areaSearchAlreadyExpanded =
+        Boolean(window.__homeAreaExpanded) ||
+        homeAreaBufferKm > 0;
 
-      if (eyebrow) {
-        eyebrow.textContent = homeAreaBufferKm
-          ? "Nearby search complete"
-          : "Search complete";
-      }
+      if (!areaLabel || !currentBudget) return;
+
+      const priceSelect = form.elements.maxPrice;
+      const nextBudget =
+        priceSelect instanceof HTMLSelectElement
+          ? Array.from(priceSelect.options)
+              .map((option) => Number(option.value || 0))
+              .filter((value) => value > currentBudget)
+              .sort((a, b) => a - b)[0] || 0
+          : 0;
+
+      const hasOpenEndedNextBand =
+        !nextBudget &&
+        priceSelect instanceof HTMLSelectElement &&
+        Array.from(priceSelect.options).some((option) => {
+          const match = String(option.textContent || "").match(
+            /^\s*over\s+\$?\s*([\d.]+)\s*([km])?\s*$/i
+          );
+
+          if (!match) return false;
+
+          const value =
+            Number(match[1]) *
+            (match[2]?.toLowerCase() === "m" ? 1000 : 1);
+
+          return value === currentBudget;
+        });
+
+      const formatBudget = (value) =>
+        value >= 1000
+          ? `${(value / 1000)
+              .toFixed(1)
+              .replace(/\.0$/, "")}M`
+          : `${value}k`;
 
       if (title) {
-        title.textContent = homeAreaBufferKm
+        title.textContent = areaSearchAlreadyExpanded
           ? "You've seen every nearby match"
           : `You've seen every match in ${areaLabel}`;
       }
-      if (copy && homeAreaBufferKm) {
-        copy.textContent =
-          `That includes all current matches in ${areaLabel} and up to ${homeAreaBufferKm} km beyond it.`;
+
+      if (copy) {
+        copy.textContent = areaSearchAlreadyExpanded
+          ? `That includes all current matches in ${areaLabel} and up to 1 km beyond it.`
+          : "Try a nearby area or increase your budget to see more options.";
       }
 
       if (nearbyButton) {
-        nearbyButton.hidden = homeAreaBufferKm > 0;
-        nearbyButton.textContent = `Search 1 km beyond ${areaLabel}`;
+        nearbyButton.hidden = areaSearchAlreadyExpanded;
+        nearbyButton.textContent =
+          `Search 1 km beyond ${areaLabel}`;
       }
+
+      if (budgetButton) {
+        budgetButton.hidden =
+          !nextBudget && !hasOpenEndedNextBand;
+
+        if (nextBudget) {
+          budgetButton.textContent =
+            `Increase budget to ${formatBudget(nextBudget)}`;
+        } else if (hasOpenEndedNextBand) {
+          budgetButton.textContent = "Remove price limit";
+        }
+      }
+
     };
 
     document.addEventListener(
@@ -8980,23 +9050,61 @@ function showMoreCards() {
 
         homeAreaBufferKm = 1;
         window.__homeAreaBufferKm = 1;
-        fetchHomeListings({ append: false }).then(() => scrollHomeListingsToStart());
+        window.__homeAreaExpanded = true;
+        const areaLabel = String(button.textContent || "")
+          .replace(/^Search\s+1\s*km\s+beyond\s*/i, "")
+          .trim() || "your selected area";
+
+        window.__homeProgressiveExpansionLabel =
+          `New matches within 1 km of ${areaLabel}`;
+
+        fetchHomeListings({ append: false });
       },
       true
     );
 
     form?.addEventListener(
       "change",
-      () => {
+      (event) => {
+        const changedField = event.target;
+
+        if (
+          !(
+            changedField instanceof HTMLInputElement ||
+            changedField instanceof HTMLSelectElement
+          ) ||
+          !["area", "storyAreas"].includes(changedField.name)
+        ) {
+          return;
+        }
+
         homeAreaBufferKm = 0;
-      window.__homeAreaBufferKm = 0;
+        window.__homeAreaBufferKm = 0;
       },
       true
     );
 
     syncHomeSearchComplete();
 
-   /* homepage-area-done-refresh-v1 */
+
+    /* clear-nearby-expansion-when-area-changes */
+    form?.addEventListener(
+      "change",
+      (event) => {
+        const changedField = event.target;
+
+        if (
+          changedField instanceof HTMLInputElement ||
+          changedField instanceof HTMLSelectElement ||
+          changedField instanceof HTMLTextAreaElement
+        ) {
+          if (["area", "storyAreas"].includes(changedField.name)) {
+            window.__homeAreaExpanded = false;
+          }
+        }
+      },
+      true
+    );/* homepage-area-done-refresh-v1 */
 document.addEventListener(
   "click",
   (event) => {
@@ -9051,6 +9159,20 @@ async function fetchHomeListings({ resetVisible = true, append = false } = {}) {
 
   const grid = document.getElementById("home-listings-grid");
   if (!grid || !form) return;
+
+  if (window.__homeAreaExpanded) {
+    homeAreaBufferKm = 1;
+    window.__homeAreaBufferKm = 1;
+  }
+
+  const progressiveExpansionLabel = String(
+    window.__homeProgressiveExpansionLabel || ""
+  );
+  const preserveResults = Boolean(progressiveExpansionLabel);
+
+  if (preserveResults) {
+    delete window.__homeProgressiveExpansionLabel;
+  }
 
   const areaVal = String(form.elements.area?.value || "").trim().toLowerCase();
 
@@ -9156,8 +9278,12 @@ const selectedFeatures = String(document.querySelector(".story-blank[data-story-
       `${resultsScope} ${typeTitle}`;
   }
 
-  const requestOffset = append && !resetVisible ? homeOffset : 0;
-  const params = new URLSearchParams({ city, offset: String(requestOffset), limit: String(HOME_PAGE_SIZE), sort: sortVal });
+  const requestOffset = preserveResults
+    ? 0
+    : append && !resetVisible
+      ? homeOffset
+      : 0;
+  const params = new URLSearchParams({ city, offset: String(requestOffset), limit: String(preserveResults ? 100 : HOME_PAGE_SIZE), sort: sortVal });
   if (storyAreas.length) params.set("areas", storyAreas.join("|"));
   else if (areaVal) params.set("area", areaVal);
   if (homeAreaBufferKm && (storyAreas.length || areaVal)) {
@@ -9203,8 +9329,42 @@ const selectedFeatures = String(document.querySelector(".story-blank[data-story-
     homeTotal = Number(payload.total || 0);
     lastMatchingCount = homeTotal;
 
-    if (!append || resetVisible) grid.innerHTML = "";
-    grid.insertAdjacentHTML("beforeend", pageListings.map(cardHtml).join(""));
+    const seenListingIds = preserveResults
+      ? new Set(
+          Array.from(grid.querySelectorAll("[data-listing-id]"))
+            .map((card) => String(card.dataset.listingId || ""))
+            .filter(Boolean)
+        )
+      : new Set();
+
+    const listingsToRender = preserveResults
+      ? pageListings.filter(
+          (listing) =>
+            !seenListingIds.has(
+              String(listing?.id || listing?.mls || "")
+            )
+        )
+      : pageListings;
+
+    if (!preserveResults && (!append || resetVisible)) {
+      grid.innerHTML = "";
+    }
+
+    if (preserveResults && listingsToRender.length) {
+      grid.insertAdjacentHTML(
+        "beforeend",
+        `<div class="home-results-expansion-divider">
+          <span>Expanded search</span>
+          <strong>${esc(progressiveExpansionLabel)}</strong>
+        </div>`
+      );
+    }
+
+    grid.insertAdjacentHTML(
+      "beforeend",
+      listingsToRender.map(cardHtml).join("")
+    );
+
     homeOffset = requestOffset + pageListings.length;
     window.currentHomeMapListings = Array.isArray(payload.markers) ? payload.markers : [];
 
@@ -9315,6 +9475,37 @@ if (summaryPriceRange) {
   } finally {
     homeLoading = false;
     updateLoadMoreBtn();
+    /* sync-home-search-after-fetch-v1 */
+    window.requestAnimationFrame(() => {
+      if (typeof syncHomeSearchComplete === "function") {
+        syncHomeSearchComplete();
+      }
+
+      const areaExpansionWasUsed = Array.from(
+        document.querySelectorAll(
+          "#home-listings-grid .home-results-expansion-divider"
+        )
+      ).some((divider) =>
+        /within\s+1\s*km/i.test(divider.textContent || "")
+      );
+
+      if (!areaExpansionWasUsed) return;
+
+      const footer = document.getElementById(
+        "home-search-complete"
+      );
+      const nearbyButton = document.getElementById(
+        "home-change-neighbourhood-btn"
+      );
+      const budgetButton = document.getElementById(
+        "home-more-budget-btn"
+      );
+
+      if (nearbyButton instanceof HTMLElement) {
+        nearbyButton.hidden = true;
+      }
+
+    });
   }
 }
 window.ensureHomeListingCard = async (id) => {
@@ -12394,6 +12585,9 @@ const navBottom = () => {
         Number(resultsForm.elements.maxPrice?.value || 0);
 
       if (!currentBudget) return;
+      if (!window.__homeOriginalMaxPrice) {
+        window.__homeOriginalMaxPrice = currentBudget;
+      }
 
       const priceSelect = resultsForm.elements.maxPrice;
       const hasOpenEndedNextBand =
@@ -12458,16 +12652,12 @@ const navBottom = () => {
           `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
         );
 
+        window.__homeProgressiveExpansionLabel =
+          "New matches after removing the price limit";
+
         resultsForm.dispatchEvent(
           new Event("change", { bubbles: true })
         );
-
-        window.requestAnimationFrame(() => {
-          document.getElementById("homepage-listings")?.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        });
 
         return;
       }
@@ -12527,6 +12717,16 @@ const navBottom = () => {
         "",
         `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
       );
+
+      const progressiveBudgetLabel =
+        expandedBudget >= 1000
+          ? `${(expandedBudget / 1000)
+              .toFixed(1)
+              .replace(/\.0$/, "")}M`
+          : `${expandedBudget}k`;
+
+      window.__homeProgressiveExpansionLabel =
+        `New matches up to ${progressiveBudgetLabel}`;
 
       resultsForm.dispatchEvent(
         new Event("change", { bubbles: true })
@@ -16217,7 +16417,89 @@ html[data-theme="dark"] #home-hero-search.locus-home-search > :is(
       margin-left: 12px !important;
     }
   }
-</style>
+
+  /* progressive-search-results-v2 */
+  .home-results-expansion-divider {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 3px;
+    margin: 12px 0 4px;
+    padding: 18px 0 8px;
+    border-top: 1px solid var(--line);
+  }
+
+  .home-results-expansion-divider span {
+    color: var(--muted);
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .home-results-expansion-divider strong {
+    color: var(--ink);
+    font-size: .94rem;
+  }</style>
+<style is:global>
+  /* progressive-search-divider-global-v1 */
+  #home-listings-grid .home-results-expansion-divider {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 12px 0 4px;
+    padding: 15px 0 9px;
+    border-top: 1px solid var(--line);
+  }
+
+  #home-listings-grid .home-results-expansion-divider span {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: .66rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  #home-listings-grid .home-results-expansion-divider strong {
+    color: var(--ink);
+    font-size: .88rem;
+    font-weight: 650;
+  }
+
+  @media (max-width: 640px) {
+    #home-listings-grid .home-results-expansion-divider {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 3px;
+    }
+  }
+
+  /* smooth-adjacent-area-navigation-v1 */
+  @view-transition {
+    navigation: auto;
+  }
+
+  html.is-adjacent-area-navigating::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    background: rgba(255, 255, 255, .45);
+    backdrop-filter: blur(1px);
+    animation: adjacent-area-fade-in .16s ease-out both;
+    pointer-events: all;
+  }
+
+  @keyframes adjacent-area-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  html.is-adjacent-area-navigating,
+  html.is-adjacent-area-navigating body {
+    cursor: progress;
+  }</style>
 <script is:inline>
   // nanaimo-mobile-search-inset-runtime-v1
   (() => {
@@ -16274,6 +16556,721 @@ html[data-theme="dark"] #home-hero-search.locus-home-search > :is(
       document.addEventListener("DOMContentLoaded", start, { once: true });
     } else {
       start();
+    }
+  })();
+</script>
+<script is:inline>
+  /* home-adjacent-area-suggestion-v1 */
+  (() => {
+    const suggestionId = "home-adjacent-area-suggestion";
+
+    const normaliseArea = (value) =>
+      String(value || "")
+        .replace(/-/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+
+    const titleCase = (value) =>
+      String(value || "")
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (character) =>
+          character.toUpperCase()
+        );
+
+    const clearSuggestion = () =>
+      document.getElementById(suggestionId)?.remove();
+
+    const renderSuggestion = () => {
+      const form = document.getElementById("home-filter-form");
+      const footer = document.getElementById(
+        "home-search-complete"
+      );
+      const budgetButton = document.getElementById(
+        "home-more-budget-btn"
+      );
+      const boundaryData = document.getElementById(
+        "home-area-boundaries-json"
+      );
+
+      if (!form || !footer || !boundaryData) {
+        clearSuggestion();
+        return;
+      }
+
+      const expandedByOneKilometre = Array.from(
+        document.querySelectorAll(
+          "#home-listings-grid .home-results-expansion-divider"
+        )
+      ).some((divider) =>
+        /within\s+1\s*km/i.test(divider.textContent || "")
+      );
+
+      const selectedAreas = [
+        ...String(form.elements.storyAreas?.value || "")
+          .split("|")
+          .map(normaliseArea)
+          .filter(Boolean),
+        normaliseArea(form.elements.area?.value || ""),
+      ].filter(Boolean);
+
+      const priceIsExhausted =
+        !(budgetButton instanceof HTMLElement) ||
+        budgetButton.hidden;
+
+      if (
+        !expandedByOneKilometre ||
+        !priceIsExhausted ||
+        selectedAreas.length !== 1 ||
+        !window.turf?.buffer ||
+        !window.turf?.booleanIntersects
+      ) {
+        clearSuggestion();
+        return;
+      }
+
+      let boundaries = [];
+
+      try {
+        boundaries = JSON.parse(
+          boundaryData.textContent || "[]"
+        );
+      } catch {
+        clearSuggestion();
+        return;
+      }
+
+      const selectedArea = selectedAreas[0];
+
+      const toFeature = (boundary) => {
+        const geometry =
+          boundary?.geometry?.type === "Feature"
+            ? boundary.geometry.geometry
+            : boundary?.geometry;
+
+        return geometry
+          ? {
+              type: "Feature",
+              properties: { slug: normaliseArea(boundary.slug) },
+              geometry,
+            }
+          : null;
+      };
+
+      const selectedFeature = toFeature(
+        boundaries.find(
+          (boundary) =>
+            normaliseArea(boundary.slug) === selectedArea
+        )
+      );
+
+      if (!selectedFeature) {
+        clearSuggestion();
+        return;
+      }
+
+      let nearbyBoundary;
+
+      try {
+        const edge = window.turf.buffer(selectedFeature, 0.25, {
+          units: "kilometers",
+          steps: 12,
+        });
+
+        nearbyBoundary = boundaries
+          .filter(
+            (boundary) =>
+              normaliseArea(boundary.slug) !== selectedArea
+          )
+          .map((boundary) => ({
+            boundary,
+            feature: toFeature(boundary),
+          }))
+          .filter(({ feature }) => feature)
+          .filter(({ feature }) =>
+            window.turf.booleanIntersects(edge, feature)
+          )
+          .sort((a, b) => {
+            const from = window.turf.centroid(selectedFeature);
+            return (
+              window.turf.distance(from, window.turf.centroid(a.feature)) -
+              window.turf.distance(from, window.turf.centroid(b.feature))
+            );
+          })[0]?.boundary;
+      } catch {
+        clearSuggestion();
+        return;
+      }
+
+      const suggestedArea = normaliseArea(nearbyBoundary?.slug);
+
+      if (!suggestedArea) {
+        clearSuggestion();
+        return;
+      }
+
+      const existing = document.getElementById(suggestionId);
+
+      if (existing?.dataset.area === suggestedArea) {
+        return;
+      }
+
+      existing?.remove();
+
+      const typeValue = String(
+        form.elements.type?.value || ""
+      ).toLowerCase();
+
+      const typeLabel =
+        {
+          house: "homes",
+          condo: "condos",
+          townhouse: "townhomes",
+          mobile: "mobile homes",
+          land: "lots",
+          "multi-family": "multi-family homes",
+        }[typeValue] || "homes";
+
+      const card = document.createElement("div");
+      card.id = suggestionId;
+      card.dataset.area = suggestedArea;
+      card.className = "homepage-save-nudge";
+      card.style.marginTop = "18px";
+
+      const copy = document.createElement("div");
+      copy.className = "homepage-save-nudge__copy";
+
+      const heading = document.createElement("strong");
+      heading.textContent =
+        `${titleCase(suggestedArea)} is right next to ${titleCase(selectedArea)}.`;
+
+      const detail = document.createElement("span");
+      detail.textContent =
+        `Would you like to see ${typeLabel} there?`;
+
+      copy.append(heading, detail);
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "interrupt-btn interrupt-primary";
+      button.textContent =
+        `See ${typeLabel} in ${titleCase(suggestedArea)}`;
+
+      button.addEventListener("click", () => {
+        if (form.elements.storyAreas) {
+          form.elements.storyAreas.value = suggestedArea;
+        }
+
+        if (form.elements.area) {
+          form.elements.area.value = "";
+        }
+
+        window.__homeAreaExpanded = false;
+        window.__homeAreaBufferKm = 0;
+
+        if (typeof homeAreaBufferKm !== "undefined") {
+          homeAreaBufferKm = 0;
+        }
+
+        clearSuggestion();
+
+        form.dispatchEvent(
+          new Event("change", { bubbles: true })
+        );
+
+        fetchHomeListings({ append: false });
+      });
+
+      card.append(copy, button);
+      footer.insertAdjacentElement("afterend", card);
+    };
+
+    const grid = document.getElementById("home-listings-grid");
+
+    if (!grid) return;
+
+    const scheduleRender = () => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(renderSuggestion);
+      });
+    };
+
+    new MutationObserver(scheduleRender).observe(grid, {
+      childList: true,
+      subtree: true,
+    });
+
+    scheduleRender();
+  })();
+</script>
+<script is:inline>
+  /* home-adjacent-area-fallback-v1 */
+  (() => {
+    const suggestionId = "home-adjacent-area-suggestion";
+
+    const normaliseArea = (value) =>
+      String(value || "")
+        .replace(/-/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+
+    const titleCase = (value) =>
+      String(value || "")
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (character) =>
+          character.toUpperCase()
+        );
+
+    const getBoundaryBox = (geometry) => {
+      const points = [];
+
+      const visit = (value) => {
+        if (
+          Array.isArray(value) &&
+          typeof value[0] === "number" &&
+          typeof value[1] === "number"
+        ) {
+          points.push(value);
+          return;
+        }
+
+        if (Array.isArray(value)) {
+          value.forEach(visit);
+        }
+      };
+
+      visit(
+        geometry?.type === "Feature"
+          ? geometry.geometry?.coordinates
+          : geometry?.coordinates
+      );
+
+      if (!points.length) return null;
+
+      return points.reduce(
+        (box, point) => ({
+          minLng: Math.min(box.minLng, point[0]),
+          maxLng: Math.max(box.maxLng, point[0]),
+          minLat: Math.min(box.minLat, point[1]),
+          maxLat: Math.max(box.maxLat, point[1]),
+        }),
+        {
+          minLng: Infinity,
+          maxLng: -Infinity,
+          minLat: Infinity,
+          maxLat: -Infinity,
+        }
+      );
+    };
+
+    const boundaryDistance = (a, b) => {
+      const lngGap = Math.max(
+        0,
+        a.minLng - b.maxLng,
+        b.minLng - a.maxLng
+      );
+      const latGap = Math.max(
+        0,
+        a.minLat - b.maxLat,
+        b.minLat - a.maxLat
+      );
+
+      return Math.hypot(
+        lngGap * Math.cos(((a.minLat + a.maxLat) / 2) * Math.PI / 180),
+        latGap
+      );
+    };
+
+    const renderAdjacentArea = async () => {
+      const form = document.getElementById("home-filter-form");
+      const footer = document.getElementById(
+        "home-search-complete"
+      );
+      const budgetButton = document.getElementById(
+        "home-more-budget-btn"
+      );
+      const nearbyButton = document.getElementById(
+        "home-change-neighbourhood-btn"
+      );
+      const boundaryData = document.getElementById(
+        "home-area-boundaries-json"
+      );
+      const existing = document.getElementById(suggestionId);
+
+      if (!form || !footer || !boundaryData) {
+        existing?.remove();
+        return;
+      }
+
+      const selectedAreas = [
+        ...String(form.elements.storyAreas?.value || "")
+          .split("|")
+          .map(normaliseArea)
+          .filter(Boolean),
+        normaliseArea(form.elements.area?.value || ""),
+      ].filter(Boolean);
+
+      const noMorePrice =
+        !(budgetButton instanceof HTMLElement) ||
+        budgetButton.hidden;
+
+      const noMoreNearby =
+        !(nearbyButton instanceof HTMLElement) ||
+        nearbyButton.hidden;
+
+      if (
+        selectedAreas.length !== 1 ||
+        !noMorePrice ||
+        !noMoreNearby
+      ) {
+        existing?.remove();
+        return;
+      }
+
+      let boundaries = [];
+
+      try {
+        boundaries = JSON.parse(
+          boundaryData.textContent || "[]"
+        );
+      } catch {
+        existing?.remove();
+        return;
+      }
+
+      const selectedArea = selectedAreas[0];
+
+      const selectedBoundary = boundaries.find(
+        (boundary) =>
+          normaliseArea(boundary.slug) === selectedArea
+      );
+
+      const selectedBox = getBoundaryBox(
+        selectedBoundary?.geometry
+      );
+
+      if (!selectedBox) {
+        existing?.remove();
+        return;
+      }
+
+      /* adjacent-area-type-inventory-v1 */
+      const nearbyCandidates = boundaries
+        .filter(
+          (boundary) =>
+            normaliseArea(boundary.slug) !== selectedArea
+        )
+        .map((boundary) => ({
+          boundary,
+          box: getBoundaryBox(boundary.geometry),
+        }))
+        .filter((item) => item.box)
+        .map((item) => ({
+          ...item,
+          distance: boundaryDistance(selectedBox, item.box),
+        }))
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, 6);
+
+      if (!nearbyCandidates.length) {
+        existing?.remove();
+        return;
+      }
+
+      const city =
+        document.querySelector("[data-city]")?.dataset.city ||
+        window.location.pathname.split("/").filter(Boolean)[0] ||
+        "nanaimo";
+
+      const selectedType = String(
+        form.elements.type?.value || ""
+      ).trim().toLowerCase();
+
+      const rankedCandidates = await Promise.all(
+        nearbyCandidates.map(async (candidate) => {
+          const params = new URLSearchParams({
+            city,
+            area: normaliseArea(candidate.boundary.slug),
+            offset: "0",
+            limit: "1",
+          });
+
+          if (selectedType) {
+            params.set("type", selectedType);
+          }
+
+          try {
+            const response = await fetch(
+              `/api/home-listings?${params.toString()}`
+            );
+
+            const payload = response.ok
+              ? await response.json()
+              : {};
+
+            return {
+              ...candidate,
+              inventory: Math.max(
+                0,
+                Number(payload?.total || 0)
+              ),
+            };
+          } catch {
+            return {
+              ...candidate,
+              inventory: 0,
+            };
+          }
+        })
+      );
+
+      const nearest = rankedCandidates
+        .filter((candidate) => candidate.inventory > 0)
+        .sort(
+          (a, b) =>
+            b.inventory - a.inventory ||
+            a.distance - b.distance
+        )[0]?.boundary;
+
+      const suggestedArea = normaliseArea(nearest?.slug);
+      if (!suggestedArea) {
+        existing?.remove();
+        return;
+      }
+
+      if (existing?.dataset.area === suggestedArea) return;
+
+      existing?.remove();
+
+      const typeValue = String(
+        form.elements.type?.value || ""
+      ).toLowerCase();
+
+      const typeLabel =
+        {
+          house: "homes",
+          condo: "condos",
+          townhouse: "townhomes",
+          mobile: "mobile homes",
+          land: "lots",
+          "multi-family": "multi-family homes",
+        }[typeValue] || "homes";
+
+      const card = document.createElement("div");
+      card.id = suggestionId;
+      card.dataset.area = suggestedArea;
+      card.className = "homepage-save-nudge";
+      card.style.marginTop = "18px";
+
+      const copy = document.createElement("div");
+      copy.className = "homepage-save-nudge__copy";
+
+      const heading = document.createElement("strong");
+      heading.textContent =
+        `${titleCase(suggestedArea)} is nearby ${titleCase(selectedArea)}.`;
+
+      const detail = document.createElement("span");
+      detail.textContent =
+        `Would you like to see ${typeLabel} there?`;
+
+      copy.append(heading, detail);
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "interrupt-btn interrupt-primary";
+      button.textContent =
+        `See ${typeLabel} in ${titleCase(suggestedArea)}`;
+
+      button.addEventListener("click", () => {
+        /* adjacent-area-fresh-search-v1 */
+        const originalMaxPrice = Number(
+          window.__homeOriginalMaxPrice ||
+          form.elements.maxPrice?.value ||
+          0
+        );
+
+        const nextUrl = new URL(window.location.href);
+
+        [
+          "area",
+          "minPrice",
+          "maxPrice",
+          "type",
+          "beds",
+          "baths",
+          "minSqft",
+          "minYear",
+          "primaryOnMain",
+          "threeSameFloor",
+          "fourSameFloor",
+          "oceanViews",
+          "viewType",
+          "waterfrontType",
+          "age55",
+          "petsAllowed",
+          "planMode",
+          "sort",
+        ].forEach((key) => nextUrl.searchParams.delete(key));
+
+        nextUrl.searchParams.set("area", suggestedArea);
+
+        const copyFilter = (key) => {
+          const value = String(form.elements[key]?.value || "").trim();
+
+          if (value) {
+            nextUrl.searchParams.set(key, value);
+          }
+        };
+
+        [
+          "type",
+          "beds",
+          "baths",
+          "minSqft",
+          "minYear",
+          "primaryOnMain",
+          "threeSameFloor",
+          "fourSameFloor",
+          "oceanViews",
+          "viewType",
+          "waterfrontType",
+          "age55",
+          "petsAllowed",
+          "planMode",
+          "sort",
+        ].forEach(copyFilter);
+
+        if (originalMaxPrice) {
+          nextUrl.searchParams.set(
+            "maxPrice",
+            String(originalMaxPrice)
+          );
+        }
+        /* adjacent-area-fresh-search-v2 */
+        nextUrl.hash = "homepage-listings";
+
+        // This is intentionally a fresh page search: it prevents the
+        // previous area’s cards, map state, and completion state leaking in.
+                /* smooth-adjacent-area-navigation-v1 */
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent =
+          `Opening ${titleCase(suggestedArea)} listings…`;
+
+        document.documentElement.classList.add(
+          "is-adjacent-area-navigating"
+        );
+
+        // Allow the feedback state to paint before the clean new search loads.
+        window.setTimeout(() => {
+          window.location.assign(nextUrl.toString());
+        }, 45);
+      });
+
+      card.append(copy, button);
+      footer.insertAdjacentElement("afterend", card);
+    };
+
+    const grid = document.getElementById("home-listings-grid");
+
+    if (!grid) return;
+
+    const schedule = () => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(renderAdjacentArea);
+      });
+    };
+
+    new MutationObserver(schedule).observe(grid, {
+      childList: true,
+      subtree: true,
+    });
+
+    schedule();
+  })();
+</script>
+<script is:inline>
+  /* adjacent-area-scroll-guard-v2 */
+  (() => {
+    const scrollToListings = (behavior = "smooth") => {
+      const anchor = document.getElementById(
+        "homepage-listings"
+      );
+
+      if (!anchor) return;
+
+      window.scrollTo({
+        top: Math.max(
+          0,
+          anchor.getBoundingClientRect().top +
+            window.scrollY -
+            82
+        ),
+        behavior,
+      });
+    };
+
+    document.addEventListener(
+      "click",
+      (event) => {
+        const button =
+          event.target instanceof Element
+            ? event.target.closest(
+                "#home-adjacent-area-suggestion button"
+              )
+            : null;
+
+        if (!button) return;
+
+        // Move immediately, then reassert after the listing refresh.
+        scrollToListings();
+
+        window.setTimeout(() => {
+          scrollToListings("auto");
+        }, 450);
+
+        window.setTimeout(() => {
+          scrollToListings("auto");
+        }, 1000);
+      },
+      true
+    );
+  })();
+</script>
+
+<script is:inline>
+  /* hydrate-fresh-neighbour-search-v1 */
+  (() => {
+    const refreshFreshNeighbourSearch = () => {
+      const params = new URLSearchParams(window.location.search);
+
+      // Only refresh a clean area search reached through the nearby-area card.
+      if (
+        !params.has("area") ||
+        window.__homeFreshNeighbourSearchHydrated ||
+        typeof fetchHomeListings !== "function"
+      ) {
+        return;
+      }
+
+      window.__homeFreshNeighbourSearchHydrated = true;
+      window.__homeAreaExpanded = false;
+      window.__homeAreaBufferKm = 0;
+
+      window.setTimeout(() => {
+        fetchHomeListings({ append: false });
+      }, 0);
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener(
+        "DOMContentLoaded",
+        refreshFreshNeighbourSearch,
+        { once: true }
+      );
+    } else {
+      refreshFreshNeighbourSearch();
     }
   })();
 </script>
