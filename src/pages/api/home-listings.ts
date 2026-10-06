@@ -419,7 +419,8 @@ export const GET: APIRoute = async ({ request }) => {
       selectedAreaBoundaries = boundaryRows || [];
     }
   }
-  let listings = (data || []).map(normalizeListing).filter((listing) => {
+  const filterListings = (skipType = false) =>
+    (data || []).map(normalizeListing).filter((listing) => {
     // Classify from structured type fields only. Marketing remarks
     // commonly mention offices, businesses, or nearby retail.
     const searchable =
@@ -448,7 +449,7 @@ export const GET: APIRoute = async ({ request }) => {
       if (areas.length && !areas.some((value) => String(listing.area).toLowerCase().includes(value))) return false;
       if (!areas.length && area && !String(listing.area).toLowerCase().includes(area)) return false;
     }
-    if (type) {
+    if (type && !skipType) {
       const listingType = listing.type;
 
       const landSignalText =
@@ -587,13 +588,38 @@ export const GET: APIRoute = async ({ request }) => {
       ) {
         return false;
       }
-    }
-    return true;
-  });  if (sort === "price-low") listings.sort((a, b) => a.rawPrice - b.rawPrice);
+    }    return true;
+    });
+
+  let listings = filterListings();
+  const listingsForTypeCounts = type
+    ? filterListings(true)
+    : listings;
+
+  if (sort === "price-low") listings.sort((a, b) => a.rawPrice - b.rawPrice);
   else if (sort === "price-high") listings.sort((a, b) => b.rawPrice - a.rawPrice);
   else if (sort === "beds-high") listings.sort((a, b) => Number(b.beds || 0) - Number(a.beds || 0));
   else if (sort === "sqft-high") listings.sort((a, b) => Number(b.sqft || 0) - Number(a.sqft || 0));
   else listings.sort((a, b) => new Date(b.listedAt || 0).getTime() - new Date(a.listedAt || 0).getTime());
+
+  const typeCounts = listingsForTypeCounts.reduce(
+    (counts: Record<string, number>, listing: any) => {
+      const typeKey =
+        listing.type === "townhome"
+          ? "townhouse"
+          : String(listing.type || "").trim().toLowerCase();
+
+      if (
+        ["house", "condo", "townhouse", "mobile", "land", "multi-family"]
+          .includes(typeKey)
+      ) {
+        counts[typeKey] = (counts[typeKey] || 0) + 1;
+      }
+
+      return counts;
+    },
+    {}
+  );
 
   const total = listings.length;
   const markers = listings
@@ -601,7 +627,7 @@ export const GET: APIRoute = async ({ request }) => {
     .map(({ id, image, beds, baths, price, address, lat, lng }) => ({ id, image, beds, baths, price, address, lat, lng }));
   const page = listings.slice(offset, offset + limit);
 
-  return new Response(JSON.stringify({ listings: page, markers, total, offset, limit }), {
+  return new Response(JSON.stringify({ listings: page, markers, total, typeCounts, offset, limit }), {
     status: 200,
     headers: {
       "Content-Type": "application/json",

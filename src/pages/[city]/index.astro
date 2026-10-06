@@ -1502,6 +1502,42 @@ if (isNanaimoMobilesSite) {
 
 const homepageListingCount = homepageInventory.length;
 
+const homepageSearchTypeCounts = new Map<string, number>();
+
+homepageInventory.forEach((listing: any) => {
+  const typeKey = getInventoryType(listing);
+
+  if (typeKey) {
+    homepageSearchTypeCounts.set(
+      typeKey,
+      (homepageSearchTypeCounts.get(typeKey) || 0) + 1
+    );
+  }
+});
+
+const homepageTypeOptionLabel = (propertyType: string) => {
+  const typeKey = propertyType === "homes" ? "house" : propertyType;
+  const label =
+    propertyType === "homes"
+      ? "Homes"
+      : propertyType === "condo"
+        ? "Condos"
+        : propertyType === "mobile"
+          ? "Mobile Homes"
+          : propertyType === "townhouse"
+            ? "Townhomes"
+            : propertyType
+                .replace(/-/g, " ")
+                .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  return label;
+};
+
+const homepageTypeOptionCount = (propertyType: string) =>
+  homepageSearchTypeCounts.get(
+    propertyType === "homes" ? "house" : propertyType
+  ) || 0;
+
 const getInventoryPrices = (inventoryType = "") =>
   homepageInventory
     .filter(
@@ -2442,22 +2478,12 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
         {propertyTypeOptions.map((propertyType) => (
           <option
             value={propertyType === "homes" ? "house" : propertyType}
-            selected={
+            data-count={homepageTypeOptionCount(propertyType)} selected={
               type === propertyType ||
               (type === "house" && propertyType === "homes")
             }
           >
-            {propertyType === "homes"
-              ? "Homes"
-              : propertyType === "condo"
-              ? "Condos"
-              : propertyType === "mobile"
-              ? "Mobile Homes"
-              : propertyType === "townhouse"
-              ? "Townhomes"
-              : propertyType
-                  .replace(/-/g, " ")
-                  .replace(/\b\w/g, (char) => char.toUpperCase())}
+            {homepageTypeOptionLabel(propertyType)}
           </option>
         ))}
       </select>
@@ -4010,16 +4036,8 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
   <option value="" selected={!type}>All Types</option>
 
   {propertyTypeOptions.map((propertyType) => (
-    <option value={propertyType === "homes" ? "house" : propertyType} selected={type === propertyType || type === "house" && propertyType === "homes"}>
-      {propertyType === "homes"
-  ? "Homes"
-  : propertyType === "condo"
-  ? "Condos"
-  : propertyType === "mobile"
-  ? "Mobile Homes"
-  : propertyType === "townhouse"
-  ? "Townhomes"
-  : propertyType.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())}
+    <option value={propertyType === "homes" ? "house" : propertyType} data-count={homepageTypeOptionCount(propertyType)} selected={type === propertyType || type === "house" && propertyType === "homes"}>
+      {homepageTypeOptionLabel(propertyType)}
     </option>
   ))}
 </select>
@@ -9411,6 +9429,43 @@ const selectedFeatures = String(document.querySelector(".story-blank[data-story-
     homeTotal = Number(payload.total || 0);
     lastMatchingCount = homeTotal;
 
+    /* sync-home-type-counts-v1 */
+    if (
+      payload.typeCounts &&
+      typeof payload.typeCounts === "object" &&
+      form.elements.type instanceof HTMLSelectElement
+    ) {
+      Array.from(form.elements.type.options).forEach((nativeOption) => {
+        if (!nativeOption.value) return;
+
+        const nextCount = Math.max(
+          0,
+          Number(payload.typeCounts[nativeOption.value] || 0)
+        );
+
+        nativeOption.dataset.count = String(nextCount);
+
+        const customOption = Array.from(
+          document.querySelectorAll(
+            "#home-hero-search [data-single-option]"
+          )
+        ).find(
+          (candidate) =>
+            candidate instanceof HTMLElement &&
+            candidate.dataset.value === nativeOption.value &&
+            candidate.children.length === 3
+        );
+
+        if (customOption instanceof HTMLElement) {
+          const countElement = customOption.children[1];
+
+          if (countElement instanceof HTMLElement) {
+            countElement.textContent = String(nextCount);
+          }
+        }
+      });
+    }
+
     const seenListingIds = preserveResults
       ? new Set(
           Array.from(grid.querySelectorAll("[data-listing-id]"))
@@ -11986,7 +12041,7 @@ document.documentElement.style.visibility = "";
 }
 </style>
 
-<script is:inline data-astro-rerun src="/home-search-dropdowns.js?v=24"></script>
+<script is:inline data-astro-rerun src="/home-search-dropdowns.js?v=25"></script>
 <style is:global>
   .homepage-save-search-form {
     grid-column: 1 / -1;

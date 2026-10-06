@@ -252,15 +252,31 @@
       option.dataset.singleOption = "";
       option.dataset.value = nativeOption.value;
       option.setAttribute("role", "option");
-
       const label = document.createElement("span");
-      label.textContent = nativeOption.textContent?.trim() || "";
+      label.textContent =
+        nativeOption.textContent?.trim() || "";
+
+      const count = String(nativeOption.dataset.count || "").trim();
 
       const check = document.createElement("span");
       check.className = "hero-single-dropdown__check";
       check.setAttribute("aria-hidden", "true");
 
-      option.append(label, check);
+      if (count) {
+        option.style.gridTemplateColumns =
+          "minmax(0, 1fr) auto 24px";
+
+        const countEl = document.createElement("span");
+        countEl.textContent = count;
+        countEl.style.cssText =
+          "margin-left:auto;margin-right:6px;" +
+          "color:#64748b;font-size:.78rem;" +
+          "font-variant-numeric:tabular-nums;";
+
+        option.append(label, countEl, check);
+      } else {
+        option.append(label, check);
+      };
 
       option.addEventListener("click", (event) => {
         event.preventDefault();
