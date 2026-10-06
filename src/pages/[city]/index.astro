@@ -1085,15 +1085,8 @@ try {
     .sort();
 
 
-  let areaCountQuery = supabase
-    .from("listing_rows")
-    .select("lat,lng")
-    .eq("status", "A")
-    .in("normalized_city", cityDatabaseKeys)
-    .not("lat", "is", null)
-    .not("lng", "is", null);
-
-  const normaliseParkAddress = (value: unknown) =>
+  /* defer-home-area-counts-v1 */
+const normaliseParkAddress = (value: unknown) =>
   String(value || "")
     .toLowerCase()
     .replace(/[’'".,]/g, "")
@@ -1113,11 +1106,7 @@ const getMobileHomePark = (listing: any) => {
   });
 };
 
-if (isNanaimoMobilesSite) {
-    areaCountQuery = areaCountQuery.eq("normalized_type", "mobile");
-  }
-
-  const { data: listingsForAreaCounts = [] } = await areaCountQuery;
+const listingsForAreaCounts: any[] = [];
 
 
 
@@ -1250,45 +1239,20 @@ const isNewMatchesView =
 
 let listings: any[] = [];
 let homepageInventory: any[] = [];
+let homepageListingTotal = 0;
 let errorMessage = "";
 
 try {
-  const inventoryColumns = [
-    "id",
-    "mls_number",
-    "normalized_type",
-    "property_type",
-    "price",
-    "beds",
-    "normalized_area",
-    "address",
-    "listed_at",
-    "created_at",
-    "updated_at",
-  ].join(",");
-
   let cardQuery =
     supabase
       .from("listing_rows")
-      .select("*")
+      .select("*", { count: "planned" })
       .eq("status", "A")
       .limit(48);
-
-  let inventoryQuery =
-    supabase
-      .from("listing_rows")
-      .select(inventoryColumns)
-      .eq("status", "A")
-      .limit(1000);
 
 if (city) {
   cardQuery =
     cardQuery.in(
-      "normalized_city",
-      cityDatabaseKeys
-    );
-  inventoryQuery =
-    inventoryQuery.in(
       "normalized_city",
       cityDatabaseKeys
     );
@@ -1300,43 +1264,33 @@ if (isNewMatchesView) {
       "mls_number",
       newMatchIds
     );
-  inventoryQuery =
-    inventoryQuery.in(
-      "mls_number",
-      newMatchIds
-    );
 }
 
 /* homepage-server-area-filter-v1 */
 if (areas.length > 0) {
   cardQuery = cardQuery.in("normalized_area", areas);
-  inventoryQuery = inventoryQuery.in("normalized_area", areas);
 }
 
-  // Homepage discovery preloads a broad pool.
-  // Filters are applied client-side for instant UX.
+  // Render the initial cards first. The broader search inventory is fetched
+  // after paint and only upgrades the dynamic price and bedroom controls.
 
   if (sort === "price-low" || sort === "price-asc") {
     cardQuery = cardQuery.order("price", { ascending: true });
-    inventoryQuery = inventoryQuery.order("price", { ascending: true });
   } else if (sort === "price-high" || sort === "price-desc") {
     cardQuery = cardQuery.order("price", { ascending: false });
-    inventoryQuery = inventoryQuery.order("price", { ascending: false });
   } else if (sort === "beds-high") {
     cardQuery = cardQuery.order("beds", { ascending: false });
-    inventoryQuery = inventoryQuery.order("beds", { ascending: false });
   } else {
     cardQuery = cardQuery.order("listed_at", { ascending: false });
-    inventoryQuery = inventoryQuery.order("listed_at", { ascending: false });
   }
 
-  const [cardResult, inventoryResult] = await Promise.all([
-    cardQuery,
-    inventoryQuery,
-  ]);
+  const {
+    data: cardRows,
+    error: cardError,
+    count: cardCount,
+  } = await cardQuery;
 
-  if (cardResult.error) throw cardResult.error;
-  if (inventoryResult.error) throw inventoryResult.error;
+  if (cardError) throw cardError;
 
   const keepHomepageListing = (listing: any) => {
     // structured-listing-classification-v1
@@ -1382,10 +1336,9 @@ if (areas.length > 0) {
     return !isCommercialOrLease && !isLeaseSizedPrice;
   };
 
-  listings = (cardResult.data || []).filter(keepHomepageListing);
-  homepageInventory = (inventoryResult.data || []).filter(
-    keepHomepageListing
-  );
+  listings = (cardRows || []).filter(keepHomepageListing);
+  homepageInventory = listings;
+  homepageListingTotal = cardCount ?? homepageInventory.length;
 
   if (isNewMatchesView) {
     listings.sort(
@@ -1396,11 +1349,6 @@ if (areas.length > 0) {
         newMatchIds.indexOf(
           String(b?.mls_number || "")
         )
-    );
-    homepageInventory.sort(
-      (a, b) =>
-        newMatchIds.indexOf(String(a?.mls_number || "")) -
-        newMatchIds.indexOf(String(b?.mls_number || ""))
     );
   }
 
@@ -1498,9 +1446,10 @@ if (isNanaimoMobilesSite) {
   homepageInventory = homepageInventory.filter(
     keepNanaimoMobileListing
   );
+  homepageListingTotal = homepageInventory.length;
 }
 
-const homepageListingCount = homepageInventory.length;
+const homepageListingCount = homepageListingTotal || homepageInventory.length;
 
 const homepageSearchTypeCounts = new Map<string, number>();
 
@@ -2284,8 +2233,8 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 <style is:global>
 /* stable-home-search-load-v2 */
 #home-hero-search {
-  visibility: hidden !important;
-  opacity: 0 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
 #home-hero-search.home-search-ready {
@@ -2315,11 +2264,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 
     if (!search) return;
 
-    window.setTimeout(() => {
-      requestAnimationFrame(() => {
-        search.classList.add("home-search-ready");
-      });
-    }, 300);
+    search.classList.add("home-search-ready");
   };
 
   if (document.readyState === "loading") {
@@ -2447,7 +2392,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
               <span>{titleCase(areaOption)}</span>
 
                             <span class="area-multiselect__count">
-                {areaListingCounts.get(areaOption) || 0}
+                {areaListingCounts.get(areaOption) || ""}
               </span>
 <span class="area-multiselect__check" aria-hidden="true">
                 {isSelected ? "\u2713" : ""}
@@ -6677,6 +6622,79 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
         resetInvalid: false,
       });
     };
+
+    document.addEventListener(
+      "home-search-facets:ready",
+      (event) => {
+        const facets = event instanceof CustomEvent
+          ? event.detail
+          : null;
+
+        if (!facets || typeof facets !== "object") return;
+
+        if (
+          facets.priceBandsByType &&
+          typeof facets.priceBandsByType === "object"
+        ) {
+          priceBandsByType = facets.priceBandsByType;
+        }
+
+        if (
+          facets.bedroomOptionsByType &&
+          typeof facets.bedroomOptionsByType === "object"
+        ) {
+          bedroomOptionsByType = facets.bedroomOptionsByType;
+        }
+
+        if (Array.isArray(facets.bedroomInventory)) {
+          bedroomInventoryData = facets.bedroomInventory;
+        }
+
+        if (
+          facets.typeCounts &&
+          typeof facets.typeCounts === "object" &&
+          heroTypeSelect instanceof HTMLSelectElement
+        ) {
+          Array.from(heroTypeSelect.options).forEach((option) => {
+            if (!option.value) return;
+
+            const count = Math.max(
+              0,
+              Number(facets.typeCounts[option.value] || 0)
+            );
+
+            option.dataset.count = String(count);
+
+            const customOption = Array.from(
+              document.querySelectorAll(
+                "#home-hero-search [data-single-option]"
+              )
+            ).find(
+              (candidate) =>
+                candidate instanceof HTMLElement &&
+                candidate.dataset.value === option.value
+            );
+
+            const countElement = customOption?.querySelector(
+              ".hero-single-dropdown__count"
+            );
+
+            if (countElement) {
+              countElement.textContent = String(count);
+            }
+          });
+        }
+
+        renderPriceBands({
+          reset: false,
+          open: false,
+        });
+
+        refreshBedroomOptions({
+          resetInvalid: false,
+        });
+      }
+    );
 
     document.addEventListener(
       "home-search-dropdowns:ready",
@@ -12042,6 +12060,54 @@ document.documentElement.style.visibility = "";
 </style>
 
 <script is:inline data-astro-rerun src="/home-search-dropdowns.js?v=25"></script>
+<script is:inline data-astro-rerun>
+  /* homepage-search-facets-after-paint-v1 */
+  (() => {
+    const loadFacets = async () => {
+      const form = document.getElementById("home-filter-form");
+      const city = String(
+        form?.elements?.city?.value || "nanaimo"
+      ).trim();
+
+      if (!city) return;
+
+      try {
+        const response = await fetch(
+          `/api/home-listings?${new URLSearchParams({
+            city,
+            facets: "1",
+          })}`
+        );
+
+        if (!response.ok || !form?.isConnected) return;
+
+        const facets = await response.json();
+
+        document.dispatchEvent(
+          new CustomEvent("home-search-facets:ready", {
+            detail: facets,
+          })
+        );
+      } catch {
+        // The server-rendered controls remain a complete fallback.
+      }
+    };
+
+    const schedule = () => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(loadFacets);
+      });
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", schedule, {
+        once: true,
+      });
+    } else {
+      schedule();
+    }
+  })();
+</script>
 <style is:global>
   .homepage-save-search-form {
     grid-column: 1 / -1;
@@ -13596,7 +13662,191 @@ const navBottom = () => {
       true
     );
   })();
-</script></Layout>
+</script>
+<script is:inline data-astro-rerun>
+  /* defer-home-area-counts-v1 */
+  (() => {
+    if (window.__homeAreaCountsHydrating) return;
+    window.__homeAreaCountsHydrating = true;
+
+    const city = String(
+      document.querySelector(
+        '#home-filter-form [name="city"]'
+      )?.value ||
+      document.querySelector("[data-city]")?.dataset.city ||
+      "nanaimo"
+    );
+
+    const normalise = (value) =>
+      String(value || "")
+        .replace(/-/g, " ")
+        .trim()
+        .toLowerCase();
+
+    const pointInRing = (point, ring) => {
+      const [x, y] = point;
+      let inside = false;
+
+      for (
+        let index = 0, previous = ring.length - 1;
+        index < ring.length;
+        previous = index++
+      ) {
+        const [xi, yi] = ring[index];
+        const [xj, yj] = ring[previous];
+
+        if (
+          yi > y !== yj > y &&
+          x < ((xj - xi) * (y - yi)) / (yj - yi) + xi
+        ) {
+          inside = !inside;
+        }
+      }
+
+      return inside;
+    };
+
+    const containsPoint = (geojson, lat, lng) => {
+      const geometry =
+        geojson?.type === "Feature" ? geojson.geometry : geojson;
+
+      if (!geometry || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return false;
+      }
+
+      const point = [lng, lat];
+      const polygons =
+        geometry.type === "Polygon"
+          ? [geometry.coordinates]
+          : geometry.type === "MultiPolygon"
+            ? geometry.coordinates
+            : [];
+
+      return polygons.some((polygon) =>
+        polygon.some((ring) => pointInRing(point, ring))
+      );
+    };
+
+    const hydrateCounts = async () => {
+      const boundariesElement = document.getElementById(
+        "home-area-boundaries-json"
+      );
+
+      if (!boundariesElement) return;
+
+      let boundaries = [];
+
+      try {
+        boundaries = JSON.parse(boundariesElement.textContent || "[]");
+      } catch {
+        return;
+      }
+
+      if (!Array.isArray(boundaries) || !boundaries.length) return;
+
+      try {
+        const response = await fetch(
+          `/api/home-listings?${new URLSearchParams({
+            city,
+            limit: "1",
+          })}`
+        );
+
+        if (!response.ok) return;
+
+        const payload = await response.json();
+        const markers = Array.isArray(payload.markers)
+          ? payload.markers
+          : [];
+
+        if (
+          window.location.hostname
+            .replace(/^www\./, "")
+            .toLowerCase() === "nanaimomobiles.com"
+        ) {
+          return;
+        }
+
+        boundaries.forEach((boundary) => {
+          const slug = normalise(boundary.slug);
+          if (!slug) return;
+
+          const count = markers.filter((marker) =>
+            containsPoint(
+              boundary.geometry,
+              Number(marker.lat),
+              Number(marker.lng)
+            )
+          ).length;
+
+          document
+            .querySelectorAll("[data-area-option]")
+            .forEach((option) => {
+              const input = option.querySelector(
+                'input[name="area"]'
+              );
+
+              if (
+                input instanceof HTMLInputElement &&
+                normalise(input.value) === slug
+              ) {
+                const countElement = option.querySelector(
+                  ".area-multiselect__count"
+                );
+
+                if (countElement) {
+                  countElement.textContent = String(count);
+                }
+              }
+            });
+
+          document
+            .querySelectorAll(".site-nav__area-links a")
+            .forEach((link) => {
+              const label = link.querySelector(
+                ".site-nav__area-label"
+              );
+
+              if (normalise(label?.textContent) !== slug) return;
+
+              const countElement = link.querySelector(
+                ".site-nav__area-count"
+              );
+
+              if (countElement) {
+                countElement.textContent = `${count} listings`;
+                countElement.classList.toggle(
+                  "is-zero",
+                  count === 0
+                );
+              }
+            });
+        });
+      } catch {
+        // Counts arrive after paint; search remains fully usable.
+      }
+    };
+
+    const schedule = () => {
+      if ("requestIdleCallback" in window) {
+        window.requestIdleCallback(hydrateCounts, {
+          timeout: 1200,
+        });
+      } else {
+        window.setTimeout(hydrateCounts, 250);
+      }
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", schedule, {
+        once: true,
+      });
+    } else {
+      schedule();
+    }
+  })();
+</script>
+</Layout>
 
 
 
