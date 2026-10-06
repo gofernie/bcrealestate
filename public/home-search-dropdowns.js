@@ -179,6 +179,10 @@
     });
   };
 
+  const isNanaimoMobilesSite =
+    window.location.hostname.replace(/^www\./, "") === "nanaimomobiles.com" ||
+    new URLSearchParams(window.location.search).get("siteDomain") === "nanaimomobiles.com";
+
   [
     "type",
     "beds",
@@ -186,7 +190,9 @@
     "minSqft",
     "minYear",
     "waterfrontType",
-  ].forEach((name) => {
+  ].filter(
+    (name) => !isNanaimoMobilesSite || name !== "type"
+  ).forEach((name) => {
     const select = form.querySelector(`select[name="${name}"]`);
     if (!select || select.dataset.enhanced === "true") return;
 
