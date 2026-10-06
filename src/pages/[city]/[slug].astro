@@ -11006,7 +11006,24 @@ Approximate driving times from{" "}
       const output = document.getElementById("filter-match-count");
       if (!output) return;
 
-      const total = Math.max(0, Number(event.detail?.total) || 0);
+      const rawTotal = event.detail?.total;
+
+      // Ignore the startup event when it does not carry a real result count.
+      // A genuine zero-result filter still updates correctly.
+      if (
+        rawTotal === undefined ||
+        rawTotal === null ||
+        rawTotal === ""
+      ) {
+        return;
+      }
+
+      const total = Number(rawTotal);
+
+      if (!Number.isFinite(total) || total < 0) {
+        return;
+      }
+
       output.textContent = `${total} ${total === 1 ? "home" : "homes"}`;
 
       if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -19813,7 +19830,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   /* listing-count-client-sync-v1 */
   (() => {
     const root = document.documentElement;
-    root.classList.add("listing-count-pending");
+    // Keep the server-rendered count visible immediately.
 
     function applyListingTotal(total) {
       if (!Number.isFinite(total) || total < 0) return;
