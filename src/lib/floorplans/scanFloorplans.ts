@@ -450,12 +450,12 @@ export async function scanNewFloorplans({
       "listed_at",
       { ascending: false }
     )
-    .limit(
-      Math.max(
-        limit * 10,
-        100
-      )
-    );
+    /*
+     * floorplan-candidate-window-v1
+     * Read beyond the newest already-scanned listings. The actual scan
+     * below remains capped by `limit`.
+     */
+    .limit(1000);
 
   if (error) {
     throw new Error(

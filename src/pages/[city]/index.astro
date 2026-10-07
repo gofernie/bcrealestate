@@ -3821,9 +3821,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 
       <div class="locus-home-market__primary">
         <span>AVAILABLE NOW</span>
-        <strong>{homepageListingCount.toLocaleString()}
-
-</strong>
+        <strong data-home-live-total aria-live="polite">—</strong>
         <small>homes for sale in {cityName}</small>
       </div>
 
@@ -13894,6 +13892,43 @@ const navBottom = () => {
     } else {
       schedule();
     }
+  })();
+</script>
+<script is:inline data-astro-rerun>
+  /* home-market-live-count-v1 */
+  (() => {
+    const output = document.querySelector("[data-home-live-total]");
+    if (!(output instanceof HTMLElement)) return;
+
+    const cityFromPage = document.querySelector("[data-city]")?.dataset.city;
+    const cityFromPath = window.location.pathname
+      .split("/")
+      .filter(Boolean)[0];
+
+    const city = String(cityFromPage || cityFromPath || "nanaimo")
+      .trim()
+      .toLowerCase();
+
+    fetch(
+      `/api/home-listings?${new URLSearchParams({
+        city,
+        countOnly: "1",
+      })}`
+    )
+      .then((response) => {
+        if (!response.ok) throw new Error("Count request failed");
+        return response.json();
+      })
+      .then((payload) => {
+        const total = Number(payload?.total);
+
+        if (Number.isFinite(total) && total >= 0) {
+          output.textContent = total.toLocaleString();
+        }
+      })
+      .catch(() => {
+        output.textContent = "—";
+      });
   })();
 </script>
 </Layout>

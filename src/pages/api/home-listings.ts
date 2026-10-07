@@ -331,6 +331,7 @@ export const GET: APIRoute = async ({ request }) => {
   const id = String(url.searchParams.get("id") || "").trim();
   const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
   const limit = Math.min(48, Math.max(1, Number(url.searchParams.get("limit") || 24)));
+  const countOnly = url.searchParams.get("countOnly") === "1";
   const area = String(url.searchParams.get("area") || "").trim().toLowerCase();
   const areaBufferKm = Math.min(
     5,
@@ -768,6 +769,17 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   const total = listings.length;
+
+  /* home-listings-count-only-v1 */
+  if (countOnly) {
+    return new Response(JSON.stringify({ total }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=30, s-maxage=60, stale-while-revalidate=300",
+      },
+    });
+  }
   const markers = listings
     .filter((listing) => listing.lat && listing.lng)
     .map(({ id, image, beds, baths, price, address, lat, lng }) => ({ id, image, beds, baths, price, address, lat, lng }));
