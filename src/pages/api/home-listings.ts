@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { createClient } from "@supabase/supabase-js";
+import { mobileHomeParks } from "../../data/mobileHomeParks";
 
 export const prerender = false;
 
@@ -266,6 +267,59 @@ function polygonContainsOrIsNearPoint(
   });
 }
 
+/* nanaimo-mobile-park-api-v3 */
+/* nanaimo-mobile-park-api-v3 */
+const normaliseParkAddress = (value: unknown) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[’'".,#]/g, "")
+    .replace(/^\s*(?:unit\s*)?\d{1,4}\s*-\s*(?=\d{1,5}\s)/, "")
+    .replace(/\bstreet\b/g, "st")
+    .replace(/\broad\b/g, "rd")
+    .replace(/\bavenue\b/g, "ave")
+    .replace(/\bfirst\b/g, "1st")
+    .replace(/\bsecond\b/g, "2nd")
+    .replace(/\bthird\b/g, "3rd")
+    .replace(/\bfourth\b/g, "4th")
+    .replace(/\bfifth\b/g, "5th")
+    .replace(/\bsixth\b/g, "6th")
+    .replace(/\bseventh\b/g, "7th")
+    .replace(/\beighth\b/g, "8th")
+    .replace(/\bninth\b/g, "9th")
+    .replace(/\btenth\b/g, "10th")
+    .replace(/\beleventh\b/g, "11th")
+    .replace(/\btwelfth\b/g, "12th")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getMobileHomePark = (address: unknown) => {
+  const listingAddress = normaliseParkAddress(address);
+
+  if (!listingAddress) return undefined;
+
+  const matchingParks = mobileHomeParks
+    .flatMap((park) =>
+      [
+        park.address,
+        ...(Array.isArray(park.matchAddresses)
+          ? park.matchAddresses
+          : []),
+      ].map((value) => ({
+        park,
+        address: normaliseParkAddress(value),
+      }))
+    )
+    .filter(({ address }) =>
+      Boolean(address) &&
+      (
+        listingAddress === address ||
+        listingAddress.includes(address)
+      )
+    )
+    .sort((a, b) => b.address.length - a.address.length);
+
+  return matchingParks[0]?.park;
+};
 export const GET: APIRoute = async ({ request }) => {
   const url = new URL(request.url);
   const city = String(url.searchParams.get("city") || "nanaimo").trim().toLowerCase();
@@ -273,9 +327,11 @@ export const GET: APIRoute = async ({ request }) => {
     city === "comox"
       ? ["comox", "courtenay", "cumberland", "black creek", "merville", "union bay", "fanny bay", "royston", "denman island"]
       : Array.from(new Set([city, city.replace(/-/g, " ")]));
+  const facetsOnly = url.searchParams.get("facets") === "1";
   const id = String(url.searchParams.get("id") || "").trim();
   const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
   const limit = Math.min(48, Math.max(1, Number(url.searchParams.get("limit") || 24)));
+  const countOnly = url.searchParams.get("countOnly") === "1";
   const area = String(url.searchParams.get("area") || "").trim().toLowerCase();
   const areaBufferKm = Math.min(
     5,
@@ -290,7 +346,9 @@ export const GET: APIRoute = async ({ request }) => {
   const maxPrice = Number(url.searchParams.get("maxPrice") || 0);
   const beds = Number(url.searchParams.get("beds") || 0);
   const baths = Number(url.searchParams.get("baths") || 0);
-  const minSqft = Number(url.searchParams.get("minSqft") || 0);
+  const age55 = url.searchParams.get("age55") === "true";
+  const otherPark = url.searchParams.get("otherPark") === "true";
+  const petsAllowed = url.searchParams.get("petsAllowed") === "true";const minSqft = Number(url.searchParams.get("minSqft") || 0);
   const minYear = Number(url.searchParams.get("minYear") || 0);
   const primaryOnMain =
     url.searchParams.get("primaryOnMain") === "true";
@@ -319,9 +377,20 @@ export const GET: APIRoute = async ({ request }) => {
     import.meta.env.SUPABASE_SERVICE_ROLE_KEY
   );
 
+  const facetColumns = [
+    "id",
+    "mls_number",
+    "normalized_type",
+    "property_type",
+    "price",
+    "beds",
+    "listed_at",
+    "created_at",
+  ].join(",");
+
   let query = supabase
     .from("listing_rows")
-    .select("*")
+    .select(facetsOnly ? facetColumns : "*")
     .eq("status", "A")
     .in("normalized_city", cityDatabaseKeys)
     .limit(1000);
@@ -363,7 +432,8 @@ export const GET: APIRoute = async ({ request }) => {
       selectedAreaBoundaries = boundaryRows || [];
     }
   }
-  let listings = (data || []).map(normalizeListing).filter((listing) => {
+  const filterListings = (skipType = false) =>
+    (data || []).map(normalizeListing).filter((listing) => {
     // Classify from structured type fields only. Marketing remarks
     // commonly mention offices, businesses, or nearby retail.
     const searchable =
@@ -392,7 +462,7 @@ export const GET: APIRoute = async ({ request }) => {
       if (areas.length && !areas.some((value) => String(listing.area).toLowerCase().includes(value))) return false;
       if (!areas.length && area && !String(listing.area).toLowerCase().includes(area)) return false;
     }
-    if (type) {
+    if (type && !skipType) {
       const listingType = listing.type;
 
       const landSignalText =
@@ -425,7 +495,36 @@ export const GET: APIRoute = async ({ request }) => {
         );
 
       if (!matches) return false;
+
+      if (
+        type === "mobile" &&
+        (
+          listing.mls === "1050567" ||
+          /^69\s+lake\s+place\b/i.test(String(listing.address || ""))
+        )
+      ) {
+        return false;
+      }
+
+      if (
+        type === "mobile" &&
+        (
+          listing.mls === "1050567" ||
+          /^69\s+lake\s+place\b/i.test(String(listing.address || ""))
+        )
+      ) {
+        return false;
+      }
     }
+    if (age55 || otherPark || petsAllowed) {
+      const park = getMobileHomePark(listing.address);
+
+      if (!park) return false;
+      if (age55 && park.category !== "55-plus") return false;
+      if (otherPark && park.category === "55-plus") return false;
+      if (petsAllowed && park.petType === "none") return false;
+    }
+
     if (minPrice && listing.rawPrice < minPrice) return false;
     if (maxPrice && listing.rawPrice > maxPrice) return false;
     if (beds && Number(listing.beds || 0) < beds) return false;
@@ -502,21 +601,191 @@ export const GET: APIRoute = async ({ request }) => {
       ) {
         return false;
       }
-    }
-    return true;
-  });
+    }    return true;
+    });
+
+  let listings = filterListings();
+  const listingsForTypeCounts = type
+    ? filterListings(true)
+    : listings;
 
   if (sort === "price-low") listings.sort((a, b) => a.rawPrice - b.rawPrice);
   else if (sort === "price-high") listings.sort((a, b) => b.rawPrice - a.rawPrice);
+  else if (sort === "beds-high") listings.sort((a, b) => Number(b.beds || 0) - Number(a.beds || 0));
+  else if (sort === "sqft-high") listings.sort((a, b) => Number(b.sqft || 0) - Number(a.sqft || 0));
   else listings.sort((a, b) => new Date(b.listedAt || 0).getTime() - new Date(a.listedAt || 0).getTime());
 
+  const typeCounts = listingsForTypeCounts.reduce(
+    (counts: Record<string, number>, listing: any) => {
+      const typeKey =
+        listing.type === "townhome"
+          ? "townhouse"
+          : String(listing.type || "").trim().toLowerCase();
+
+      if (
+        ["house", "condo", "townhouse", "mobile", "land", "multi-family"]
+          .includes(typeKey)
+      ) {
+        counts[typeKey] = (counts[typeKey] || 0) + 1;
+      }
+
+      return counts;
+    },
+    {}
+  );
+
+  if (facetsOnly) {
+    const normaliseFacetType = (value: unknown) => {
+      const typeKey = String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[_\s]+/g, "-");
+
+      if (["home", "homes", "house", "houses"].includes(typeKey)) {
+        return "house";
+      }
+
+      if (["townhome", "townhomes"].includes(typeKey)) {
+        return "townhouse";
+      }
+
+      return typeKey;
+    };
+
+    const facetInventory = listings.map((listing) => ({
+      type: normaliseFacetType(listing.type),
+      price: Number(listing.rawPrice || 0),
+      beds: Number(listing.beds || 0),
+    }));
+
+    const facetTypes = Array.from(
+      new Set(["all", ...facetInventory.map((listing) => listing.type)])
+    ).filter(Boolean);
+
+    const formatPriceBand = (price: number) =>
+      price >= 1000000
+        ? `${(price / 1000000).toLocaleString("en-CA", {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2,
+          })}M`
+        : `${Math.round(price / 1000)}k`;
+
+    const roundMarketPrice = (price: number) => {
+      let increment = 50000;
+      if (price >= 6000000) increment = 1000000;
+      else if (price >= 3000000) increment = 500000;
+      else if (price >= 1500000) increment = 250000;
+      else if (price >= 750000) increment = 100000;
+      return Math.max(increment, Math.round(price / increment) * increment);
+    };
+
+    const fallbackPriceBands: Record<string, number[]> = {
+      all: [500000, 700000, 900000, 1200000],
+      house: [500000, 750000, 1000000, 1500000],
+      condo: [200000, 300000, 400000, 500000],
+      townhouse: [300000, 450000, 600000, 750000],
+      mobile: [100000, 200000, 300000, 400000],
+      land: [200000, 400000, 700000, 1000000],
+    };
+
+    const priceBandsByType = Object.fromEntries(
+      facetTypes.map((facetType) => {
+        const prices = facetInventory
+          .filter((listing) =>
+            facetType === "all" || listing.type === facetType
+          )
+          .map((listing) => listing.price)
+          .filter((price) => Number.isFinite(price) && price >= 50000)
+          .sort((a, b) => a - b);
+
+        const calculated = prices.length >= 8
+          ? [0.2, 0.4, 0.6, 0.8].map((percentile) => {
+              const index = Math.min(
+                prices.length - 1,
+                Math.max(0, Math.round((prices.length - 1) * percentile))
+              );
+              return roundMarketPrice(prices[index]);
+            })
+          : fallbackPriceBands[facetType] || fallbackPriceBands.all;
+
+        const thresholds = Array.from(new Set(calculated))
+          .filter((price) => price > 0)
+          .sort((a, b) => a - b);
+
+        const underBands = thresholds.map((price) => ({
+          value: String(Math.round(price / 1000)),
+          threshold: Math.round(price / 1000),
+          kind: "under",
+          label: `Under ${formatPriceBand(price)}`,
+        }));
+
+        const highest = underBands.at(-1);
+
+        return [
+          facetType,
+          highest
+            ? [
+                ...underBands,
+                {
+                  value: `over-${highest.threshold}`,
+                  threshold: highest.threshold,
+                  kind: "over",
+                  label: `Over ${formatPriceBand(highest.threshold * 1000)}`,
+                },
+              ]
+            : underBands,
+        ];
+      })
+    );
+
+    const bedroomOptionsByType = Object.fromEntries(
+      facetTypes.map((facetType) => [
+        facetType,
+        [2, 3, 4, 5].filter((threshold) =>
+          facetInventory.some(
+            (listing) =>
+              (facetType === "all" || listing.type === facetType) &&
+              listing.beds >= threshold
+          )
+        ),
+      ])
+    );
+
+    return new Response(
+      JSON.stringify({
+        typeCounts,
+        priceBandsByType,
+        bedroomOptionsByType,
+        bedroomInventory: facetInventory,
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "public, max-age=30, s-maxage=60, stale-while-revalidate=300",
+        },
+      }
+    );
+  }
+
   const total = listings.length;
+
+  /* home-listings-count-only-v1 */
+  if (countOnly) {
+    return new Response(JSON.stringify({ total, typeCounts }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=30, s-maxage=60, stale-while-revalidate=300",
+      },
+    });
+  }
   const markers = listings
     .filter((listing) => listing.lat && listing.lng)
     .map(({ id, image, beds, baths, price, address, lat, lng }) => ({ id, image, beds, baths, price, address, lat, lng }));
   const page = listings.slice(offset, offset + limit);
 
-  return new Response(JSON.stringify({ listings: page, markers, total, offset, limit }), {
+  return new Response(JSON.stringify({ listings: page, markers, total, typeCounts, offset, limit }), {
     status: 200,
     headers: {
       "Content-Type": "application/json",

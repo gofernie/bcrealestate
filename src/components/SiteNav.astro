@@ -11,6 +11,8 @@ const {
   site = null,
   showAreaNav = false,
   activeSection = "",
+  listingCount = 0,
+  areaListingCounts = {},
 } = Astro.props;
 
 const currentPath = Astro.url.pathname.replace(/\/$/, "") || "/";
@@ -154,8 +156,28 @@ const areaLinks: NavItem[] = areas.map((area: string) => ({
   href: `/${slugify(city)}/${slugify(area)}`,
 }));
 
+const areaListingCountLookup: Record<string, number> =
+  areaListingCounts &&
+  typeof areaListingCounts === "object"
+    ? (areaListingCounts as Record<string, number>)
+    : {};
 
+const hasAreaListingCounts =
+  Object.keys(areaListingCountLookup).length > 0;
 
+const getNavAreaCount = (label: string) =>
+  Math.max(
+    0,
+    Number(
+      areaListingCountLookup[
+        String(label || "")
+          .replace(/-/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .toLowerCase()
+      ] || 0
+    )
+  );
 const canonicalIntentHref = (pageSlug: string) => {
   const citySlug = slugify(city);
   const normalizedSlug = slugify(String(pageSlug || ""));
@@ -243,7 +265,11 @@ const uniqueNavIntentLinks: NavItem[] = Array.from(
 );
 
 const isNanaimoMobilesSite =
-  effectiveBrandHostname === "nanaimomobiles.com";
+  effectiveBrandHostname === "nanaimomobiles.com" ||
+  Astro.url.searchParams
+    .get("siteDomain")
+    ?.toLowerCase()
+    .replace(/^www\./, "") === "nanaimomobiles.com";
 
 const combinedNavLinks: NavItem[] =
   Array.from(
@@ -255,6 +281,12 @@ const combinedNavLinks: NavItem[] =
     ).values()
   );
 
+const nanaimoListingCount = Math.max(0, Number(listingCount) || 0);
+const nanaimoListingCountText = nanaimoListingCount
+  .toLocaleString("en-CA")
+  .padStart(2, "0");
+
+// site-nav-listing-counter-v1
 const finalNavLinks: NavItem[] =
   isNanaimoMobilesSite
     ? typeLinks.filter(
@@ -262,7 +294,11 @@ const finalNavLinks: NavItem[] =
           item.label === "Mobile Homes"
       )
     : combinedNavLinks;
----
+
+const nanaimoMobileUtilityLinks: NavItem[] = [
+  { label: "Park Directory", href: "/mobile-home-parks-in-nanaimo" },
+  { label: "55+ Communities", href: "/mobile-home-parks-in-nanaimo?age=55-plus" },
+];---
 
 <nav class="site-nav">
   <div class="shell site-nav__inner">
@@ -295,7 +331,7 @@ const finalNavLinks: NavItem[] =
       <span class="site-nav__theme-label">Theme</span>
     </button>
     <div class="site-nav__links" id="site-nav-links">
-   <div class="site-nav__areas">
+<div class="site-nav__areas">
   <a
     class="site-nav__areas-desktop"
     class:list={{
@@ -334,7 +370,17 @@ const finalNavLinks: NavItem[] =
         }}
         href={item.href}
       >
-        {item.label}
+        <span class="site-nav__area-label">{item.label}</span>
+        {hasAreaListingCounts && (
+          <span
+            class:list={{
+              "site-nav__area-count": true,
+              "is-zero": !getNavAreaCount(item.label),
+            }}
+          >
+            {getNavAreaCount(item.label)} listings
+          </span>
+        )}
       </a>
     ))}
 
@@ -352,12 +398,20 @@ const finalNavLinks: NavItem[] =
     {item.label}
   </a>
 ))}
-<a
-  class:list={{
-    active: isActive(`/${slugify(city)}/market-intelligence`)
-  }}
-  href={`/${slugify(city)}/market-intelligence`}
->Market Intel</a>
+{isNanaimoMobilesSite && nanaimoMobileUtilityLinks.map((item) => (
+  <a class:list={{ active: isActive(item.href) }} href={item.href}>
+    {item.label}
+  </a>
+))}
+
+{!isNanaimoMobilesSite && (
+  <a
+    class:list={{
+      active: isActive(`/${slugify(city)}/market-intelligence`)
+    }}
+    href={`/${slugify(city)}/market-intelligence`}
+  >Market Intel</a>
+)}
     </div>
   </div>
 </nav>
@@ -439,7 +493,6 @@ const finalNavLinks: NavItem[] =
   /* dynamic-area-menu-handler-v3 */
   const areaNav =
     document.querySelector(".site-nav__areas");
-
   const areaMenuToggle =
     document.querySelector(
       ".site-nav__areas-toggle"
@@ -695,7 +748,6 @@ const finalNavLinks: NavItem[] =
       border: 1px solid var(--line-warm);
     }
   }
-  
   /* dynamic-mobile-area-menu-v1 */
   .site-nav__areas-toggle,
   .site-nav__area-links {
@@ -783,6 +835,26 @@ const finalNavLinks: NavItem[] =
       font-weight: 800;
     }
   }
+
+  .site-nav__area-links a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .site-nav__area-count {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: .74rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
+
+  .site-nav__area-count.is-zero {
+    opacity: .52;
+    font-weight: 600;
+  }
   .site-nav__theme-toggle {
     display: none !important;
     display: none !important;
@@ -839,18 +911,91 @@ const finalNavLinks: NavItem[] =
     .site-nav__toggle {
       margin-left: 0;
     }
+  }  /* site-nav-listing-counter-v1 */
+  .site-nav__listing-count {
+    align-items: center;
+    display: inline-flex !important;
+    gap: 8px;
+    margin-right: 8px;
+    text-decoration: none;
   }
 
+  .site-nav__listing-digits {
+    background: linear-gradient(
+      to bottom,
+      #173a60 0,
+      #173a60 48%,
+      #0d2a48 49%,
+      #0d2a48 52%,
+      #173a60 53%,
+      #173a60 100%
+    );
+    border: 1px solid rgba(255, 255, 255, .25);
+    border-radius: 3px;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.18),
+      0 2px 5px rgba(8,32,55,.2);
+    color: #fff;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .86rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 900;
+    letter-spacing: .11em;
+    line-height: 1;
+    min-width: 2.75em;
+    padding: .46rem .34rem .4rem .45rem;
+    text-align: center;
+  }
 
-/* Desktop Areas hover dropdown */
+  .site-nav__listing-label {
+    font-size: .7rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  @media (max-width: 700px) {
+    .site-nav__listing-label {
+      display: none;
+    }
+  }
+
+  /* site-nav-area-list-scroll-v1 */
+  .site-nav__links.open {
+    overflow: visible !important;
+  }
+
+  .site-nav__links.open
+    .site-nav__areas:hover .site-nav__area-links,
+  .site-nav__areas:focus-within .site-nav__area-links,
+  .site-nav__area-links:not([hidden]) {
+    max-height: min(62dvh, 460px) !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+
+  /* site-nav-area-stack-v1 */
+  .site-nav__links.open .site-nav__areas {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .site-nav__links.open .site-nav__areas-toggle,
+  .site-nav__links.open .site-nav__area-links {
+    width: 100%;
+    box-sizing: border-box;
+  }
+</style>
+<style is:global>
+/* saved-desktop-areas-hover */
 @media (min-width: 761px) {
   .site-nav__areas {
     position: relative;
   }
 
-  /* The horizontal nav otherwise clips this dropdown. */
   .site-nav__links {
-    overflow: visible;
+    overflow: visible !important;
   }
 
   .site-nav__area-links {
@@ -876,87 +1021,48 @@ const finalNavLinks: NavItem[] =
     display: grid !important;
   }
 }
-</style>
 
-<script is:inline>
-  // content-aware-nav-breakpoint
-  (() => {
-    const navInner =
-      document.querySelector(".site-nav__inner");
+  /* force-area-count-visibility */
+  .site-nav__area-links .site-nav__area-count {
+    display: inline-flex !important;
+    visibility: visible !important;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 2ch;
+    margin-left: auto !important;
+    color: var(--muted) !important;
+    opacity: 1 !important;
+    white-space: nowrap;
+  }
 
-    const brand =
-      document.querySelector(".site-nav__brand");
+  .site-nav__area-links .site-nav__area-count.is-zero {
+    opacity: .52 !important;
 
-    const links =
-      document.querySelector(".site-nav__links");
+  /* softer-area-listing-counts */
+  .site-nav__area-links .site-nav__area-count {
+    color: var(--muted) !important;
+    font-size: .70rem;
+    font-weight: 500 !important;
+    opacity: .68 !important;
+  }
 
-    if (!navInner || !brand || !links) return;
+  .site-nav__area-links .site-nav__area-count.is-zero {
+    opacity: .42 !important;
+  }  }
+  /* area-count-whisper */
+  #site-nav-area-links .site-nav__area-count {
+    color: var(--muted) !important;
+    font-size: .68rem !important;
+    font-weight: 500 !important;
+    letter-spacing: .01em;
+    opacity: .68 !important;
+  }
 
-    function getMobileMediaRules() {
-      const matches = [];
-
-      for (const sheet of document.styleSheets) {
-        let rules;
-
-        try {
-          rules = sheet.cssRules;
-        } catch {
-          continue;
-        }
-
-        for (const rule of rules) {
-          if (
-            rule instanceof CSSMediaRule &&
-            /max-width:\s*(?:760|\d+)px/.test(
-              rule.media.mediaText
-            ) &&
-            Array.from(rule.cssRules).some((child) =>
-              child.cssText.includes("site-nav")
-            )
-          ) {
-            matches.push(rule);
-          }
-        }
-      }
-
-      return matches;
-    }
-
-    function setNaturalBreakpoint() {
-      const mediaRules = getMobileMediaRules();
-
-      if (!mediaRules.length) return;
-
-      // Temporarily expose the full desktop navigation for measurement.
-      mediaRules.forEach((rule) => {
-        rule.media.mediaText = "(max-width: 0px)";
-      });
-
-      requestAnimationFrame(() => {
-        const styles = getComputedStyle(navInner);
-        const gap = parseFloat(styles.columnGap || styles.gap) || 24;
-
-        const requiredShellWidth =
-          Math.ceil(
-            brand.getBoundingClientRect().width +
-            links.scrollWidth +
-            gap
-          );
-
-        // Desktop shell removes 40px from each side.
-        const breakpoint = requiredShellWidth + 80;
-
-        mediaRules.forEach((rule) => {
-          rule.media.mediaText =
-            `(max-width: ${breakpoint}px)`;
-        });
-      });
-    }
-
-    setNaturalBreakpoint();
-
-    document.fonts?.ready?.then(
-      setNaturalBreakpoint
-    );
-  })();
-</script>
+  #site-nav-area-links .site-nav__area-count.is-zero {
+    opacity: .42 !important;
+  }
+  /* active-area-count */
+  #site-nav-area-links a.active .site-nav__area-count {
+    color: #ffffff !important;
+    opacity: .82 !important;
+  }</style>

@@ -99,12 +99,27 @@ const cityLabel = city
 
 const site = await getSite(Astro.url.hostname, city);
 
+const isNanaimoMobilesSite =
+  Astro.url.hostname
+    .toLowerCase()
+    .replace(/^www\./, "") === "nanaimomobiles.com" ||
+  Astro.url.searchParams
+    .get("siteDomain")
+    ?.toLowerCase()
+    .replace(/^www\./, "") === "nanaimomobiles.com";
+
+let listingQuery = supabase
+  .from("listing_rows")
+  .select("lat, lng")
+  .in("normalized_city", cityDatabaseKeys)
+  .eq("status", "A");
+
+if (isNanaimoMobilesSite) {
+  listingQuery = listingQuery.eq("normalized_type", "mobile");
+}
+
 const { data: listings = [], error: listingsError } =
-  await supabase
-    .from("listing_rows")
-    .select("lat, lng")
-    .in("normalized_city", cityDatabaseKeys)
-    .eq("status", "A");
+  await listingQuery;
 
 if (listingsError) {
   console.error("Areas listing query failed:", listingsError);

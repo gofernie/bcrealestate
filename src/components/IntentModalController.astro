@@ -772,6 +772,47 @@ html {
         const sheetProgressBar = document.getElementById("sheet-progress-bar");
         const closeBtn = document.getElementById("sheet-close-btn");
 const sheetMapBtn = document.getElementById("sheet-map-btn");
+
+// modal-header-listing-nav-inline-v2
+const sheetPrevTopBtn = document.getElementById(
+  "sheet-prev-top-btn"
+);
+const sheetNextTopBtn = document.getElementById(
+  "sheet-next-top-btn"
+);
+
+[sheetPrevTopBtn, sheetNextTopBtn].forEach((button) => {
+  if (!(button instanceof HTMLElement)) return;
+
+  button.style.setProperty(
+    "background",
+    "#f5f8fa",
+    "important"
+  );
+  button.style.setProperty(
+    "border",
+    "1px solid #cbd6de",
+    "important"
+  );
+  button.style.setProperty(
+    "color",
+    "#29485d",
+    "important"
+  );
+  button.style.setProperty(
+    "box-shadow",
+    "none",
+    "important"
+  );
+});
+
+if (sheetPrevTopBtn instanceof HTMLElement) {
+  sheetPrevTopBtn.style.setProperty(
+    "margin-left",
+    "14px",
+    "important"
+  );
+}
 const sheetFloorplanBtn = document.getElementById("sheet-floorplan-btn");
 const sheetFloorplanDownloadBtn =
   document.getElementById("sheet-floorplan-download-btn");
@@ -2451,7 +2492,8 @@ const hasDescription = String(
 
 if (
   card.dataset.detailHydrated === "true" &&
-  hasDescription
+hasDescription &&
+card.dataset.floorplansHydrated === "true"
 ) return false;
 
   const listingId = card.dataset.listingId || card.dataset.mls;
@@ -2475,6 +2517,21 @@ if (
     );
     const data = await res.json();
     const detailListing = data?.listing || {};
+
+  // modal-floorplan-hydration-v1
+  const detailFloorplans = Array.isArray(data?.floorplans)
+    ? data.floorplans.filter(
+        (url) => typeof url === "string" && url.trim()
+      )
+    : [];
+
+  if (activeCard && detailFloorplans.length) {
+    activeCard.dataset.floorplans = JSON.stringify(
+      detailFloorplans
+    );
+    refreshFloorplanButtonVisibility();
+    syncDedicatedFloorplanPdfOverlay();
+  }
     const detailDescription = [
       detailListing.description,
       detailListing.public_remarks,
@@ -2495,9 +2552,32 @@ if (
       card.dataset.images = JSON.stringify(data.images);
     }
 
-    card.dataset.floorplans = JSON.stringify(
-      Array.isArray(data.floorplans) ? data.floorplans : []
-    );
+    const hydratedFloorplans = Array.isArray(data.floorplans)
+  ? data.floorplans.filter(Boolean)
+  : [];
+
+card.dataset.floorplans = JSON.stringify(hydratedFloorplans);
+
+/* floorplan-modal-hydration-fallback-v1 */
+if (activeCard === card && sheetFloorplanBtn) {
+  const showTopFloorplanButton =
+    hydratedFloorplans.length > 0 &&
+    !window.matchMedia("(max-width: 600px)").matches;
+
+  sheetFloorplanBtn.hidden = !showTopFloorplanButton;
+  sheetFloorplanBtn.style.setProperty(
+    "display",
+    showTopFloorplanButton ? "inline-flex" : "none",
+    "important"
+  );
+
+  if (showTopFloorplanButton) {
+    sheetFloorplanBtn.textContent =
+      hydratedFloorplans.length > 1
+        ? `Floorplans (${hydratedFloorplans.length})`
+        : "Floorplan";
+  }
+}
 
     card.dataset.rooms = JSON.stringify(
       Array.isArray(data.rooms) ? data.rooms : []
@@ -2512,7 +2592,9 @@ if (
     ).trim();
     card.dataset.videoUrl = String(data?.listing?.video_url || '').trim();
 
-    card.dataset.detailHydrated = "true";
+    /* floorplan-hydration-state-v1 */
+card.dataset.floorplansHydrated = "true";
+card.dataset.detailHydrated = "true";
 
 return true;
   } catch (error) {
@@ -2780,13 +2862,9 @@ sheet.setAttribute("aria-hidden", "false");
 sheet.removeAttribute("inert");
 document.body.style.overflow = "hidden";
 
-if (!modalHistoryPushed) {
-  modalReturnUrl = window.location.href;
-  modalHistoryPushed = true;
-  syncListingUrl(card, "push");
-} else {
-  syncListingUrl(card, "replace");
-}
+// Opening a sheet must not alter browser history. Astro's client router can
+// otherwise remount the page after close, leaving later cards unresponsive.
+modalHistoryPushed = false;
 
 window.requestAnimationFrame(() => {
   updateLandscapeGalleryMode();
@@ -3028,11 +3106,32 @@ async function openListingDeepLink() {
     card.dataset.image = images[0] || "";
     card.dataset.images = JSON.stringify(images);
 
-    card.dataset.floorplans = JSON.stringify(
-      Array.isArray(data.floorplans)
-        ? data.floorplans
-        : []
-    );
+    const hydratedFloorplans = Array.isArray(data.floorplans)
+  ? data.floorplans.filter(Boolean)
+  : [];
+
+card.dataset.floorplans = JSON.stringify(hydratedFloorplans);
+
+/* floorplan-modal-hydration-fallback-v1 */
+if (activeCard === card && sheetFloorplanBtn) {
+  const showTopFloorplanButton =
+    hydratedFloorplans.length > 0 &&
+    !window.matchMedia("(max-width: 600px)").matches;
+
+  sheetFloorplanBtn.hidden = !showTopFloorplanButton;
+  sheetFloorplanBtn.style.setProperty(
+    "display",
+    showTopFloorplanButton ? "inline-flex" : "none",
+    "important"
+  );
+
+  if (showTopFloorplanButton) {
+    sheetFloorplanBtn.textContent =
+      hydratedFloorplans.length > 1
+        ? `Floorplans (${hydratedFloorplans.length})`
+        : "Floorplan";
+  }
+}
 
     card.dataset.rooms = JSON.stringify(
       Array.isArray(data.rooms)
@@ -3107,12 +3206,8 @@ async function openListingDeepLink() {
     card.dataset.likedTags = "[]";
     card.dataset.isFavourite = "false";
     card.dataset.decision = "";
-
-    /*
-     * The API has already supplied the full detail payload,
-     * so prevent a second hydration request.
-     */
-    card.dataset.detailHydrated = "true";
+    // Summary cards must fetch full detail when opened. In particular,
+    // floorplans are not included in this lightweight result payload.
 
     card.innerHTML = `
       <div class="card-image-wrap">
@@ -3230,12 +3325,7 @@ if (mobileMediaNav) {
   setMobileMediaMode("photos");
 }
 
-if (modalHistoryPushed && !options.fromPopState) {
-  modalHistoryPushed = false;
-  history.back();
-} else {
-  modalHistoryPushed = false;
-}
+modalHistoryPushed = false;
 }
 const requestedImageUrls = new Set();
 const loadedImageUrls = new Set();
@@ -4461,6 +4551,7 @@ const name = document.getElementById("lead-name-input")?.value || "";
     const email = document.getElementById("lead-email-input")?.value || "";
     const phone = document.getElementById("lead-phone-input")?.value || "";
     const question = document.getElementById("lead-question-input")?.value || "";
+    const listingLeadData = getActiveListingLeadData();
 
     document.querySelectorAll(".lead-suggest-btn").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -4484,8 +4575,9 @@ message: [
   options.note || "",
   question ? `Question: ${question}` : "",
   activeCard?.dataset?.address ? `Property: ${activeCard.dataset.address}` : "",
+  listingLeadData.listing_url ? `Listing: ${listingLeadData.listing_url}` : "",
   ].filter(Boolean).join("\n"),
-  ...getActiveListingLeadData(),
+  ...listingLeadData,
 }),
     });
 
@@ -5216,37 +5308,54 @@ saveCurrentReaction();
 // keep modal position steady after decision
 }
 
-   document.addEventListener("click", (event) => {
-const card = event.target.closest(".original-card, .refined-card");
+   const openCardSheetFromClick = (event) => {
+  if (!(event.target instanceof Element)) return;
+
+  const card = event.target.closest(
+    ".original-card, .refined-card"
+  );
 
   if (!card) return;
 
- const interactive = event.target.closest("button, a, input, textarea, select");
+  const interactive = event.target.closest(
+    "button, a, input, textarea, select"
+  );
+
   if (interactive && interactive !== card) {
-    // Allow preview-btn and image-wrap clicks to open the modal
-    const isPreviewTrigger = interactive.classList.contains("preview-btn") ||
-      !!event.target.closest(".card__image-wrap");
+    const isPreviewTrigger =
+      interactive.classList.contains("preview-btn") ||
+      Boolean(event.target.closest(".card__image-wrap"));
+
     if (!isPreviewTrigger) return;
   }
 
-if (document.body.dataset.shortlistSendId && document.body.dataset.agentView === "true") return;
-
-  if (typeof openSheet === "function") {
-    openSheet(card);
-  } else {
-    let attempts = 0;
-    const retry = setInterval(() => {
-      attempts++;
-      if (typeof window.openSheet === "function") {
-        clearInterval(retry);
-        window.openSheet(card);
-      } else if (attempts > 50) {
-        clearInterval(retry);
-        console.error("openSheet never became available");
-      }
-    }, 20);
+  if (
+    document.body.dataset.shortlistSendId &&
+    document.body.dataset.agentView === "true"
+  ) {
+    return;
   }
-});
+
+  const open = window.openSheet;
+
+  if (typeof open !== "function") {
+    console.error("Listing modal is not ready.");
+    return;
+  }
+
+  // Card clicks belong to the listing sheet. Capture them before any
+  // older page/router handler can turn the click into navigation.
+  event.preventDefault();
+  event.stopImmediatePropagation();
+
+  open(card);
+};
+
+document.addEventListener(
+  "click",
+  openCardSheetFromClick,
+  true
+);
 
         closeBtn?.addEventListener("click", closeSheet);
 sheetShareBtn?.addEventListener("click", async (event) => {
@@ -9305,4 +9414,27 @@ html[data-theme="dark"] #preview-sheet #sheet-highlight-chips .panel__highlight-
 #preview-sheet.is-landscape-gallery .landscape-expand-hint {
   display: none !important;
 }
+</style>
+
+<style>
+  /* modal-header-listing-nav-direct-v1 */
+  /* Listing navigation is deliberately quieter than media controls. */
+  #sheet-prev-top-btn,
+  #sheet-next-top-btn {
+    background: #f5f8fa !important;
+    border: 1px solid #cbd6de !important;
+    color: #29485d !important;
+    box-shadow: none !important;
+  }
+
+  #sheet-prev-top-btn:hover,
+  #sheet-next-top-btn:hover {
+    background: #e8f1f6 !important;
+    border-color: #8eaabd !important;
+  }
+
+  /* A gap marks the change from viewing controls to listing navigation. */
+  #sheet-prev-top-btn {
+    margin-left: 14px !important;
+  }
 </style>

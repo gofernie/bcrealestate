@@ -36,26 +36,35 @@ export const GET: APIRoute = async ({ request }) => {
     import.meta.env.SUPABASE_SERVICE_ROLE_KEY
   );
 
-  const [listingResult, floorplanResult, roomResult] =
-    await Promise.all([
-      supabase
-        .from("listing_rows")
-        .select("*")
-        .or(
-          `id.eq.${listingId},mls_number.eq.${listingId}`
-        )
-        .limit(1)
-        .maybeSingle(),
+  const listingResult =
+    await supabase
+      .from("listing_rows")
+      .select("*")
+      .or(
+        `id.eq.${listingId},mls_number.eq.${listingId}`
+      )
+      .limit(1)
+      .maybeSingle();
 
+  // listing_floorplans.listing_id stores listing_rows.id, not MLS number.
+  // Passing an MLS into this UUID lookup can make the whole query fail.
+  const canonicalListingId = String(
+    listingResult.data?.id || ""
+  ).trim();
+
+  const detailListingIds = canonicalListingId
+    ? [canonicalListingId]
+    : [];const [floorplanResult, roomResult] =
+    await Promise.all([
       supabase
         .from("listing_floorplans")
         .select("listing_id,image_url")
-        .in("listing_id", candidateListingIds),
+        .in("listing_id", detailListingIds),
 
       supabase
         .from("listing_rooms")
         .select("*")
-        .in("listing_id", candidateListingIds),
+        .in("listing_id", detailListingIds),
     ]);
 
   if (floorplanResult.error) {

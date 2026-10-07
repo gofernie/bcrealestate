@@ -29,6 +29,32 @@ const typeLabels: Record<string, string> = {
 };
 
 
+const listingMatchesType = (listing: any, wanted: string) => {
+  const actual = normalise(
+    listing.normalized_type || listing.property_type
+  );
+
+  if (wanted === "mobile") {
+    return [
+      "mobile", "mobiles", "mobile-home", "mobile-homes",
+      "manufactured", "manufactured-home", "manufactured-homes",
+    ].includes(actual);
+  }
+
+  if (wanted === "house") {
+    return ["house", "homes", "houses"].includes(actual);
+  }
+
+  if (wanted === "townhouse") {
+    return ["townhouse", "townhouses", "townhome", "townhomes"].includes(actual);
+  }
+
+  if (wanted === "land") {
+    return ["land", "lot", "lots"].includes(actual);
+  }
+
+  return actual === wanted;
+};
 const currentPath =
   Astro.url.pathname.replace(/\/+$/, "") || "/";
 
@@ -56,9 +82,17 @@ for (const intent of pages) {
   seenTargets.add(cardIdentity);
   let matching = Array.isArray(inventory) ? [...inventory] : [];
 
-  if (type) {
-    matching = matching.filter(
-      (listing) => normalise(listing.normalized_type || listing.property_type) === type
+  const genericWaterfrontSearch =
+    /lakefront|waterfront|oceanfront/i.test(
+      `${intent.slug || ""} ${intent.hero_heading || ""} ${intent.seo_heading || ""}`
+    ) &&
+    !/condo|townhome|townhouse|mobile|manufactured|lot|land/i.test(
+      `${intent.slug || ""} ${intent.hero_heading || ""} ${intent.seo_heading || ""}`
+    );
+
+  if (type && !genericWaterfrontSearch) {
+    matching = matching.filter((listing) =>
+      listingMatchesType(listing, type)
     );
   }
 
@@ -68,6 +102,24 @@ for (const intent of pages) {
     );
   }
 
+  const intentSignals =
+    `${intent.slug || ""} ${intent.hero_heading || ""} ${intent.seo_heading || ""}`;
+
+  const viewType =
+    String(intent.view_type || "").trim().toLowerCase() ||
+    (/ocean\s+view/i.test(intentSignals) ? "ocean" : "");
+
+  if (viewType) {
+    matching = matching.filter((listing) => {
+      const listingViewType = String(
+        listing.view_type || listing.viewType || ""
+      ).trim().toLowerCase();
+
+      return viewType === "ocean"
+        ? /\bocean\b/.test(listingViewType)
+        : listingViewType.includes(viewType);
+    });
+  }
   const waterfrontType =
     String(intent.waterfront_type || "").trim().toLowerCase() ||
     (/lakefront/i.test(
@@ -122,12 +174,14 @@ for (const intent of pages) {
       : "listing");
 
   const label =
-    waterfrontType === "lakefront"
-      ? "Lakefront homes"
-      : cardType === "waterfront"
-        ? "Waterfront homes"
-        : typeLabels[type] ||
-          titleCase(intent.property_type || intent.area || "Listings");
+    viewType === "ocean"
+      ? "Ocean view homes"
+      : waterfrontType === "lakefront"
+        ? "Lakefront homes"
+        : cardType === "waterfront"
+          ? "Waterfront homes"
+          : typeLabels[type] ||
+            titleCase(intent.property_type || intent.area || "Listings");
 
   const count = matching.length;
 

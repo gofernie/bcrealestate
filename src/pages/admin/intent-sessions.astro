@@ -114,6 +114,33 @@ if (requestedSiteId) {
 const { data: leads } =
   await leadsQuery;
 
+// Lead-only sessions do not have an intent_listing_reactions row. Resolve their
+// property address directly so the admin can still open the listing.
+const leadAddresses = [...new Set(
+  (leads || [])
+    .map((lead) => {
+      const propertyMatch = String(lead.message || "").match(
+        /(?:^|\n)Property:\s*([^\n]+)/i
+      );
+      return String(propertyMatch?.[1] || lead.address || "").trim();
+    })
+    .filter(Boolean)
+)];
+
+const { data: leadListingRows } = leadAddresses.length
+  ? await supabase
+      .from("listing_rows")
+      .select("address, id, mls_number, normalized_city")
+      .in("address", leadAddresses.slice(0, 200))
+  : { data: [] };
+
+const leadListingByAddress = new Map(
+  (leadListingRows || []).map((row) => [
+    String(row.address || "").trim().toLowerCase(),
+    row,
+  ])
+);
+
 const leadBySessionId = new Map();
 
 (leads || []).forEach((lead) => {
@@ -124,26 +151,42 @@ const leadBySessionId = new Map();
   }
 });
 
-const sessions = Object.values(
-  rows.reduce((acc, row) => {
-    const key = row.session_id;
-    if (!acc[key]) {
-      acc[key] = {
-        session_id: row.session_id,
-        slug: row.slug,
-        city: row.city || "nanaimo",
-        last_activity: row.created_at,
-        first_activity: row.created_at,
-        reactions: [],
-        lead: leadBySessionId.get(row.session_id) || null,
-      };
-    }
-    acc[key].reactions.push(row);
-    if (new Date(row.created_at) > new Date(acc[key].last_activity)) acc[key].last_activity = row.created_at;
-    if (new Date(row.created_at) < new Date(acc[key].first_activity)) acc[key].first_activity = row.created_at;
-    return acc;
-  }, {})
-).sort((a, b) => new Date(b.last_activity).getTime() - new Date(a.last_activity).getTime());
+const sessionMap = rows.reduce((acc, row) => {
+  const key = row.session_id;
+  if (!acc[key]) {
+    acc[key] = {
+      session_id: row.session_id,
+      slug: row.slug,
+      city: row.city || "nanaimo",
+      last_activity: row.created_at,
+      first_activity: row.created_at,
+      reactions: [],
+      lead: leadBySessionId.get(row.session_id) || null,
+    };
+  }
+  acc[key].reactions.push(row);
+  if (new Date(row.created_at) > new Date(acc[key].last_activity)) acc[key].last_activity = row.created_at;
+  if (new Date(row.created_at) < new Date(acc[key].first_activity)) acc[key].first_activity = row.created_at;
+  return acc;
+}, {});
+
+leadBySessionId.forEach((lead, sessionId) => {
+  if (sessionMap[sessionId]) return;
+
+  sessionMap[sessionId] = {
+    session_id: sessionId,
+    slug: lead.slug || "",
+    city: lead.city || "nanaimo",
+    last_activity: lead.created_at,
+    first_activity: lead.created_at,
+    reactions: [],
+    lead,
+  };
+});
+
+const sessions = Object.values(sessionMap).sort(
+  (a, b) => new Date(b.last_activity).getTime() - new Date(a.last_activity).getTime()
+);
 
 function fmtDate(value) {
   if (!value) return "";
@@ -153,6 +196,28 @@ function fmtDate(value) {
 function fmtDateShort(value) {
   if (!value) return "";
   return new Date(value).toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+}
+function leadMessageLine(lead, label) {
+  const value = String(lead?.message || "");
+  const match = value.match(
+    new RegExp(`(?:^|\n)${label}:\s*([^\n]+)`, "i")
+  );
+  return String(match?.[1] || "").trim();
+}
+
+function leadRequestLabel(lead) {
+  const source = String(lead?.source || "").toLowerCase();
+  const content = `${lead?.question || ""}\n${lead?.message || ""}`.toLowerCase();
+
+  if (source.includes("showing") || content.includes("showing")) {
+    return "Showing request";
+  }
+
+  if (source.includes("question") || content.includes("question")) {
+    return "Question";
+  }
+
+  return "Buyer enquiry";
 }
 
 function countDecision(reactions, decision) {
@@ -1279,6 +1344,35 @@ const pageSlug =
             const score = Math.min(92, readiness + (session.lead ? 10 : 0) + (loves.length >= 3 ? 8 : 0));
             const hasShowing = session.lead?.message?.toLowerCase().includes("showing");
             const hasQuestion = session.lead?.message?.toLowerCase().includes("question");
+            const leadProperty =
+              leadMessageLine(session.lead, "Property") ||
+              String(session.lead?.address || "").trim();
+            const leadRequest = leadRequestLabel(session.lead);
+            const matchedLeadReaction = session.reactions.find(
+              (reaction) =>
+                String(reaction.address || "").trim().toLowerCase() ===
+                leadProperty.toLowerCase()
+            );
+            const matchedLeadListing = leadListingByAddress.get(
+              leadProperty.toLowerCase()
+            );
+            const leadListingUrl =
+              leadMessageLine(session.lead, "Listing") ||
+              (matchedLeadReaction
+                ? `/${city}/${pageSlug}?listing_id=${encodeURIComponent(
+                    matchedLeadReaction.listing_id ||
+                    matchedLeadReaction.mls_number ||
+                    matchedLeadReaction.address || ""
+                  )}`
+                : matchedLeadListing
+                  ? `/${city}/?listing_id=${encodeURIComponent(
+                      String(
+                        matchedLeadListing.mls_number ||
+                        matchedLeadListing.id ||
+                        ""
+                      )
+                    )}`
+                  : "");
 
             // donut chart SVG for buyer profile
             const lifePct = profile.lifestyle;
@@ -1372,6 +1466,48 @@ const pageSlug =
                 <div class="detail-body">
                   <div class="detail-main">
 
+                    {session.lead && (
+                      <div class="card" style="border:1px solid #b9d3e8;background:#f7fbff;">
+                        <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;">
+                          <div>
+                            <div class="card-label">Latest enquiry</div>
+                            <h3 style="margin:5px 0 0;">{leadRequest}</h3>
+                          </div>
+                          <div style="font-size:.78rem;color:var(--muted);white-space:nowrap;">
+                            {fmtDate(session.lead.created_at)}
+                          </div>
+                        </div>
+
+                        {leadProperty && (
+                          leadListingUrl ? (
+                            <a
+                              href={leadListingUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              style="display:inline-block;margin-top:14px;font-weight:750;color:#0f5f93;text-decoration:underline;text-underline-offset:3px;"
+                            >
+                              Open listing: {leadProperty}
+                            </a>
+                          ) : (
+                            <div style="margin-top:14px;font-weight:750;color:var(--ink);">
+                              Property: {leadProperty}
+                            </div>
+                          )
+                        )}
+
+                        {session.lead.question && (
+                          <div style="margin-top:12px;line-height:1.55;">
+                            <strong>Question:</strong> {session.lead.question}
+                          </div>
+                        )}
+
+                        {session.lead.message && (
+                          <div style="margin-top:12px;white-space:pre-line;line-height:1.6;color:var(--muted);">
+                            {session.lead.message}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {/* What we learned */}
                     <div class="card">
                       <h3>What we learned</h3>

@@ -9440,6 +9440,7 @@ grid-template-columns: 30px minmax(0, 1fr);
   city={city}
   site={site}
   areas={rankedNavAreas}
+  areaListingCounts={Object.fromEntries(navAreaCounts)}
   intentPages={navIntentPages}
 />
 <main
@@ -11005,7 +11006,24 @@ Approximate driving times from{" "}
       const output = document.getElementById("filter-match-count");
       if (!output) return;
 
-      const total = Math.max(0, Number(event.detail?.total) || 0);
+      const rawTotal = event.detail?.total;
+
+      // Ignore the startup event when it does not carry a real result count.
+      // A genuine zero-result filter still updates correctly.
+      if (
+        rawTotal === undefined ||
+        rawTotal === null ||
+        rawTotal === ""
+      ) {
+        return;
+      }
+
+      const total = Number(rawTotal);
+
+      if (!Number.isFinite(total) || total < 0) {
+        return;
+      }
+
       output.textContent = `${total} ${total === 1 ? "home" : "homes"}`;
 
       if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -12139,6 +12157,28 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
       const cityRaw = String(listing.normalized_city || listing.city || dataEl.dataset.city || "nanaimo");
       const cityLabel = cityRaw.charAt(0).toUpperCase() + cityRaw.slice(1);
 
+      /* type-area-card-brokerage-v1 */
+      const brokerage = String(
+        listing.listing_brokerage ||
+        listing.brokerage ||
+        listing.details?.listing_brokerage ||
+        listing.details?.listingBrokerage ||
+        listing.raw?.listing_brokerage ||
+        listing.raw?.listingBrokerage ||
+        listing.raw?.brokerage ||
+        ""
+      )
+        .trim()
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+      const brokerageHtml = brokerage
+        ? `<div class="card-brokerage">Courtesy of ${brokerage}</div>`
+        : "";
+
       const article = document.createElement("article");
       article.className = "card original-card";
       article.dataset.itemId = String(listing.id || listing.mls_number || listing.mls || "");
@@ -12178,6 +12218,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
   <span>${listing.baths || "-"} ba</span>
   ${listing.sqft ? `<span>${Number(listing.sqft).toLocaleString()} sq ft</span>` : ""}
 </div>
+                  ${brokerageHtml}
         </div>
         <div class="card-decision-badge" hidden></div>
       `;
@@ -16423,7 +16464,13 @@ document
     });
   });
 
-applySort();
+  /* reapply-area-sort-after-fast-results-v1 */
+  document.addEventListener(
+    "homepage-fast-results-replaced",
+    () => requestAnimationFrame(() => applySort())
+  );
+
+  applySort();
 </script>
 
     <script is:inline>
@@ -19343,6 +19390,10 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
 
     footer.appendChild(done);
 
+    // The custom menu supports several neighbourhoods; keep the hidden
+    // native select in the same multi-select mode.
+    select.multiple = true;
+
     const areaOptions = Array.from(select.options)
       .filter((option) => option.value !== "all");
 
@@ -19786,7 +19837,7 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
   /* listing-count-client-sync-v1 */
   (() => {
     const root = document.documentElement;
-    root.classList.add("listing-count-pending");
+    // Keep the server-rendered count visible immediately.
 
     function applyListingTotal(total) {
       if (!Number.isFinite(total) || total < 0) return;

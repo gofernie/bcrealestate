@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import twilio from "twilio";
 
 export const prerender = false;
 
@@ -82,7 +83,14 @@ export const POST: APIRoute = async ({ request }) => {
     const email = String(body.email || "").trim();
    const phone = String(body.phone || "").trim();
 const question = String(body.question || "").trim();
-const message = String(body.message || "").trim();
+const originalMessage = String(body.message || "").trim();
+const submittedListingUrl = String(body.listing_url || "").trim();
+const message = [
+  originalMessage,
+  submittedListingUrl && !/(?:^|\n)Listing:\s*/i.test(originalMessage)
+    ? `Listing: ${submittedListingUrl}`
+    : "",
+].filter(Boolean).join("\n");
 
     if (!email && !phone) {
       return new Response(JSON.stringify({ ok: false, error: "Email or phone required" }), {
@@ -180,6 +188,35 @@ const message = String(body.message || "").trim();
       }
     }
 
+    // Primary alert: send Chris an SMS for every new lead.
+    const leadSmsTo = String(import.meta.env.AGENT_PHONE_NUMBER || "").trim();
+    const twilioAccountSid = String(import.meta.env.TWILIO_ACCOUNT_SID || "").trim();
+    const twilioAuthToken = String(import.meta.env.TWILIO_AUTH_TOKEN || "").trim();
+    const twilioFrom = String(import.meta.env.TWILIO_FROM_NUMBER || "").trim();
+
+    if (!leadSmsTo || !twilioAccountSid || !twilioAuthToken || !twilioFrom) {
+      console.error("Lead saved, but Twilio lead-alert settings are incomplete.");
+    } else {
+      const leadSms = [
+        `New lead from ${siteName}`,
+        `Name: ${name || "Not provided"}`,
+        `Email: ${email || "Not provided"}`,
+        `Phone: ${phone || "Not provided"}`,
+        question ? `Question: ${question}` : "",
+        body.address ? `Property: ${body.address}` : "",
+        body.mls_number ? `MLS: ${body.mls_number}` : "",
+      ].filter(Boolean).join("\n");
+
+      try {
+        await twilio(twilioAccountSid, twilioAuthToken).messages.create({
+          from: twilioFrom,
+          to: leadSmsTo,
+          body: leadSms,
+        });
+      } catch (smsError) {
+        console.error("Lead SMS notification failed:", smsError);
+      }
+    }
     if (resendApiKey && agentEmail) {
       const source = String(body.source || "intent_refined_search");
       const adminUrl =

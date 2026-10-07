@@ -242,16 +242,45 @@ const {
         });
       }
 
-      const priceSelect = select(".price-filter-select");
-      const priceBand = value(".price-filter-select", "price");
-      const hasPriceBand = priceBand && priceBand !== "all";
-      const priceLabel = hasPriceBand
-        ? priceSelect?.selectedOptions?.[0]?.textContent?.trim() || priceBand
-        : root.dataset.maxPrice
-          ? `Up to $${Number(root.dataset.maxPrice).toLocaleString("en-CA")}`
-          : root.dataset.minPrice
-            ? `From $${Number(root.dataset.minPrice).toLocaleString("en-CA")}`
-            : "";
+      const homePriceCandidate = document.querySelector(
+  '#home-hero-search select[name="maxPrice"], #home-filter-form select[name="maxPrice"]'
+);
+
+const homePriceSelect =
+  homePriceCandidate instanceof HTMLSelectElement
+    ? homePriceCandidate
+    : null;
+
+const pagePriceSelect = select(".price-filter-select");
+
+// On the homepage, the native hero select is the source of truth.
+// Other pages continue to use their local price control.
+const priceSelect = homePriceSelect || pagePriceSelect;
+
+const priceBand =
+  String(homePriceSelect?.value || "").trim() ||
+  String(value(".price-filter-select", "price") || "").trim();
+
+const hasPriceBand =
+  Boolean(priceBand) &&
+  priceBand !== "all" &&
+  priceBand !== "0";
+      const savedMaxPrice = String(root.dataset.maxPrice || "").trim();
+const savedOverPrice = savedMaxPrice.match(/^over-(\d+)$/);
+const savedMaxPriceNumber = Number(savedMaxPrice);
+const hasSavedMaxPrice =
+  Number.isFinite(savedMaxPriceNumber) &&
+  savedMaxPriceNumber > 0;
+
+const priceLabel = hasPriceBand
+  ? priceSelect?.selectedOptions?.[0]?.textContent?.trim() || priceBand
+  : savedOverPrice
+    ? `Over $${Number(savedOverPrice[1]).toLocaleString("en-CA")}`
+    : hasSavedMaxPrice
+      ? `Up to $${savedMaxPriceNumber.toLocaleString("en-CA")}`
+      : root.dataset.minPrice && Number(root.dataset.minPrice) > 0
+        ? `From $${Number(root.dataset.minPrice).toLocaleString("en-CA")}`
+        : "";
 
       const beds = value(".beds-filter-select", "beds");
       const baths = value(".baths-filter-select", "baths");
@@ -265,7 +294,14 @@ const {
           ? params.getAll("area")
           : root.dataset.area || "",
         propertyType: params.get("type") || root.dataset.propertyType || "",
-        price: params.get("price") || "",
+        price:
+  priceBand ||
+  params.get("price") ||
+  params.get("maxPrice") ||
+  params.get("minPrice") ||
+  root.dataset.maxPrice ||
+  root.dataset.minPrice ||
+  "",
         beds: params.get("beds") || "",
         baths: params.get("baths") || "",
         minSqft: params.get("minSqft") || "",
