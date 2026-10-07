@@ -772,7 +772,7 @@ export const GET: APIRoute = async ({ request }) => {
 
   /* home-listings-count-only-v1 */
   if (countOnly) {
-    return new Response(JSON.stringify({ total }), {
+    return new Response(JSON.stringify({ total, typeCounts }), {
       status: 200,
       headers: {
         "Content-Type": "application/json",
