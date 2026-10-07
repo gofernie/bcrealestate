@@ -1886,12 +1886,32 @@ const featuredListingMls = String(
   siteRow?.featured_listing_mls || ""
 ).trim();
 
-const selectedFeaturedListing = featuredListingMls
-  ? listings.find(
+let selectedFeaturedListing: any = null;
+
+if (featuredListingMls) {
+  const { data: featuredListingRow, error: featuredListingError } =
+    await supabase
+      .from("listing_rows")
+      .select("*")
+      .eq("status", "A")
+      .eq("mls_number", featuredListingMls)
+      .maybeSingle();
+
+  if (featuredListingError) {
+    console.error(
+      "Featured listing lookup failed:",
+      featuredListingError
+    );
+  }
+
+  selectedFeaturedListing =
+    featuredListingRow ||
+    listings.find(
       (listing: any) =>
         String(listing?.mls_number || "").trim() === featuredListingMls
-    )
-  : null;
+    ) ||
+    null;
+}
 
 const featuredListing =
   selectedFeaturedListing ||
