@@ -147,6 +147,42 @@ const homepageMarketRead = (() => {
       "Choice has tightened while sales have strengthened. Buyers may need to move decisively when the right home appears.";
   }
 
+  const graphRows = history.slice(-12);
+  const graphWidth = 240;
+  const graphHeight = 92;
+  const graphPadding = 6;
+  const graphMaximum = Math.max(
+    1,
+    ...graphRows.flatMap((row) => [
+      row.activeListings,
+      row.sales,
+    ])
+  );
+
+  const graphPath = (
+    key: "activeListings" | "sales"
+  ) =>
+    graphRows
+      .map((row, index) => {
+        const x =
+          graphPadding +
+          (index /
+            Math.max(graphRows.length - 1, 1)) *
+            (graphWidth - graphPadding * 2);
+
+        const y =
+          graphPadding +
+          graphHeight -
+          graphPadding * 2 -
+          (row[key] / graphMaximum) *
+            (graphHeight - graphPadding * 2);
+
+        return `${index === 0 ? "M" : "L"} ${x.toFixed(
+          1
+        )} ${y.toFixed(1)}`;
+      })
+      .join(" ");
+
   return {
     headline,
     detail,
@@ -162,6 +198,10 @@ const homepageMarketRead = (() => {
       salesYoY,
       "sales"
     ),
+    activeListingsTrendPath: graphPath(
+      "activeListings"
+    ),
+    salesTrendPath: graphPath("sales"),
   };
 })();
 
@@ -3992,6 +4032,44 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
     </div>
 
     <div
+      class="locus-home-market__mini-chart"
+      aria-label={`${cityName} 12-month listing and sales trend`}
+    >
+      <span>12-month trend</span>
+
+      <svg
+        viewBox="0 0 240 92"
+        role="img"
+        aria-label="Active listings and sales per month"
+      >
+        <line x1="6" y1="24" x2="234" y2="24" />
+        <line x1="6" y1="46" x2="234" y2="46" />
+        <line x1="6" y1="68" x2="234" y2="68" />
+
+        <path
+          class="locus-home-market__trend-listings"
+          d={homepageMarketRead.activeListingsTrendPath}
+        />
+
+        <path
+          class="locus-home-market__trend-sales"
+          d={homepageMarketRead.salesTrendPath}
+        />
+      </svg>
+
+      <div class="locus-home-market__mini-legend">
+        <span>
+          <i class="is-listings"></i>
+          Active listings
+        </span>
+
+        <span>
+          <i class="is-sales"></i>
+          Sales
+        </span>
+      </div>
+    </div>
+    <div
       class="locus-home-market__read-stats"
       aria-label={`${cityName} three-month market averages`}
     >
@@ -4252,6 +4330,203 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 
   .locus-home-market__read-stat {
     min-height: 0;
+  }
+}
+/* homepage-market-read-trend-v1 */
+.locus-home-market__intel--read {
+  grid-template-columns:
+    minmax(0, 1.06fr)
+    minmax(190px, .5fr)
+    minmax(390px, .8fr);
+  gap: clamp(28px, 4vw, 66px);
+}
+
+.locus-home-market__mini-chart {
+  min-width: 0;
+  padding: 12px 0;
+}
+
+.locus-home-market__mini-chart > span {
+  display: block;
+  margin-bottom: 14px;
+  color: var(--locus-muted);
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.locus-home-market__mini-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.locus-home-market__mini-chart line {
+  stroke: rgba(30, 54, 73, .12);
+  stroke-width: 1;
+}
+
+.locus-home-market__mini-chart path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.locus-home-market__trend-listings {
+  stroke: #4d4743;
+}
+
+.locus-home-market__trend-sales {
+  stroke: var(--locus-teal, #2f6f73);
+}
+
+.locus-home-market__mini-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 13px;
+  margin-top: 12px;
+  color: var(--locus-muted);
+  font-size: .7rem;
+}
+
+.locus-home-market__mini-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.locus-home-market__mini-legend i {
+  width: 16px;
+  height: 3px;
+  border-radius: 999px;
+}
+
+.locus-home-market__mini-legend .is-listings {
+  background: #4d4743;
+}
+
+.locus-home-market__mini-legend .is-sales {
+  background: var(--locus-teal, #2f6f73);
+}
+
+.locus-home-market__read-stat p {
+  color: var(--locus-navy);
+  font-size: .92rem;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.locus-home-market__read-stat p b {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  margin-right: 7px;
+  place-items: center;
+  border-radius: 999px;
+  color: #236c70;
+  background: rgba(47, 111, 115, .12);
+  font-size: 1rem;
+}
+
+.locus-home-market__read-stat:nth-child(2) p b {
+  color: #9a4639;
+  background: rgba(154, 70, 57, .11);
+}
+
+.locus-home-market__read-stat small {
+  padding-left: 33px;
+  color: var(--locus-muted);
+  font-size: .76rem;
+  font-weight: 500;
+}
+
+@media (max-width: 1120px) {
+  .locus-home-market__intel--read {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, .82fr);
+  }
+
+  .locus-home-market__read-story {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .locus-home-market__mini-chart {
+    max-width: 440px;
+  }
+}
+/* homepage-market-read-trend-size-v1 */
+.locus-home-market__intel--read {
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(245px, .64fr)
+    minmax(370px, .78fr);
+}
+
+.locus-home-market__mini-chart svg {
+  height: 108px;
+}
+
+.locus-home-market__mini-chart path {
+  stroke-width: 3.5;
+}
+
+@media (max-width: 1120px) {
+  .locus-home-market__intel--read {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, .82fr);
+  }
+}
+/* homepage-market-read-trend-position-v1 */
+.locus-home-market__intel--read {
+  grid-template-columns:
+    minmax(0, 1.02fr)
+    minmax(220px, .55fr)
+    minmax(430px, .9fr);
+  gap: clamp(22px, 3.2vw, 52px);
+}
+
+.locus-home-market__mini-chart {
+  transform: translateX(-24px);
+}
+
+@media (max-width: 1120px) {
+  .locus-home-market__mini-chart {
+    transform: none;
+  }
+}
+/* homepage-market-read-trend-readable-v1 */
+.locus-home-market__intel--read {
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(250px, .6fr)
+    minmax(420px, .87fr);
+}
+
+.locus-home-market__mini-chart svg {
+  height: 120px;
+}
+
+.locus-home-market__mini-chart > span {
+  font-size: .78rem;
+  letter-spacing: .09em;
+}
+
+.locus-home-market__mini-legend {
+  gap: 10px 16px;
+  font-size: .8rem;
+}
+
+.locus-home-market__mini-legend i {
+  width: 20px;
+  height: 4px;
+}
+
+@media (max-width: 1120px) {
+  .locus-home-market__intel--read {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, .82fr);
   }
 }</style>
 
