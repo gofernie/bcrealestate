@@ -34,6 +34,136 @@ const supabase = createClient(
   import.meta.env.PUBLIC_SUPABASE_URL,
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
+/* homepage-market-pulse-v2 */
+const {
+  data: homepageMarketHistoryRows = [],
+  error: homepageMarketHistoryError,
+} = await supabase
+  .from("market_monthly_stats")
+  .select(`
+    month_start,
+    new_listings,
+    sales
+  `)
+  .eq("city", routeCity)
+  .not("median_days_on_market", "is", null)
+  .order("month_start", { ascending: false })
+  .limit(15);
+
+if (homepageMarketHistoryError) {
+  console.error(
+    "Homepage market read query failed:",
+    homepageMarketHistoryError
+  );
+}
+
+const homepageMarketRead = (() => {
+  const history = [...homepageMarketHistoryRows]
+    .reverse()
+    .map((row: any) => ({
+      activeListings: Number(row.new_listings || 0),
+      sales: Number(row.sales || 0),
+    }));
+
+  const windowMonths = 3;
+  const recentMonths = history.slice(-windowMonths);
+  const priorYearMonths = history.slice(
+    -(windowMonths + 12),
+    -12
+  );
+
+  const average = (values: number[]) => {
+    const usable = values.filter(
+      (value) => Number.isFinite(value) && value > 0
+    );
+
+    return usable.length === windowMonths
+      ? usable.reduce((total, value) => total + value, 0) /
+          windowMonths
+      : null;
+  };
+
+  const activeListings = average(
+    recentMonths.map((row) => row.activeListings)
+  );
+  const sales = average(
+    recentMonths.map((row) => row.sales)
+  );
+  const priorActiveListings = average(
+    priorYearMonths.map((row) => row.activeListings)
+  );
+  const priorSales = average(
+    priorYearMonths.map((row) => row.sales)
+  );
+
+  if (
+    activeListings == null ||
+    sales == null ||
+    priorActiveListings == null ||
+    priorSales == null
+  ) {
+    return null;
+  }
+
+  const percentChange = (
+    currentValue: number,
+    previousValue: number
+  ) =>
+    previousValue > 0
+      ? ((currentValue - previousValue) / previousValue) * 100
+      : null;
+
+  const activeListingsYoY = percentChange(
+    activeListings,
+    priorActiveListings
+  );
+  const salesYoY = percentChange(sales, priorSales);
+
+  if (activeListingsYoY == null || salesYoY == null) {
+    return null;
+  }
+
+  const comparisonLabel = (
+    change: number,
+    label: string
+  ) =>
+    Math.abs(change) < 0.5
+      ? `About the same ${label}`
+      : `${Math.abs(change).toFixed(0)}% ${
+          change > 0 ? "more" : "fewer"
+        } ${label}`;
+
+  let headline = "The market is finding its balance.";
+  let detail =
+    "Supply and sales are moving without one clear advantage for either side. Property-specific pricing still matters most.";
+
+  if (activeListingsYoY >= 10 && salesYoY <= -10) {
+    headline = "Buyers have more leverage.";
+    detail =
+      "There is more supply to compare and fewer sales closing. Well-priced homes can still move, but sellers need to compete on price, condition, and presentation.";
+  } else if (activeListingsYoY <= -10 && salesYoY >= 10) {
+    headline = "Demand is gaining the upper hand.";
+    detail =
+      "Choice has tightened while sales have strengthened. Buyers may need to move decisively when the right home appears.";
+  }
+
+  return {
+    headline,
+    detail,
+    activeListings,
+    sales,
+    activeListingsYoY,
+    salesYoY,
+    activeListingsComparison: comparisonLabel(
+      activeListingsYoY,
+      "active listings"
+    ),
+    salesComparison: comparisonLabel(
+      salesYoY,
+      "sales"
+    ),
+  };
+})();
 
 const {
   data: waterfrontInventoryRows,
@@ -3845,32 +3975,352 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 
   </div>
 
-  <div class="locus-home-market__intel">
+  {homepageMarketRead ? (
+  <div class="locus-home-market__intel locus-home-market__intel--read">
+    <div class="locus-home-market__read-story">
+      <span class="locus-home-section-kicker">
+        MARKET INTELLIGENCE
+      </span>
 
+      <h3>{homepageMarketRead.headline}</h3>
+
+      <p>{homepageMarketRead.detail}</p>
+
+      <a href={`/${city || "nanaimo"}/market-intelligence`}>
+        Read the full {cityName} market update &rarr;
+      </a>
+    </div>
+
+    <div
+      class="locus-home-market__read-stats"
+      aria-label={`${cityName} three-month market averages`}
+    >
+      <div class="locus-home-market__read-stat">
+        <span>Average active listings</span>
+
+        <strong>
+          {Math.round(
+            homepageMarketRead.activeListings
+          ).toLocaleString()}
+        </strong>
+
+        <p>
+          <b aria-hidden="true">
+            {homepageMarketRead.activeListingsYoY >= 0
+              ? "↑"
+              : "↓"}
+          </b>
+
+          {homepageMarketRead.activeListingsComparison}
+
+          <small>
+            vs. the same 3-month period last year
+          </small>
+        </p>
+      </div>
+
+      <div class="locus-home-market__read-stat">
+        <span>Average sales / month</span>
+
+        <strong>
+          {Math.round(
+            homepageMarketRead.sales
+          ).toLocaleString()}
+        </strong>
+
+        <p>
+          <b aria-hidden="true">
+            {homepageMarketRead.salesYoY >= 0
+              ? "↑"
+              : "↓"}
+          </b>
+
+          {homepageMarketRead.salesComparison}
+
+          <small>
+            vs. the same 3-month period last year
+          </small>
+        </p>
+      </div>
+    </div>
+  </div>
+) : (  <div class="locus-home-market__intel">
     <div>
-      <span class="locus-home-section-kicker">MARKET INTELLIGENCE</span>
+      <span class="locus-home-section-kicker">
+        MARKET INTELLIGENCE
+      </span>
 
       <h3>Know the market, not just the listings.</h3>
 
       <p>
-        Explore neighbourhood activity, price ranges, inventory,
-        and local market context.
+        Explore neighbourhood activity, price ranges,
+        inventory, and local market context.
       </p>
 
       <a href={`/${city || "nanaimo"}/market-intelligence`}>
         Explore market intel &rarr;
       </a>
     </div>
-
-    <div class="locus-home-market__chart" aria-hidden="true">
-      <span></span>
-      <span></span>
-      <span></span>
-      <span></span>
-      <span></span>
-    </div>
-
   </div>
+)}
+
+<style is:global>
+/* homepage-market-read-v1 */
+.locus-home-market__intel--read {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(320px, .88fr);
+  align-items: center;
+  gap: clamp(28px, 5vw, 72px);
+}
+
+.locus-home-market__read-story {
+  min-width: 0;
+  max-width: 620px;
+}
+
+.locus-home-market__read-story h3 {
+  margin: 12px 0 14px;
+}
+
+.locus-home-market__read-story p {
+  max-width: 56ch;
+}
+
+.locus-home-market__read-story a {
+  display: inline-flex;
+  margin-top: 18px;
+}
+
+.locus-home-market__read-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+  border-left: 1px solid rgba(47, 111, 115, .22);
+}
+
+.locus-home-market__read-stat {
+  min-width: 0;
+  padding: 10px clamp(18px, 2.5vw, 30px) 10px;
+}
+
+.locus-home-market__read-stat + .locus-home-market__read-stat {
+  border-left: 1px solid rgba(47, 111, 115, .22);
+}
+
+.locus-home-market__read-stat > span {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--locus-muted);
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.locus-home-market__read-stat strong {
+  display: block;
+  color: var(--locus-navy);
+  font-family: var(--serif, Georgia, serif);
+  font-size: clamp(2.5rem, 4vw, 3.7rem);
+  font-weight: 500;
+  letter-spacing: -.045em;
+  line-height: .95;
+}
+
+.locus-home-market__read-stat p {
+  margin: 15px 0 0;
+  color: var(--locus-muted);
+  font-size: .82rem;
+  line-height: 1.45;
+}
+
+.locus-home-market__read-stat b {
+  margin-right: 5px;
+  color: var(--locus-teal, #2f6f73);
+  font-size: 1rem;
+}
+
+.locus-home-market__read-stat small {
+  display: block;
+  margin-top: 3px;
+  font-size: .75rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 900px) {
+  .locus-home-market__intel--read {
+    grid-template-columns: 1fr;
+  }
+
+  .locus-home-market__read-stats {
+    max-width: 620px;
+    border-top: 1px solid rgba(47, 111, 115, .22);
+    border-left: 0;
+    padding-top: 22px;
+  }
+
+  .locus-home-market__read-stat:first-child {
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .locus-home-market__read-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .locus-home-market__read-stat {
+    padding: 18px 0;
+  }
+
+  .locus-home-market__read-stat + .locus-home-market__read-stat {
+    border-top: 1px solid rgba(47, 111, 115, .22);
+    border-left: 0;
+  }
+}
+
+/* homepage-market-read-layout-v2 */
+.locus-home-market {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.locus-home-market__stats {
+  display: none;
+}
+
+.locus-home-market__intel--read {
+  grid-column: 1 / -1;
+  grid-template-columns:
+    minmax(0, 1.18fr)
+    minmax(430px, .82fr);
+  align-items: center;
+  gap: clamp(42px, 7vw, 100px);
+}
+
+.locus-home-market__read-story h3 {
+  max-width: 12ch;
+  font-size: clamp(2.25rem, 4vw, 3.7rem);
+  letter-spacing: -.045em;
+  line-height: .98;
+}
+
+.locus-home-market__read-story p {
+  max-width: 48ch;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.locus-home-market__read-story a {
+  min-width: 212px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.locus-home-market__read-stats {
+  align-self: stretch;
+  align-items: center;
+}
+
+.locus-home-market__read-stat {
+  display: flex;
+  min-height: 214px;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.locus-home-market__read-stat strong {
+  font-size: clamp(3.1rem, 5vw, 4.5rem);
+}
+
+@media (max-width: 900px) {
+  .locus-home-market__intel--read {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+
+  .locus-home-market__read-story h3 {
+    max-width: 15ch;
+  }
+}
+
+@media (max-width: 560px) {
+  .locus-home-market__read-story a {
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .locus-home-market__read-stat {
+    min-height: 0;
+  }
+}</style>
+
+<style is:global>
+/* home-market-story-v1 */
+.locus-home-market__intel {
+  align-items: stretch;
+}
+
+.locus-home-market__story {
+  max-width: 620px;
+}
+
+.locus-home-market__story h3 {
+  margin: 12px 0 14px;
+  max-width: 13ch;
+}
+
+.locus-home-market__story p {
+  max-width: 56ch;
+}
+
+.locus-home-market__story a {
+  display: inline-flex;
+  margin-top: 20px;
+  font-weight: 800;
+}
+
+.locus-home-market__brief {
+  align-self: center;
+  max-width: 270px;
+  padding: 22px 0 22px 28px;
+  border-left: 1px solid rgba(47, 111, 115, .28);
+}
+
+.locus-home-market__brief > span {
+  display: block;
+  margin-bottom: 9px;
+  color: var(--locus-green);
+  font-size: .68rem;
+  font-weight: 900;
+  letter-spacing: .15em;
+}
+
+.locus-home-market__brief strong {
+  display: block;
+  margin-bottom: 9px;
+  font-family: var(--serif, Georgia, serif);
+  font-size: 1.35rem;
+  line-height: 1.05;
+}
+
+.locus-home-market__brief p {
+  margin: 0;
+  color: var(--locus-muted);
+  font-size: .9rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .locus-home-market__brief {
+    max-width: none;
+    margin-top: 24px;
+    padding: 20px 0 0;
+    border-top: 1px solid rgba(47, 111, 115, .28);
+    border-left: 0;
+  }
+}
+</style>
 
 </section>
 
@@ -10191,7 +10641,10 @@ document.documentElement.style.visibility = "";
 
 .locus-home-hero .locus-home-kicker {
   color: #fff;
-  opacity: .82;
+  opacity: .92;
+  font-size: .92rem;
+  letter-spacing: .16em;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, .5);
 }
 
 .locus-home-hero h1 {
@@ -10207,9 +10660,11 @@ document.documentElement.style.visibility = "";
 .locus-home-hero__lede {
   max-width: 560px;
   margin: 0;
-  color: rgba(255,255,255,.87);
-  font-size: 1.13rem;
-  line-height: 1.6;
+  color: rgba(255,255,255,.92);
+  font-family: var(--serif, Georgia, serif);
+  font-size: 1.2rem;
+  line-height: 1.5;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, .5);
 }
 
 .locus-home-hero__actions {
