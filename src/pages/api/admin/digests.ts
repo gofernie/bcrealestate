@@ -164,6 +164,28 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
 
+    if (action === "delete-config") {
+      const configId = clean(body?.configId);
+
+      if (!configId) {
+        return json({ ok: false, error: "Digest template is required." }, 400);
+      }
+
+      const { error: subscribersError } = await supabase
+        .from("digest_subscribers").delete().eq("config_id", configId);
+      if (subscribersError) throw subscribersError;
+
+      const { error: runsError } = await supabase
+        .from("digest_runs").delete().eq("config_id", configId);
+      if (runsError) throw runsError;
+
+      const { error: configError } = await supabase
+        .from("digest_configs").delete().eq("id", configId);
+      if (configError) throw configError;
+
+      return json({ ok: true });
+    }
+
     if (action === "add-subscriber") {
       const configId = clean(body?.configId);
       const email = validEmail(body?.email);

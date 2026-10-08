@@ -271,6 +271,32 @@ const dayNames = [
         text-transform: capitalize;
       }
 
+      .digest__label {
+        display: block;
+        margin-bottom: 4px;
+        color: #26777c;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+      }
+
+      .digest__header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .digest.is-collapsed .digest__body,
+      .digest.is-collapsed .editions {
+        display: none;
+      }
+
+      .digest.is-collapsed .digest__header {
+        border-bottom: 0;
+      }
+
       .digest__body {
         display: grid;
         grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
@@ -730,10 +756,11 @@ const dayNames = [
           runMap.get(config.id) || [];
 
         return (
-          <article class="digest">
+          <article class="digest is-collapsed">
             <header class="digest__header">
               <div class="digest__header-row">
                 <div>
+                  <span class="digest__label">Digest template</span>
                   <h2>{config.name}</h2>
                   <div class="digest__meta">
                     {config.site?.site_name ||
@@ -748,9 +775,17 @@ const dayNames = [
                   </div>
                 </div>
 
-                <span class="mode">
-                  {config.send_mode}
-                </span>
+                <div class="digest__header-actions">
+                  <span class="mode">
+                    {config.send_mode}
+                  </span>
+                  <button type="button" class="secondary digest__toggle" data-toggle-digest aria-expanded="false">
+                    Edit template
+                  </button>
+                  <button type="button" class="danger" data-delete-config={config.id} data-config-name={config.name}>
+                    Delete
+                  </button>
+                </div>
               </div>
             </header>
 
@@ -1109,6 +1144,19 @@ const dayNames = [
         });
 
       document
+        .querySelectorAll("[data-toggle-digest]")
+        .forEach((button) => {
+          button.addEventListener("click", () => {
+            const card = button.closest(".digest");
+            if (!card) return;
+
+            const collapsed = card.classList.toggle("is-collapsed");
+            button.setAttribute("aria-expanded", String(!collapsed));
+            button.textContent = collapsed ? "Edit template" : "Close";
+          });
+        });
+
+      document
         .querySelectorAll("[data-config-form]")
         .forEach((form) => {
           form.addEventListener("submit", async (event) => {
@@ -1207,6 +1255,31 @@ const dayNames = [
             } catch (error) {
               showNotice(error.message, true);
               button.removeAttribute("disabled");
+            }
+          });
+        });
+
+      document
+        .querySelectorAll("[data-delete-config]")
+        .forEach((button) => {
+          button.addEventListener("click", async () => {
+            const name = button.dataset.configName || "this template";
+            if (!window.confirm(`Delete "${name}"? This permanently removes its recipients and all draft or sent editions.`)) return;
+
+            button.setAttribute("disabled", "");
+            button.textContent = "Deleting...";
+
+            try {
+              await post({
+                action: "delete-config",
+                configId: button.dataset.deleteConfig,
+              });
+              showNotice("Digest template deleted.");
+              window.location.reload();
+            } catch (error) {
+              showNotice(error.message, true);
+              button.removeAttribute("disabled");
+              button.textContent = "Delete";
             }
           });
         });
