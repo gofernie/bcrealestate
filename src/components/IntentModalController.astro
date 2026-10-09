@@ -2813,7 +2813,8 @@ function syncRealtorCaBadge(card) {
     sheetRealtorCaLink.removeAttribute("href");
   }
 }
-function openSheet(card) {
+function openSheet(card, options = {}) {
+  const wasOpen = sheet.classList.contains("open");
   activeCard = card;
   card.dataset.viewed = "true";
 
@@ -2837,11 +2838,14 @@ sheetSummary?.classList.remove("open");
 sheetSummary?.setAttribute("hidden", "");
 
  sheet.classList.add("open");
+sheet.style.pointerEvents = "auto";
+
 
 if (mobileMediaNav) {
   mobileMediaNav.hidden = false;
 }
 overlay.classList.add("open");
+overlay.style.pointerEvents = "auto";
 
 requestAnimationFrame(() => {
   const panelView = sheet?.querySelector(".panel__view");
@@ -2862,9 +2866,16 @@ sheet.setAttribute("aria-hidden", "false");
 sheet.removeAttribute("inert");
 document.body.style.overflow = "hidden";
 
-// Opening a sheet must not alter browser history. Astro's client router can
-// otherwise remount the page after close, leaving later cards unresponsive.
-modalHistoryPushed = false;
+// Give a card opened from the results its own Back-button step. The popstate
+// listener below closes the sheet, leaving the visitor exactly where they were.
+if (!options.skipHistory && !wasOpen && !modalHistoryPushed) {
+  window.history.pushState(
+    { ...(window.history.state || {}), modalListingOpen: true },
+    "",
+    window.location.href
+  );
+  modalHistoryPushed = true;
+}
 
 window.requestAnimationFrame(() => {
   updateLandscapeGalleryMode();
@@ -2996,7 +3007,7 @@ async function openListingDeepLink() {
   );
 
   if (existingCard) {
-    openSheet(existingCard);
+    openSheet(existingCard, { skipHistory: true });
     return;
   }
 
@@ -3242,7 +3253,7 @@ if (activeCard === card && sheetFloorplanBtn) {
 
     document.body.appendChild(card);
 
-    openSheet(card);
+    openSheet(card, { skipHistory: true });
   } catch (error) {
     console.error(
       "Could not open listing deep link:",
@@ -3311,6 +3322,8 @@ overlay.classList.remove(
   "open",
   "is-landscape-gallery"
 );
+sheet.style.pointerEvents = "none";
+overlay.style.pointerEvents = "none";
 
 document.body.classList.remove(
   "is-landscape-gallery-open"
@@ -3325,6 +3338,8 @@ if (mobileMediaNav) {
   setMobileMediaMode("photos");
 }
 
+/* Keep the listing sheet stable between repeated opens.
+   Browser history will be reintroduced after the modal flow is stable. */
 modalHistoryPushed = false;
 }
 const requestedImageUrls = new Set();
@@ -9437,4 +9452,21 @@ html[data-theme="dark"] #preview-sheet #sheet-highlight-chips .panel__highlight-
   #sheet-prev-top-btn {
     margin-left: 14px !important;
   }
+</style>
+<style is:global>
+/* mobile-hide-expand-photo-control */
+@media (max-width: 760px) {
+  #preview-sheet .landscape-expand-hint {
+    display: none !important;
+  }
+}
+</style>
+<style is:global>
+/* mobile-hide-expand-photo-button */
+@media (max-width: 760px) {
+  #preview-sheet button[aria-label="Expand photo gallery"],
+  #preview-sheet button[title="Expand photos"] {
+    display: none !important;
+  }
+}
 </style>
