@@ -246,14 +246,26 @@ export const POST: APIRoute = async ({ request }) => {
           )
     );
 
-    const agentName = first(siteRow, ["agent_name", "realtor_name", "owner_name"], "Chris Crump");
+    const agentName = first(
+      agent,
+      ["name", "agent_name", "realtor_name", "owner_name"],
+      first(siteRow, ["agent_name", "realtor_name", "owner_name"], "Chris Crump")
+    );
     const brokerage = first(
       agent,
       ["brokerage"],
       first(siteRow, ["brokerage", "brokerage_name", "company_name"])
     );
-    const phone = first(siteRow, ["agent_phone", "phone", "contact_phone"], "250-619-0390");
-    const email = first(siteRow, ["agent_email", "email", "contact_email"], "chris@crump.ca");
+    const phone = first(
+      agent,
+      ["phone", "agent_phone", "contact_phone"],
+      first(siteRow, ["agent_phone", "phone", "contact_phone"], "250-619-0390")
+    );
+    const email = first(
+      agent,
+      ["email", "agent_email", "contact_email"],
+      first(siteRow, ["agent_email", "email", "contact_email"], "chris@crump.ca")
+    );
     const siteName = siteId ? first(siteRow, ["site_name"], `${titleCase(city)} Homes`) : `${titleCase(city)} Homes`;
     const agentPhotoUrl = safeUrl(
       first(
