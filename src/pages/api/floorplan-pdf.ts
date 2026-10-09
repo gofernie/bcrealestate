@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import QRCode from "qrcode";
 import { createClient } from "@supabase/supabase-js";
+import { getAgentForSite } from "../../lib/getAgentForSite";
 
 export const prerender = false;
 
@@ -84,8 +85,13 @@ export const POST: APIRoute = async ({ request }) => {
         )
       : rgb(0.086, 0.49, 0.31);
 
+    const agent = await getAgentForSite(siteRow);
     const agentName = first(siteRow, ["agent_name", "realtor_name", "owner_name"], "Chris Crump");
-    const brokerage = first(siteRow, ["brokerage", "brokerage_name", "company_name"], "eXp Realty");
+    const brokerage = first(
+      agent,
+      ["brokerage"],
+      first(siteRow, ["brokerage", "brokerage_name", "company_name"])
+    );
     const phone = first(siteRow, ["agent_phone", "phone", "contact_phone"]);
     const email = first(siteRow, ["agent_email", "email", "contact_email"]);
     const agentPhotoUrl = safeUrl(first(siteRow, ["agent_photo", "agent_photo_url", "headshot", "headshot_url"]));

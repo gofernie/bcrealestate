@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import QRCode from "qrcode";
 import { createClient } from "@supabase/supabase-js";
+import { getAgentForSite } from "../../lib/getAgentForSite";
 
 export const prerender = false;
 
@@ -230,12 +231,32 @@ export const POST: APIRoute = async ({ request }) => {
     const pale = rgb(0.955, 0.965, 0.96);
     const white = rgb(1, 1, 1);
 
+    const agent = await getAgentForSite(siteRow);
     const agentName = first(siteRow, ["agent_name", "realtor_name", "owner_name"], "Chris Crump");
-    const brokerage = first(siteRow, ["brokerage", "brokerage_name", "company_name"], "eXp Realty");
+    const brokerage = first(
+      agent,
+      ["brokerage"],
+      first(siteRow, ["brokerage", "brokerage_name", "company_name"])
+    );
     const phone = first(siteRow, ["agent_phone", "phone", "contact_phone"], "250-619-0390");
     const email = first(siteRow, ["agent_email", "email", "contact_email"], "chris@crump.ca");
     const siteName = siteId ? first(siteRow, ["site_name"], `${titleCase(city)} Homes`) : `${titleCase(city)} Homes`;
-    const agentPhotoUrl = safeUrl(first(siteRow, ["agent_photo", "agent_photo_url", "headshot", "headshot_url"]));
+    const agentPhotoUrl = safeUrl(
+      first(
+        agent,
+        [
+          "photo",
+          "photo_url",
+          "agent_photo",
+          "agent_photo_url",
+          "headshot",
+          "headshot_url",
+          "headshot_cutout_url",
+          "cutout_url"
+        ],
+        first(siteRow, ["agent_photo", "agent_photo_url", "headshot", "headshot_url"])
+      )
+    );
     const logoUrl = safeUrl(first(siteRow, ["brand_logo", "brand_logo_url", "logo", "logo_url"]));
 
     const address = printable(body?.address, "Featured property");
@@ -1059,22 +1080,55 @@ export const POST: APIRoute = async ({ request }) => {
       page.drawText("YOUR NEXT MOVE", { x: 48, y: 706, size: 10, font: bold, color: accent });
       page.drawText("Experience this property", { x: 48, y: 650, size: 30, font: bold, color: white });
       page.drawText("in person.", { x: 48, y: 614, size: 30, font: bold, color: white });
+      // Contained agent contact panel.
+      page.drawRectangle({
+        x: 36,
+        y: 332,
+        width: 540,
+        height: 218,
+        borderColor: accent,
+        borderWidth: 1,
+      });
 
-      let brandX = 48;
+      const contactX = 60;
+
       if (agentPhoto) {
-        const size = fit(agentPhoto.width, agentPhoto.height, 120, 150);
-        page.drawImage(agentPhoto, { x: 48, y: 370, width: size.width, height: size.height });
-        brandX = 194;
+        const size = fit(agentPhoto.width, agentPhoto.height, 210, 190);
+        page.drawImage(agentPhoto, {
+          x: 342,
+          y: 342,
+          width: size.width,
+          height: size.height,
+        });
       } else if (logo) {
-        const size = fit(logo.width, logo.height, 120, 80);
-        page.drawImage(logo, { x: 48, y: 430, width: size.width, height: size.height });
-        brandX = 194;
+        const size = fit(logo.width, logo.height, 150, 100);
+        page.drawImage(logo, {
+          x: 382,
+          y: 402,
+          width: size.width,
+          height: size.height,
+        });
       }
 
-      page.drawText(agentName, { x: brandX, y: 493, size: 19, font: bold, color: white });
-      page.drawText(brokerage, { x: brandX, y: 468, size: 11, font: regular, color: white });
+      page.drawText(agentName, { x: contactX, y: 493, size: 19, font: bold, color: white });
+      page.drawText(brokerage, { x: contactX, y: 468, size: 11, font: regular, color: white });
       const contactLines = [phone, email, siteName].filter(Boolean);
-      contactLines.forEach((line, index) => page.drawText(printable(line), { x: brandX, y: 432 - index * 21, size: 10, font: regular, color: white }));
+      contactLines.forEach((line, index) =>
+        page.drawText(printable(line), {
+          x: contactX,
+          y: 432 - index * 21,
+          size: 10,
+          font: regular,
+          color: white,
+        })
+      );
+
+      page.drawLine({
+        start: { x: 36, y: 304 },
+        end: { x: 576, y: 304 },
+        thickness: 0.5,
+        color: rgb(0.76, 0.79, 0.8),
+      });
 
       page.drawImage(qr, { x: 48, y: 152, width: 132, height: 132 });
       page.drawText("SCAN FOR LIVE LISTING", { x: 204, y: 244, size: 10, font: bold, color: accent });
