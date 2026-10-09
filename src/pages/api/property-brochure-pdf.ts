@@ -225,13 +225,27 @@ export const POST: APIRoute = async ({ request }) => {
       }
     }
 
-    const accent = hexColor(first(siteRow, ["accent_color", "brand_color"], "#167d4f"));
+
     const ink = rgb(0.055, 0.13, 0.19);
     const muted = rgb(0.31, 0.36, 0.39);
     const pale = rgb(0.955, 0.965, 0.96);
     const white = rgb(1, 1, 1);
-
     const agent = await getAgentForSite(siteRow);
+    const requestedAccent = printable(body?.accentColor);
+    const accent = hexColor(
+      /^#[0-9a-f]{6}$/i.test(requestedAccent)
+        ? requestedAccent
+        : first(
+            agent,
+            ["accent_color", "brand_color", "accentColor", "brandColor"],
+            first(
+              siteRow,
+              ["accent_color", "brand_color", "accentColor", "brandColor"],
+              "#167d4f"
+            )
+          )
+    );
+
     const agentName = first(siteRow, ["agent_name", "realtor_name", "owner_name"], "Chris Crump");
     const brokerage = first(
       agent,
