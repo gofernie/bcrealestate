@@ -513,138 +513,264 @@ export const POST: APIRoute = async ({ request }) => {
       addPageNumber(page, 2);
     }
 
-    // 3. Architecture and setting - premium editorial composition.
-    // premium-photo-pages-v1
+    // 3. Architecture and setting.
     {
       const page = pdf.addPage([612, 792]);
       page.drawRectangle({ x: 0, y: 0, width: 612, height: 792, color: white });
       page.drawText("ARCHITECTURE & SETTING", { x: 52, y: 724, size: 7.5, font: bold, color: accent });
-      page.drawText("A home shaped by its surroundings", { x: 52, y: 683, size: 25, font: serifBold, color: ink });
-      page.drawLine({ start: { x: 52, y: 663 }, end: { x: 560, y: 663 }, thickness: 0.6, color: rgb(0.84, 0.86, 0.86) });
+      page.drawText("A home shaped by its surroundings.", { x: 52, y: 678, size: 24, font: bold, color: ink });
+      page.drawText("Old City character, street-and-lane access, and a site with room to think ahead.", { x: 52, y: 654, size: 9.5, font: regular, color: muted });
 
-      // Every interior photograph is framed by the same 52-point page margins.
-      drawCoverImage(page, galleryImages[0] || embeddedImages[1], 52, 382, 508, 258, pale);
-      drawCoverImage(page, galleryImages[1] || galleryImages[0], 52, 124, 238, 230, pale);
+      drawCoverImage(page, galleryImages[0] || embeddedImages[1], 52, 378, 508, 250, pale);
+      drawCoverImage(page, galleryImages[1] || galleryImages[0], 52, 116, 238, 232, pale);
 
-      page.drawRectangle({ x: 310, y: 124, width: 250, height: 230, color: ink });
-      page.drawRectangle({ x: 310, y: 124, width: 6, height: 230, color: accent });
-      page.drawText("THE ARRIVAL", { x: 338, y: 318, size: 7.5, font: bold, color: accent });
+      page.drawRectangle({ x: 310, y: 116, width: 250, height: 232, color: ink });
+      page.drawRectangle({ x: 310, y: 116, width: 6, height: 232, color: accent });
+      page.drawText("THE ARRIVAL", { x: 332, y: 316, size: 7.5, font: bold, color: accent });
+      page.drawText("AN OLD CITY OPPORTUNITY", { x: 332, y: 285, size: 13.5, font: bold, color: white });
 
       const architectureWords = printable(description).split(/\s+/).filter(Boolean);
       const architectureExcerpt =
         architectureWords.slice(0, 58).join(" ") +
         (architectureWords.length > 58 ? "..." : "");
-      wrapLines(architectureExcerpt, regular, 8.9, 194).slice(0, 9).forEach((line, index) => {
-        page.drawText(line, { x: 338, y: 288 - index * 13, size: 8.9, font: regular, color: white });
+
+      wrapLines(architectureExcerpt, regular, 9.2, 204).slice(0, 8).forEach((line, index) => {
+        page.drawText(line, { x: 332, y: 254 - index * 14, size: 9.2, font: regular, color: white });
       });
 
       const locationLine = [area, city].filter(Boolean).map(titleCase).join("  |  ").toUpperCase();
       if (locationLine) {
-        page.drawText(locationLine, { x: 338, y: 146, size: 6.5, font: bold, color: rgb(0.7, 0.76, 0.78) });
+        page.drawText(locationLine, { x: 332, y: 138, size: 6.5, font: bold, color: rgb(0.7, 0.76, 0.78) });
       }
       addPageNumber(page, 3);
     }
-    // 4. Lifestyle editorial spread - landscape-first, edge-to-edge crops.
+
+    // 4. Lifestyle editorial spread.
     {
       const page = pdf.addPage([612, 792]);
       page.drawRectangle({ x: 0, y: 0, width: 612, height: 792, color: pale });
       page.drawRectangle({ x: 0, y: 0, width: 12, height: 792, color: accent });
       page.drawText("LIFE AT HOME", { x: 52, y: 724, size: 7.5, font: bold, color: accent });
-      page.drawText("Space to gather. Room to retreat.", { x: 52, y: 683, size: 25, font: serifBold, color: ink });
+      page.drawText("Space to gather. Room to retreat.", { x: 52, y: 678, size: 22, font: bold, color: ink });
 
-      drawCoverImage(page, galleryImages[2] || galleryImages[0], 52, 392, 508, 258, white);
-      drawCoverImage(page, galleryImages[3] || galleryImages[1], 52, 204, 238, 164, white);
-      drawCoverImage(page, galleryImages[4] || galleryImages[2], 322, 204, 238, 164, white);
+      drawCoverImage(page, galleryImages[2] || galleryImages[0], 52, 380, 508, 240, white);
+      drawCoverImage(page, galleryImages[3] || galleryImages[1], 52, 194, 238, 160, white);
+      drawCoverImage(page, galleryImages[4] || galleryImages[2], 322, 194, 238, 160, white);
 
-      page.drawRectangle({ x: 52, y: 52, width: 508, height: 124, color: ink });
-      page.drawText("PROPERTY HIGHLIGHTS", { x: 66, y: 146, size: 8, font: bold, color: accent });
+      page.drawRectangle({ x: 52, y: 52, width: 508, height: 118, color: ink });
+      page.drawText("PROPERTY HIGHLIGHTS", { x: 66, y: 144, size: 8, font: bold, color: accent });
+
       const highlights = [
         sqft && `${sqft} sq ft of considered living space`,
-        beds && baths && `${beds} bedrooms and ${baths} bathrooms`,
+        beds && baths && `${beds} bedrooms | ${baths} bathroom${baths === 1 ? "" : "s"}`,
         area && `Set within ${titleCase(area)}`,
       ].filter(Boolean);
+
       highlights.forEach((line, index) => {
-        page.drawText(`- ${printable(line)}`, { x: 66, y: 120 - index * 20, size: 9.5, font: regular, color: white });
+        page.drawText(`- ${printable(line)}`, { x: 66, y: 118 - index * 20, size: 9.5, font: regular, color: white });
       });
       addPageNumber(page, 4);
     }
-    // 5. Rooms and floorplans - floorplans appear nowhere else.
-    {
-      const page = pdf.addPage([612, 792]);
-      page.drawRectangle({ x: 0, y: 0, width: 612, height: 792, color: pale });
-      page.drawText("ROOMS & FLOORPLANS", { x: 42, y: 744, size: 9, font: bold, color: accent });
-      page.drawText("Designed for everyday living", { x: 42, y: 710, size: 22, font: bold, color: ink });
+    const floorplanCount = embeddedFloorplans.length;
 
-      const planCount = embeddedFloorplans.length;
-      const manyPlans = planCount >= 3;
-      const roomLimit = manyPlans ? 8 : planCount ? 10 : 18;
-      const roomColumns = planCount === 0 ? 2 : 1;
-      const roomWidth = planCount === 0 ? 250 : manyPlans ? 528 : 238;
+    const drawRoomMeasurements = (page: any) => {
+      const maxRows = 9;
+      const roomWidth = 250;
 
-      rooms.slice(0, roomLimit).forEach((room: any, index: number) => {
-        const column = roomColumns === 2 && index >= 9 ? 1 : 0;
-        const row = roomColumns === 2 ? index % 9 : index;
+      rooms.slice(0, maxRows * 2).forEach((room: any, index: number) => {
+        const column = index >= maxRows ? 1 : 0;
+        const row = index % maxRows;
         const x = 42 + column * 278;
-        const y = 658 - row * (manyPlans ? 38 : 52);
-        if (y < (manyPlans ? 425 : 112)) return;
+        const y = 658 - row * 44;
+
         const label = printable(room?.label, "Room");
         const level = printable(room?.level);
         const length = formatRoomDimension(room?.length);
         const widthValue = formatRoomDimension(room?.width);
-        const dimensions = [length, widthValue].filter(Boolean).join(" x ");
-        page.drawText(label, { x, y, size: 9, font: bold, color: ink });
-        if (level) page.drawText(level, { x, y: y - 13, size: 7.2, font: regular, color: muted });
-        if (dimensions) {
-          const textWidth = regular.widthOfTextAtSize(dimensions, 8.2);
-          page.drawText(dimensions, { x: x + roomWidth - textWidth, y, size: 8.2, font: regular, color: ink });
+        const dimensions = [length, widthValue]
+          .filter(Boolean)
+          .join(" x ");
+
+        page.drawText(label, {
+          x,
+          y,
+          size: 9,
+          font: bold,
+          color: ink,
+        });
+
+        if (level) {
+          page.drawText(level, {
+            x,
+            y: y - 13,
+            size: 7.2,
+            font: regular,
+            color: muted,
+          });
         }
-        page.drawLine({ start: { x, y: y - 22 }, end: { x: x + roomWidth, y: y - 22 }, thickness: 0.45, color: rgb(0.8, 0.83, 0.82) });
+
+        if (dimensions) {
+          const textWidth =
+            regular.widthOfTextAtSize(dimensions, 8.2);
+
+          page.drawText(dimensions, {
+            x: x + roomWidth - textWidth,
+            y,
+            size: 8.2,
+            font: regular,
+            color: ink,
+          });
+        }
+
+        page.drawLine({
+          start: { x, y: y - 22 },
+          end: { x: x + roomWidth, y: y - 22 },
+          thickness: 0.45,
+          color: rgb(0.8, 0.83, 0.82),
+        });
+      });
+    };
+
+    // 5. Room measurements always receive a dedicated page.
+    {
+      const page = pdf.addPage([612, 792]);
+
+      page.drawRectangle({
+        x: 0,
+        y: 0,
+        width: 612,
+        height: 792,
+        color: pale,
       });
 
-      if (planCount === 1) {
-        page.drawRectangle({ x: 304, y: 102, width: 266, height: 568, color: white });
-        drawFitImage(page, embeddedFloorplans[0], 314, 112, 246, 548, white);
-      } else if (planCount === 2) {
-        page.drawRectangle({ x: 304, y: 102, width: 266, height: 568, color: white });
-        drawFitImage(page, embeddedFloorplans[0], 314, 396, 246, 254, white);
-        page.drawLine({ start: { x: 320, y: 386 }, end: { x: 554, y: 386 }, thickness: 0.6, color: rgb(0.82, 0.85, 0.86) });
-        drawFitImage(page, embeddedFloorplans[1], 314, 112, 246, 254, white);
-      } else if (planCount >= 3) {
-        const planWidth = planCount === 3 ? 168 : 252;
-        const planHeight = planCount === 3 ? 270 : 132;
-        embeddedFloorplans.slice(0, 4).forEach((plan: any, index: number) => {
-          const x = planCount === 3 ? 42 + index * 180 : 42 + (index % 2) * 276;
-          const y = planCount === 3 ? 82 : 82 + Math.floor(index / 2) * 148;
-          page.drawRectangle({ x, y, width: planWidth, height: planHeight, color: white });
-          drawFitImage(page, plan, x + 8, y + 8, planWidth - 16, planHeight - 16, white);
-        });
-      } else {
-        page.drawRectangle({ x: 42, y: 72, width: 528, height: 112, color: ink });
-        page.drawText("ROOM MEASUREMENTS", { x: 66, y: 146, size: 8, font: bold, color: accent });
-        page.drawText("A helpful guide to the home's proportions.", { x: 66, y: 116, size: 12, font: bold, color: white });
-        page.drawText("Dimensions are approximate. Open the complete listing using the QR code.", { x: 66, y: 94, size: 8.5, font: regular, color: white });
-      }
+      page.drawText("ROOM MEASUREMENTS", {
+        x: 42,
+        y: 744,
+        size: 9,
+        font: bold,
+        color: accent,
+      });
+
+      page.drawText("A guide to the home's proportions", {
+        x: 42,
+        y: 710,
+        size: 22,
+        font: bold,
+        color: ink,
+      });
+
+      drawRoomMeasurements(page);
+
+      page.drawRectangle({
+        x: 42,
+        y: 72,
+        width: 528,
+        height: 88,
+        color: ink,
+      });
+
+      page.drawText("Dimensions are approximate.", {
+        x: 66,
+        y: 124,
+        size: 11,
+        font: bold,
+        color: white,
+      });
+
+      page.drawText(
+        "Open the complete listing using the QR code for full property details.",
+        {
+          x: 66,
+          y: 100,
+          size: 8.5,
+          font: regular,
+          color: white,
+        }
+      );
+
       addPageNumber(page, 5);
     }
 
-    // 6. Editorial neighbourhood map, OSM context, census and current listings.
+    // Each floorplan is given its own landscape page.
+    embeddedFloorplans.forEach((plan: any, index: number) => {
+      const page = pdf.addPage([792, 612]);
+      const pageNumber = 6 + index;
+
+      page.drawRectangle({
+        x: 0,
+        y: 0,
+        width: 792,
+        height: 612,
+        color: white,
+      });
+
+      page.drawText(
+        floorplanCount > 1
+          ? `FLOORPLAN ${index + 1} OF ${floorplanCount}`
+          : "FLOORPLAN",
+        {
+          x: 42,
+          y: 566,
+          size: 9,
+          font: bold,
+          color: accent,
+        }
+      );
+
+      page.drawText("A clearer view of the layout", {
+        x: 42,
+        y: 532,
+        size: 22,
+        font: bold,
+        color: ink,
+      });
+
+      page.drawLine({
+        start: { x: 42, y: 512 },
+        end: { x: 750, y: 512 },
+        thickness: 0.6,
+        color: rgb(0.82, 0.85, 0.86),
+      });
+
+      page.drawRectangle({
+        x: 42,
+        y: 64,
+        width: 708,
+        height: 424,
+        color: pale,
+      });
+
+      drawFitImage(
+        page,
+        plan,
+        54,
+        76,
+        684,
+        400,
+        pale
+      );
+
+      addPageNumber(page, pageNumber);
+    });
+    // 6. Neighbourhood map and local market context.
     {
       const page = pdf.addPage([612, 792]);
       const areaLabel = titleCase(area || city);
       const ownership = Number(censusRow?.pct_owned);
       const medianAge = Number(censusRow?.median_age);
-      const income = Number(censusRow?.median_household_income);
 
       const areaPrices = areaListingRows
         .map((row: any) => Number(row.price))
         .filter((value: number) => Number.isFinite(value) && value > 0)
         .sort((a: number, b: number) => a - b);
+
       const activeCount = areaListingRows.length;
       const medianAsking = areaPrices.length
         ? areaPrices[Math.floor(areaPrices.length / 2)]
         : 0;
       const lowestAsking = areaPrices[0] || 0;
       const highestAsking = areaPrices[areaPrices.length - 1] || 0;
+
       const formatMarketPrice = (value: number) =>
         value >= 1000000
           ? `${(value / 1000000).toFixed(value % 1000000 === 0 ? 0 : 1)}M`
@@ -655,6 +781,7 @@ export const POST: APIRoute = async ({ request }) => {
         const key = clean(row.normalized_type).toLowerCase();
         if (key) typeCounts[key] = (typeCounts[key] || 0) + 1;
       });
+
       const dominantTypes = Object.entries(typeCounts)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 2)
@@ -666,107 +793,263 @@ export const POST: APIRoute = async ({ request }) => {
           key === "land" ? "land" : titleCase(key)
         );
 
-      const countAmenities = (keys: string[]) =>
-        nearbyAmenities.filter((item: any) => {
-          const category = clean(item.category).toLowerCase();
-          return keys.some((key) => category.includes(key));
-        }).length;
-      const schoolCount = countAmenities(["school"]);
-      const greenCount = countAmenities(["park", "trail", "playground"]);
-      const foodCount = countAmenities(["restaurant", "cafe", "coffee"]);
-      const shoppingCount = countAmenities(["grocery", "supermarket", "shop"]);
-      const recreationCount = countAmenities(["recreation", "golf", "beach", "marina"]);
-      const healthCount = countAmenities(["medical", "doctor", "clinic", "pharmacy"]);
+      const nearestSchool = mapAmenities.find(
+        (item) => item.label === "School"
+      );
+      const nearestGreen = mapAmenities.find(
+        (item) => item.label === "Park or trail"
+      );
+      const nearestFood = mapAmenities.find(
+        (item) => item.label === "Food or coffee"
+      );
+      const nearestShop = mapAmenities.find(
+        (item) => item.label === "Groceries or shops"
+      );
 
-      const nearestSchool = mapAmenities.find((item) => item.label === "School");
-      const nearestGreen = mapAmenities.find((item) => item.label === "Park or trail");
-      const nearestFood = mapAmenities.find((item) => item.label === "Food or coffee");
-      const nearestShop = mapAmenities.find((item) => item.label === "Groceries or shops");
-      const nearestHealth = mapAmenities.find((item) => item.label === "Health or pharmacy");
-
-      page.drawRectangle({ x: 0, y: 0, width: 612, height: 792, color: white });
-      page.drawRectangle({ x: 0, y: 752, width: 612, height: 40, color: accent });
-      page.drawText("LIFE IN THE NEIGHBOURHOOD", { x: 42, y: 718, size: 9, font: bold, color: accent });
-      page.drawText(`Life around ${areaLabel}`, { x: 42, y: 681, size: 26, font: bold, color: ink });
-
-      const osmHighlights = [
-        schoolCount ? `${schoolCount} school${schoolCount === 1 ? "" : "s"}` : "",
-        greenCount ? `${greenCount} parks, trails and play spaces` : "",
-        shoppingCount ? `${shoppingCount} grocery or shopping options` : "",
-        foodCount ? `${foodCount} food and coffee options` : "",
-      ].filter(Boolean);
-      const opening = osmHighlights.length
-        ? `${areaLabel} pairs its residential setting with ${osmHighlights.slice(0, 3).join(", ")} mapped within roughly 3 km of this home. The map highlights the closest useful examples rather than every location.`
-        : `${areaLabel} offers a residential setting with outdoor spaces and everyday services within reach. The map highlights the closest useful examples.`;
-      wrapLines(opening, regular, 9.6, 528).slice(0, 3).forEach((line, index) => {
-        page.drawText(line, { x: 42, y: 650 - index * 14, size: 9.6, font: regular, color: ink });
+      page.drawRectangle({
+        x: 0,
+        y: 0,
+        width: 612,
+        height: 792,
+        color: white,
       });
 
+      page.drawRectangle({
+        x: 0,
+        y: 752,
+        width: 612,
+        height: 40,
+        color: accent,
+      });
+
+      page.drawText("LIFE IN THE NEIGHBOURHOOD", {
+        x: 42,
+        y: 718,
+        size: 9,
+        font: bold,
+        color: accent,
+      });
+
+      page.drawText(`Life around ${areaLabel}`, {
+        x: 42,
+        y: 681,
+        size: 26,
+        font: bold,
+        color: ink,
+      });
+
+      const nearbyNames = mapAmenities
+        .slice(0, 3)
+        .map((item) => printable(item.amenity.name, item.label));
+
+      const opening = nearbyNames.length
+        ? `A residential setting with everyday stops nearby, including ${nearbyNames.join(", ")}.`
+        : `A residential setting with green space and everyday services within reach.`;
+
+      wrapLines(opening, regular, 10, 528)
+        .slice(0, 2)
+        .forEach((line, index) => {
+          page.drawText(line, {
+            x: 42,
+            y: 650 - index * 14,
+            size: 10,
+            font: regular,
+            color: muted,
+          });
+        });
+
       const mapX = 42;
-      const mapY = 340;
+      const mapY = 348;
       const mapWidth = 528;
-      const mapHeight = 258;
-      page.drawRectangle({ x: mapX, y: mapY, width: mapWidth, height: mapHeight, color: pale });
+      const mapHeight = 254;
+
+      page.drawRectangle({
+        x: mapX,
+        y: mapY,
+        width: mapWidth,
+        height: mapHeight,
+        color: pale,
+      });
+
       if (neighbourhoodMap) {
-        drawFitImage(page, neighbourhoodMap, mapX, mapY, mapWidth, mapHeight, pale);
+        drawFitImage(
+          page,
+          neighbourhoodMap,
+          mapX,
+          mapY,
+          mapWidth,
+          mapHeight,
+          pale
+        );
       }
-      // close-to-home-title-removed-v1
+
+      page.drawText("CLOSE TO HOME", {
+        x: 42,
+        y: 324,
+        size: 7.5,
+        font: bold,
+        color: accent,
+      });
+
       mapAmenities.slice(0, 5).forEach((item, index) => {
         const column = index < 3 ? 0 : 1;
         const row = column === 0 ? index : index - 3;
         const x = 42 + column * 276;
-        const y = 300 - row * 21; // complete-map-legend-v2
-        page.drawCircle({ x: x + 8, y: y + 3, size: 8, color: accent });
+        const y = 300 - row * 23;
+
+        page.drawCircle({
+          x: x + 8,
+          y: y + 3,
+          size: 8,
+          color: accent,
+        });
+
         const number = String(index + 1);
-        page.drawText(number, { x: x + 8 - bold.widthOfTextAtSize(number, 6.5) / 2, y: y + 0.5, size: 6.5, font: bold, color: white });
-        const place = `${printable(item.amenity.name, item.label)} - ${item.amenity.distanceKm.toFixed(1)} km`;
-        page.drawText(place, { x: x + 23, y, size: 7.7, font: regular, color: ink });
+
+        page.drawText(number, {
+          x: x + 8 - bold.widthOfTextAtSize(number, 6.5) / 2,
+          y: y + 0.5,
+          size: 6.5,
+          font: bold,
+          color: white,
+        });
+
+        const place =
+          `${printable(item.amenity.name, item.label)}  ` +
+          `${item.amenity.distanceKm.toFixed(1)} km`;
+
+        page.drawText(place, {
+          x: x + 23,
+          y,
+          size: 8.2,
+          font: regular,
+          color: ink,
+        });
       });
 
-      page.drawRectangle({ x: 42, y: 164, width: 528, height: 66, color: ink });
+      page.drawRectangle({
+        x: 42,
+        y: 170,
+        width: 528,
+        height: 60,
+        color: ink,
+      });
+
       const marketFacts = [
         activeCount ? [String(activeCount), "ACTIVE LISTINGS"] : null,
         medianAsking ? [formatMarketPrice(medianAsking), "MEDIAN ASKING"] : null,
-        Number.isFinite(ownership) && ownership > 0 ? [`${Math.round(ownership)}%`, "OWNER OCCUPIED"] : null,
-        Number.isFinite(medianAge) && medianAge > 0 ? [String(Math.round(medianAge)), "MEDIAN AGE"] : null,
+        Number.isFinite(ownership) && ownership > 0
+          ? [`${Math.round(ownership)}%`, "OWNER OCCUPIED"]
+          : null,
+        Number.isFinite(medianAge) && medianAge > 0
+          ? [String(Math.round(medianAge)), "MEDIAN AGE"]
+          : null,
       ].filter(Boolean) as string[][];
+
       marketFacts.slice(0, 4).forEach((fact, index) => {
         const x = 62 + index * 128;
-        page.drawText(fact[0], { x, y: 195, size: 17, font: bold, color: white });
-        page.drawText(fact[1], { x, y: 178, size: 6.2, font: bold, color: rgb(0.72, 0.78, 0.8) });
+
+        page.drawText(fact[0], {
+          x,
+          y: 199,
+          size: 17,
+          font: bold,
+          color: white,
+        });
+
+        page.drawText(fact[1], {
+          x,
+          y: 182,
+          size: 6.2,
+          font: bold,
+          color: rgb(0.72, 0.78, 0.8),
+        });
       });
 
-      page.drawText("THE MARKET TODAY", { x: 42, y: 140, size: 7.8, font: bold, color: accent });
+      page.drawText("MARKET SNAPSHOT", {
+        x: 42,
+        y: 142,
+        size: 7.8,
+        font: bold,
+        color: accent,
+      });
+
       const marketStory = activeCount
-        ? `${areaLabel} currently has ${activeCount} active listing${activeCount === 1 ? "" : "s"}, ranging from ${formatMarketPrice(lowestAsking)} to ${formatMarketPrice(highestAsking)}, with a median asking price of ${formatMarketPrice(medianAsking)}${dominantTypes.length ? `. Most of the current selection is ${dominantTypes.join(" and ")}` : ""}.`
+        ? `${areaLabel} currently has ${activeCount} active listing${activeCount === 1 ? "" : "s"}, with asking prices from ${formatMarketPrice(lowestAsking)} to ${formatMarketPrice(highestAsking)} and a median of ${formatMarketPrice(medianAsking)}${dominantTypes.length ? `. Current options are led by ${dominantTypes.join(" and ")}` : ""}.`
         : `Neighbourhood inventory changes quickly; the live listing provides the latest comparison set for ${areaLabel}.`;
-      wrapLines(marketStory, regular, 8.3, 250).slice(0, 5).forEach((line, index) => {
-        page.drawText(line, { x: 42, y: 120 - index * 12, size: 8.3, font: regular, color: ink });
+
+      wrapLines(marketStory, regular, 8.5, 248)
+        .slice(0, 5)
+        .forEach((line, index) => {
+          page.drawText(line, {
+            x: 42,
+            y: 121 - index * 12,
+            size: 8.5,
+            font: regular,
+            color: ink,
+          });
+        });
+
+      page.drawText("LOCAL RHYTHM", {
+        x: 320,
+        y: 142,
+        size: 7.8,
+        font: bold,
+        color: accent,
       });
 
-      page.drawText("HOW THE AREA MAY LIVE", { x: 320, y: 140, size: 7.8, font: bold, color: accent });
       const dailyPieces: string[] = [];
-      if (nearestGreen) dailyPieces.push(`${printable(nearestGreen.amenity.name)} is ${nearestGreen.amenity.distanceKm.toFixed(1)} km away`);
-      if (nearestSchool) dailyPieces.push(`${printable(nearestSchool.amenity.name)} is ${nearestSchool.amenity.distanceKm.toFixed(1)} km away`);
-      if (nearestShop) dailyPieces.push(`${printable(nearestShop.amenity.name)} offers a nearby practical stop`);
-      else if (nearestFood) dailyPieces.push(`${printable(nearestFood.amenity.name)} adds a local option`);
-      const profilePiece = Number.isFinite(income) && income > 0
-        ? `The closest census profile reports a median household income of ${Math.round(income / 1000)}k.`
-        : "";
-      const dailyStory = `${dailyPieces.join("; ")}. ${profilePiece}`.trim();
-      wrapLines(dailyStory, regular, 8.3, 250).slice(0, 5).forEach((line, index) => {
-        page.drawText(line, { x: 320, y: 120 - index * 12, size: 8.3, font: regular, color: ink });
-      });
 
-      const extraCounts = [
-        recreationCount ? `${recreationCount} recreation` : "",
-        healthCount ? `${healthCount} health services` : "",
-        foodCount ? `${foodCount} food & coffee` : "",
-        shoppingCount ? `${shoppingCount} shopping` : "",
-      ].filter(Boolean).join("  |  ");
-      if (extraCounts) page.drawText(extraCounts, { x: 42, y: 53, size: 7, font: bold, color: muted });
-      page.drawText("OSM places are approximate and measured within roughly 3 km. Listing figures are current asking prices, not recorded sales. Census figures use the closest available profile.", { x: 42, y: 39, size: 6.2, font: regular, color: muted });
-      addPageNumber(page, 6);
+      if (nearestGreen) {
+        dailyPieces.push(
+          `${printable(nearestGreen.amenity.name)} is ${nearestGreen.amenity.distanceKm.toFixed(1)} km away`
+        );
+      }
+
+      if (nearestSchool) {
+        dailyPieces.push(
+          `${printable(nearestSchool.amenity.name)} is ${nearestSchool.amenity.distanceKm.toFixed(1)} km away`
+        );
+      }
+
+      if (nearestShop) {
+        dailyPieces.push(
+          `${printable(nearestShop.amenity.name)} provides a nearby practical stop`
+        );
+      } else if (nearestFood) {
+        dailyPieces.push(
+          `${printable(nearestFood.amenity.name)} adds a nearby coffee or food option`
+        );
+      }
+
+      const dailyStory = dailyPieces.length
+        ? `${dailyPieces.join(". ")}.`
+        : `${areaLabel} offers a balanced residential setting with useful amenities close by.`;
+
+      wrapLines(dailyStory, regular, 8.5, 248)
+        .slice(0, 5)
+        .forEach((line, index) => {
+          page.drawText(line, {
+            x: 320,
+            y: 121 - index * 12,
+            size: 8.5,
+            font: regular,
+            color: ink,
+          });
+        });
+
+      page.drawText(
+        "Amenity distances are approximate. Listing figures are current asking prices, not recorded sales. Census figures use the closest available profile.",
+        {
+          x: 42,
+          y: 42,
+          size: 6.2,
+          font: regular,
+          color: muted,
+        }
+      );
+
+      addPageNumber(page, 6 + embeddedFloorplans.length);
     }
     // 7. Contact and QR
     {
