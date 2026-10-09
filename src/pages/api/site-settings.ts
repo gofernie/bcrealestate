@@ -163,6 +163,32 @@ export const POST: APIRoute = async ({ request }) => {
       .eq("id", siteId);
 
     if (error) return json({ ok: false, error: error.message }, 500);
+    const { data: site, error: siteLookupError } = await supabase
+      .from("sites")
+      .select("agent_id")
+      .eq("id", siteId)
+      .maybeSingle();
+
+    if (siteLookupError) {
+      return json({ ok: false, error: siteLookupError.message }, 500);
+    }
+
+    if (site?.agent_id) {
+      const { error: agentError } = await supabase
+        .from("agents")
+        .update({
+          name: String(data.agentName || "").trim() || null,
+          title: String(data.agentTitle || "").trim() || null,
+          phone: String(data.phone || "").trim() || null,
+          email: String(data.email || "").trim() || null,
+        })
+        .eq("id", site.agent_id);
+
+      if (agentError) {
+        return json({ ok: false, error: agentError.message }, 500);
+      }
+    }
+
     return json({ ok: true });
   } catch (error: any) {
     return json({ ok: false, error: error?.message || "Could not save site settings." }, 500);
