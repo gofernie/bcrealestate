@@ -45,10 +45,33 @@ export const GET: APIRoute = async ({ request, url }) => {
       .maybeSingle();
 
     if (error) return json({ ok: false, error: error.message }, 500);
+    let agent: Record<string, any> | null = null;
+    if (data?.agent_id) {
+      const { data: agentData, error: agentError } = await supabase
+        .from("agents")
+        .select("name, title, phone, email")
+        .eq("id", data.agent_id)
+        .maybeSingle();
+
+      if (agentError) {
+        return json({ ok: false, error: agentError.message }, 500);
+      }
+
+      agent = agentData;
+    }
+
     return json({
       ok: true,
       data: {
         ...data,
+        ...(agent
+          ? {
+              agentName: agent.name || "",
+              agentTitle: agent.title || "",
+              phone: agent.phone || "",
+              email: agent.email || "",
+            }
+          : {}),
         accentColor: data?.accent_color || "#2f6f73",
         savedColours: Array.isArray(data?.saved_colours)
           ? data.saved_colours
