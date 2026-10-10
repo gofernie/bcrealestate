@@ -4998,6 +4998,35 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
               const mls = getListingMls(listing);
               const propertyType = getListingPropertyType(listing);
               const description = getListingDescription(listing);
+              const ownershipText = [
+                description,
+                listing?.description,
+                listing?.raw?.description,
+                listing?.raw?.details?.description,
+              ].filter(Boolean).join(" ");
+
+              const ownershipBadge =
+                /\bfractional\b|\b1\s*\/\s*(?:4|8)\s*(?:ownership|interest|share)\b|\b(?:quarter|one[-\s]?quarter|half|one[-\s]?half|eighth|one[-\s]?eighth)[-\s]+(?:ownership|interest|share)\b/i.test(ownershipText)
+                  ? "Fractional Ownership"
+                  : /\btime[-\s]?share\b|\bweek\s+\d+\b/i.test(ownershipText)
+                    ? "Timeshare"
+                    : /\bphase\s*(?:ii|2)\b/i.test(ownershipText)
+                      ? "Hotel Phase II"
+                      : /\bhotel\b/i.test(ownershipText)
+                        ? "Hotel Suite"
+                        : "";
+              const isFractionalOwnership =
+                /\bfractional\b|\b1\s*\/\s*(?:4|8)\s*(?:ownership|interest|share)\b|\b(?:quarter|one[-\s]?quarter|half|one[-\s]?half|eighth|one[-\s]?eighth)[-\s]+(?:ownership|interest|share)\b/i.test(
+                  [
+                    description,
+                    listing?.ownership_type,
+                    listing?.ownershipType,
+                    listing?.raw?.ownership_type,
+                    listing?.raw?.ownershipType,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")
+                );
               const images = getListingImages(listing);
               const brokerage = String(
                 listing?.listing_brokerage || listing?.brokerage || ""
@@ -5019,7 +5048,8 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
                     data-beds={String(beds)}
                     data-baths={String(baths)}
                     data-sqft={String(sqft)}
-                    data-description={description}
+                    data-description={description}
+                    data-fractional={String(isFractionalOwnership)}
                     data-property-type={propertyType}
                     data-type={getInventoryType(listing)}
                     data-year={String(getListingYearBuilt(listing))}
@@ -5039,8 +5069,9 @@ data-liked-tags="[]"
                     data-listing-brokerage={brokerage}
                     aria-label={`${price} ΓÇö ${address}`}
                   >
-               <div class="card-image-wrap">
-  <img src={image || "https://placehold.co/800x600?text=Photos+coming+soon"} alt={address || "Listing"} loading="lazy" decoding="async" />
+               <div class="card-image-wrap" style="position: relative; overflow: hidden;">
+  <img src={image || "https://placehold.co/800x600?text=Photos+coming+soon"} alt={address || "Listing"} loading="lazy" decoding="async" />
+  {ownershipBadge && (<span class="fractional-ownership-badge" style="position:absolute;z-index:2;left:8px;bottom:8px;display:block;padding:3px 6px;background:rgba(23,35,44,.42);color:rgba(255,255,255,.9);border:0;border-radius:4px;font-size:10px;font-weight:600;line-height:1.1;text-transform:none;letter-spacing:0;box-shadow:none;">{ownershipBadge}</span>)}
 </div>
 
                     <div class="card-body">
@@ -9570,6 +9601,32 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
   const brokerage = String(
     listing.listing_brokerage || listing.brokerage || ""
   ).trim();
+  const ownershipText = [
+    listing.description,
+    listing.raw?.description,
+    listing.raw?.details?.description,
+  ].filter(Boolean).join(" ");
+
+  const ownershipBadge =
+    /\bfractional\b|\b1\s*\/\s*(?:4|8)\s*(?:ownership|interest|share)\b|\b(?:quarter|one[-\s]?quarter|half|one[-\s]?half|eighth|one[-\s]?eighth)[-\s]+(?:ownership|interest|share)\b/i.test(ownershipText)
+      ? "Fractional Ownership"
+      : /\btime[-\s]?share\b|\bweek\s+\d+\b/i.test(ownershipText)
+        ? "Timeshare"
+        : /\bphase\s*(?:ii|2)\b/i.test(ownershipText)
+          ? "Hotel Phase II"
+          : /\bhotel\b/i.test(ownershipText)
+            ? "Hotel Suite"
+            : "";
+  const isFractionalOwnership =
+    /\bfractional\b|\b1\s*\/\s*(?:4|8)\s*(?:ownership|interest|share)\b|\b(?:quarter|one[-\s]?quarter|half|one[-\s]?half|eighth|one[-\s]?eighth)[-\s]+(?:ownership|interest|share)\b/i.test(
+      [
+        listing.description,
+        listing.ownership_type,
+        listing.ownershipType,
+      ]
+        .filter(Boolean)
+        .join(" ")
+    );
 
   return `
     <article
@@ -9587,7 +9644,8 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
       data-beds="${esc(listing.beds)}"
       data-baths="${esc(listing.baths)}"
       data-sqft="${esc(listing.sqft)}"
-      data-description="${esc(listing.description)}"
+      data-description="${esc(listing.description)}"
+      data-fractional="${isFractionalOwnership ? "true" : "false"}"
       data-property-type="${esc(listing.propertyType)}"
       data-type="${esc(listing.type)}"
       data-year="${esc(listing.year)}"
@@ -9607,8 +9665,9 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
       data-listing-brokerage="${esc(brokerage)}"
       aria-label="${esc(`${listing.price} ΓÇö ${listing.address}`)}"
     >
-      <div class="card-image-wrap">
-        <img src="${esc(listing.image || "https://placehold.co/800x600?text=Photos+coming+soon")}" alt="${esc(listing.address || "Listing")}" loading="lazy" decoding="async" />
+      <div class="card-image-wrap" style="position: relative; overflow: hidden;">
+        <img src="${esc(listing.image || "https://placehold.co/800x600?text=Photos+coming+soon")}" alt="${esc(listing.address || "Listing")}" loading="lazy" decoding="async" />
+        ${ownershipBadge ? '<span class="fractional-ownership-badge" style="position:absolute;z-index:2;left:8px;bottom:8px;display:block;padding:3px 6px;background:rgba(23,35,44,.42);color:rgba(255,255,255,.9);border:0;border-radius:4px;font-size:10px;font-weight:600;line-height:1.1;text-transform:none;letter-spacing:0;box-shadow:none;">' + esc(ownershipBadge) + '</span>' : ""}
       </div>
 
       <div class="card-body">
@@ -18939,4 +18998,24 @@ html[data-theme="dark"] #home-hero-search.locus-home-search > :is(
 .locus-home-featured {
   background: #f1efe9;
 }
-</style>
+
+/* Fractional ownership listing marker */
+.fractional-ownership-badge {
+  position: absolute;
+  z-index: 2;
+  left: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(23, 35, 44, .46);
+  color: rgba(255, 255, 255, .88);
+  font-size: .5rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.1;
+  text-transform: none;
+  pointer-events: none;
+}</style>

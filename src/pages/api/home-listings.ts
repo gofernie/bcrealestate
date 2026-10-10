@@ -609,6 +609,31 @@ export const GET: APIRoute = async ({ request }) => {
     ? filterListings(true)
     : listings;
 
+  // Feed refreshes can leave duplicate rows for one MLS number. Keep the
+  // newest row before calculating totals, map pins, and paginated cards.
+  const listingsByMls = new Map<string, any>();
+
+  for (const listing of listings) {
+    const key = String(listing.mls || listing.id || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+
+    if (!key) {
+      listingsByMls.set(`unkeyed:${listingsByMls.size}`, listing);
+      continue;
+    }
+
+    const existing = listingsByMls.get(key);
+    const listingTime = Date.parse(listing.listedAt || "") || 0;
+    const existingTime = Date.parse(existing?.listedAt || "") || 0;
+
+    if (!existing || listingTime >= existingTime) {
+      listingsByMls.set(key, listing);
+    }
+  }
+
+  listings = Array.from(listingsByMls.values());
   if (sort === "price-low") listings.sort((a, b) => a.rawPrice - b.rawPrice);
   else if (sort === "price-high") listings.sort((a, b) => b.rawPrice - a.rawPrice);
   else if (sort === "beds-high") listings.sort((a, b) => Number(b.beds || 0) - Number(a.beds || 0));

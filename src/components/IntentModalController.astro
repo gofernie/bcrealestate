@@ -2429,12 +2429,39 @@ const HIGHLIGHT_RULES = [
   { keywords: ["new build", "new home", "brand new construction", "newly built"], label: "New build" },
 ];
 
+function getOwnershipChip(description = "") {
+  const text = String(description || "");
+
+  if (/\bfractional\b|\b1\s*\/\s*(?:4|8)\s*(?:ownership|interest|share)\b|\b(?:quarter|one[-\s]?quarter|half|one[-\s]?half|eighth|one[-\s]?eighth)[-\s]+(?:ownership|interest|share)\b/i.test(text)) {
+    return "Fractional Ownership";
+  }
+
+  if (/\btime[-\s]?share\b|\bweek\s+\d+\b/i.test(text)) {
+    return "Timeshare";
+  }
+
+  if (/\bphase\s*(?:ii|2)\b/i.test(text)) {
+    return "Hotel Phase II";
+  }
+
+  if (/\bhotel\b/i.test(text)) {
+    return "Hotel Suite";
+  }
+
+  return "";
+}
+
 function getHighlightChips(description = "") {
-  const lower = description.toLowerCase();
-  return HIGHLIGHT_RULES
-    .filter(rule => rule.keywords.some(kw => lower.includes(kw)))
+  const ownershipChip = getOwnershipChip(description);
+
+  const highlightChips = HIGHLIGHT_RULES
+    .filter(rule => rule.keywords.some(kw => description.toLowerCase().includes(kw)))
     .map(rule => rule.label)
-    .slice(0, 3);
+    .slice(0, ownershipChip ? 2 : 3);
+
+  return ownershipChip
+    ? [ownershipChip, ...highlightChips]
+    : highlightChips;
 }
 
 function getCards() {
