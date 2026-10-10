@@ -1421,7 +1421,7 @@ try {
   let cardQuery =
     supabase
       .from("listing_rows")
-      .select("*", { count: "planned" })
+      .select("*", { count: "exact" })
       .eq("status", "A")
       .limit(48);
 
@@ -1514,6 +1514,30 @@ if (areas.length > 0) {
   listings = (cardRows || []).filter(keepHomepageListing);
   homepageInventory = listings;
   homepageListingTotal = cardCount ?? homepageInventory.length;
+
+  // One MLS listing may have more than one stored row after a feed refresh.
+  // Keep the first result from the already-sorted query, so counts and cards
+  // represent homes—not duplicate database rows.
+  const seenHomepageListingMls = new Set<string>();
+
+  listings = listings.filter((listing: any) => {
+    const key = String(
+      listing?.mls_number ||
+      listing?.repliers_listing_id ||
+      listing?.id ||
+      ""
+    )
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+
+    if (!key) return true;
+    if (seenHomepageListingMls.has(key)) return false;
+
+    seenHomepageListingMls.add(key);
+    return true;
+  });
+
 
   if (isNewMatchesView) {
     listings.sort(
