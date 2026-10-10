@@ -11745,7 +11745,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
                 data-city={String(listing?.normalized_city || listing?.city || "nanaimo")}
                 data-area={String(listing?.normalized_area || listing?.area || "").toLowerCase()}
               >
-<div class="card-image-wrap">
+<div class="card-image-wrap" style="position:relative;overflow:hidden;">
   <img
     src={image}
     alt={formatAddress(listing.address) || "Listing"}
@@ -11755,6 +11755,28 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
     fetchpriority={index === 0 ? "high" : "auto"}
     decoding="async"
   />
+  {(() => {
+    const ownershipText = [
+      listing?.description,
+      listing?.raw?.description,
+      listing?.raw?.details?.description,
+    ].filter(Boolean).join(" ");
+
+    const ownershipBadge =
+      /\bfractional\b|\b1\s*\/\s*(?:4|8)\s*(?:ownership|interest|share)\b|\b(?:quarter|one[-\s]?quarter|half|one[-\s]?half|eighth|one[-\s]?eighth)[-\s]+(?:ownership|interest|share)\b/i.test(ownershipText)
+        ? "Fractional Ownership"
+        : /\btime[-\s]?share\b|\bweek\s+\d+\b/i.test(ownershipText)
+          ? "Timeshare"
+          : /\bphase\s*(?:ii|2)\b/i.test(ownershipText)
+            ? "Hotel Phase II"
+            : /\bhotel\b/i.test(ownershipText)
+              ? "Hotel Suite"
+              : "";
+
+    return ownershipBadge ? (
+      <span style="position:absolute!important;z-index:50!important;left:10px!important;bottom:10px!important;display:block!important;padding:3px 6px!important;background:rgba(23,35,44,.46)!important;color:rgba(255,255,255,.88)!important;border:0!important;border-radius:4px!important;font-size:8px!important;font-weight:600!important;line-height:1.1!important;text-transform:none!important;letter-spacing:0!important;transform:scale(.65)!important;transform-origin:left bottom!important;">{ownershipBadge}</span>
+    ) : null;
+  })()}
 </div>
 
 <div class="card-body">
@@ -12142,8 +12164,24 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
       return amount ? `$${amount.toLocaleString()}` : "";
     }
 
+    function getOwnershipBadge(listing) {
+      const ownershipText = [
+        listing?.description,
+        listing?.raw?.description,
+        listing?.raw?.details?.description,
+      ].filter(Boolean).join(" ");
+
+      if (/\bfractional\b|\b1\s*\/\s*(?:4|8)\s*(?:ownership|interest|share)\b|\b(?:quarter|one[-\s]?quarter|half|one[-\s]?half|eighth|one[-\s]?eighth)[-\s]+(?:ownership|interest|share)\b/i.test(ownershipText)) return "Fractional Ownership";
+      if (/\btime[-\s]?share\b|\bweek\s+\d+\b/i.test(ownershipText)) return "Timeshare";
+      if (/\bphase\s*(?:ii|2)\b/i.test(ownershipText)) return "Hotel Phase II";
+      if (/\bhotel\b/i.test(ownershipText)) return "Hotel Suite";
+
+      return "";
+    }
+
     function buildShowMoreCard(listing) {
       const image = listing.image || "https://placehold.co/800x600?text=Photos+coming+soon";
+      const ownershipBadge = getOwnershipBadge(listing);
       const images = [
         image,
         ...(Array.isArray(listing.images) ? listing.images : []),
@@ -12206,8 +12244,9 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
       article.dataset.isFavourite = "false";
 
       article.innerHTML = `
-        <div class="card-image-wrap">
+        <div class="card-image-wrap" style="position:relative;overflow:hidden;">
           <img src="${image}" alt="${fmtAddr(listing.address) || "Listing"}" loading="lazy" decoding="async" />
+          ${ownershipBadge ? `<span style="position:absolute;z-index:2;left:8px;bottom:8px;display:block;padding:3px 6px;background:rgba(23,35,44,.42);color:rgba(255,255,255,.9);border:0;border-radius:4px;font-size:10px;font-weight:600;line-height:1.1;text-transform:none;letter-spacing:0;box-shadow:none;">${ownershipBadge}</span>` : ""}
         </div>
         <div class="card-body">
           <div class="price">${formatPriceClient(listing.price)}</div>
