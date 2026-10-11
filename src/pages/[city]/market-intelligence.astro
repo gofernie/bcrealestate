@@ -453,7 +453,7 @@ const allMonthlyHistory = [...monthlyRows]
     medianDaysOnMarket: Number(row.median_days_on_market || 0),
   }));
 
-/* island-market-comparison-v1 */
+/* market-comparison-v2 */
 const islandMarketKeys = [
   "campbell river",
   "colwood",
@@ -470,6 +470,34 @@ const islandMarketKeys = [
   "tofino",
 ];
 
+const greaterVictoriaMarketKeys = [
+  "victoria",
+  "saanich",
+  "oak bay",
+  "esquimalt",
+  "view royal",
+  "langford",
+  "colwood",
+  "central saanich",
+  "sidney",
+];
+
+const isGreaterVictoriaPage = city === "victoria";
+const comparisonMarketKeys = comparisonMarketScope || (
+  isGreaterVictoriaPage
+    ? greaterVictoriaMarketKeys
+    : islandMarketKeys
+);
+const comparisonRegionLabel = isGreaterVictoriaPage
+  ? "Greater Victoria"
+  : "Vancouver Island";
+const comparisonReadLabel = isGreaterVictoriaPage
+  ? "Greater Victoria read"
+  : "Island read";
+const comparisonReadHeading = isGreaterVictoriaPage
+  ? "Greater Victoria is not moving as one market."
+  : "The Island is not moving as one market.";
+
 const {
   data: islandMonthlyRows = [],
   error: islandMonthlyError,
@@ -484,7 +512,7 @@ const {
     median_days_on_market,
     average_sale_to_list_ratio
   `)
-  .in("city", islandMarketKeys)
+  .in("city", comparisonMarketKeys)
   .not("median_days_on_market", "is", null)
   .order("month_start", { ascending: false })
   .limit(96);
@@ -575,7 +603,7 @@ for (const row of islandMonthlyRows || []) {
 }
 
 const islandMarketComparisons =
-  (comparisonMarketScope || islandMarketKeys)
+  comparisonMarketKeys
     .map((marketKey) => {
       const history = [
         ...(islandRowsByMarket.get(marketKey) ||
@@ -2223,7 +2251,7 @@ const marketSeoSchema = {
       >
         <div class="section-heading island-comparison__heading">
           <div>
-            <p class="eyebrow">Across Vancouver Island</p>
+            <p class="eyebrow">Across {comparisonRegionLabel}</p>
             <h2 id="island-comparison-title">
               Which markets are heating up or slowing down?
             </h2>
@@ -2237,9 +2265,11 @@ const marketSeoSchema = {
         </div>
 
         <aside class="market-section__read island-comparison__read">
-          <p class="market-section__read-label">Island read</p>
+          <p class="market-section__read-label">
+            {comparisonReadLabel}
+          </p>
 
-          <h3>The Island is not moving as one market.</h3>
+          <h3>{comparisonReadHeading}</h3>
 
           <p>
             <strong>
