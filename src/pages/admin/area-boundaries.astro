@@ -255,7 +255,7 @@ const sitesJson = JSON.stringify(sites);
             <label>
               City
               <select id="citySelect">
-              {[...new Set([...sites.map((s) => s.city).filter(Boolean), "whistler"])].map((c) => (
+              {[...new Set([...sites.map((s) => s.city).filter(Boolean), "whistler", "victoria"])].map((c) => (
                   <option value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
                 ))}
               </select>
@@ -362,6 +362,7 @@ const sitesJson = JSON.stringify(sites);
         duncan:    { lat: 48.7787, lng: -123.7079, zoom: 13 },
         colwood:   { lat: 48.4254, lng: -123.4956, zoom: 13 },
         whistler:  { lat: 50.1163, lng: -122.9574, zoom: 13 },
+        victoria:  { lat: 48.4284, lng: -123.3656, zoom: 13 },
       };
 
       function slugify(value) {
@@ -616,10 +617,8 @@ const sitesJson = JSON.stringify(sites);
         if (!file) return;
 
         try {
-          const selectedSlug = String(areaSelect.value || "").trim().toLowerCase();
-
-          if (!selectedSlug) {
-            throw new Error("Choose the area you want to trace before importing the KML.");
+          if (!siteSelect.value) {
+            throw new Error("Choose the site that should own these boundaries first.");
           }
 
           setStatus("Reading KML…");
@@ -633,7 +632,121 @@ const sitesJson = JSON.stringify(sites);
             throw new Error("That file is not valid KML.");
           }
 
-          const pieces = Array.from(xml.getElementsByTagName("Placemark"))
+          const placemarks = Array.from(xml.getElementsByTagName("Placemark"));
+
+          const polygons = placemarks
+            .map((placemark) => {
+              const nameNode = Array.from(placemark.children)
+                .find((child) => child.localName === "name");
+
+              const coordsNode = placemark
+                .getElementsByTagName("Polygon")[0]
+                ?.getElementsByTagName("coordinates")[0];
+
+              const areaName = String(nameNode?.textContent || "").trim();
+
+              if (!areaName || !coordsNode) return null;
+
+              const coords = String(coordsNode.textContent || "")
+                .trim()
+                .split(/\s+/)
+                .map((value) => value.split(","))
+                .map(([lng, lat]) => [Number(lat), Number(lng)])
+                .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+
+              return coords.length >= 3 ? { areaName, coords } : null;
+            })
+            .filter(Boolean);
+
+          if (polygons.length) {
+            const city = String(citySelect.value || "").trim().toLowerCase();
+
+            if (!city) {
+              throw new Error("Choose the city before importing.");
+            }
+
+            setStatus(`Saving ${polygons.length} polygon boundary${polygons.length === 1 ? "" : "ies"}…`);
+
+            const failures = [];
+            let saved = 0;
+
+            for (const polygon of polygons) {
+              const ring = polygon.coords.map(([lat, lng]) => [lng, lat]);
+              const first = ring[0];
+              const last = ring[ring.length - 1];
+
+              if (first[0] !== last[0] || first[1] !== last[1]) {
+                ring.push([...first]);
+              }
+
+              const bounds = L.latLngBounds(polygon.coords);
+              const center = bounds.getCenter();
+
+              const res = await fetch("/api/admin/area-boundary", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  site_id: siteSelect.value,
+                  city,
+                  area_slug: slugify(polygon.areaName),
+                  area_name: polygon.areaName,
+                  polygon_geojson: {
+                    type: "Polygon",
+                    coordinates: [ring],
+                  },
+                  center_lat: center.lat,
+                  center_lng: center.lng,
+                }),
+              });
+
+              const result = await res.json();
+
+              if (!res.ok || !result.ok) {
+                failures.push(`${polygon.areaName}: ${result.error || "Save failed"}`);
+                continue;
+              }
+
+              saved += 1;
+              areasByCity[city] = areasByCity[city] || [];
+
+              if (!areasByCity[city].includes(polygon.areaName)) {
+                areasByCity[city].push(polygon.areaName);
+              }
+            }
+
+            refreshAreas();
+
+            clearActiveLayer({ quiet: true });
+            const preview = polygons[0];
+            activeLayer = L.polygon(preview.coords, {
+              color: "#2f6f73",
+              weight: 3,
+              fillOpacity: 0.15,
+            }).addTo(map);
+
+            const allPoints = polygons.flatMap((polygon) => polygon.coords);
+            const allBounds = L.latLngBounds(allPoints);
+
+            if (allBounds.isValid()) {
+              map.fitBounds(allBounds, { padding: [40, 40] });
+            }
+
+            setStatus(
+              failures.length
+                ? `Saved ${saved} boundary${saved === 1 ? "" : "ies"}. ${failures.length} failed: ${failures.join(" • ")}`
+                : `Saved all ${saved} KML polygon boundaries for ${city}.`
+            );
+
+            return;
+          }
+
+          const selectedSlug = String(areaSelect.value || "").trim().toLowerCase();
+
+          if (!selectedSlug) {
+            throw new Error("Choose the area you want to trace before importing a line KML.");
+          }
+
+          const pieces = placemarks
             .map((placemark) => {
               const nameNode = Array.from(placemark.children)
                 .find((child) => child.localName === "name");
@@ -663,7 +776,7 @@ const sitesJson = JSON.stringify(sites);
             .filter((piece) => piece.areaSlug === selectedSlug);
 
           if (!pieces.length) {
-            throw new Error("No KML lines matched the selected area.");
+            throw new Error("No KML polygons or matching KML lines were found.");
           }
 
           clearActiveLayer({ quiet: true });
