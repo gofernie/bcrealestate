@@ -871,7 +871,7 @@ const osmSummaryPromise: Promise<typeof osmSummary> =
               distanceToOsmAreaBoundaryKm(
                 rowLat,
                 rowLng
-              ) <= 2;
+              ) <= 5;
 
             if (!insideArea && !nearbyArea) continue;
 
@@ -14512,18 +14512,18 @@ const accentColor = getComputedStyle(document.documentElement)
   .getPropertyValue("--accent").trim() || "#2f6f73";
 
 const amenityCategoryMap = {
-  schools: "school",
+  schools: "schools",
   grocery: "grocery",
   transit: "transit",
-  parks: "park",
-  restaurants: "restaurant",
+  parks: "parks",
+  restaurants: "restaurants",
   medical: "medical",
 
   childcare: "childcare",
-  playgrounds: "playground",
+  playgrounds: "playgrounds",
   recreation: "recreation",
-  trails: "trail",
-  beaches: "beach",
+  trails: "trails",
+  beaches: "beaches",
   golf: "golf",
   marinas: "marina",
   "ev-charging": "ev_charging",
@@ -15166,7 +15166,7 @@ function initLeafletMap(mode = "all") {
     // Load amenities on area pages
     if (document.querySelector(".area-intelligence") && !window.__amenitiesLoaded) {
       window.__amenitiesLoaded = true;
-      setTimeout(() => loadAreaAmenities("school"), 200);
+      setTimeout(() => loadAreaAmenities("schools"), 200);
     }
 
     setTimeout(() => leafletMap.invalidateSize(), 100);
@@ -15292,7 +15292,7 @@ if (searchAreaCoordinates.length) {
   );
 }
 // --- Load amenities ---
-async function loadAreaAmenities(category = "school") {
+async function loadAreaAmenities(category = "schools") {
   if (!leafletMap) return;
 
   amenityMarkers.forEach((m) => m.remove());
@@ -15315,7 +15315,7 @@ const osmCity =
 
 
     const res = await fetch(
-  `/api/osm-amenities?city=${encodeURIComponent(osmCity)}&lat=${osmLat}&lng=${osmLng}&radius=${Math.min(amenityRadius + 2, 15)}&limit=250`
+  `/api/osm-amenities?city=${encodeURIComponent(osmCity)}&lat=${osmLat}&lng=${osmLng}&radius=${Math.min(Math.max(amenityRadius + 5, 10), 15)}&limit=250`
 );
     const payload = await res.json();
 const areaAmenityFilter = (item) => {
@@ -15332,7 +15332,7 @@ const areaAmenityFilter = (item) => {
   }
 
   // Also allow nearby amenities just outside the boundary.
-  return distanceToAreaBoundaryKm(lat, lng) <= 2;
+  return distanceToAreaBoundaryKm(lat, lng) <= 5;
 };
     // Update chip counts
    document.querySelectorAll(".amenity-chip").forEach((chip) => {
@@ -15391,11 +15391,8 @@ if (!activeChip || activeChip.hidden) {
 
   activeChip?.classList.add("active");
 }
-
-const activeCategory = activeChip
-  ? amenityCategoryMap[activeChip.dataset.amenity] ||
-    activeChip.dataset.amenity
-  : category;
+const activeCategory =
+  amenityCategoryMap[category] || category;
 
 const rows = (
   payload.categories?.[activeCategory] || []
@@ -15918,7 +15915,7 @@ document.querySelectorAll(".amenity-chip").forEach((button) => {
   button.addEventListener("click", () => {
     document.querySelectorAll(".amenity-chip").forEach((c) => c.classList.remove("active"));
     button.classList.add("active");
-    const category = amenityCategoryMap[button.dataset.amenity] || "school";
+    const category = amenityCategoryMap[button.dataset.amenity] || "schools";
     loadAreaAmenities(category);
   });
 });
