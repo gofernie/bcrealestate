@@ -8,12 +8,25 @@ const supabase = createClient(
 export async function getSite(hostname: string, city?: string) {
   const host = hostname.replace(/^www\./, "");
 
+  const normalizedCity = String(city || "")
+    .trim()
+    .toLowerCase();
+
+  const cityKeys = normalizedCity
+    ? Array.from(
+        new Set([
+          normalizedCity,
+          normalizedCity.replace(/-/g, " "),
+        ])
+      )
+    : [];
+
   // Local dev default
   if (host === "localhost" || host.startsWith("localhost:")) {
     const { data: fallback } = await supabase
       .from("sites")
       .select("*")
-      .eq("city", city || "nanaimo")
+      .in("city", cityKeys.length ? cityKeys : ["nanaimo"])
       .maybeSingle();
 
     return fallback;
@@ -25,7 +38,7 @@ export async function getSite(hostname: string, city?: string) {
       .from("sites")
       .select("*")
       .or(`domain.eq.${host},domain.eq.www.${host}`)
-      .eq("city", city)
+      .in("city", cityKeys)
       .maybeSingle();
 
     if (cityData) return cityData;

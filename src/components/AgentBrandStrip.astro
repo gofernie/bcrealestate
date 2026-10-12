@@ -5,6 +5,10 @@ const { site = null, city = "nanaimo", variant = "contact" } = Astro.props;
 const agent = await getAgentForSite(site);
 const isIntro = variant === "intro";
 const isNudge = variant === "nudge";
+const isPlatformGuide =
+  String(agent?.name || "")
+    .trim()
+    .toLowerCase() === "bc.realestate";
 
 const first = (...values) =>
   values.find((value) => String(value || "").trim()) || "";
@@ -88,6 +92,10 @@ const cityLabel = String(city || "nanaimo")
   .replace(/-/g, " ")
   .replace(/\b\w/g, (character) => character.toUpperCase());
 
+const platformHeading = `Looking at ${cityLabel}?`;
+const platformIntro =
+  "Browse live listings, compare neighbourhoods, and get a clearer read on the local market. When you want to see a home or talk through a move, we’ll connect you with an experienced local agent.";
+
 const agentFirstName = String(agentName || "")
   .trim()
   .split(/\s+/)[0] || "";
@@ -108,6 +116,7 @@ const initials = String(
     "agent-brand-strip",
     isIntro && "agent-brand-strip--intro",
     isNudge && "agent-brand-strip--nudge",
+    isPlatformGuide && "agent-brand-strip--platform",
     photo && !isNudge && "agent-brand-strip--has-photo"
   ]}
   aria-label="Your local real estate guide"
@@ -119,10 +128,12 @@ const initials = String(
     </span>
 
     <div>
-      <span class="agent-brand-strip__eyebrow">{isNudge ? "YOUR LOCAL GUIDE" : isIntro ? "MEET YOUR LOCAL GUIDE" : "LOCAL GUIDANCE"}</span>
+      <span class="agent-brand-strip__eyebrow">{isPlatformGuide ? "EXPLORE AT YOUR OWN PACE" : isNudge ? "YOUR LOCAL GUIDE" : isIntro ? "MEET YOUR LOCAL GUIDE" : "LOCAL GUIDANCE"}</span>
 
       <h2>
-        {isNudge
+        {isPlatformGuide
+          ? platformHeading
+          : isNudge
           ? agentFirstName
             ? "Ask " + agentFirstName + " about any home."
             : "Questions about a home?"
@@ -135,7 +146,7 @@ const initials = String(
 
       {isIntro && (
         <p class="agent-brand-strip__intro-copy">
-          {introCopy}
+          {isPlatformGuide ? platformIntro : introCopy}
         </p>
       )}
     </div>
@@ -158,7 +169,7 @@ const initials = String(
   </p>
 
   <div class="agent-brand-strip__actions">
-    {email && isIntro && (
+    {(email || isPlatformGuide) && isIntro && (
       <button
         type="button"
         class="agent-brand-strip__primary"
@@ -193,7 +204,7 @@ const initials = String(
   </div>
 </div>
 
-{isIntro && email && (
+{isIntro && (email || isPlatformGuide) && (
   <form
     class="agent-brand-strip__contact-form"
     id="agent-brand-contact-form"
@@ -201,7 +212,7 @@ const initials = String(
     hidden
   >
     <div class="agent-brand-strip__contact-form-head">
-      <strong>{agentFirstName ? `Send ${agentFirstName} a message` : "Send a message"}</strong>
+      <strong>{isPlatformGuide ? "Ask a local question" : agentFirstName ? `Send ${agentFirstName} a message` : "Send a message"}</strong>
       <span>Ask about a home, an area, or your search.</span>
     </div>
 
@@ -1350,7 +1361,48 @@ const initials = String(
       justify-content: flex-start !important;
       flex-wrap: wrap !important;
     }
-  }</style>
+  }
+  /* Generic city-market handoff: a platform, not a pretend agent. */
+  .agent-brand-strip--platform.agent-brand-strip--intro {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    min-height: 0 !important;
+    padding: 34px 38px !important;
+    gap: 32px !important;
+  }
+
+  .agent-brand-strip--platform .agent-brand-strip__initials {
+    display: none !important;
+  }
+
+  .agent-brand-strip--platform.agent-brand-strip--intro .agent-brand-strip__identity {
+    display: block !important;
+    grid-column: 1 !important;
+    padding: 0 !important;
+  }
+
+  .agent-brand-strip--platform.agent-brand-strip--intro .agent-brand-strip__content {
+    grid-column: 2 !important;
+    align-self: center !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+
+  .agent-brand-strip--platform .agent-brand-strip__intro-copy {
+    max-width: 720px;
+  }
+
+  @media (max-width: 700px) {
+    .agent-brand-strip--platform.agent-brand-strip--intro {
+      grid-template-columns: 1fr !important;
+      padding: 24px !important;
+    }
+
+    .agent-brand-strip--platform.agent-brand-strip--intro .agent-brand-strip__content {
+      grid-column: 1 !important;
+      grid-row: 2 !important;
+    }
+  }
+</style>
 <script>
   document.querySelectorAll("[data-agent-brand-contact]").forEach((trigger) => {
     const strip = trigger.closest(".agent-brand-strip");
