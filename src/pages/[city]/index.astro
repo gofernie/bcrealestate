@@ -4315,11 +4315,13 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
         <p>
           <b aria-hidden="true">
             {homepageMarketRead.activeListingsYoY >= 0
-              ? "Γåæ"
-              : "Γåô"}
+              ? "\u2191"
+              : "\u2193"}
           </b>
 
-          {homepageMarketRead.activeListingsComparison}
+          <span class="locus-home-market__read-comparison">
+            {homepageMarketRead.activeListingsComparison}
+          </span>
 
           <small>
             vs. the same 3-month period last year
@@ -4339,11 +4341,13 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
         <p>
           <b aria-hidden="true">
             {homepageMarketRead.salesYoY >= 0
-              ? "Γåæ"
-              : "Γåô"}
+              ? "\u2191"
+              : "\u2193"}
           </b>
 
-          {homepageMarketRead.salesComparison}
+          <span class="locus-home-market__read-comparison">
+            {homepageMarketRead.salesComparison}
+          </span>
 
           <small>
             vs. the same 3-month period last year
@@ -4374,6 +4378,47 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 
 <style is:global>
 /* homepage-market-read-v1 */
+.locus-home-market__read-stats {
+  align-items: stretch;
+}
+
+.locus-home-market__read-stat {
+  display: grid !important;
+  grid-template-rows: auto auto 1fr;
+  align-content: start;
+}
+
+.locus-home-market__read-stat > span {
+  grid-row: 1;
+}
+
+.locus-home-market__read-stat > strong {
+  grid-row: 2;
+}
+
+.locus-home-market__read-stat > p {
+  grid-row: 3;
+  display: grid !important;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 0.3rem;
+  align-items: baseline;
+}
+
+.locus-home-market__read-stat > p > b {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.locus-home-market__read-comparison {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.locus-home-market__read-stat > p > small {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
 .locus-home-market__intel--read {
   display: grid;
   grid-template-columns: minmax(0, 1.12fr) minmax(320px, .88fr);
@@ -13311,15 +13356,22 @@ document.documentElement.style.visibility = "";
 
       document.body.appendChild(rail);
 
+      // The docked rail must fully contain the moved search form.
+      rail.style.setProperty("background", "#ffffff", "important");
+      rail.style.setProperty("height", "auto", "important");
+      rail.style.setProperty("min-height", "0", "important");
+      rail.style.setProperty("padding-bottom", "12px", "important");
+      rail.style.setProperty("box-sizing", "border-box", "important");
+
       let isDocked = false;
 
 /* restore-sticky-rail-position-v1 */
 let frame = 0;
 
 const navBottom = () => {
-  const nav = document.querySelector(
-    ".site-nav, header"
-  );
+  const nav =
+    document.querySelector(".site-nav") ||
+    document.querySelector("header");
 
   return Math.max(
     0,
@@ -13353,7 +13405,60 @@ const navBottom = () => {
         // Reserving its height here makes the page jump downward.
         marker.style.height = "0px";
 
+        const dockedFormWidth = Math.round(
+          form.getBoundingClientRect().width
+        );
+
         rail.appendChild(form);
+
+        // Override the hero-only positioning while the form lives in the fixed rail.
+        form.style.setProperty("position", "relative", "important");
+        form.style.setProperty("top", "auto", "important");
+        form.style.setProperty("left", "auto", "important");
+        form.style.setProperty("right", "auto", "important");
+        form.style.setProperty("transform", "none", "important");
+        form.style.setProperty("margin", "0 auto", "important");
+        form.style.setProperty(
+          "width",
+          `${dockedFormWidth}px`,
+          "important"
+        );
+
+        const dockedInventoryBoard = form.querySelector(
+          ".locus-home-search__inventory-board"
+        );
+        if (dockedInventoryBoard) {
+          dockedInventoryBoard.style.setProperty(
+            "display",
+            "flex",
+            "important"
+          );
+          dockedInventoryBoard.style.setProperty(
+            "align-items",
+            "baseline",
+            "important"
+          );
+          dockedInventoryBoard.style.setProperty(
+            "white-space",
+            "nowrap",
+            "important"
+          );
+
+          dockedInventoryBoard
+            .querySelectorAll(":scope > *")
+            .forEach((stat) => {
+              stat.style.setProperty(
+                "align-self",
+                "baseline",
+                "important"
+              );
+              stat.style.setProperty(
+                "white-space",
+                "nowrap",
+                "important"
+              );
+            });
+        }
 
         form.querySelectorAll(".hero-single-dropdown__menu").forEach((menu) => {
           menu.style.setProperty(
@@ -13371,6 +13476,30 @@ const navBottom = () => {
         if (!isDocked) return;
 
         marker.after(form);
+
+        form.style.removeProperty("position");
+        form.style.removeProperty("top");
+        form.style.removeProperty("left");
+        form.style.removeProperty("right");
+        form.style.removeProperty("transform");
+        form.style.removeProperty("margin");
+        form.style.removeProperty("width");
+
+        const dockedInventoryBoard = form.querySelector(
+          ".locus-home-search__inventory-board"
+        );
+        if (dockedInventoryBoard) {
+          dockedInventoryBoard.style.removeProperty("display");
+          dockedInventoryBoard.style.removeProperty("align-items");
+          dockedInventoryBoard.style.removeProperty("white-space");
+
+          dockedInventoryBoard
+            .querySelectorAll(":scope > *")
+            .forEach((stat) => {
+              stat.style.removeProperty("align-self");
+              stat.style.removeProperty("white-space");
+            });
+        }
 
         form.querySelectorAll(".hero-single-dropdown__menu").forEach((menu) => {
           menu.style.removeProperty("top");
@@ -13394,7 +13523,7 @@ const navBottom = () => {
 
         if (shouldDock) {
           dock();
-          rail.style.top = `${navBottom()}px`;
+          rail.style.setProperty("top", `${navBottom()}px`, "important");
         } else {
           restore();
         }
@@ -19168,3 +19297,66 @@ html[data-theme="dark"] #home-hero-search.locus-home-search > :is(
     transform: translate(-50%, 52%) !important;
   }
 }</style>
+
+<script is:inline>
+/* repair-neighbourhood-arrow-encoding-v1 */
+(() => {
+  const repair = () => {
+    document
+      .querySelectorAll(
+        '.locus-home-neighbourhood-card b[aria-hidden="true"]'
+      )
+      .forEach((arrow) => {
+        arrow.textContent = String.fromCharCode(0x2192);
+      });
+  };
+
+  repair();
+  requestAnimationFrame(repair);
+  setTimeout(repair, 400);
+})();
+</script>
+<script is:inline>
+/* remove-runtime-mojibake-v1 */
+(() => {
+  const badPrefix = String.fromCharCode(0x0393, 0x00E5);
+  const badSequence = new RegExp(
+    badPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ".",
+    "g"
+  );
+
+  const removeMojibake = () => {
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT
+    );
+
+    let node;
+
+    while ((node = walker.nextNode())) {
+      if (node.nodeValue && node.nodeValue.includes(badPrefix)) {
+        node.nodeValue = node.nodeValue.replace(badSequence, "");
+      }
+    }
+  };
+
+  const start = () => {
+    removeMojibake();
+
+    new MutationObserver(removeMojibake).observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+
+    setTimeout(removeMojibake, 250);
+    setTimeout(removeMojibake, 1000);
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start, { once: true });
+  } else {
+    start();
+  }
+})();
+</script>
