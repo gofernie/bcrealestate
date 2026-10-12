@@ -33,10 +33,77 @@ async function getSiteId(request: Request, id?: string | null) {
   return data?.id || null;
 }
 
+function collectListingPhotoUrls(...values: unknown[]) {
+  const urls = new Set<string>();
+
+  const visit = (value: unknown) => {
+    if (!value) return;
+
+    if (typeof value === "string") {
+      const text = value.trim();
+
+      if (/^https?:\/\/\S+$/i.test(text)) {
+        urls.add(text);
+        return;
+      }
+
+      try {
+        if (
+          (text.startsWith("[") && text.endsWith("]")) ||
+          (text.startsWith("{") && text.endsWith("}"))
+        ) {
+          visit(JSON.parse(text));
+        }
+      } catch {}
+
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+
+    if (typeof value === "object") {
+      Object.values(value as Record<string, unknown>).forEach(visit);
+    }
+  };
+
+  values.forEach(visit);
+  return [...urls].slice(0, 80);
+}
 export const GET: APIRoute = async ({ request, url }) => {
   try {
     const siteId = await getSiteId(request, url.searchParams.get("id"));
     if (!siteId) return json({ ok: false, error: "Site not found." }, 404);
+
+    const requestedMls = String(
+      url.searchParams.get("listing_mls") || ""
+    ).trim();
+
+    if (requestedMls) {
+      const { data: listing, error: listingError } = await supabase
+        .from("listing_rows")
+        .select("*")
+        .eq("status", "A")
+        .eq("mls_number", requestedMls)
+        .maybeSingle();
+
+      if (listingError) {
+        return json({ ok: false, error: listingError.message }, 500);
+      }
+
+      const images = collectListingPhotoUrls(
+        listing?.images,
+        listing?.photos,
+        listing?.photo_urls,
+        listing?.image_urls,
+        listing?.primary_image,
+        listing?.image_url
+      );
+
+      return json({ ok: true, images });
+    }
 
     const { data, error } = await supabase
       .from("sites")
@@ -167,6 +234,40 @@ export const POST: APIRoute = async ({ request }) => {
       .replace(/\s+/g, "")
       .slice(0, 80) || null;
 
+    let rawFeaturedListingImages: any = data.featuredListingImages;
+
+    if (typeof rawFeaturedListingImages === "string") {
+      try {
+        rawFeaturedListingImages = JSON.parse(
+          rawFeaturedListingImages || "{}"
+        );
+      } catch {
+        rawFeaturedListingImages = {};
+      }
+    }
+
+    const cleanFeaturedImageUrl = (value: unknown) => {
+      const url = String(value || "").trim();
+
+      if (!url || url.length > 2000) return null;
+
+      try {
+        const parsed = new URL(url);
+        return /^https?:$/.test(parsed.protocol) ? parsed.href : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const featuredListingImages = {
+      hero: cleanFeaturedImageUrl(
+        rawFeaturedListingImages?.hero
+      ),
+      card: cleanFeaturedImageUrl(
+        rawFeaturedListingImages?.card
+      ),
+    };
+
     const { error } = await supabase
       .from("sites")
       .update({
@@ -182,6 +283,7 @@ export const POST: APIRoute = async ({ request }) => {
         contact_copy: String(data.agentContactCopy || "").trim() || null,
         secondary_markets: secondaryMarkets,
         featured_listing_mls: featuredListingMls,
+        featured_listing_images: featuredListingImages,
       })
       .eq("id", siteId);
 
