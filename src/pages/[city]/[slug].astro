@@ -552,6 +552,21 @@ page = {
 
 logPhaseTiming("site and page resolution");
 
+const districtAreasBySlug: Record<string, string[]> = {
+  "saanich-east": [
+    "arbutus", "blenkinsop", "broadmead", "cadboro bay",
+    "camosun", "cedar hill", "cordova bay", "gordon head",
+    "high quadra", "lambrick park", "lake hill", "maplewood",
+    "mt doug", "mt tolmie", "quadra", "queenswood",
+    "sunnymead", "swan lake", "ten mile point",
+  ],
+};
+
+const districtAreas =
+  pageKind === "area"
+    ? districtAreasBySlug[String(slug || "").toLowerCase()] || []
+    : [];
+
 const titleCaseCity = city.charAt(0).toUpperCase() + city.slice(1).toLowerCase();
 const areaName = page.area
   ? page.area.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
@@ -607,28 +622,48 @@ const censusData =
     : cityCensus;
 let osmLat = 0;
 let osmLng = 0;
+let osmAreaRings: number[][][] = [];
 
 if (pageKind === "area" && page.polygon_geojson) {
   try {
-    const geojson = page.polygon_geojson;
-    const coords =
-      geojson?.type === "Feature"
-        ? geojson.geometry?.coordinates?.[0]
-        : geojson?.type === "FeatureCollection"
-          ? geojson.features?.[0]?.geometry?.coordinates?.[0]
-          : geojson?.coordinates?.[0];
+    const geojson =
+      typeof page.polygon_geojson === "string"
+        ? JSON.parse(page.polygon_geojson)
+        : page.polygon_geojson;
 
-    if (Array.isArray(coords) && coords.length) {
-      const lats = coords.map((c: number[]) => c[1]);
-      const lngs = coords.map((c: number[]) => c[0]);
-      osmLat = lats.reduce((a: number, b: number) => a + b, 0) / lats.length;
-      osmLng = lngs.reduce((a: number, b: number) => a + b, 0) / lngs.length;
+    const geometries =
+      geojson?.type === "FeatureCollection"
+        ? (geojson.features || []).map((feature: any) => feature?.geometry)
+        : geojson?.type === "Feature"
+          ? [geojson.geometry]
+          : [geojson];
+
+    osmAreaRings = geometries.flatMap((geometry: any) => {
+      if (!geometry?.coordinates?.length) return [];
+
+      return geometry.type === "MultiPolygon"
+        ? geometry.coordinates.flat()
+        : geometry.coordinates;
+    });
+
+    const coordinates = osmAreaRings.flat();
+
+    if (coordinates.length) {
+      const lats = coordinates.map((coord: number[]) => Number(coord[1]));
+      const lngs = coordinates.map((coord: number[]) => Number(coord[0]));
+
+      osmLat =
+        lats.reduce((sum: number, value: number) => sum + value, 0) /
+        lats.length;
+
+      osmLng =
+        lngs.reduce((sum: number, value: number) => sum + value, 0) /
+        lngs.length;
     }
-  } catch (e) {
+  } catch {
     // use 0,0 fallback
   }
 }
-
 // Fetch OSM amenities directly from Supabase while other page work continues.
 let osmSummary = {
   schools: 0,
@@ -653,7 +688,7 @@ const osmSummaryPromise: Promise<typeof osmSummary> =
         const osmStartedAt = performance.now();
 
         try {
-          const radiusKm = 4;
+          const radiusKm = osmAreaRings.length > 1 ? 12 : 4;
           const latitudeDelta = radiusKm / 111;
 
           const longitudeDelta =
@@ -673,13 +708,16 @@ const osmSummaryPromise: Promise<typeof osmSummary> =
             .trim()
             .replace(/\s+/g, "-");
 
-          const {
+          const osmCity =
+            normalizedOsmCity === "saanich"
+              ? "victoria"
+              : normalizedOsmCity;const {
             data: amenityRows = [],
             error: amenityError,
           } = await supabase
             .from("osm_amenities")
             .select("category,lat,lng")
-            .eq("city", normalizedOsmCity)
+            .eq("city", osmCity)
             .gte("lat", Number(osmLat) - latitudeDelta)
             .lte("lat", Number(osmLat) + latitudeDelta)
             .gte("lng", Number(osmLng) - longitudeDelta)
@@ -715,6 +753,86 @@ const osmSummaryPromise: Promise<typeof osmSummary> =
             );
           };
 
+          const pointInOsmArea = (lat: number, lng: number) => {
+            if (!osmAreaRings.length) return false;
+
+            return osmAreaRings.some((ring) => {
+              let inside = false;
+              const x = lng;
+              const y = lat;
+
+              for (
+                let i = 0, j = ring.length - 1;
+                i < ring.length;
+                j = i++
+              ) {
+                const xi = Number(ring[i][0]);
+                const yi = Number(ring[i][1]);
+                const xj = Number(ring[j][0]);
+                const yj = Number(ring[j][1]);
+
+                const intersects =
+                  yi > y !== yj > y &&
+                  x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+
+                if (intersects) inside = !inside;
+              }
+
+              return inside;
+            });
+          };
+          const distanceToOsmAreaBoundaryKm = (
+            lat: number,
+            lng: number
+          ) => {
+            const lngScale =
+              111 *
+              Math.max(
+                Math.cos((lat * Math.PI) / 180),
+                0.1
+              );
+
+            let nearestKm = Infinity;
+
+            for (const ring of osmAreaRings) {
+              for (let i = 0; i < ring.length; i++) {
+                const a = ring[i];
+                const b = ring[(i + 1) % ring.length];
+
+                const ax = (Number(a[0]) - lng) * lngScale;
+                const ay = (Number(a[1]) - lat) * 111;
+                const bx = (Number(b[0]) - lng) * lngScale;
+                const by = (Number(b[1]) - lat) * 111;
+
+                const dx = bx - ax;
+                const dy = by - ay;
+                const lengthSquared = dx * dx + dy * dy;
+
+                const t =
+                  lengthSquared > 0
+                    ? Math.max(
+                        0,
+                        Math.min(
+                          1,
+                          -(ax * dx + ay * dy) /
+                            lengthSquared
+                        )
+                      )
+                    : 0;
+
+                nearestKm = Math.min(
+                  nearestKm,
+                  Math.hypot(
+                    ax + t * dx,
+                    ay + t * dy
+                  )
+                );
+              }
+            }
+
+            return nearestKm;
+          };
+
           const counts = {
             schools: 0,
             parks: 0,
@@ -743,14 +861,19 @@ const osmSummaryPromise: Promise<typeof osmSummary> =
               continue;
             }
 
-            const distanceKm = haversineKm(
-              Number(osmLat),
-              Number(osmLng),
+            const insideArea = pointInOsmArea(
               rowLat,
               rowLng
             );
 
-            if (distanceKm > 2) continue;
+            const nearbyArea =
+              !insideArea &&
+              distanceToOsmAreaBoundaryKm(
+                rowLat,
+                rowLng
+              ) <= 2;
+
+            if (!insideArea && !nearbyArea) continue;
 
             const category = String(
               row.category || ""
@@ -1339,8 +1462,10 @@ let query = supabase
   .in("normalized_city", cityDatabaseKeys)
   .neq("property_type", "Lease");
 
-if (page.area && (!hasPolygonSearch || useHomepageListingPipeline)) {
-const normalizedPageArea = String(page.area)
+if (districtAreas.length > 0) {
+  query = query.in("normalized_area", districtAreas);
+} else if (page.area && (!hasPolygonSearch || useHomepageListingPipeline)) {
+  const normalizedPageArea = String(page.area)
     .toLowerCase()
     .trim()
     .replace(/\s+/g, " ");
@@ -1542,9 +1667,11 @@ const priceBandInventoryRows =
         const scopedAreas =
           filterAreas.length > 0
             ? filterAreas
-            : page.area
-              ? [String(page.area)]
-              : [];
+            : districtAreas.length > 0
+              ? districtAreas
+              : page.area
+                ? [String(page.area)]
+                : [];
 
         if (!scopedAreas.length) return true;
 
@@ -14369,9 +14496,7 @@ const searchAreaGeojsonRaw = JSON.parse(
 const searchAreaGeojson =
   searchAreaGeojsonRaw?.type === "Feature"
     ? searchAreaGeojsonRaw.geometry
-    : searchAreaGeojsonRaw?.type === "FeatureCollection"
-      ? searchAreaGeojsonRaw.features?.[0]?.geometry || null
-      : searchAreaGeojsonRaw;
+    : searchAreaGeojsonRaw;
 
 const mapAreaBoundaries = (() => {
   try {
@@ -15047,17 +15172,27 @@ function initLeafletMap(mode = "all") {
     setTimeout(() => leafletMap.invalidateSize(), 100);
   });
 }
+const searchAreaRings = (() => {
+  const geometries =
+    searchAreaGeojson?.type === "FeatureCollection"
+      ? (searchAreaGeojson.features || []).map((feature) => feature?.geometry)
+      : searchAreaGeojson?.type === "Feature"
+        ? [searchAreaGeojson.geometry]
+        : [searchAreaGeojson];
+
+  return geometries.flatMap((geometry) => {
+    if (!geometry?.coordinates?.length) return [];
+
+    return geometry.type === "MultiPolygon"
+      ? geometry.coordinates.flat()
+      : geometry.coordinates;
+  });
+})();
+
 function pointInAreaPolygon(lat, lng) {
-  if (!searchAreaGeojson?.coordinates?.[0]?.length) {
-    return false;
-  }
+  if (!searchAreaRings.length) return false;
 
-  const rings =
-    searchAreaGeojson.type === "MultiPolygon"
-      ? searchAreaGeojson.coordinates.flat()
-      : searchAreaGeojson.coordinates;
-
-  return rings.some((ring) => {
+  return searchAreaRings.some((ring) => {
     let inside = false;
     const x = lng;
     const y = lat;
@@ -15074,10 +15209,7 @@ function pointInAreaPolygon(lat, lng) {
 
       const intersects =
         yi > y !== yj > y &&
-        x <
-          ((xj - xi) * (y - yi)) /
-            (yj - yi) +
-          xi;
+        x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
 
       if (intersects) inside = !inside;
     }
@@ -15085,19 +15217,13 @@ function pointInAreaPolygon(lat, lng) {
     return inside;
   });
 }
+
 function distanceToAreaBoundaryKm(lat, lng) {
-  if (!searchAreaGeojson?.coordinates?.length) {
+  if (!searchAreaRings.length) {
     return Number.POSITIVE_INFINITY;
   }
 
-  if (pointInAreaPolygon(lat, lng)) {
-    return 0;
-  }
-
-  const rings =
-    searchAreaGeojson.type === "MultiPolygon"
-      ? searchAreaGeojson.coordinates.flat()
-      : searchAreaGeojson.coordinates;
+  if (pointInAreaPolygon(lat, lng)) return 0;
 
   const kmPerLatDegree = 111;
   const kmPerLngDegree =
@@ -15105,7 +15231,7 @@ function distanceToAreaBoundaryKm(lat, lng) {
 
   let closestKm = Number.POSITIVE_INFINITY;
 
-  for (const ring of rings) {
+  for (const ring of searchAreaRings) {
     if (!Array.isArray(ring)) continue;
 
     for (let index = 0; index < ring.length; index++) {
@@ -15136,40 +15262,35 @@ function distanceToAreaBoundaryKm(lat, lng) {
 
       const closestX = ax + projection * dx;
       const closestY = ay + projection * dy;
-      const distanceKm = Math.sqrt(
-        closestX * closestX + closestY * closestY
-      );
 
-      closestKm = Math.min(closestKm, distanceKm);
+      closestKm = Math.min(
+        closestKm,
+        Math.sqrt(closestX * closestX + closestY * closestY)
+      );
     }
   }
 
   return closestKm;
 }
-// --- Amenity radius (computed once from polygon size) ---
+
+// --- Amenity radius (computed from every district polygon) ---
 let amenityRadius = 4;
 
-if (searchAreaGeojson?.coordinates?.[0]?.length) {
-  const coords = searchAreaGeojson.coordinates[0];
+const searchAreaCoordinates = searchAreaRings.flat();
 
-  const lats = coords.map((c) => c[1]);
-  const lngs = coords.map((c) => c[0]);
+if (searchAreaCoordinates.length) {
+  const lats = searchAreaCoordinates.map((coord) => Number(coord[1]));
+  const lngs = searchAreaCoordinates.map((coord) => Number(coord[0]));
 
-  const latSpan =
-    Math.max(...lats) - Math.min(...lats);
-
-  const lngSpan =
-    Math.max(...lngs) - Math.min(...lngs);
-
-  const spanKm =
-    Math.max(latSpan, lngSpan) * 111;
+  const latSpan = Math.max(...lats) - Math.min(...lats);
+  const lngSpan = Math.max(...lngs) - Math.min(...lngs);
+  const spanKm = Math.max(latSpan, lngSpan) * 111;
 
   amenityRadius = Math.min(
     Math.max(spanKm * 0.6 + 2, 4),
     12
   );
 }
-
 // --- Load amenities ---
 async function loadAreaAmenities(category = "school") {
   if (!leafletMap) return;
@@ -15177,7 +15298,13 @@ async function loadAreaAmenities(category = "school") {
   amenityMarkers.forEach((m) => m.remove());
   amenityMarkers = [];
 
-  const osmCity = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
+  const requestedOsmCity =
+  document.querySelector("[data-city]")?.dataset.city || "nanaimo";
+
+const osmCity =
+  String(requestedOsmCity).trim().toLowerCase() === "saanich"
+    ? "victoria"
+    : requestedOsmCity;
   const areaEl = document.querySelector("[data-area-center-lat]");
   const osmLat = Number(areaEl?.dataset.areaCenterLat || 0);
   const osmLng = Number(areaEl?.dataset.areaCenterLng || 0);
