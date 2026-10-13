@@ -25,15 +25,113 @@ const cityLabel = routeCity
 
 const cityDatabaseKeys = Array.from(
   new Set(
-    routeCity === "comox"
-      ? ["comox", "courtenay", "cumberland", "black creek", "merville", "union bay", "fanny bay", "royston", "denman island"]
-      : [routeCity, routeCity.replace(/-/g, " ")]
+    ["saanich-east", "saanich-west"].includes(routeCity) ? [routeCity, routeCity.replace(/-/g, " "), "saanich"]
+      : routeCity === "comox"
+        ? ["comox", "courtenay", "cumberland", "black creek", "merville", "union bay", "fanny bay", "royston", "denman island"]
+        : [routeCity, routeCity.replace(/-/g, " ")]
   )
 );
 const supabase = createClient(
   import.meta.env.PUBLIC_SUPABASE_URL,
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+const isSaanichDistrictMarket = ["saanich-east", "saanich-west"].includes(routeCity);
+
+let saanichDistrictBoundaries: any[] = [];
+
+if (isSaanichDistrictMarket) {
+  const { data: eastBoundaryRows = [], error: eastBoundaryError } =
+    await supabase
+      .from("area_boundaries")
+      .select("polygon_geojson")
+      .ilike("city", routeCity.replace(/-/g, " "))
+      .not("polygon_geojson", "is", null);
+
+  if (eastBoundaryError) {
+    console.error(
+      "Could not load Saanich East boundaries:",
+      eastBoundaryError
+    );
+  }
+
+  saanichDistrictBoundaries = eastBoundaryRows || [];
+}
+
+function pointInSaanichDistrictBoundary(
+  lat: number,
+  lng: number
+) {
+  const pointInRing = (
+    point: [number, number],
+    ring: any[]
+  ) => {
+    const [x, y] = point;
+    let inside = false;
+
+    for (
+      let index = 0, previous = ring.length - 1;
+      index < ring.length;
+      previous = index++
+    ) {
+      const xi = Number(ring[index]?.[0]);
+      const yi = Number(ring[index]?.[1]);
+      const xj = Number(ring[previous]?.[0]);
+      const yj = Number(ring[previous]?.[1]);
+
+      if (
+        yi > y !== yj > y &&
+        x < ((xj - xi) * (y - yi)) / (yj - yi) + xi
+      ) {
+        inside = !inside;
+      }
+    }
+
+    return inside;
+  };
+
+  const point = [lng, lat] as [number, number];
+
+  return saanichDistrictBoundaries.some((boundary: any) => {
+    let geometry = boundary?.polygon_geojson;
+
+    if (typeof geometry === "string") {
+      try {
+        geometry = JSON.parse(geometry);
+      } catch {
+        return false;
+      }
+    }
+
+    geometry =
+      geometry?.type === "Feature"
+        ? geometry.geometry
+        : geometry;
+
+    const containsPolygon = (polygon: any[]) =>
+      Array.isArray(polygon?.[0]) &&
+      pointInRing(point, polygon[0]) &&
+      !polygon.slice(1).some((ring: any[]) =>
+        pointInRing(point, ring)
+      );
+
+    if (geometry?.type === "Polygon") {
+      return containsPolygon(geometry.coordinates);
+    }
+
+    if (geometry?.type === "MultiPolygon") {
+      return geometry.coordinates.some(containsPolygon);
+    }
+
+    return false;
+  });
+}
+
+const isSaanichEastListing = (listing: any) =>
+  pointInSaanichDistrictBoundary(
+    Number(listing?.lat),
+    Number(listing?.lng)
+  );
 /* homepage-market-pulse-v2 */
 const {
   data: homepageMarketHistoryRows = [],
@@ -431,10 +529,17 @@ const {
   .eq("domain", effectiveSiteDomain)
   .maybeSingle();
 
+const useRouteOnlySiteSettings =
+  ["saanich-east", "saanich-west"].includes(routeCity);
+
 let siteRow = exactSiteRow;
 let siteError = exactSiteError;
 
-if (!siteRow && !siteError) {
+if (
+  !siteRow &&
+  !siteError &&
+  !useRouteOnlySiteSettings
+) {
   const {
     data: domainSiteRow,
     error: domainSiteError
@@ -461,10 +566,14 @@ const site = {
   id: siteRow?.id,
   nav_property_types: siteRow?.nav_property_types,
   city: routeCity,
-  site_name: siteRow?.site_name || `${cityLabel} Real Estate`,
+  site_name: useRouteOnlySiteSettings
+    ? `${cityLabel} Homes`
+    : siteRow?.site_name || `${cityLabel} Real Estate`,
   accent_color: siteRow?.accent_color || "#2f6f73",
   hero_image_url: siteRow?.hero_image_url || "",
-  hero_eyebrow: siteRow?.hero_eyebrow || "Homes worth watching",
+  hero_eyebrow: useRouteOnlySiteSettings
+    ? `${cityLabel} Neighbourhood`
+    : siteRow?.hero_eyebrow || "Homes worth watching",
   hero_heading: siteRow?.hero_heading || `${cityLabel} Homes For Sale`,
   hero_copy: siteRow?.hero_copy || "Browse active homes for sale, including houses, condos, and townhomes.",
 };
@@ -1440,7 +1549,7 @@ try {
       .from("listing_rows")
       .select("*", { count: "exact" })
       .eq("status", "A")
-      .limit(48);
+      .limit(isSaanichDistrictMarket ? 1200 : 48);
 
 if (city) {
   cardQuery =
@@ -1528,9 +1637,15 @@ if (areas.length > 0) {
     return !isCommercialOrLease && !isLeaseSizedPrice;
   };
 
-  listings = (cardRows || []).filter(keepHomepageListing);
+  const marketCardRows = isSaanichDistrictMarket
+    ? (cardRows || []).filter(isSaanichEastListing)
+    : (cardRows || []);
+
+  listings = marketCardRows.filter(keepHomepageListing);
   homepageInventory = listings;
-  homepageListingTotal = cardCount ?? homepageInventory.length;
+  homepageListingTotal = isSaanichDistrictMarket
+    ? homepageInventory.length
+    : cardCount ?? homepageInventory.length;
 
   // One MLS listing may have more than one stored row after a feed refresh.
   // Keep the first result from the already-sorted query, so counts and cards
@@ -2191,14 +2306,15 @@ const featuredPrice = featuredPriceNumber > 0
     }).format(featuredPriceNumber)
   : "View price";
 
-const featuredArea = String(
-  featuredListing?.normalized_area ||
-  featuredListing?.area ||
-  featuredListing?.neighbourhood ||
-  featuredListing?.community ||
-  city ||
-  "Nanaimo"
-).replace(/-/g, " ");
+const featuredArea =
+  routeCity === "saanich-east" ? "Saanich East" : routeCity === "saanich-west" ? "Saanich West" : String(
+        featuredListing?.normalized_area ||
+        featuredListing?.area ||
+        featuredListing?.neighbourhood ||
+        featuredListing?.community ||
+        city ||
+        "Nanaimo"
+      ).replace(/-/g, " ");
 
 const featuredAddress = String(
   featuredListing?.address ||
@@ -2285,7 +2401,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 
   >
 <SiteNav
-  city={city}
+  city={routeCity}
   listingCount={isNanaimoMobilesSite ? homepageListingCount : null}
   site={site}
   areas={navAreaOptions.length ? navAreaOptions : areaOptions}
