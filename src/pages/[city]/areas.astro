@@ -66,9 +66,10 @@ if (reservedCityRoutes.has(city)) {
 
 const cityDatabaseKeys = Array.from(
   new Set(
-    city === "comox"
-      ? ["comox", "courtenay", "cumberland", "black creek", "merville", "union bay", "fanny bay", "royston", "denman island"]
-      : [city, city.replace(/-/g, " ")]
+    ["saanich-east", "saanich-west"].includes(city) ? [city, city.replace(/-/g, " "), "saanich"]
+      : city === "comox"
+        ? ["comox", "courtenay", "cumberland", "black creek", "merville", "union bay", "fanny bay", "royston", "denman island"]
+        : [city, city.replace(/-/g, " ")]
   )
 );
 
@@ -125,7 +126,7 @@ if (listingsError) {
   console.error("Areas listing query failed:", listingsError);
 }
 
-const { data: areaRows = [], error: areasError } =
+const { data: rawAreaRows = [], error: areasError } =
   await supabase
     .from("area_boundaries")
     .select(`
@@ -135,11 +136,30 @@ const { data: areaRows = [], error: areasError } =
       hero_image_url,
       polygon_geojson
     `)
-    .ilike("city", city);
+    .in("city", cityDatabaseKeys)
+    .order("area_name", { ascending: true });
 
 if (areasError) {
   console.error("Area metadata query failed:", areasError);
 }
+
+/*
+  Saanich East and Saanich West are parent MLS regions.
+  Hide them from the city-wide neighbourhood directory/map when
+  the named neighbourhood boundaries are also available.
+*/
+const areaRows =
+  ["saanich", "saanich-east", "saanich-west"].includes(city) && rawAreaRows.length > 2
+    ? rawAreaRows.filter((row) => {
+        const slug = String(
+          row.area_slug || row.area_name || ""
+        )
+          .toLowerCase()
+          .trim();
+
+        return !["saanich-east", "saanich-west"].includes(slug);
+      })
+    : rawAreaRows;
 
 const areaToSlug = (value) =>
   String(value || "")
@@ -178,26 +198,52 @@ function pointInRing(point, ring) {
 }
 
 function polygonContainsPoint(geojson, lat, lng) {
-  if (!geojson || !Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (!geojson) return false;
 
-  const geometry = geojson.type === "Feature" ? geojson.geometry : geojson;
+  const geometry = geojson.type === "Feature"
+    ? geojson.geometry
+    : geojson;
+
+  if (!geometry) return false;
+
   const point = [lng, lat];
 
-  const containsPolygon = (polygon) =>
-    Array.isArray(polygon?.[0]) &&
-    pointInRing(point, polygon[0]) &&
-    !polygon.slice(1).some((ring) => pointInRing(point, ring));
+  if (geometry.type === "Polygon") {
+    return geometry.coordinates.some((ring) =>
+      pointInRing(point, ring)
+    );
+  }
 
-  if (geometry?.type === "Polygon") return containsPolygon(geometry.coordinates);
-  if (geometry?.type === "MultiPolygon") return geometry.coordinates.some(containsPolygon);
+  if (geometry.type === "MultiPolygon") {
+    return geometry.coordinates.some((poly) =>
+      poly.some((ring) => pointInRing(point, ring))
+    );
+  }
 
   return false;
 }
 
+/*
+  Saanich East is a distinct market made from its named
+  neighbourhood boundaries, while the listing feed is broadly
+  labelled "saanich". Keep only listings inside those boundaries.
+*/
+const scopedListings =
+  ["saanich-east", "saanich-west"].includes(city) ? listings.filter((listing) =>
+        areaRows.some((row) =>
+          polygonContainsPoint(
+            row.polygon_geojson,
+            Number(listing.lat),
+            Number(listing.lng)
+          )
+        )
+      )
+    : listings;
+
 const areaCountMap = areaRows.reduce((result, row) => {
   const slug = areaToSlug(row.area_slug || row.area_name);
 
-  result[slug] = listings.filter((listing) =>
+  result[slug] = scopedListings.filter((listing) =>
     polygonContainsPoint(
       row.polygon_geojson,
       Number(listing.lat),
@@ -227,6 +273,19 @@ const areas = areaRows
       a.name.localeCompare(b.name)
   );
 
+const areaMapBoundaries = areaRows
+  .map((row) => {
+    const slug = areaToSlug(row.area_slug || row.area_name);
+
+    return {
+      name: titleCase(row.area_name || row.area_slug),
+      slug,
+      count: Number(areaCountMap[slug] || 0),
+      href: `/${city}/${slug}`,
+      geometry: row.polygon_geojson || null,
+    };
+  })
+  .filter((area) => area.slug && area.geometry);
 const heroImageUrl = String(
   areaRows.find((row) =>
     String(row.hero_image_url || "").trim()
@@ -473,8 +532,23 @@ const averageListingsPerArea =
         listings.length / areasWithListings
       )
     : 0;
+const jawgAccessToken =
+  import.meta.env.PUBLIC_JAWG_ACCESS_TOKEN || "";
 ---
 
+<script
+  id="areas-jawg-map-config"
+  is:inline
+  define:vars={{ jawgAccessToken }}
+>
+  window.__JAWG_TILE_URL__ = jawgAccessToken
+    ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d0562bb6d/{z}/{x}/{y}.png?access-token=${encodeURIComponent(jawgAccessToken)}`
+    : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+
+  window.__JAWG_ATTRIBUTION__ = jawgAccessToken
+    ? '&copy; <a href="https://www.jawg.io/" target="_blank" rel="noopener">Jawg Maps</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+    : "&copy; OpenStreetMap contributors";
+</script>
 <Layout
   title={`${cityLabel} Neighbourhoods and Areas`}
   description={`Explore ${cityLabel} neighbourhoods and homes for sale.`}
@@ -494,14 +568,7 @@ const averageListingsPerArea =
     class="areas-page"
     style="--areas-accent:var(--accent, #633a98);"
   >
-    <section
-      class="areas-hero"
-      style={
-        safeHeroImage
-          ? `--areas-hero-image:url("${safeHeroImage}");`
-          : undefined
-      }
-    >
+    <section class="areas-hero areas-hero--editorial">
       <div class="areas-hero__shade"></div>
 
       <div class="areas-hero__inner">
@@ -523,7 +590,7 @@ const averageListingsPerArea =
 
           <div class="areas-stats">
             <article>
-              <strong>{listings.length.toLocaleString()}</strong>
+              <strong>{scopedListings.length.toLocaleString()}</strong>
               <small>Active listings</small>
             </article>
 
@@ -669,6 +736,36 @@ const averageListingsPerArea =
       }
 
       <section
+        class="areas-overview-map"
+        aria-labelledby="areas-overview-map-title"
+      >
+        <div class="areas-overview-map__heading">
+          <div>
+            <p class="areas-eyebrow">The whole city, at a glance</p>
+            <h2 id="areas-overview-map-title">
+              See every {cityLabel} neighbourhood
+            </h2>
+          </div>
+
+          <p>
+            Choose an outlined area on the map, or keep scrolling
+            to browse the full directory below.
+          </p>
+        </div>
+
+        <div
+          id="areas-overview-map"
+          class="areas-overview-map__canvas"
+          aria-label={`Map of ${cityLabel} neighbourhoods`}
+        ></div>
+      </section>
+
+      <script
+        id="areas-overview-map-data"
+        type="application/json"
+        set:html={JSON.stringify(areaMapBoundaries)}
+      />
+      <section
         id="neighbourhoods"
         class="areas-neighbourhood-picker"
       >
@@ -720,6 +817,132 @@ const averageListingsPerArea =
         </div>
       </section>
       <style is:global>
+  .areas-overview-map {
+    margin: 14px 0 62px;
+  }
+
+  .areas-overview-map__heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, .78fr);
+    gap: 28px;
+    align-items: end;
+    margin-bottom: 22px;
+  }
+
+  .areas-overview-map__heading h2 {
+    max-width: 700px;
+    margin: 7px 0 0;
+    font-family: Georgia, serif;
+    font-size: clamp(2.3rem, 4vw, 4.25rem);
+    font-weight: 500;
+    letter-spacing: -.055em;
+    line-height: .96;
+  }
+
+  .areas-overview-map__heading > p {
+    max-width: 370px;
+    margin: 0 0 4px;
+    color: var(--muted, #655f59);
+    font-size: .95rem;
+    line-height: 1.65;
+  }
+
+  .areas-overview-map__canvas {
+    position: relative;
+    min-height: clamp(370px, 54vw, 650px);
+    overflow: hidden;
+    border: 1px solid rgba(38, 32, 28, .12);
+    border-radius: 16px;
+    background: #e8ece8;
+    box-shadow: 0 18px 44px rgba(35, 28, 24, .09);
+  }
+
+  .areas-overview-map__canvas::before {
+    content: "Loading neighbourhood map";
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: #756f68;
+    font-size: .88rem;
+    letter-spacing: .04em;
+  }
+
+  .areas-overview-map__canvas.is-ready::before {
+    display: none;
+  }
+
+  .areas-overview-map__canvas .leaflet-control-zoom {
+    overflow: hidden;
+    border: 0;
+    border-radius: 9px;
+    box-shadow: 0 8px 22px rgba(31, 27, 23, .16);
+  }
+
+  .areas-overview-map__canvas .leaflet-control-zoom a {
+    width: 32px;
+    height: 32px;
+    border: 0;
+    color: #26221e;
+    font-size: 18px;
+    line-height: 32px;
+  }
+  .areas-overview-map__canvas .leaflet-tooltip {
+    padding: 7px 9px;
+    border: 1px solid rgba(38, 32, 28, .12);
+    border-radius: 6px;
+    background: rgba(255, 253, 249, .96);
+    color: #26221e;
+    box-shadow: 0 7px 20px rgba(31, 27, 23, .14);
+    font-family: Arial, sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .01em;
+    white-space: nowrap;
+  }
+
+  .areas-overview-map__canvas .leaflet-tooltip::before {
+    border-top-color: rgba(255, 253, 249, .96);
+  }
+
+  .areas-overview-map__canvas .leaflet-control-attribution {
+    padding: 2px 5px;
+    background: rgba(255, 255, 255, .72);
+    font-size: 9px;
+  }
+
+  @media (max-width: 720px) {
+    .areas-overview-map {
+      margin-bottom: 44px;
+    }
+
+    .areas-overview-map__heading {
+      display: block;
+      margin-bottom: 17px;
+    }
+
+    .areas-overview-map__heading h2 {
+      font-size: clamp(2.25rem, 11vw, 3.25rem);
+    }
+
+    .areas-overview-map__heading > p {
+      margin-top: 14px;
+    }
+
+    .areas-overview-map__canvas {
+      min-height: 430px;
+      margin-left: calc(50% - 50vw);
+      width: 100vw;
+      border-right: 0;
+      border-left: 0;
+      border-radius: 0;
+    }
+
+    .areas-overview-map__canvas .leaflet-tooltip {
+      font-size: 10px;
+    }
+  }
+
 /* valuable-areas-market-guide */
   .areas-market-guide {
     display: grid;
@@ -2331,5 +2554,257 @@ const averageListingsPerArea =
       );
       outline-offset: 3px;
     }
-</style>
+
+    /* Compact no-photo intro: the city map is now the page's visual hero. */
+    .areas-hero--editorial {
+      min-height: 0;
+      background: #f3f1eb;
+      background-image: none;
+      border-bottom: 1px solid rgba(38, 32, 28, .09);
+    }
+
+    .areas-hero--editorial .areas-hero__shade {
+      display: none;
+    }
+
+    .areas-hero--editorial .areas-hero__inner {
+      display: block;
+      min-height: 0;
+      padding-top: clamp(44px, 6vw, 76px);
+      padding-bottom: clamp(40px, 5vw, 62px);
+    }
+
+    .areas-hero--editorial .areas-hero__content {
+      max-width: 830px;
+    }
+
+    .areas-hero--editorial h1 {
+      max-width: 760px;
+      margin-bottom: 18px;
+      font-size: clamp(3rem, 5.3vw, 5.35rem);
+      line-height: .93;
+    }
+
+    .areas-hero--editorial .areas-hero__copy {
+      max-width: 610px;
+      margin-bottom: 28px;
+      color: #514c48;
+      font-size: clamp(1rem, 1.35vw, 1.14rem);
+      line-height: 1.65;
+    }
+
+    .areas-hero--editorial .areas-stats {
+      max-width: 690px;
+      padding-top: 22px;
+      border-top: 1px solid rgba(38, 32, 28, .13);
+    }
+
+    .areas-hero--editorial .areas-stats article {
+      min-width: 132px;
+    }
+
+    .areas-hero--editorial .areas-actions {
+      display: none;
+    }
+
+    @media (max-width: 720px) {
+      .areas-hero--editorial .areas-hero__inner {
+        padding-top: 38px;
+        padding-bottom: 35px;
+      }
+
+      .areas-hero--editorial h1 {
+        font-size: clamp(2.9rem, 13vw, 4.25rem);
+      }
+
+      .areas-hero--editorial .areas-stats {
+        gap: 18px;
+      }
+
+      .areas-hero--editorial .areas-stats article {
+        min-width: 0;
+      }
+    }</style>
+      <script is:inline>
+        (() => {
+          const mapElement = document.getElementById(
+            "areas-overview-map"
+          );
+          const dataElement = document.getElementById(
+            "areas-overview-map-data"
+          );
+
+          if (!mapElement || !dataElement) return;
+
+          let areas = [];
+
+          try {
+            areas = JSON.parse(dataElement.textContent || "[]");
+          } catch {
+            return;
+          }
+
+          if (!areas.length) {
+            mapElement.classList.add("is-ready");
+            mapElement.textContent =
+              "Neighbourhood boundaries are being added.";
+            return;
+          }
+
+          const leafletCss =
+            "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+          const leafletJs =
+            "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+
+          if (!document.querySelector(`link[href="${leafletCss}"]`)) {
+            const link = document.createElement("link");
+            link.rel = "stylesheet";
+            link.href = leafletCss;
+            document.head.appendChild(link);
+          }
+
+          const startMap = () => {
+            if (!window.L || mapElement.dataset.mapReady === "true") return;
+
+            mapElement.dataset.mapReady = "true";
+
+            const map = window.L.map(mapElement, {
+              attributionControl: true,
+              scrollWheelZoom: false,
+              zoomControl: true,
+              preferCanvas: true,
+            });
+
+            window.L.tileLayer(window.__JAWG_TILE_URL__, {
+              maxZoom: 19,
+              attribution: window.__JAWG_ATTRIBUTION__,
+            }).addTo(map);
+
+            const colours = [
+              "#315f87",
+              "#8d4964",
+              "#8a6a22",
+              "#44785f",
+              "#735fa3",
+              "#a3533e",
+              "#3e7580",
+              "#7a6a50",
+            ];
+
+            const features = areas
+              .map((area) => {
+                let geometry = area.geometry;
+
+                if (typeof geometry === "string") {
+                  try {
+                    geometry = JSON.parse(geometry);
+                  } catch {
+                    geometry = null;
+                  }
+                }
+
+                const actualGeometry =
+                  geometry?.type === "Feature"
+                    ? geometry.geometry
+                    : geometry;
+
+                if (!actualGeometry?.type) return null;
+
+                return {
+                  type: "Feature",
+                  properties: area,
+                  geometry: actualGeometry,
+                };
+              })
+              .filter(Boolean);
+
+            let boundaryLayer;
+
+            boundaryLayer = window.L.geoJSON(
+              {
+                type: "FeatureCollection",
+                features,
+              },
+              {
+                style(feature) {
+                  const index = Math.max(
+                    0,
+                    features.indexOf(feature)
+                  );
+                  const colour = colours[index % colours.length];
+
+                  return {
+                    color: colour,
+                    weight: 2,
+                    opacity: .88,
+                    fillColor: colour,
+                    fillOpacity: .24,
+                  };
+                },
+                onEachFeature(feature, areaLayer) {
+                  const area = feature.properties || {};
+                  const count = Number(area.count || 0);
+                  const label =
+                    `${area.name || "Area"} · ` +
+                    `${count.toLocaleString()} ` +
+                    `${count === 1 ? "listing" : "listings"}`;
+                  areaLayer.bindTooltip(label, {
+                    sticky: true,
+                    direction: "top",
+                    offset: [0, -8],
+                    opacity: .98,
+                    className: "areas-overview-map__label",
+                  });
+
+                  areaLayer.on({
+                    mouseover() {
+                      areaLayer.setStyle({
+                        weight: 3,
+                        fillOpacity: .45,
+                      });
+                      areaLayer.bringToFront();
+                    },
+                    mouseout() {
+                      boundaryLayer.resetStyle(areaLayer);
+                    },
+                    click() {
+                      if (area.href) window.location.assign(area.href);
+                    },
+                  });
+                },
+              }
+            ).addTo(map);
+
+            const bounds = boundaryLayer.getBounds();
+
+            if (bounds.isValid()) {
+              map.fitBounds(bounds, {
+                padding: [30, 30],
+                maxZoom: 12,
+              });
+            } else {
+              map.setView([49.1659, -123.9401], 11);
+            }
+
+            mapElement.classList.add("is-ready");
+
+            window.addEventListener(
+              "resize",
+              () => map.invalidateSize(),
+              { passive: true }
+            );
+          };
+
+          if (window.L) {
+            startMap();
+            return;
+          }
+
+          const script = document.createElement("script");
+          script.src = leafletJs;
+          script.async = true;
+          script.onload = startMap;
+          document.head.appendChild(script);
+        })();
+      </script>
 </Layout>

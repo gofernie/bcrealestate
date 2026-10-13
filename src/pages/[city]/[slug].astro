@@ -85,7 +85,13 @@ const normalizedRouteCity = String(city)
 
 const cityDatabaseKeys = Array.from(
   new Set(
-    normalizedRouteCity === "comox"
+    ["saanich-east", "saanich-west"].includes(normalizedRouteCity)
+      ? [
+          normalizedRouteCity,
+          normalizedRouteCity.replace(/-/g, " "),
+          "saanich",
+        ]
+      : normalizedRouteCity === "comox"
       ? ["comox", "courtenay", "cumberland", "black creek", "merville", "union bay", "fanny bay", "royston", "denman island"]
       : [normalizedRouteCity, normalizedRouteCity.replace(/-/g, " ")]
   )
@@ -567,17 +573,24 @@ const districtAreas =
     ? districtAreasBySlug[String(slug || "").toLowerCase()] || []
     : [];
 
+const districtMarketCity =
+  districtAreas.length > 0
+    ? String(slug || "").toLowerCase()
+    : city;
+
 const titleCaseCity = city.charAt(0).toUpperCase() + city.slice(1).toLowerCase();
 const areaName = page.area
   ? page.area.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
   : null;
+
+const censusLookupCity = city;
 
 const neighbourhoodCensusPromise =
   pageKind === "area"
     ? supabase
         .from("neighbourhood_census_data")
         .select("*")
-        .ilike("city", String(city))
+        .ilike("city", censusLookupCity)
         .eq("slug", String(slug).toLowerCase())
         .order("population_2016", {
           ascending: false,
@@ -1403,7 +1416,7 @@ const usesFastTypeListingPage =
   String(page?.id || "").startsWith(`type-${city}-`);
 
 const useHomepageListingPipeline =
-  pageKind === "area" ||
+  (pageKind === "area" && !hasPolygonSearch) ||
   usesFastTypeListingPage ||
   fastTypeRouteSlugs.has(fastListingSlugWithoutCity);
 
@@ -9564,7 +9577,7 @@ grid-template-columns: 30px minmax(0, 1fr);
 }
 </style>
 <SiteNav
-  city={city}
+  city={districtMarketCity}
   site={site}
   areas={rankedNavAreas}
   areaListingCounts={Object.fromEntries(navAreaCounts)}
@@ -9590,7 +9603,7 @@ grid-template-columns: 30px minmax(0, 1fr);
     <section class="type-hero area-type-hero">
       <div class="type-hero__copy">
         <p class="type-hero__eyebrow">
-          {titleCase(city)} Neighbourhood
+          {titleCase(districtMarketCity)} Neighbourhood
         </p>
 
 <h1><span>{cleanHeroHeading ||

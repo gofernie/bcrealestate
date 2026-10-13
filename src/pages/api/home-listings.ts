@@ -324,9 +324,12 @@ export const GET: APIRoute = async ({ request }) => {
   const url = new URL(request.url);
   const city = String(url.searchParams.get("city") || "nanaimo").trim().toLowerCase();
   const cityDatabaseKeys =
-    city === "comox"
-      ? ["comox", "courtenay", "cumberland", "black creek", "merville", "union bay", "fanny bay", "royston", "denman island"]
-      : Array.from(new Set([city, city.replace(/-/g, " ")]));
+    ["saanich-east", "saanich-west"].includes(city)
+      ? [city, city.replace(/-/g, " "), "saanich"]
+      : city === "comox"
+        ? ["comox", "courtenay", "cumberland", "black creek", "merville", "union bay", "fanny bay", "royston", "denman island"]
+        : Array.from(new Set([city, city.replace(/-/g, " ")]));
+
   const facetsOnly = url.searchParams.get("facets") === "1";
   const id = String(url.searchParams.get("id") || "").trim();
   const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
