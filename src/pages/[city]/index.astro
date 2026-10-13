@@ -2640,125 +2640,77 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
   }
 })();
 </script>
-<script is:inline data-astro-rerun>
+<script is:inline>
 (() => {
-  const mobileSearchQuery = window.matchMedia(
-    "(max-width: 760px)"
-  );
-
-  let originalParent = null;
-  let originalNextSibling = null;
-  let mobileSlot = null;
-
-  const positionHomeSearch = () => {
-    const search =
-      document.getElementById("home-hero-search");
-
-    const hero =
-      search?.closest(".locus-home-hero") ||
-      document.querySelector(".locus-home-hero");
-
+  const placeSearch = () => {
+    const search = document.getElementById("home-hero-search");
+    const hero = document.querySelector(".locus-home-hero");
     if (!search || !hero) return;
 
-    if (!originalParent) {
-      originalParent = search.parentElement;
-      originalNextSibling = search.nextSibling;
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      let slot = document.querySelector(".home-mobile-search-slot");
+
+      if (!slot) {
+        slot = document.createElement("div");
+        slot.className = "home-mobile-search-slot";
+      }
+
+      if (hero.nextElementSibling !== slot) {
+        hero.insertAdjacentElement("afterend", slot);
+      }
+      if (search.parentElement !== slot) slot.appendChild(search);
+
+      hero.classList.add("home-hero--search-below");
+      search.classList.add("home-search--mobile-below");
+    } else if (search.classList.contains("home-search--mobile-below")) {
+      hero.appendChild(search);
+      document.querySelector(".home-mobile-search-slot")?.remove();
+      hero.classList.remove("home-hero--search-below");
+      search.classList.remove("home-search--mobile-below");
     }
 
-    if (mobileSearchQuery.matches) {
-      if (!mobileSlot) {
-        mobileSlot = document.createElement("div");
-        mobileSlot.className =
-          "home-mobile-search-slot";
-      }
+    search.hidden = false;
+    search.classList.add("home-search-ready");
 
-      hero.insertAdjacentElement(
-        "afterend",
-        mobileSlot
-      );
+    ["display", "visibility", "opacity"].forEach((property) => {
+      search.style.removeProperty(property);
+    });
+  };
 
-      mobileSlot.appendChild(search);
+  const initialise = () => {
+    placeSearch();
 
-      hero.classList.add(
-        "home-hero--search-below"
-      );
-
-      search.classList.add(
-        "home-search--mobile-below"
-      );
-    } else if (originalParent) {
-      if (
-        originalNextSibling &&
-        originalNextSibling.parentNode === originalParent
-      ) {
-        originalParent.insertBefore(
-          search,
-          originalNextSibling
-        );
-      } else {
-        originalParent.appendChild(search);
-      }
-
-      mobileSlot?.remove();
-      mobileSlot = null;
-
-      hero.classList.remove(
-        "home-hero--search-below"
-      );
-
-      search.classList.remove(
-        "home-search--mobile-below"
-      );
+    const positionResults = window.positionHomeResults;
+    if (typeof positionResults === "function" &&
+        !positionResults.mobilePlacementFixed) {
+      const wrapped = (...args) => {
+        positionResults(...args);
+        placeSearch();
+      };
+      wrapped.mobilePlacementFixed = true;
+      window.positionHomeResults = wrapped;
     }
   };
 
-  if (document.readyState === "loading") {
-    document.addEventListener(
-      "DOMContentLoaded",
-      positionHomeSearch,
-      { once: true }
-    );
-  } else {
-    positionHomeSearch();
+  if (window.__mobileSearchPlacementCleanup) {
+    window.__mobileSearchPlacementCleanup();
   }
 
-  Reflect.get(
-    window,
-    "__homeMobileSearchPlacementObserver"
-  )?.disconnect?.();
+  document.addEventListener("DOMContentLoaded", initialise);
+  document.addEventListener("astro:page-load", initialise);
+  window.addEventListener("pageshow", initialise);
+  window.addEventListener("resize", placeSearch);
 
-  Reflect.deleteProperty(
-    window,
-    "__homeMobileSearchPlacementObserver"
-  );
+  window.__mobileSearchPlacementCleanup = () => {
+    document.removeEventListener("DOMContentLoaded", initialise);
+    document.removeEventListener("astro:page-load", initialise);
+    window.removeEventListener("pageshow", initialise);
+    window.removeEventListener("resize", placeSearch);
+  };
 
-  const originalPositionHomeResults =
-    window.positionHomeResults;
-
-  if (
-    typeof originalPositionHomeResults ===
-    "function"
-  ) {
-    window.positionHomeResults = (
-      hasActiveSearch
-    ) => {
-      originalPositionHomeResults(
-        hasActiveSearch
-      );
-
-      if (mobileSearchQuery.matches) {
-        requestAnimationFrame(
-          positionHomeSearch
-        );
-      }
-    };
-  }
-
-  mobileSearchQuery.addEventListener(
-    "change",
-    positionHomeSearch
-  );
-})();</script>
+  if (document.readyState !== "loading") initialise();
+})();
+</script>
 
 <style is:global>
 /* mobile-search-below-hero-v1 */
@@ -15618,6 +15570,71 @@ const navBottom = () => {
       gap: 6px !important;
     }
   }
+</style>
+<style is:global>
+  @media (min-width: 761px) {
+    html body .locus-home-market__read-stats {
+      align-items: start !important;
+    }
+
+    html body .locus-home-market__read-stat {
+      display: grid !important;
+      grid-template-rows: 40px auto 1fr !important;
+      align-content: start !important;
+      align-self: start !important;
+    }
+
+    html body .locus-home-market__read-stat > span {
+      margin: 0 !important;
+      line-height: 1.3 !important;
+    }
+
+    html body .locus-home-market__read-stat > strong {
+      display: block !important;
+      margin: 10px 0 8px !important;
+      line-height: 1 !important;
+    }
+
+    html body .locus-home-market__read-stat > p {
+      margin-top: 0 !important;
+    }
+  }
+</style>
+<style is:global>
+  @media (min-width: 761px) {
+    html body .locus-home-market__read-stat > strong {
+      font-family: Georgia, serif !important;
+      font-weight: 400 !important;
+      font-variant-numeric: lining-nums tabular-nums !important;
+      font-size: 64px !important;
+      line-height: 72px !important;
+      height: 72px !important;
+      margin: 0 0 8px !important;
+      padding: 0 !important;
+      transform: none !important;
+      position: static !important;
+    }
+  }
+</style>
+<style is:global>
+@media (min-width: 761px) {
+  html body .locus-home-market__read-stat > strong {
+    font-family: Georgia, serif !important;
+    font-weight: 500 !important;
+    font-variant-numeric: lining-nums tabular-nums !important;
+    font-feature-settings: "lnum" 1, "tnum" 1 !important;
+  }
+}
+</style>
+<style is:global>
+@media (min-width: 761px) {
+  html body .locus-home-market__read-stat > strong {
+    font-family: Georgia, serif !important;
+    font-weight: 500 !important;
+    font-variant-numeric: lining-nums tabular-nums !important;
+    font-feature-settings: "lnum" 1, "tnum" 1 !important;
+  }
+}
 </style>
 </Layout>
 
