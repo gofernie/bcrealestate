@@ -1,0 +1,178 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Header from "../../components/GreaterVictoriaHeader.astro";
+import { getSite } from "../../lib/getSite";
+import { loadGreaterVictoriaData } from "../../lib/greaterVictoria";
+import "../../styles/greater-victoria.css";
+export const prerender = false;
+const region = await loadGreaterVictoriaData();
+const site = await getSite(Astro.url.hostname,"victoria");
+const mapData = region.districts.map((d:any)=>({slug:d.slug,name:d.name,count:d.count,outline:d.outline,
+  areas:d.areas.map((a:any)=>({slug:a.area_slug,name:a.area_name,count:a.count,geometry:a.polygon_geojson}))}));
+const safeJson = (value:any)=>JSON.stringify(value).replace(/</g,"\\u003c");
+---
+<Layout title="Explore Greater Victoria Areas" city="greater-victoria" site={site} accentColor={site?.accent_color || "#2f6f73"}>
+  <Header active="areas" site={site}/>
+  <main class="gv-page">
+    <header class="gv-intro"><div><p class="gv-kicker">GREATER VICTORIA AREAS</p><h1>Find your part of the region.</h1><p>Start with a district, then explore its neighbourhoods.</p></div><a data-astro-reload class="gv-outline" href="/greater-victoria">Browse all homes →</a></header>
+    <div class="gv-region-controls"><button type="button" class="gv-outline" id="gv-all-districts">All Greater Victoria</button><p>Strong outlines show districts. Faint lines show their neighbourhoods.</p></div>
+    <p class="gv-error" id="gv-map-error" role="alert" hidden></p>
+    <div class="gv-explorer">
+      <div class="gv-region-map" id="gv-region-map" aria-label="Greater Victoria districts and neighbourhoods"></div>
+      <section class="gv-directory" aria-label="Area directory">
+        <header class="gv-directory-head"><h2 id="gv-directory-title">Choose a district</h2><p id="gv-directory-copy">{region.listings.length.toLocaleString()} active listings across the markets currently available.</p></header>
+        <div class="gv-directory-list" id="gv-directory-list">
+          {mapData.map((d:any)=><button class="gv-district-button" type="button" data-district={d.slug}><span><strong>{d.name}</strong><small>{d.count.toLocaleString()} listings · {d.areas.length} neighbourhoods</small></span><span aria-hidden="true">→</span></button>)}
+        </div>
+        <div class="gv-directory-actions"><a data-astro-reload class="gv-primary" id="gv-search-district" href="/greater-victoria">Search all Greater Victoria homes</a><a data-astro-reload class="gv-outline" id="gv-local-guide" href="/victoria" hidden>Open local guide</a></div>
+      </section>
+    </div>
+    <p class="gv-small">District outlines use the boundaries currently available on this site. Additional Greater Victoria markets appear here as their data is added.</p>
+  </main>
+  <script type="application/json" id="gv-region-data" set:html={safeJson({districts:mapData,tileToken:import.meta.env.PUBLIC_JAWG_ACCESS_TOKEN || ""})}/>
+  <script is:inline>
+  (()=>{
+    const {districts,tileToken}=JSON.parse(document.getElementById("gv-region-data").textContent);
+    const mapEl=document.getElementById("gv-region-map"),list=document.getElementById("gv-directory-list");
+    const title=document.getElementById("gv-directory-title"),copy=document.getElementById("gv-directory-copy"),search=document.getElementById("gv-search-district"),guide=document.getElementById("gv-local-guide");
+    const total=districts.reduce((n,d)=>n+d.count,0);
+    const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+    let map=null,selected="",overviewBounds=null;
+    const layers=new Map(),areaLayers=new Map();
+    const accent=getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()||"#2f6f73";
+    const districtColours={
+      "victoria":"#7c3aed",
+      "oak-bay":"#d97706",
+      "saanich-east":"#0284c7",
+      "saanich-west":"#dc2626",
+      "esquimalt":"#059669",
+      "view-royal":"#db2777",
+      "colwood":"#4f46e5",
+      "langford":"#a16207",
+      "highlands":"#0f766e",
+      "metchosin":"#65a30d",
+      "sooke":"#9333ea",
+      "central-saanich":"#ea580c",
+      "north-saanich":"#2563eb",
+      "sidney":"#be185d"
+    };
+    const districtColour=slug=>districtColours[slug]||accent;
+    const showError=message=>{const el=document.getElementById("gv-map-error");el.hidden=false;el.textContent=message;};
+    const parseGeometry=g=>{if(typeof g==="string"){try{return JSON.parse(g);}catch{return null;}}return g;};
+    const clean=name=>name.replace(/\s+neighbou?rhood$/i,"");
+    function highlightDistrict(slug,on){
+      const layer=layers.get(slug);
+      const active=selected===slug;
+      if(layer){
+        layer.setStyle(on
+          ? {weight:5,opacity:1,fillOpacity:.30}
+          : {
+              weight:selected?(active?5:3):3.5,
+              opacity:selected?(active?1:.7):1,
+              fillOpacity:selected?(active?.24:.10):.18
+            });
+        layer.eachLayer(l=>on?l.openTooltip():l.closeTooltip());
+      }
+      list.querySelectorAll("[data-district]").forEach(row=>{
+        row.classList.toggle("is-map-hover",on&&row.dataset.district===slug);
+      });
+    }
+    list.addEventListener("mouseover",event=>{
+      const row=event.target.closest("[data-district]");
+      if(row&&!row.contains(event.relatedTarget)){
+        highlightDistrict(row.dataset.district,true);
+      }
+    });
+    list.addEventListener("mouseout",event=>{
+      const row=event.target.closest("[data-district]");
+      if(row&&!row.contains(event.relatedTarget)){
+        highlightDistrict(row.dataset.district,false);
+      }
+    });
+    list.addEventListener("focusin",event=>{
+      const row=event.target.closest("[data-district]");
+      if(row)highlightDistrict(row.dataset.district,true);
+    });
+    list.addEventListener("focusout",event=>{
+      const row=event.target.closest("[data-district]");
+      if(row)highlightDistrict(row.dataset.district,false);
+    });
+
+    function updateLabels(){
+      if(!map)return;
+      layers.forEach(layer=>layer.eachLayer(l=>l.closeTooltip()));
+      areaLayers.forEach((layer,slug)=>layer.eachLayer(l=>{if(slug===selected&&map.getZoom()>=12)l.openTooltip();else l.closeTooltip();}));
+    }
+    function selectDistrict(slug,zoom=true){
+      const district=districts.find(d=>d.slug===slug);if(!district)return;
+      selected=slug;
+      title.textContent=district.name;copy.textContent=`${district.count.toLocaleString()} listings · ${district.areas.length} neighbourhoods`;
+      search.href=`/greater-victoria?district=${encodeURIComponent(slug)}`;search.textContent=`Search homes in ${district.name}`;
+      guide.hidden=false;guide.href=`/${slug}`;guide.textContent=`Open ${district.name} guide`;
+      list.innerHTML=district.areas.length?district.areas.map(a=>`<a data-astro-reload class="gv-area-link" href="/${slug}/${encodeURIComponent(a.slug)}"><span><strong>${esc(clean(a.name))}</strong><small>${a.count.toLocaleString()} listings</small></span><span aria-hidden="true">→</span></a>`).join(""):`<p class="gv-small" style="padding:20px">Neighbourhood guides will appear here as they are added. You can search the entire district now.</p>`;
+      list.scrollTop=0;
+      layers.forEach((layer,key)=>layer.setStyle({weight:key===slug?5:3,opacity:key===slug?1:.7,fillOpacity:key===slug?.24:.10}));
+      areaLayers.forEach((layer,key)=>layer.setStyle({weight:key===slug?1:0.6,opacity:key===slug?.45:.18}));
+      const bounds=layers.get(slug)?.getBounds()||areaLayers.get(slug)?.getBounds();
+      if(zoom&&map&&bounds?.isValid())map.fitBounds(bounds,{padding:[45,45],maxZoom:13});
+      updateLabels();
+      history.replaceState(null,"",`/greater-victoria/areas?district=${encodeURIComponent(slug)}`);
+    }
+    function reset(){
+      selected="";title.textContent="Choose a district";copy.textContent=`${total.toLocaleString()} active listings across the available districts.`;
+      search.href="/greater-victoria";search.textContent="Search all Greater Victoria homes";guide.hidden=true;
+      list.innerHTML=districts.map(d=>`<button class="gv-district-button" type="button" data-district="${d.slug}"><span><strong>${esc(d.name)}</strong><small>${d.count.toLocaleString()} listings · ${d.areas.length} neighbourhoods</small></span><span aria-hidden="true">→</span></button>`).join("");
+      layers.forEach(l=>l.setStyle({weight:3.5,opacity:1,fillOpacity:.18}));areaLayers.forEach(l=>l.setStyle({weight:.6,opacity:.18}));
+      if(map&&overviewBounds?.isValid())map.fitBounds(overviewBounds,{padding:[35,35]});updateLabels();history.replaceState(null,"","/greater-victoria/areas");
+    }
+    list.addEventListener("click",event=>{const button=event.target.closest("[data-district]");if(button)window.location.href=`/${button.dataset.district}/areas`;});
+    document.getElementById("gv-all-districts").addEventListener("click",reset);
+    async function init(){
+      if(!window.L)await new Promise((resolve,reject)=>{const css=document.createElement("link");css.rel="stylesheet";css.href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";document.head.appendChild(css);const s=document.createElement("script");s.src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";s.onload=resolve;s.onerror=reject;document.head.appendChild(s);});
+      map=L.map(mapEl,{scrollWheelZoom:false});
+      if(window.matchMedia("(max-width:700px)").matches){
+        map.dragging.disable();mapEl.style.touchAction="pan-y";
+        mapEl.addEventListener("touchstart",e=>{if(e.touches.length>=2){map.dragging.enable();mapEl.style.touchAction="none";}},{passive:true});
+        mapEl.addEventListener("touchend",e=>{if(e.touches.length<2){map.dragging.disable();mapEl.style.touchAction="pan-y";}},{passive:true});
+      }
+      L.tileLayer(tileToken?`https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d0562bb6d/{z}/{x}/{y}.png?access-token=${encodeURIComponent(tileToken)}`:"https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:tileToken?'© Jawg Maps © OpenStreetMap':'© OpenStreetMap'}).addTo(map);
+      map.createPane("gv-neighbourhoods");map.getPane("gv-neighbourhoods").style.zIndex="410";
+      map.createPane("gv-districts");map.getPane("gv-districts").style.zIndex="420";
+      overviewBounds=L.latLngBounds([]);
+      districts.forEach(d=>{
+        const collection={type:"FeatureCollection",features:d.areas.flatMap(a=>{
+          const g=parseGeometry(a.geometry);if(!g)return[];
+          const features=g.type==="FeatureCollection"?g.features:g.type==="Feature"?[g]:[{type:"Feature",geometry:g,properties:{}}];
+          return features.map(f=>({...f,properties:{...(f.properties||{}),slug:a.slug,name:a.name,count:a.count}}));
+        })};
+        const inner=L.geoJSON(collection,{pane:"gv-neighbourhoods",style:{color:"#64748b",weight:.6,opacity:.18,fill:false},onEachFeature(f,l){l.bindTooltip(`${esc(clean(f.properties.name))} · ${f.properties.count}`,{permanent:false,direction:"center",className:"gv-map-label gv-map-area-label"});l.on("click",()=>{window.location.href=`/${d.slug}/areas`;});}}).addTo(map);areaLayers.set(d.slug,inner);
+        if(inner.getBounds().isValid())overviewBounds.extend(inner.getBounds());
+        if(d.outline){const outer=L.geoJSON(d.outline,{pane:"gv-districts",style:{color:districtColour(d.slug),fillColor:districtColour(d.slug),weight:3.5,opacity:1,fillOpacity:.18},onEachFeature(f,l){l.bindTooltip(`${esc(d.name)} · ${d.count.toLocaleString()} listings`,{permanent:false,direction:"center",className:"gv-map-label"});l.on("click",()=>{window.location.href=`/${d.slug}/areas`;});
+l.on("mouseover",()=>{
+  highlightDistrict(d.slug,true);
+});
+l.on("mouseout",()=>{
+  highlightDistrict(d.slug,false); const active=selected===d.slug;
+  l.setStyle({
+    weight:selected?(active?5:3):3.5,
+    opacity:selected?(active?1:.7):1,
+    fillOpacity:selected?(active?.24:.10):.18
+  });
+});
+}}).addTo(map);layers.set(d.slug,outer);if(outer.getBounds().isValid())overviewBounds.extend(outer.getBounds());}
+      });
+      map.on("zoomend",updateLabels);
+      if(overviewBounds.isValid())map.fitBounds(overviewBounds,{padding:[35,35]});else map.setView([48.45,-123.38],10);
+      const requested=new URLSearchParams(location.search).get("district");if(requested)selectDistrict(requested);else updateLabels();
+    }
+    init().catch(()=>showError("The map could not load. You can still choose a district from the directory."));
+  })();
+  </script>
+</Layout>
+
+<style is:global>
+  .gv-district-button.is-map-hover {
+    background: color-mix(in srgb, var(--accent) 12%, var(--card-bg, white)) !important;
+    box-shadow: inset 4px 0 0 var(--accent);
+  }
+</style>

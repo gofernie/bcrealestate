@@ -1,0 +1,782 @@
+import { loadGreaterVictoriaData, regionDistricts, regionSlug } from "../../lib/greaterVictoria";
+import type { APIRoute } from "astro";
+import { mobileHomeParks } from "../../data/mobileHomeParks";
+
+export const prerender = false;
+
+const normalizeImageUrl = (value: any) => {
+  if (!value) return "";
+
+  const raw =
+    typeof value === "string"
+      ? value.trim()
+      : String(
+          value.highRes ||
+            value.high_res ||
+            value.mediumRes ||
+            value.medium_res ||
+            value.lowRes ||
+            value.low_res ||
+            value.url ||
+            value.src ||
+            value.href ||
+            value.path ||
+            value.imageUrl ||
+            value.image_url ||
+            ""
+        ).trim();
+
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  // Repliers supplies many MLS photos as relative CDN paths. They are not
+  // paths on this site, so always send them to the Repliers image CDN.
+  if (raw.startsWith("/")) return `https://cdn.repliers.io${raw}`;
+  if (/^(vreb|crea2)\//i.test(raw)) return `https://cdn.repliers.io/${raw}`;
+
+  return raw;
+};
+
+const formatAddress = (value: any): string => {
+  if (!value) return "";
+  let address = value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed.startsWith("{")) return trimmed;
+    try {
+      address = JSON.parse(trimmed);
+    } catch {
+      return "";
+    }
+  }
+  if (!address || typeof address !== "object" || Array.isArray(address)) return "";
+  return [
+    address.streetNumber,
+    address.streetName || address.streetAddress,
+    address.streetSuffix,
+    address.unitNumber ? `#${address.unitNumber}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+};
+
+const toImageItems = (value: any): any[] => {
+  if (!value) return [];
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+      try {
+        return toImageItems(JSON.parse(trimmed));
+      } catch {
+        return [trimmed];
+      }
+    }
+
+    return [trimmed];
+  }
+
+  if (Array.isArray(value)) return value.flatMap(toImageItems);
+
+  if (typeof value === "object") {
+    const nested =
+      value.images ||
+      value.photos ||
+      value.photo_urls ||
+      value.items ||
+      value.results;
+
+    return nested ? toImageItems(nested) : [value];
+  }
+
+  return [];
+};
+
+const listingImages = (listing: any) => {
+  const candidates = [
+    listing.image_url,
+    listing.image,
+    listing.photo,
+    ...toImageItems(listing.images),
+    ...toImageItems(listing.photo_urls),
+    ...toImageItems(listing.photos),
+    ...toImageItems(listing.raw?.images),
+    ...toImageItems(listing.raw?.photo_urls),
+    ...toImageItems(listing.raw?.photos),
+  ];
+
+  return Array.from(
+    new Set(candidates.map(normalizeImageUrl).filter(Boolean))
+  );
+};
+
+const normalizeListing = (listing: any) => {
+  const rawPrice = Number(listing.price ?? listing.listPrice ?? listing.priceNumber ?? 0);
+  const images = listingImages(listing);
+  const address =
+    formatAddress(listing.address) ||
+    formatAddress(listing.full_address) ||
+    listing.addressText ||
+    listing.addressObj?.streetAddress ||
+    "Address available";
+  const beds = listing.beds || listing.bedrooms || listing.details?.numBedrooms || listing.raw?.details?.numBedrooms || 0;
+  const baths = listing.baths || listing.bathrooms || listing.details?.numBathrooms || listing.raw?.details?.numBathrooms || 0;
+  const type = String(
+    listing.normalized_type || listing.property_type || listing.propertyType || listing.type || "Home"
+  ).toLowerCase();
+
+  return {
+    id: String(listing.id || listing.mls_number || listing.mlsNumber || listing.repliers_listing_id || ""),
+    mls: String(listing.mls_number || listing.mlsNumber || listing.id || "").replace(/[^0-9]/g, ""),
+    price: rawPrice > 1000 ? `$${Math.round(rawPrice).toLocaleString()}` : listing.price_text || "Price on request",
+    rawPrice,
+    listedAt: String(listing.listed_at || listing.created_at || ""),
+    address,
+    image: images[0] || "",
+    images,
+    beds,
+    primaryOnMain: listing.primary_on_main === true,
+    threeBedsSameFloor: listing.three_plus_beds_same_floor === true,
+    fourBedsSameFloor: listing.four_plus_beds_same_floor === true,
+    baths,
+    sqft: listing.sqft || listing.square_feet || listing.squareFeet || listing.details?.sqft || "",
+    description:
+      listing.description || listing.publicRemarks || listing.remarks || listing.details?.publicRemarks || listing.raw?.publicRemarks || "",
+    propertyType: type.replace(/[_-]+/g, " ").replace(/\b\w/g, (character: string) => character.toUpperCase()),
+    type,
+    year: listing.year_built || listing.yearBuilt || listing.details?.yearBuilt || "",
+    lotSize: listing.lot_size || listing.lotSize || listing.details?.lotSize || "",
+    brokerage: String(
+      listing.listing_brokerage ||
+      listing.brokerage ||
+      listing.details?.listing_brokerage ||
+      listing.details?.listingBrokerage ||
+      listing.raw?.listing_brokerage ||
+      listing.raw?.listingBrokerage ||
+      listing.raw?.brokerage ||
+      ""
+    ).trim(),
+    area:
+      listing.normalized_area || listing.area || listing.neighborhood || listing.addressObj?.neighborhood || listing.details?.area || "",
+    oceanView: String(listing.ocean_view || ""),
+    viewType: String(listing.view_type || ""),
+    waterfront: String(listing.waterfront || ""),
+    waterfrontType: String(listing.waterfront_type || ""),
+    lat: listing.lat || "",
+    lng: listing.lng || "",
+    city: String(listing.normalized_city || listing.city || ""),
+    district: listing.__gvDistrict || "",
+    districtLabel: regionDistricts.find((d) => d.slug === listing.__gvDistrict)?.name || "Greater Victoria",
+    areaSlug: listing.__gvArea || "",
+  };
+};
+
+function pointInRing(point: [number, number], ring: any[]) {
+  const [x, y] = point;
+  let inside = false;
+
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = Number(ring[i][0]);
+    const yi = Number(ring[i][1]);
+    const xj = Number(ring[j][0]);
+    const yj = Number(ring[j][1]);
+
+    const intersects =
+      yi > y !== yj > y &&
+      x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+
+    if (intersects) inside = !inside;
+  }
+
+  return inside;
+}
+
+function polygonContainsPoint(geojson: any, lat: number, lng: number) {
+  if (!geojson || !Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+
+  const geometry = geojson.type === "Feature" ? geojson.geometry : geojson;
+  if (!geometry) return false;
+
+  const point: [number, number] = [lng, lat];
+
+  if (geometry.type === "Polygon") {
+    return geometry.coordinates.some((ring: any[]) => pointInRing(point, ring));
+  }
+
+  if (geometry.type === "MultiPolygon") {
+    return geometry.coordinates.some((polygon: any[]) =>
+      polygon.some((ring: any[]) => pointInRing(point, ring))
+    );
+  }
+
+  return false;
+}
+
+/* Returns true when a point is inside a boundary or within the requested
+   distance of its outer edge. This deliberately works from the drawn area
+   geometry—not an MLS area label—so nearby homes are not missed. */
+function polygonContainsOrIsNearPoint(
+  geojson: any,
+  lat: number,
+  lng: number,
+  bufferKm: number
+) {
+  if (polygonContainsPoint(geojson, lat, lng)) return true;
+  if (!geojson || bufferKm <= 0) return false;
+
+  const geometry = geojson.type === "Feature" ? geojson.geometry : geojson;
+  if (!geometry) return false;
+
+  const polygons = geometry.type === "Polygon"
+    ? [geometry.coordinates]
+    : geometry.type === "MultiPolygon"
+      ? geometry.coordinates
+      : [];
+
+  const pointToSegmentKm = (
+    pointLat: number,
+    pointLng: number,
+    a: any[],
+    b: any[]
+  ) => {
+    const scaleX = 111.32 * Math.cos((pointLat * Math.PI) / 180);
+    const scaleY = 110.57;
+    const ax = (Number(a[0]) - pointLng) * scaleX;
+    const ay = (Number(a[1]) - pointLat) * scaleY;
+    const bx = (Number(b[0]) - pointLng) * scaleX;
+    const by = (Number(b[1]) - pointLat) * scaleY;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSquared = dx * dx + dy * dy;
+    const t = lengthSquared
+      ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / lengthSquared))
+      : 0;
+    const x = ax + t * dx;
+    const y = ay + t * dy;
+    return Math.hypot(x, y);
+  };
+
+  return polygons.some((polygon: any[]) => {
+    const outerRing = polygon?.[0];
+    if (!Array.isArray(outerRing) || outerRing.length < 2) return false;
+
+    return outerRing.some((point: any[], index: number) => {
+      const next = outerRing[(index + 1) % outerRing.length];
+      return pointToSegmentKm(lat, lng, point, next) <= bufferKm;
+    });
+  });
+}
+
+/* nanaimo-mobile-park-api-v3 */
+/* nanaimo-mobile-park-api-v3 */
+const normaliseParkAddress = (value: unknown) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[’'".,#]/g, "")
+    .replace(/^\s*(?:unit\s*)?\d{1,4}\s*-\s*(?=\d{1,5}\s)/, "")
+    .replace(/\bstreet\b/g, "st")
+    .replace(/\broad\b/g, "rd")
+    .replace(/\bavenue\b/g, "ave")
+    .replace(/\bfirst\b/g, "1st")
+    .replace(/\bsecond\b/g, "2nd")
+    .replace(/\bthird\b/g, "3rd")
+    .replace(/\bfourth\b/g, "4th")
+    .replace(/\bfifth\b/g, "5th")
+    .replace(/\bsixth\b/g, "6th")
+    .replace(/\bseventh\b/g, "7th")
+    .replace(/\beighth\b/g, "8th")
+    .replace(/\bninth\b/g, "9th")
+    .replace(/\btenth\b/g, "10th")
+    .replace(/\beleventh\b/g, "11th")
+    .replace(/\btwelfth\b/g, "12th")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getMobileHomePark = (address: unknown) => {
+  const listingAddress = normaliseParkAddress(address);
+
+  if (!listingAddress) return undefined;
+
+  const matchingParks = mobileHomeParks
+    .flatMap((park) =>
+      [
+        park.address,
+        ...(Array.isArray(park.matchAddresses)
+          ? park.matchAddresses
+          : []),
+      ].map((value) => ({
+        park,
+        address: normaliseParkAddress(value),
+      }))
+    )
+    .filter(({ address }) =>
+      Boolean(address) &&
+      (
+        listingAddress === address ||
+        listingAddress.includes(address)
+      )
+    )
+    .sort((a, b) => b.address.length - a.address.length);
+
+  return matchingParks[0]?.park;
+};
+export const GET: APIRoute = async ({ request }) => {
+  const url = new URL(request.url);
+  const city = String(url.searchParams.get("city") || "nanaimo").trim().toLowerCase();
+  const district = regionSlug(url.searchParams.get("district") || "");
+  if (district && !regionDistricts.some((d) => d.slug === district)) {
+    return new Response(JSON.stringify({error:"Unknown district",listings:[],markers:[],total:0}),{status:400});
+  }
+  const regionalData = await loadGreaterVictoriaData();
+  const facetsOnly = url.searchParams.get("facets") === "1";
+  const id = String(url.searchParams.get("id") || "").trim();
+  const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
+  const limit = Math.min(48, Math.max(1, Number(url.searchParams.get("limit") || 24)));
+  const countOnly = url.searchParams.get("countOnly") === "1";
+  const area = String(url.searchParams.get("area") || "").trim().toLowerCase();
+  const areaBufferKm = Math.min(
+    5,
+    Math.max(0, Number(url.searchParams.get("areaBufferKm") || 0))
+  );
+  const areas = String(url.searchParams.get("areas") || "")
+    .split("|")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  const type = String(url.searchParams.get("type") || "").trim().toLowerCase();
+  const minPrice = Number(url.searchParams.get("minPrice") || 0);
+  const maxPrice = Number(url.searchParams.get("maxPrice") || 0);
+  const beds = Number(url.searchParams.get("beds") || 0);
+  const baths = Number(url.searchParams.get("baths") || 0);
+  const age55 = url.searchParams.get("age55") === "true";
+  const otherPark = url.searchParams.get("otherPark") === "true";
+  const petsAllowed = url.searchParams.get("petsAllowed") === "true";const minSqft = Number(url.searchParams.get("minSqft") || 0);
+  const minYear = Number(url.searchParams.get("minYear") || 0);
+  const primaryOnMain =
+    url.searchParams.get("primaryOnMain") === "true";
+  const threeSameFloor =
+    url.searchParams.get("threeSameFloor") === "true";
+  const fourSameFloor =
+    url.searchParams.get("fourSameFloor") === "true";
+  // view-type-api-filter-v1
+  const viewType = String(
+    url.searchParams.get("viewType") || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const waterfrontType = String(
+    url.searchParams.get("waterfrontType") ||
+    (url.searchParams.get("waterfront") === "true" ? "any" : "")
+  )
+    .trim()
+    .toLowerCase();  const planMode = String(url.searchParams.get("planMode") || "").trim().toLowerCase();
+  const sort = String(url.searchParams.get("sort") || "newest");
+  const oceanViews = url.searchParams.get("oceanViews") === "true";
+
+  const data = regionalData.listings.filter((row: any) => !district || row.__gvDistrict === district);
+  const requestedAreaSlugs = Array.from(
+    new Set(
+      [...areas, ...(area ? [area] : [])]
+        .map((value) =>
+          String(value || "")
+            .trim()
+            .toLowerCase()
+            .replace(/[\s-]+/g, "-")
+        )
+        .filter(Boolean)
+    )
+  );
+
+  const selectedAreaBoundaries = requestedAreaSlugs.length
+    ? regionalData.boundaries.filter((row: any) =>
+        row.polygon_geojson && (!district || regionSlug(row.city) === district) && requestedAreaSlugs.includes(row.area_slug))
+    : [];
+  const filterListings = (skipType = false) =>
+    (data || []).map(normalizeListing).filter((listing) => {
+    // Classify from structured type fields only. Marketing remarks
+    // commonly mention offices, businesses, or nearby retail.
+    const searchable =
+      `${listing.type} ${listing.propertyType}`.toLowerCase();
+    const commercial = /\b(lease|commercial|business|industrial|retail|office)\b/i.test(searchable);
+    if (commercial || (listing.rawPrice > 0 && listing.rawPrice < 50000)) return false;
+    if (id && listing.id !== id && listing.mls !== id) return false;
+    if (selectedAreaBoundaries.length) {
+      const lat = Number(listing.lat);
+      const lng = Number(listing.lng);
+
+      if (
+        !selectedAreaBoundaries.some((boundary) =>
+          polygonContainsOrIsNearPoint(
+            boundary.polygon_geojson,
+            lat,
+            lng,
+            areaBufferKm
+          )
+        )
+      ) {
+        return false;
+      }
+    } else {
+      // Keeps existing searches working until a drawn/imported boundary exists.
+      if (areas.length && !areas.some((value) => String(listing.area).toLowerCase().includes(value))) return false;
+      if (!areas.length && area && !String(listing.area).toLowerCase().includes(area)) return false;
+    }
+    if (type && !skipType) {
+      const listingType = listing.type;
+
+      const landSignalText =
+        `${listing.address} ${listing.propertyType} ${listing.description}`
+          .trim()
+          .toLowerCase();
+
+      const looksLikeLand =
+        listingType === "land" ||
+        /^\s*(lot|lt)\b/i.test(listing.address) ||
+        /\b(vacant land|bare land|building lot|residential lot|development lot|land only|lot for sale)\b/i.test(landSignalText) ||
+        /\b(vacant|bare|building|residential|serviced)\s+lot\b/i.test(landSignalText);
+
+      const matches =
+        (
+          type === "house" &&
+          listingType === "house" &&
+          !looksLikeLand
+        ) ||
+        (type === "condo" && listingType === "condo") ||
+        (
+          type === "townhouse" &&
+          ["townhouse", "townhome"].includes(listingType)
+        ) ||
+        (type === "mobile" && listingType === "mobile") ||
+        (type === "land" && looksLikeLand) ||
+        (
+          type === "multi-family" &&
+          ["multi-family", "multifamily"].includes(listingType)
+        );
+
+      if (!matches) return false;
+
+      if (
+        type === "mobile" &&
+        (
+          listing.mls === "1050567" ||
+          /^69\s+lake\s+place\b/i.test(String(listing.address || ""))
+        )
+      ) {
+        return false;
+      }
+
+      if (
+        type === "mobile" &&
+        (
+          listing.mls === "1050567" ||
+          /^69\s+lake\s+place\b/i.test(String(listing.address || ""))
+        )
+      ) {
+        return false;
+      }
+    }
+    if (age55 || otherPark || petsAllowed) {
+      const park = getMobileHomePark(listing.address);
+
+      if (!park) return false;
+      if (age55 && park.category !== "55-plus") return false;
+      if (otherPark && park.category === "55-plus") return false;
+      if (petsAllowed && park.petType === "none") return false;
+    }
+
+    if (minPrice && listing.rawPrice < minPrice) return false;
+    if (maxPrice && listing.rawPrice > maxPrice) return false;
+    if (beds && Number(listing.beds || 0) < beds) return false;
+    if (baths && Number(listing.baths || 0) < baths) return false;
+    if (minSqft && Number(listing.sqft || 0) < minSqft) return false;
+    if (minYear && Number(listing.year || 0) < minYear) return false;
+    if (primaryOnMain && !listing.primaryOnMain) return false;
+    if (threeSameFloor && !listing.threeBedsSameFloor) return false;
+    if (fourSameFloor && !listing.fourBedsSameFloor) return false;
+    if (planMode === "primary-on-main" && !listing.primaryOnMain) return false;
+    if (planMode === "three-same-floor" && !listing.threeBedsSameFloor) return false;
+    if (planMode === "four-same-floor" && !listing.fourBedsSameFloor) return false;
+    if (oceanViews) {
+      const viewText = `${listing.description} ${listing.oceanView} ${listing.viewType} ${listing.waterfront}`.toLowerCase();
+      if (!/(ocean view|ocean views|sea view|water view|ocean)/i.test(viewText)) return false;
+    }
+    if (viewType) {
+      const viewAliases: Record<string, string> = {
+        mountain: "mountain",
+        "mountain view": "mountain",
+        "mountain views": "mountain",
+        "mountain(s)": "mountain",
+        ocean: "ocean",
+        "ocean view": "ocean",
+        "ocean views": "ocean",
+        sea: "ocean",
+        "sea view": "ocean",
+        valley: "valley",
+        "valley view": "valley",
+        lake: "lake",
+        "lake view": "lake",
+        river: "river",
+        "river view": "river",
+        city: "city",
+        "city view": "city",
+        panoramic: "panoramic",
+        "panoramic view": "panoramic",
+        "view (panoramic)": "panoramic",
+      };
+
+      const listingViewTypes = String(
+        listing.viewType || ""
+      )
+        .split(/[,;/|]+/)
+        .map((value) =>
+          value
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, " ")
+        )
+        .map((value) => viewAliases[value] || value)
+        .filter(Boolean);
+
+      if (!listingViewTypes.includes(viewType)) {
+        return false;
+      }
+    }
+
+    if (waterfrontType) {
+      const hasWaterfront =
+        ["true", "yes", "y", "1"].includes(
+          String(listing.waterfront || "")
+            .trim()
+            .toLowerCase()
+        );
+
+      if (!hasWaterfront) return false;
+
+      if (
+        waterfrontType !== "any" &&
+        String(listing.waterfrontType || "")
+          .trim()
+          .toLowerCase() !== waterfrontType
+      ) {
+        return false;
+      }
+    }    return true;
+    });
+
+  let listings = filterListings();
+  const listingsForTypeCounts = type
+    ? filterListings(true)
+    : listings;
+
+  // Feed refreshes can leave duplicate rows for one MLS number. Keep the
+  // newest row before calculating totals, map pins, and paginated cards.
+  const listingsByMls = new Map<string, any>();
+
+  for (const listing of listings) {
+    const key = String(listing.mls || listing.id || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+
+    if (!key) {
+      listingsByMls.set(`unkeyed:${listingsByMls.size}`, listing);
+      continue;
+    }
+
+    const existing = listingsByMls.get(key);
+    const listingTime = Date.parse(listing.listedAt || "") || 0;
+    const existingTime = Date.parse(existing?.listedAt || "") || 0;
+
+    if (!existing || listingTime >= existingTime) {
+      listingsByMls.set(key, listing);
+    }
+  }
+
+  listings = Array.from(listingsByMls.values());
+  if (sort === "price-low") listings.sort((a, b) => a.rawPrice - b.rawPrice);
+  else if (sort === "price-high") listings.sort((a, b) => b.rawPrice - a.rawPrice);
+  else if (sort === "beds-high") listings.sort((a, b) => Number(b.beds || 0) - Number(a.beds || 0));
+  else if (sort === "sqft-high") listings.sort((a, b) => Number(b.sqft || 0) - Number(a.sqft || 0));
+  else listings.sort((a, b) => new Date(b.listedAt || 0).getTime() - new Date(a.listedAt || 0).getTime());
+
+  const typeCounts = listingsForTypeCounts.reduce(
+    (counts: Record<string, number>, listing: any) => {
+      const typeKey =
+        listing.type === "townhome"
+          ? "townhouse"
+          : String(listing.type || "").trim().toLowerCase();
+
+      if (
+        ["house", "condo", "townhouse", "mobile", "land", "multi-family"]
+          .includes(typeKey)
+      ) {
+        counts[typeKey] = (counts[typeKey] || 0) + 1;
+      }
+
+      return counts;
+    },
+    {}
+  );
+
+  if (facetsOnly) {
+    const normaliseFacetType = (value: unknown) => {
+      const typeKey = String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[_\s]+/g, "-");
+
+      if (["home", "homes", "house", "houses"].includes(typeKey)) {
+        return "house";
+      }
+
+      if (["townhome", "townhomes"].includes(typeKey)) {
+        return "townhouse";
+      }
+
+      return typeKey;
+    };
+
+    const facetInventory = listings.map((listing) => ({
+      type: normaliseFacetType(listing.type),
+      price: Number(listing.rawPrice || 0),
+      beds: Number(listing.beds || 0),
+    }));
+
+    const facetTypes = Array.from(
+      new Set(["all", ...facetInventory.map((listing) => listing.type)])
+    ).filter(Boolean);
+
+    const formatPriceBand = (price: number) =>
+      price >= 1000000
+        ? `${(price / 1000000).toLocaleString("en-CA", {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2,
+          })}M`
+        : `${Math.round(price / 1000)}k`;
+
+    const roundMarketPrice = (price: number) => {
+      let increment = 50000;
+      if (price >= 6000000) increment = 1000000;
+      else if (price >= 3000000) increment = 500000;
+      else if (price >= 1500000) increment = 250000;
+      else if (price >= 750000) increment = 100000;
+      return Math.max(increment, Math.round(price / increment) * increment);
+    };
+
+    const fallbackPriceBands: Record<string, number[]> = {
+      all: [500000, 700000, 900000, 1200000],
+      house: [500000, 750000, 1000000, 1500000],
+      condo: [200000, 300000, 400000, 500000],
+      townhouse: [300000, 450000, 600000, 750000],
+      mobile: [100000, 200000, 300000, 400000],
+      land: [200000, 400000, 700000, 1000000],
+    };
+
+    const priceBandsByType = Object.fromEntries(
+      facetTypes.map((facetType) => {
+        const prices = facetInventory
+          .filter((listing) =>
+            facetType === "all" || listing.type === facetType
+          )
+          .map((listing) => listing.price)
+          .filter((price) => Number.isFinite(price) && price >= 50000)
+          .sort((a, b) => a - b);
+
+        const calculated = prices.length >= 8
+          ? [0.2, 0.4, 0.6, 0.8].map((percentile) => {
+              const index = Math.min(
+                prices.length - 1,
+                Math.max(0, Math.round((prices.length - 1) * percentile))
+              );
+              return roundMarketPrice(prices[index]);
+            })
+          : fallbackPriceBands[facetType] || fallbackPriceBands.all;
+
+        const thresholds = Array.from(new Set(calculated))
+          .filter((price) => price > 0)
+          .sort((a, b) => a - b);
+
+        const underBands = thresholds.map((price) => ({
+          value: String(Math.round(price / 1000)),
+          threshold: Math.round(price / 1000),
+          kind: "under",
+          label: `Under ${formatPriceBand(price)}`,
+        }));
+
+        const highest = underBands.at(-1);
+
+        return [
+          facetType,
+          highest
+            ? [
+                ...underBands,
+                {
+                  value: `over-${highest.threshold}`,
+                  threshold: highest.threshold,
+                  kind: "over",
+                  label: `Over ${formatPriceBand(highest.threshold * 1000)}`,
+                },
+              ]
+            : underBands,
+        ];
+      })
+    );
+
+    const bedroomOptionsByType = Object.fromEntries(
+      facetTypes.map((facetType) => [
+        facetType,
+        [2, 3, 4, 5].filter((threshold) =>
+          facetInventory.some(
+            (listing) =>
+              (facetType === "all" || listing.type === facetType) &&
+              listing.beds >= threshold
+          )
+        ),
+      ])
+    );
+
+    return new Response(
+      JSON.stringify({
+        typeCounts,
+        priceBandsByType,
+        bedroomOptionsByType,
+        bedroomInventory: facetInventory,
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "public, max-age=30, s-maxage=60, stale-while-revalidate=300",
+        },
+      }
+    );
+  }
+
+  const total = listings.length;
+
+  /* home-listings-count-only-v1 */
+  if (countOnly) {
+    return new Response(JSON.stringify({ total, typeCounts }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=30, s-maxage=60, stale-while-revalidate=300",
+      },
+    });
+  }
+  const markers = listings
+    .filter((listing) => listing.lat && listing.lng)
+    .map(({ id, image, beds, baths, price, address, lat, lng }) => ({ id, image, beds, baths, price, address, lat, lng }));
+  const page = listings.slice(offset, offset + limit);
+
+  return new Response(JSON.stringify({ listings: page, markers, total, typeCounts, offset, limit }), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "public, max-age=30, s-maxage=60, stale-while-revalidate=300",
+    },
+  });
+};
