@@ -21,6 +21,9 @@ const cityLabel = String(city)
   .replace(/-/g, " ")
   .replace(/\b\w/g, (char) => char.toUpperCase());
 
+const navMarketLabel =
+  currentPath.startsWith("/saanich-east") ? "Saanich East" : currentPath.startsWith("/saanich-west") ? "Saanich West" : cityLabel;
+
 // Agent-owned domains retain the agent's identity across every market.
 // The central platform remains branded by the current market.
 const hostname = Astro.url.hostname
@@ -44,9 +47,9 @@ const configuredSiteName =
   String(site?.site_name || "").trim();
 
 const navBrandLabel =
-  !isCentralPlatform && configuredSiteName
-    ? configuredSiteName
-    : `${cityLabel} Homes`;
+  currentPath.startsWith("/saanich-east") ? "Saanich East Homes" : currentPath.startsWith("/saanich-west") ? "Saanich West Homes" : !isCentralPlatform && configuredSiteName
+      ? configuredSiteName
+      : `${navMarketLabel} Homes`;
 const slugify = (value: string) =>
   String(value || "")
     .toLowerCase()
@@ -165,19 +168,26 @@ const areaListingCountLookup: Record<string, number> =
 const hasAreaListingCounts =
   Object.keys(areaListingCountLookup).length > 0;
 
-const getNavAreaCount = (label: string) =>
-  Math.max(
-    0,
-    Number(
-      areaListingCountLookup[
-        String(label || "")
-          .replace(/-/g, " ")
-          .replace(/\s+/g, " ")
-          .trim()
-          .toLowerCase()
-      ] || 0
-    )
+const normalizeNavCountArea = (value: string) =>
+  String(value || "")
+    .replace(/-/g, " ")
+    .replace(/^pq\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+neighbou?rhood$/i, "")
+    .trim();
+
+const getNavAreaCount = (label: string) => {
+  const key = normalizeNavCountArea(label);
+  return Object.entries(areaListingCountLookup).reduce(
+    (total, [area, count]) =>
+      normalizeNavCountArea(area) === key
+        ? total + Math.max(0, Number(count) || 0)
+        : total,
+    0
   );
+};
 const canonicalIntentHref = (pageSlug: string) => {
   const citySlug = slugify(city);
   const normalizedSlug = slugify(String(pageSlug || ""));
@@ -363,11 +373,12 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
     class="site-nav__area-links"
     id="site-nav-area-links"
   >
-    {areaLinks.map((item) => (
+        <a class="site-nav__area-map" style="background: var(--accent-soft) !important; color: var(--accent) !important; box-shadow: none !important;" href={`/${slugify(city)}/areas`}>
+      <span>View map</span>
+      <span aria-hidden="true">&rarr;</span>
+    </a>
+{areaLinks.map((item) => (
       <a
-        class:list={{
-          active: isActive(item.href)
-        }}
         href={item.href}
       >
         <span class="site-nav__area-label">{item.label}</span>
@@ -1066,3 +1077,78 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
     color: #ffffff !important;
     opacity: .82 !important;
   }</style>
+<style>
+  .site-nav__area-links .site-nav__area-map {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 2px 2px 8px;
+    padding: 10px 12px;
+    border-radius: 7px;
+    background: var(--accent);
+    color: white !important;
+    font-weight: 800;
+    box-shadow: 0 3px 10px color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+
+  .site-nav__area-links .site-nav__area-map:hover,
+  .site-nav__area-links .site-nav__area-map:focus-visible {
+    background: color-mix(in srgb, var(--accent) 86%, #000);
+    color: white !important;
+  }
+</style>
+<style is:global>
+  /* site-nav-area-map-force-v1 */
+  .site-nav__area-links a.site-nav__area-map,
+  .site-nav__links.open .site-nav__area-links a.site-nav__area-map {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 16px !important;
+    margin: 2px 2px 8px !important;
+    padding: 10px 12px !important;
+    border: 0 !important;
+    border-radius: 7px !important;
+    background: var(--accent) !important;
+    color: #fff !important;
+    font-weight: 800 !important;
+    box-shadow: 0 3px 10px rgba(20, 45, 55, .18) !important;
+  }
+
+  .site-nav__area-links a.site-nav__area-map:hover,
+  .site-nav__area-links a.site-nav__area-map:focus-visible,
+  .site-nav__links.open .site-nav__area-links a.site-nav__area-map:hover,
+  .site-nav__links.open .site-nav__area-links a.site-nav__area-map:focus-visible {
+    background: var(--accent) !important;
+    color: #fff !important;
+    filter: brightness(.9);
+  }
+</style>
+<style is:global>
+  /* site-nav-area-active-flat-v1 */
+  .site-nav__area-links a.active:not(.site-nav__area-map),
+  .site-nav__links.open .site-nav__area-links a.active:not(.site-nav__area-map) {
+    background: transparent !important;
+    color: var(--accent) !important;
+    box-shadow: none !important;
+  }
+</style>
+<style is:global>
+  /* site-nav-area-map-soft-v1 */
+  .site-nav__area-links a.site-nav__area-map,
+  .site-nav__links.open .site-nav__area-links a.site-nav__area-map {
+    background: var(--accent-soft) !important;
+    color: var(--accent) !important;
+    box-shadow: none !important;
+  }
+
+  .site-nav__area-links a.site-nav__area-map:hover,
+  .site-nav__area-links a.site-nav__area-map:focus-visible,
+  .site-nav__links.open .site-nav__area-links a.site-nav__area-map:hover,
+  .site-nav__links.open .site-nav__area-links a.site-nav__area-map:focus-visible {
+    background: var(--accent-soft) !important;
+    color: var(--accent) !important;
+    filter: brightness(.97);
+  }
+</style>
