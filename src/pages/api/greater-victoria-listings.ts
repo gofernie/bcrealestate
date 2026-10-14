@@ -1,5 +1,6 @@
 import { loadGreaterVictoriaData, regionDistricts, regionSlug } from "../../lib/greaterVictoria";
 import type { APIRoute } from "astro";
+import { greaterVictoriaHomepageBoundaries } from "../../lib/greaterVictoriaHomepage";
 import { mobileHomeParks } from "../../data/mobileHomeParks";
 
 export const prerender = false;
@@ -390,9 +391,17 @@ export const GET: APIRoute = async ({ request }) => {
     )
   );
 
+  const homeBoundaries = greaterVictoriaHomepageBoundaries(regionalData);
+  const selectedDistrictSlugs = requestedAreaSlugs.filter((slug) =>
+    regionDistricts.some((item) => item.slug === slug)
+  );
+  const selectedHomeBoundaries = homeBoundaries.filter((row: any) =>
+    (!district || row.__gvDistrict === district) && requestedAreaSlugs.includes(row.area_slug)
+  );
   const selectedAreaBoundaries = requestedAreaSlugs.length
-    ? regionalData.boundaries.filter((row: any) =>
-        row.polygon_geojson && (!district || regionSlug(row.city) === district) && requestedAreaSlugs.includes(row.area_slug))
+    ? [...selectedHomeBoundaries, ...regionalData.boundaries.filter((row: any) =>
+        (!district || regionSlug(row.city) === district) && requestedAreaSlugs.includes(row.area_slug))]
+      .filter((row: any) => row.polygon_geojson)
     : [];
   const filterListings = (skipType = false) =>
     (data || []).map(normalizeListing).filter((listing) => {
@@ -403,7 +412,15 @@ export const GET: APIRoute = async ({ request }) => {
     const commercial = /\b(lease|commercial|business|industrial|retail|office)\b/i.test(searchable);
     if (commercial || (listing.rawPrice > 0 && listing.rawPrice < 50000)) return false;
     if (id && listing.id !== id && listing.mls !== id) return false;
-    if (selectedAreaBoundaries.length) {
+    const matchesSelectedDistrict = selectedDistrictSlugs.includes(listing.district);
+    const matchesUndrawnNeighbourhood = selectedHomeBoundaries.some((boundary: any) =>
+      !boundary.polygon_geojson && boundary.__gvOriginalSlug &&
+      boundary.__gvDistrict === listing.district &&
+      boundary.__gvOriginalSlug === regionSlug(listing.areaSlug || listing.area)
+    );
+    if (matchesSelectedDistrict || matchesUndrawnNeighbourhood) {
+      // District membership is assigned by the regional loader, including split Saanich records.
+    } else if (selectedAreaBoundaries.length) {
       const lat = Number(listing.lat);
       const lng = Number(listing.lng);
 

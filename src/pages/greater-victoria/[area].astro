@@ -1,0 +1,25 @@
+---
+import { loadGreaterVictoriaData, regionSlug } from "../../lib/greaterVictoria";
+import { greaterVictoriaHomepageBoundaries } from "../../lib/greaterVictoriaHomepage";
+
+export const prerender = false;
+const slug = regionSlug(Astro.params.area);
+const typeFilters: Record<string, string> = {
+  homes: "house", houses: "house", condos: "condo",
+  townhomes: "townhouse", townhouses: "townhouse",
+  "mobile-homes": "mobile", land: "land", "multi-family": "multi-family",
+};
+if (typeFilters[slug]) {
+  const params = new URLSearchParams(Astro.url.searchParams);
+  params.set("type", typeFilters[slug]);
+  return Astro.redirect(`/greater-victoria/?${params.toString()}`, 302);
+}
+const region = await loadGreaterVictoriaData();
+const boundary = greaterVictoriaHomepageBoundaries(region)
+  .find((item: any) => item.area_slug === slug);
+if (boundary) {
+  const query = Astro.url.searchParams.toString();
+  return Astro.redirect(`${boundary.home_href}${query ? `?${query}` : ""}`, 302);
+}
+return Astro.rewrite("/404");
+---

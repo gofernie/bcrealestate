@@ -584,7 +584,7 @@ const areaName = page.area
   : null;
 
 const censusLookupCity =
-  /^(saanich[- ](east|west)|oak[- ]bay)$/i.test(String(city))
+  /^(saanich[- ](east|west)|oak[- ]bay|central[- ]saanich)$/i.test(String(city))
     ? String(city).toLowerCase().replace(/-/g, " ")
     : city;
 
@@ -15309,257 +15309,304 @@ if (searchAreaCoordinates.length) {
   );
 }
 // --- Load amenities ---
+let amenityClusterLayer = null;
+let amenityLoadVersion = 0;
+
 async function loadAreaAmenities(category = "schools") {
   if (!leafletMap) return;
 
-  amenityMarkers.forEach((m) => m.remove());
-  amenityMarkers = [];
+  const version = ++amenityLoadVersion;
+  const currentMap = leafletMap;
+  const escapeAmenityText = (value) => String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
-  const requestedOsmCity =
-  document.querySelector("[data-city]")?.dataset.city || "nanaimo";
+  const labels = {
+    schools: "Schools",
+    parks: "Parks & recreation",
+    restaurants: "Food & cafés",
+    grocery: "Grocery places",
+    medical: "Medical places",
+    childcare: "Childcare places",
+    playgrounds: "Playgrounds",
+    recreation: "Recreation places",
+    trails: "Trails",
+    beaches: "Beaches",
+    golf: "Golf courses",
+    marinas: "Marinas",
+    transit: "Transit stops",
+    evCharging: "EV charging places",
+  };
 
-const requestedOsmCityKey = String(requestedOsmCity)
-  .trim()
-  .toLowerCase()
-  .replace(/\s+/g, "-");
+  const requestedCity = String(
+    document.querySelector("[data-city]")?.dataset.city || "nanaimo"
+  ).trim().toLowerCase().replace(/\s+/g, "-");
 
-const osmCity =
-  ["victoria", "saanich", "saanich-east", "saanich-west", "oak-bay"]
-    .includes(requestedOsmCityKey)
-    ? "victoria"
-    : requestedOsmCityKey;
+  const osmCity = [
+    "victoria", "saanich", "saanich-east", "saanich-west", "oak-bay"
+  ].includes(requestedCity) ? "victoria" : requestedCity;
+
   const areaEl = document.querySelector("[data-area-center-lat]");
-  const osmLat = Number(areaEl?.dataset.areaCenterLat || 0);
-  const osmLng = Number(areaEl?.dataset.areaCenterLng || 0);
-
-  if (!osmLat || !osmLng) return;
+  const lat = Number(areaEl?.dataset.areaCenterLat || 0);
+  const lng = Number(areaEl?.dataset.areaCenterLng || 0);
+  if (!lat || !lng) return;
 
   try {
+    const response = await fetch(
+      `/api/osm-amenities?city=${encodeURIComponent(osmCity)}&lat=${lat}&lng=${lng}&radius=${Math.min(Math.max(amenityRadius + 2, 6), 15)}&limit=500`
+    );
+    if (!response.ok) throw new Error(`Amenities request failed: ${response.status}`);
 
+    const payload = await response.json();
+    if (payload.error) throw new Error(payload.error);
+    if (version !== amenityLoadVersion || leafletMap !== currentMap) return;
 
-    const res = await fetch(
-  `/api/osm-amenities?city=${encodeURIComponent(osmCity)}&lat=${osmLat}&lng=${osmLng}&radius=${Math.min(Math.max(amenityRadius + 5, 10), 15)}&limit=250`
-);
-    const payload = await res.json();
-const areaAmenityFilter = (item) => {
-  const lat = Number(item.lat);
-  const lng = Number(item.lng);
+    const inScope = (item) => {
+      const itemLat = Number(item.lat);
+      const itemLng = Number(item.lng);
+      if (!Number.isFinite(itemLat) || !Number.isFinite(itemLng)) return false;
 
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return false;
-  }
+      if (searchAreaRings.length) {
+        return pointInAreaPolygon(itemLat, itemLng) ||
+          distanceToAreaBoundaryKm(itemLat, itemLng) <= 2;
+      }
 
-  // Definitely include anything physically inside the area.
-  if (pointInAreaPolygon(lat, lng)) {
-    return true;
-  }
+      return Number(item.distKm) <= 2;
+    };
 
-  // Also allow nearby amenities just outside the boundary.
-  return distanceToAreaBoundaryKm(lat, lng) <= 5;
-};
-    // Update chip counts
-   document.querySelectorAll(".amenity-chip").forEach((chip) => {
-  // Keep the listings toggle visible.
-  if (chip.id === "toggle-listings-btn") return;
+    const scopedCategories = {};
+    for (const [key, items] of Object.entries(payload.categories || {})) {
+      scopedCategories[key] = items
+        .filter(inScope)
+        .sort((a, b) => Number(a.distKm) - Number(b.distKm));
+    }
 
-  const key =
-    amenityCategoryMap[chip.dataset.amenity] ||
-    chip.dataset.amenity;
+    const chips = Array.from(
+      document.querySelectorAll(".amenity-chip:not(#toggle-listings-btn)")
+    );
 
-  const items =
-    payload.categories?.[key] || [];
+    chips.forEach((chip) => {
+      const key = amenityCategoryMap[chip.dataset.amenity] || chip.dataset.amenity;
+      const count = scopedCategories[key]?.length || 0;
+      const countEl = chip.querySelector("strong");
+      if (countEl) countEl.textContent = String(count);
+      chip.hidden = count === 0;
+    });
 
- const count =
-  items.filter(areaAmenityFilter).length;
+    document.querySelectorAll(".area-amenity-group").forEach((group) => {
+      group.hidden = !Array.from(group.querySelectorAll(".amenity-chip"))
+        .some((chip) => !chip.hidden);
+    });
 
-  const strong =
-    chip.querySelector("strong");
+    let activeCategory = amenityCategoryMap[category] || category;
+    if (!(scopedCategories[activeCategory]?.length)) {
+      const firstChip = chips.find((chip) => !chip.hidden);
+      if (firstChip) {
+        activeCategory =
+          amenityCategoryMap[firstChip.dataset.amenity] ||
+          firstChip.dataset.amenity;
+      }
+    }
 
-  if (strong) {
-    strong.textContent = String(count);
-  }
+    chips.forEach((chip) => {
+      const key = amenityCategoryMap[chip.dataset.amenity] || chip.dataset.amenity;
+      chip.classList.toggle("active", key === activeCategory && !chip.hidden);
+    });
 
-  chip.hidden = count === 0;
+    const rows = scopedCategories[activeCategory] || [];
+    const label = labels[activeCategory] || "Places";
+    const title = document.querySelector("#area-amenity-panel h3");
+    const copy = document.querySelector("#area-amenity-panel p");
+    const list = document.getElementById("amenity-list");
+
+    if (title) title.textContent = `${rows.length.toLocaleString()} ${label.toLowerCase()}`;
+    if (copy) {
+      copy.textContent = searchAreaRings.length
+        ? "Within this neighbourhood and 2 km of its boundary."
+        : "Within 2 km of the area centre.";
+    }
+
+    try {
+      await ensureMarkerCluster();
+    } catch (error) {
+      console.warn("Amenity clustering unavailable; showing nearest 20 markers.", error);
+    }
+    if (version !== amenityLoadVersion || leafletMap !== currentMap) return;
+
+    amenityClusterLayer?.remove();
+    amenityClusterLayer = null;
+    amenityMarkers.forEach((marker) => marker.remove());
+    amenityMarkers = [];
+
+    const clusteringAvailable = typeof L.markerClusterGroup === "function";
+
+    if (clusteringAvailable) {
+      amenityClusterLayer = L.markerClusterGroup({
+        maxClusterRadius: 60,
+        // Keep clustering until maximum zoom; overlapping places can spiderfy.
+        showCoverageOnHover: false,
+        spiderfyOnMaxZoom: true,
+        zoomToBoundsOnClick: true,
+        removeOutsideVisibleBounds: false,
+        iconCreateFunction(cluster) {
+          return L.divIcon({
+  className: "area-amenity-cluster",
+  html: `<span style="
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+    width:78px!important;
+    height:34px!important;
+    min-width:78px!important;
+    margin:0!important;
+    padding:0!important;
+    border:2px solid white!important;
+    border-radius:8px!important;
+    background:#263440!important;
+    color:white!important;
+    font:700 12px/1 system-ui,sans-serif!important;
+    white-space:nowrap!important;
+    box-sizing:border-box!important;
+    box-shadow:0 2px 6px #0003!important;
+  ">${cluster.getChildCount()} places</span>`,
+  iconSize: [78, 34],
+  iconAnchor: [39, 17],
 });
+        },
+      }).addTo(currentMap);
+    }
 
-document.querySelectorAll(".area-amenity-group").forEach((group) => {
-  const hasVisibleChip = Array.from(
-    group.querySelectorAll(".amenity-chip")
-  ).some((chip) => !chip.hidden);
+    const markerByIndex = new Map();
+    const mapRows = clusteringAvailable ? rows : rows.slice(0, 20);
 
-  group.hidden = !hasVisibleChip;
-});
-
-
-const visibleAmenityChips = Array.from(
-  document.querySelectorAll(
-    ".amenity-chip:not(#toggle-listings-btn)"
-  )
-).filter((chip) => !chip.hidden);
-
-let activeChip = document.querySelector(
-  ".amenity-chip.active:not(#toggle-listings-btn)"
-);
-
-if (!activeChip || activeChip.hidden) {
-  document
-    .querySelectorAll(
-      ".amenity-chip.active:not(#toggle-listings-btn)"
-    )
-    .forEach((chip) => {
-      chip.classList.remove("active");
-    });
-
-  activeChip = visibleAmenityChips[0] || null;
-
-  activeChip?.classList.add("active");
-}
-const activeCategory =
-  amenityCategoryMap[category] || category;
-
-const rows = (
-  payload.categories?.[activeCategory] || []
-).filter(areaAmenityFilter);
-
-// Update panel
-const label =
-  activeChip?.childNodes?.[0]?.textContent?.trim() ||
-  activeCategory;
-
-const panelTitle =
-  document.querySelector("#area-amenity-panel h3");
-
-const panelCopy =
-  document.querySelector("#area-amenity-panel p");
-
-const amenityList =
-  document.querySelector("#amenity-list");
-
-    if (panelTitle) panelTitle.textContent = label;
-    if (panelCopy) {
-  const mappedCount = rows.length;
-  const namedCount = rows.filter((i) => i.name?.trim()).length;
-  const areaLabel =
-    document.querySelector("[data-slug]")?.dataset.slug?.replaceAll("-", " ") ||
-    "this area";
-
-  panelCopy.textContent =
-    namedCount === 0 && mappedCount > 0
-      ? `${mappedCount} ${label.toLowerCase()} mapped near ${areaLabel}`
-      : `${mappedCount} ${label.toLowerCase()} near ${areaLabel}`;
-}
-
-  if (amenityList) {
-  amenityList.innerHTML = rows
-    .filter((item) => item.name && item.name.trim())
-    .map((item, index) => `
-      <div
-        class="amenity-row"
-        data-amenity-name="${String(item.name || "").replace(/"/g, "&quot;")}"
-        data-amenity-number="${index + 1}"
-      >
-        <strong>${item.name}</strong>
-        <span>${Number(item.distKm || 0).toFixed(1)} km away</span>
-      </div>`)
-    .join("") || `<div style="padding:14px 18px;color:#9c9590;font-size:0.88rem;">No named ${label.toLowerCase()} found nearby.</div>`;
-
-  amenityList.querySelectorAll(".amenity-row").forEach((row) => {
-    row.addEventListener("mouseenter", () => {
-      if (window.matchMedia("(max-width: 800px)").matches) return;
-
-      const name = row.dataset.amenityName || "";
-      const marker = amenityMarkers.find((m) => m.__amenityName === name);
-
-      row.style.background = "rgba(0,0,0,0.035)";
-
-      if (marker) {
-        marker.openPopup();
-        marker.setZIndexOffset(1000);
-
-        const el = marker.getElement();
-        if (el) {
-          el.style.transform += " scale(1.35)";
-          el.style.transition = "transform 0.15s ease";
-        }
-      }
-    });
-
-    row.addEventListener("mouseleave", () => {
-      const name = row.dataset.amenityName || "";
-      const marker = amenityMarkers.find((m) => m.__amenityName === name);
-
-      row.style.background = "";
-
-      if (marker) {
-        marker.closePopup();
-        marker.setZIndexOffset(0);
-
-        const el = marker.getElement();
-        if (el) {
-          el.style.transform = el.style.transform.replace(" scale(1.35)", "");
-        }
-      }
-    });
-
-    row.addEventListener("click", () => {
-      const name = row.dataset.amenityName || "";
-      const marker = amenityMarkers.find((m) => m.__amenityName === name);
-
-      if (marker && leafletMap) {
-        leafletMap.flyTo(marker.getLatLng(), Math.max(leafletMap.getZoom(), 15), {
-          duration: 0.45,
-        });
-        marker.openPopup();
-      }
-    });
-  });
-}
-
-    // Add amenity markers
-    const numberedAmenityRows = rows
-      .filter((item) => item.name && item.name.trim());
-
-    const hasNamedAmenities = numberedAmenityRows.length > 0;
-
-    const amenityRowsForMap =
-      hasNamedAmenities
-        ? numberedAmenityRows
-        : rows;
-
-    amenityRowsForMap.forEach((item, index) => {
-      const lat = Number(item.lat);
-      const lng = Number(item.lng);
-      if (!lat || !lng) return;
-
+    mapRows.forEach((item, index) => {
       const marker = L.marker(
-        [lat, lng],
-        {
-          icon: hasNamedAmenities
-            ? makeAmenityIcon(index + 1)
-            : makeUnnamedAmenityIcon()
-        }
-      ).addTo(leafletMap);
-const popupLabel = item.name?.trim() || label || category;
-marker.bindPopup(`
-  <div style="font-family:'DM Sans',system-ui,sans-serif;padding:8px 12px;font-size:0.88rem;">
-    <strong style="display:block;font-weight:700;color:#1c1914;margin-bottom:2px;">${popupLabel}</strong>
-    <span style="font-size:0.78rem;color:#9c9590;">${Number(item.distKm || 0).toFixed(1)} km away</span>
-  </div>`, {
-  closeButton: false,
-  offset: [0, -7],
-});
-marker.on("click", () => marker.openPopup());
-marker.__amenityName = String(item.name || "").trim();
-marker.__amenityCategory = category;
+        [Number(item.lat), Number(item.lng)],
+        { icon: makeAmenityIcon(index + 1) }
+      );
 
-amenityMarkers.push(marker);
+      const name = String(item.name || "").trim() || label;
+      marker.bindPopup(
+        `<div class="area-amenity-popup">
+          <strong>${escapeAmenityText(name)}</strong>
+          <span>${Number(item.distKm || 0).toFixed(1)} km from area centre</span>
+        </div>`,
+        { closeButton: false, offset: [0, -7] }
+      );
+
+      marker.__amenityName = name;
+      marker.__amenityCategory = activeCategory;
+      markerByIndex.set(index, marker);
+      amenityMarkers.push(marker);
+
+      if (amenityClusterLayer) amenityClusterLayer.addLayer(marker);
+      else marker.addTo(currentMap);
     });
 
-  } catch (e) {
-    console.warn("Amenity load failed:", e);
+    if (mapRows.length) {
+      const bounds = L.latLngBounds(
+        mapRows.map((item) => [Number(item.lat), Number(item.lng)])
+      );
+
+      currentMap.invalidateSize();
+      currentMap.fitBounds(bounds, {
+        paddingTopLeft: [40, 75],
+        paddingBottomRight: [40, 40],
+        maxZoom: 15,
+        animate: false,
+      });
+    }
+
+    if (list) {
+      let visibleCount = 20;
+      list.classList.add("show-all-amenities", "is-expanded", "amenity-paged-list");
+
+      const revealMarker = (index) => {
+        const marker = markerByIndex.get(index);
+        if (!marker) return;
+
+        if (amenityClusterLayer) {
+          amenityClusterLayer.zoomToShowLayer(marker, () => marker.openPopup());
+        } else {
+          currentMap.flyTo(
+            marker.getLatLng(),
+            Math.max(currentMap.getZoom(), 16),
+            { duration: 0.45 }
+          );
+          marker.openPopup();
+        }
+      };
+
+      const renderList = () => {
+        const previousScroll = list.scrollTop;
+        list.innerHTML = rows.slice(0, visibleCount).map((item, index) => `
+          <div
+            class="amenity-row"
+            data-amenity-number="${index + 1}"
+            data-amenity-index="${index}"
+            tabindex="0"
+            role="button"
+            aria-label="Show ${escapeAmenityText(item.name || label)} on map"
+          >
+            <strong>${escapeAmenityText(item.name || label)}</strong>
+            <span>${Number(item.distKm || 0).toFixed(1)} km from area centre</span>
+          </div>
+        `).join("") || `<div class="amenity-empty-message">No ${escapeAmenityText(label.toLowerCase())} found in this area.</div>`;
+
+        list.querySelectorAll(".amenity-row").forEach((row) => {
+          const index = Number(row.dataset.amenityIndex);
+          const marker = markerByIndex.get(index);
+
+          row.addEventListener("click", () => revealMarker(index));
+          row.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              revealMarker(index);
+            }
+          });
+          row.addEventListener("mouseenter", () => {
+            if (window.matchMedia("(max-width: 800px)").matches) return;
+            if (marker?.getElement()) {
+              marker.openPopup();
+              marker.setZIndexOffset(1000);
+            }
+          });
+          row.addEventListener("mouseleave", () => {
+            marker?.closePopup();
+            marker?.setZIndexOffset(0);
+          });
+        });
+
+        if (rows.length > visibleCount) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "amenity-more-page";
+          button.textContent =
+            `Show ${Math.min(20, rows.length - visibleCount)} more`;
+          button.addEventListener("click", () => {
+            visibleCount += 20;
+            renderList();
+          });
+          list.appendChild(button);
+        }
+
+        list.scrollTop = previousScroll;
+      };
+
+      renderList();
+    }
+  } catch (error) {
+    if (version !== amenityLoadVersion) return;
+    console.warn("Amenity load failed:", error);
+    const copy = document.querySelector("#area-amenity-panel p");
+    if (copy) copy.textContent = "Places could not be loaded. Select a category to retry.";
   }
 }
 
+// --- End amenity renderer ---
 // --- Init refined map ---
 function initRefinedLeafletMap() {
   const refinedMapEl = document.getElementById("refined-intent-map");
@@ -22025,4 +22072,98 @@ document.addEventListener("click", (event) => {
     justify-self: start;
   }
 }
+</style>
+
+<style is:global>
+  html body .area-amenity-cluster {
+    background: transparent;
+    border: 0;
+  }
+
+  html body .area-amenity-cluster > span {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border: 3px solid var(--card-bg, white);
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    font: 800 14px/1 system-ui, sans-serif;
+    box-shadow: 0 2px 7px #0003;
+  }
+
+  html body #amenity-list.amenity-paged-list .amenity-row {
+    display: grid !important;
+    cursor: pointer;
+  }
+
+  html body #amenity-list.amenity-paged-list .amenity-row:hover {
+    background: var(--card-soft);
+  }
+
+  html body #amenity-list.amenity-paged-list .amenity-row:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -3px;
+  }
+
+  html body #amenity-list.amenity-paged-list .amenity-row::before {
+    background: var(--accent) !important;
+  }
+
+  html body #amenity-list .amenity-more-page {
+    display: block !important;
+    width: 100%;
+    min-height: 46px;
+    padding: 12px 16px;
+    border: 0;
+    border-top: 1px solid var(--line);
+    background: var(--card-bg);
+    color: var(--accent);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .area-amenity-popup strong,
+  .area-amenity-popup span {
+    display: block;
+  }
+
+  .area-amenity-popup {
+    padding: 8px 10px;
+  }
+
+  .area-amenity-popup span {
+    margin-top: 4px;
+    font-size: .78rem;
+  }
+
+  .amenity-empty-message {
+    padding: 16px 18px;
+    color: var(--muted);
+  }
+
+  @media (max-width: 900px) {
+    html body #amenity-list.amenity-paged-list {
+      max-height: 360px !important;
+      overflow-y: auto !important;
+    }
+  }
+</style>
+
+<style is:global>
+  html body .area-amenity-cluster > span {
+    width: 78px !important;
+    height: 34px !important;
+    margin-left: -18px;
+    margin-top: 4px;
+    border: 2px solid white !important;
+    border-radius: 8px !important;
+    background: #263440 !important;
+    color: white !important;
+    font: 700 12px/1 system-ui, sans-serif !important;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px #0003;
+  }
 </style>

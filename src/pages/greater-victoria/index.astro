@@ -1,115 +1,28 @@
 ---
-import Layout from "../../layouts/Layout.astro";
-import Header from "../../components/GreaterVictoriaHeader.astro";
-import IntentModalController from "../../components/IntentModalController.astro";
-import { getSite } from "../../lib/getSite";
+import CityHomepage from "../[city]/index.astro";
 import { loadGreaterVictoriaData, regionSlug } from "../../lib/greaterVictoria";
-import { GET as getListings } from "../api/greater-victoria-listings";
-import "../../styles/intent-modal.css";
-import "../../styles/greater-victoria.css";
+import { greaterVictoriaHomepageBoundaries } from "../../lib/greaterVictoriaHomepage";
+
 export const prerender = false;
-const region = await loadGreaterVictoriaData();
-const site = await getSite(Astro.url.hostname,"victoria");
-const district = regionSlug(Astro.url.searchParams.get("district") || "");
-const selected = region.districts.find((d:any) => d.slug === district);
-const params = new URLSearchParams(Astro.url.searchParams);
-if (district && !selected) return Astro.redirect("/greater-victoria",302);
-if (!district) params.delete("area");
-params.set("city","greater-victoria");params.set("limit","24");params.delete("offset");
-const requestUrl = new URL("/api/greater-victoria-listings",Astro.url);requestUrl.search=params.toString();
-const response = await getListings({request:new Request(requestUrl)} as any);
-if (!response.ok) throw new Error("Could not load Greater Victoria listings.");
-const results = await response.json();
-const value = (key:string) => params.get(key) || "";
-const safeJson = (value:any) => JSON.stringify(value).replace(/</g,"\\u003c");
-const cleanAreaName = (name:string) => name.replace(/\s+neighbou?rhood$/i,"");
+
+// Preserve links saved from the former district/neighbourhood search.
+const district = regionSlug(Astro.url.searchParams.get("district"));
+if (district) {
+  const region = await loadGreaterVictoriaData();
+  if (!region.districts.some((item: any) => item.slug === district)) {
+    return Astro.redirect("/greater-victoria/", 302);
+  }
+  const url = new URL(Astro.url);
+  const oldArea = regionSlug(url.searchParams.get("area"));
+  const target = oldArea
+    ? greaterVictoriaHomepageBoundaries(region).find((boundary: any) =>
+        boundary.__gvDistrict === district &&
+        boundary.__gvOriginalSlug === oldArea
+      )?.area_slug || district
+    : district;
+  url.searchParams.delete("district");
+  url.searchParams.set("area", target.replace(/-/g, " "));
+  return Astro.redirect(`${url.pathname}?${url.searchParams.toString()}`, 302);
+}
 ---
-<Layout title="Greater Victoria Homes for Sale" city="greater-victoria" site={site} accentColor={site?.accent_color || "#2f6f73"}>
-  <Header site={site}/>
-  <main class="gv-page">
-    <header class="gv-intro"><div><p class="gv-kicker">GREATER VICTORIA HOME SEARCH</p><h1>Start with the whole region.</h1><p>Find your place. Narrow by district, neighbourhood or home type.</p></div><a data-astro-reload class="gv-outline" href="/greater-victoria/areas">Explore the area map →</a></header>
-    <form data-astro-reload class="gv-filters" id="gv-filters" method="get" action="/greater-victoria">
-      <label>District<select name="district" id="gv-district"><option value="">All Greater Victoria</option>{region.districts.map((d:any)=><option value={d.slug} selected={d.slug===district}>{d.name} · {d.count}</option>)}</select></label>
-      <label>Neighbourhood<select name="area" id="gv-area" disabled={!selected}><option value="">{selected ? `All ${selected.name} neighbourhoods` : "Choose a district first"}</option>{selected?.areas.map((a:any)=><option value={a.area_slug} selected={value("area")===a.area_slug}>{cleanAreaName(a.area_name)} · {a.count}</option>)}</select></label>
-      <label>Property type<select name="type"><option value="">Any type</option>{[["house","Homes"],["condo","Condos"],["townhouse","Townhomes"],["mobile","Mobile homes"],["land","Lot / land"],["multi-family","Multi-family"]].map(([v,label])=><option value={v} selected={value("type")===v}>{label}</option>)}</select></label>
-      <label>Minimum price<input name="minPrice" type="number" min="0" step="10000" placeholder="No minimum" value={value("minPrice")}/></label>
-      <label>Maximum price<input name="maxPrice" type="number" min="0" step="10000" placeholder="No maximum" value={value("maxPrice")}/></label>
-      <label>Beds<select name="beds"><option value="">Any beds</option>{[1,2,3,4,5].map(n=><option value={n} selected={value("beds")===String(n)}>{n}+</option>)}</select></label>
-      <label>Baths<select name="baths"><option value="">Any baths</option>{[1,2,3,4].map(n=><option value={n} selected={value("baths")===String(n)}>{n}+</option>)}</select></label>
-      <button class="gv-primary" type="submit">Search homes</button>
-    </form>
-    <div class="gv-toolbar"><h2>{results.total.toLocaleString()} active listings{selected ? ` in ${selected.name}` : ""}</h2><div><button type="button" class="gv-outline" id="gv-map-toggle" aria-expanded="false" aria-controls="gv-results-map">Map</button><label class="gv-sort">Sort<select name="sort" form="gv-filters"><option value="newest" selected={value("sort")==="newest" || !value("sort")}>Newest</option><option value="price-low" selected={value("sort")==="price-low"}>Price: low to high</option><option value="price-high" selected={value("sort")==="price-high"}>Price: high to low</option></select></label><a data-astro-reload class="gv-outline" href="/greater-victoria">Clear</a></div></div>
-    <div id="gv-results-map" hidden aria-label="Matching homes on map"></div>
-    <p class="gv-error" id="gv-error" role="alert" hidden></p>
-    <section class="gv-listings" id="gv-listings" aria-label="Matching homes">
-      {results.listings.map((listing:any)=><article class="card original-card gv-card" tabindex="0" role="button" aria-label={`Open ${listing.address}`}
-        data-item-id={listing.id} data-card-id={listing.id} data-listing-id={listing.id} data-mls={listing.mls}
-        data-price={listing.price} data-raw-price={listing.rawPrice} data-address={listing.address} data-meta={`${listing.beds} bed · ${listing.baths} bath`}
-        data-image={listing.image} data-images={JSON.stringify(listing.images)} data-description={listing.description}
-        data-beds={listing.beds} data-baths={listing.baths} data-sqft={listing.sqft} data-property-type={listing.propertyType} data-type={listing.type}
-        data-year={listing.year} data-lot-size={listing.lotSize} data-area={listing.area} data-city={listing.city} data-lat={listing.lat} data-lng={listing.lng}
-        data-listing-brokerage={listing.brokerage} data-view-type={listing.viewType} data-waterfront={listing.waterfront} data-waterfront-type={listing.waterfrontType}
-        data-liked-tags="[]" data-is-favourite="false" data-decision="">
-        <div class="card-image-wrap">{listing.image ? <img src={listing.image} alt={listing.address} loading="lazy" decoding="async"/> : <div class="gv-no-photo">Photo coming soon</div>}</div>
-        <div class="card-body"><strong class="price">{listing.price}</strong><h3 class="address">{listing.address}</h3><p>{listing.districtLabel}{listing.area ? ` · ${cleanAreaName(listing.area)}` : ""}</p><div class="meta"><span>{listing.beds || "—"} bd</span><span>{listing.baths || "—"} ba</span>{listing.sqft && <span>{Number(listing.sqft).toLocaleString()} sq ft</span>}</div>{listing.brokerage && <small class="card-brokerage">Courtesy of {listing.brokerage}</small>}</div>
-      </article>)}
-    </section>
-    {results.total===0 && <p class="gv-empty">No homes match this search. Try another district or a wider price range.</p>}
-    <button class="gv-outline gv-load-more" id="gv-load-more" type="button" hidden={results.total<=results.listings.length}>Load 24 more homes</button>
-    <p class="gv-small">Listings cover the Greater Victoria markets currently available on this site.</p>
-  </main>
-  <IntentModalController loadMapScript={false}/>
-  <script type="application/json" id="gv-search-data" set:html={safeJson({params:params.toString(),results,tileToken:import.meta.env.PUBLIC_JAWG_ACCESS_TOKEN || ""})}/>
-  <script is:inline>
-  (() => {
-    const dataEl=document.getElementById("gv-search-data");
-    if(!dataEl)return;
-    const {params:query,results,tileToken}=JSON.parse(dataEl.textContent);
-    const grid=document.getElementById("gv-listings");
-    const button=document.getElementById("gv-load-more");
-    const errorEl=document.getElementById("gv-error");
-    let offset=results.listings.length;
-    const listings=new Map(results.listings.map(l=>[l.id,l]));
-    const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-    const createCard=l=>{
-      const card=document.createElement("article");card.className="card original-card gv-card";card.tabIndex=0;card.setAttribute("role","button");card.setAttribute("aria-label",`Open ${l.address}`);
-      const attrs={itemId:l.id,cardId:l.id,listingId:l.id,mls:l.mls,price:l.price,rawPrice:l.rawPrice,address:l.address,meta:`${l.beds} bed · ${l.baths} bath`,image:l.image,images:JSON.stringify(l.images),description:l.description,beds:l.beds,baths:l.baths,sqft:l.sqft,propertyType:l.propertyType,type:l.type,year:l.year,lotSize:l.lotSize,area:l.area,city:l.city,lat:l.lat,lng:l.lng,listingBrokerage:l.brokerage,viewType:l.viewType,waterfront:l.waterfront,waterfrontType:l.waterfrontType,likedTags:"[]",isFavourite:"false",decision:""};
-      Object.entries(attrs).forEach(([k,v])=>card.dataset[k]=String(v??""));
-      card.innerHTML=`<div class="card-image-wrap">${l.image?`<img src="${esc(l.image)}" alt="${esc(l.address)}" loading="lazy" decoding="async">`:'<div class="gv-no-photo">Photo coming soon</div>'}</div><div class="card-body"><strong class="price">${esc(l.price)}</strong><h3 class="address">${esc(l.address)}</h3><p>${esc(l.districtLabel)}${l.area?` · ${esc(l.area)}`:""}</p><div class="meta"><span>${esc(l.beds||"—")} bd</span><span>${esc(l.baths||"—")} ba</span>${l.sqft?`<span>${Number(l.sqft).toLocaleString()} sq ft</span>`:""}</div>${l.brokerage?`<small class="card-brokerage">Courtesy of ${esc(l.brokerage)}</small>`:""}</div>`;
-      return card;
-    };
-    const showError=e=>{errorEl.hidden=false;errorEl.textContent=e.message||"Could not load homes. Please try again.";};
-    document.getElementById("gv-district").addEventListener("change",()=>{document.getElementById("gv-area").value="";document.getElementById("gv-filters").requestSubmit();});
-    grid.addEventListener("keydown",event=>{if((event.key==="Enter"||event.key===" ")&&event.target.matches(".gv-card")){event.preventDefault();event.target.click();}});
-    button.addEventListener("click",async()=>{
-      button.disabled=true;button.textContent="Loading…";errorEl.hidden=true;
-      try{const p=new URLSearchParams(query);p.set("offset",offset);const response=await fetch(`/api/greater-victoria-listings?${p}`);if(!response.ok)throw Error("Could not load more homes.");const next=await response.json();next.listings.forEach(l=>{listings.set(l.id,l);grid.appendChild(createCard(l));});offset+=next.listings.length;button.hidden=offset>=next.total;if(!next.listings.length)button.hidden=true;}catch(e){showError(e);}finally{button.disabled=false;button.textContent="Load 24 more homes";}
-    });
-    let map=null,layer=null,mapLoading=null;
-    async function loadLeaflet(){
-      if(window.L)return;
-      if(mapLoading)return mapLoading;
-      mapLoading=new Promise((resolve,reject)=>{const css=document.createElement("link");css.rel="stylesheet";css.href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";document.head.appendChild(css);const script=document.createElement("script");script.src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";script.onload=resolve;script.onerror=()=>reject(Error("Map could not load."));document.head.appendChild(script);});return mapLoading;
-    }
-    async function openListing(id){
-      let card=Array.from(grid.querySelectorAll(".gv-card")).find(c=>c.dataset.listingId===id);
-      if(!card){const p=new URLSearchParams(query);p.delete("offset");p.set("id",id);p.set("limit","1");const response=await fetch(`/api/greater-victoria-listings?${p}`);if(!response.ok)throw Error("Could not open this listing.");const result=await response.json();if(!result.listings[0])throw Error("This listing is no longer available.");card=createCard(result.listings[0]);card.hidden=true;grid.appendChild(card);}
-      card.click();
-    }
-    const toggle=document.getElementById("gv-map-toggle"),mapEl=document.getElementById("gv-results-map");
-    toggle.addEventListener("click",async()=>{
-      const show=mapEl.hidden;mapEl.hidden=!show;toggle.textContent=show?"Hide map":"Map";toggle.setAttribute("aria-expanded",String(show));if(!show)return;
-      try{await loadLeaflet();if(!map){map=L.map(mapEl,{scrollWheelZoom:false});
-      if(window.matchMedia("(max-width:700px)").matches){
-        map.dragging.disable();mapEl.style.touchAction="pan-y";
-        mapEl.addEventListener("touchstart",e=>{if(e.touches.length>=2){map.dragging.enable();mapEl.style.touchAction="none";}},{passive:true});
-        mapEl.addEventListener("touchend",e=>{if(e.touches.length<2){map.dragging.disable();mapEl.style.touchAction="pan-y";}},{passive:true});
-      }L.tileLayer(tileToken?`https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d0562bb6d/{z}/{x}/{y}.png?access-token=${encodeURIComponent(tileToken)}`:"https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:tileToken?'© Jawg Maps © OpenStreetMap':'© OpenStreetMap'}).addTo(map);
-        if(!L.markerClusterGroup){try{await new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js";s.onload=resolve;s.onerror=reject;document.head.appendChild(s);});}catch{}}
-        layer=L.markerClusterGroup?L.markerClusterGroup({showCoverageOnHover:false,iconCreateFunction:c=>L.divIcon({className:"gv-home-cluster",html:`<span>${c.getChildCount()} homes</span>`,iconSize:[78,32]})}):L.layerGroup();layer.addTo(map);
-        const points=results.markers;points.forEach(l=>{const marker=L.marker([l.lat,l.lng],{icon:L.divIcon({className:"gv-home-pin",html:'<span aria-hidden="true">⌂</span>',iconSize:[28,28]})});marker.bindTooltip(`${esc(l.price)} · ${esc(l.address)}`);marker.on("click",()=>openListing(l.id).catch(showError));layer.addLayer(marker);});map.invalidateSize();if(points.length)map.fitBounds(L.latLngBounds(points.map(l=>[l.lat,l.lng])),{padding:[40,40],maxZoom:14});else map.setView([48.45,-123.38],11);
-      }else map.invalidateSize();}catch(e){showError(e);}
-    });
-  })();
-  </script>
-</Layout>
+<CityHomepage marketCity="greater-victoria" />

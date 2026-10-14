@@ -14,10 +14,17 @@ import "../../styles/intent-modal.css";
 import "../../styles/page-hero.css";
 import { getNavIntentPages } from "../../lib/getNavIntentPages";
 import { getAgentForSite } from "../../lib/getAgentForSite";
+import { loadGreaterVictoriaData, regionCityKeys, regionDistricts } from "../../lib/greaterVictoria";
+import { greaterVictoriaHomepageBoundaries, greaterVictoriaHomepageListing } from "../../lib/greaterVictoriaHomepage";
+import { GET as getGreaterVictoriaListings } from "../api/greater-victoria-listings";
 
 export const prerender = false;
 
-const routeCity = String(Astro.params.city || "nanaimo").toLowerCase();
+interface Props { marketCity?: string; }
+const routeCity = String(Astro.props.marketCity || Astro.params.city || "nanaimo").toLowerCase();
+const isGreaterVictoriaMarket = routeCity === "greater-victoria";
+const isGreaterVictoriaDistrictMarket = regionDistricts.some((district) => district.slug === routeCity);
+const greaterVictoriaData = isGreaterVictoriaMarket ? await loadGreaterVictoriaData() : null;
 
 const cityLabel = routeCity
   .replace(/-/g, " ")
@@ -25,7 +32,8 @@ const cityLabel = routeCity
 
 const cityDatabaseKeys = Array.from(
   new Set(
-    ["saanich-east", "saanich-west"].includes(routeCity) ? [routeCity, routeCity.replace(/-/g, " "), "saanich"]
+    isGreaterVictoriaMarket ? regionCityKeys
+      : ["saanich-east", "saanich-west"].includes(routeCity) ? [routeCity, routeCity.replace(/-/g, " "), "saanich"]
       : routeCity === "comox"
         ? ["comox", "courtenay", "cumberland", "black creek", "merville", "union bay", "fanny bay", "royston", "denman island"]
         : [routeCity, routeCity.replace(/-/g, " ")]
@@ -143,7 +151,7 @@ const {
     new_listings,
     sales
   `)
-  .in("city", cityDatabaseKeys)
+  .in("city", isGreaterVictoriaMarket ? [routeCity] : cityDatabaseKeys)
   .not("median_days_on_market", "is", null)
   .order("month_start", { ascending: false })
   .limit(15);
@@ -306,7 +314,9 @@ const homepageMarketRead = (() => {
 const {
   data: waterfrontInventoryRows,
   error: waterfrontInventoryError,
-} = await supabase
+} = isGreaterVictoriaMarket
+  ? { data: greaterVictoriaData.listings.filter((row: any) => row.waterfront === true), error: null }
+  : await supabase
   .from("listing_rows")
   .select("waterfront_type")
   .eq("status", "A")
@@ -369,7 +379,9 @@ const normalizeViewCategory = (value: unknown) => {
 const {
   data: viewInventoryRows,
   error: viewInventoryError,
-} = await supabase
+} = isGreaterVictoriaMarket
+  ? { data: greaterVictoriaData.listings.filter((row: any) => row.view_type), error: null }
+  : await supabase
   .from("listing_rows")
   .select("view_type")
   .eq("status", "A")
@@ -502,7 +514,9 @@ if (reservedRootRoutes.has(routeCity)) {
 const {
   data: cityValidationRow,
   error: cityValidationError,
-} = await supabase
+} = isGreaterVictoriaMarket
+  ? { data: greaterVictoriaData.listings[0] || null, error: null }
+  : await supabase
   .from("listing_rows")
   .select("normalized_city")
   .in("normalized_city", cityDatabaseKeys)
@@ -525,15 +539,36 @@ const {
 } = await supabase
   .from("sites")
   .select("*")
-  .in("city", cityDatabaseKeys)
+  .in("city", isGreaterVictoriaMarket ? ["greater-victoria", "greater victoria"] : cityDatabaseKeys)
   .eq("domain", effectiveSiteDomain)
   .maybeSingle();
 
 const useRouteOnlySiteSettings =
-  ["saanich-east", "saanich-west"].includes(routeCity);
+  isGreaterVictoriaMarket || ["saanich-east", "saanich-west"].includes(routeCity);
 
 let siteRow = exactSiteRow;
 let siteError = exactSiteError;
+
+// Prefer Greater Victoria's own record, then Victoria's configured agent/hero.
+if (isGreaterVictoriaMarket && !siteRow && !siteError) {
+  const fallback = await supabase.from("sites").select("*")
+    .eq("domain", effectiveSiteDomain).in("city", ["victoria"])
+    .limit(1).maybeSingle();
+  siteRow = fallback.data;
+  siteError = fallback.error;
+}
+if (isGreaterVictoriaMarket && siteRow) {
+  const images = siteRow.hero_images_by_city || {};
+  siteRow = {
+    ...siteRow,
+    city: routeCity,
+    site_name: `${cityLabel} Homes`,
+    hero_images_by_city: {
+      ...images,
+      [routeCity]: images[routeCity] || images.victoria || [],
+    },
+  };
+}
 
 if (
   !siteRow &&
@@ -1155,7 +1190,9 @@ if (!isNetworkHomepage) {
 
 const { data: intentPageRows } = await intentPagesQuery;
 
-const { data: relatedIntentCardInventory = [] } = await supabase
+const { data: relatedIntentCardInventory = [] } = isGreaterVictoriaMarket
+  ? { data: greaterVictoriaData.listings }
+  : await supabase
   .from("listing_rows")
   .select("normalized_type, property_type, normalized_area, price, waterfront, waterfront_type, view_type")
   .in("normalized_city", cityDatabaseKeys)
@@ -1343,7 +1380,9 @@ let areaListingCounts = new Map<string, number>();
 let homeMapAreaBoundaries: any[] = [];
 
 try {
-   const { data: boundaries = [] } = await supabase
+   const { data: boundaries = [] } = isGreaterVictoriaMarket
+    ? { data: greaterVictoriaHomepageBoundaries(greaterVictoriaData) }
+    : await supabase
     .from("area_boundaries")
     .select("area_slug, area_name, polygon_geojson")
     .in("city", cityDatabaseKeys);
@@ -1391,7 +1430,9 @@ const getMobileHomePark = (listing: any) => {
 };
 
 const { data: areaListingRows = [], error: areaListingRowsError } =
-  await supabase
+  isGreaterVictoriaMarket
+    ? { data: greaterVictoriaData.listings, error: null }
+    : await supabase
     .from("listing_rows")
     .select("lat,lng")
     .eq("status", "A")
@@ -1467,7 +1508,9 @@ const listingsForAreaCounts: any[] = areaListingRows || [];
 
     if (!slug || !allowedAreas.includes(slug)) return;
 
-    const count = (listingsForAreaCounts || []).filter((listing: any) =>
+    const count = isGreaterVictoriaMarket
+      ? Number(boundary.__gvCount || 0)
+      : (listingsForAreaCounts || []).filter((listing: any) =>
       polygonContainsPoint(
         boundary.polygon_geojson,
         Number(listing.lat),
@@ -1514,13 +1557,25 @@ const listingsForAreaCounts: any[] = areaListingRows || [];
     return {
       name: slug,
       count: areaCounts.get(slug) || 0,
-href: `/${city || "nanaimo"}/${String(boundary.area_slug || slug.replace(/\s+/g, "-")).trim()}`,
+href: boundary.home_href || `/${city || "nanaimo"}/${String(boundary.area_slug || slug.replace(/\s+/g, "-")).trim()}`,
     };
   })
   .filter((card) => card.count > 0)
   .sort((a, b) => b.count - a.count)
   .slice(0, 7);
 } catch {}
+
+// The regional page chooses a district. Neighbourhoods belong on district sites.
+if (isGreaterVictoriaMarket) {
+  areaOptions = greaterVictoriaData.districts.map((district: any) => district.slug.replace(/-/g, " "));
+  navAreaOptions = [...areaOptions];
+  areaListingCounts = new Map(greaterVictoriaData.districts.map((district: any) =>
+    [district.slug.replace(/-/g, " "), district.count]
+  ));
+  homepageAreaCards = greaterVictoriaData.districts.map((district: any) => ({
+    name: district.name, count: district.count, href: `/${district.slug}/`,
+  })).sort((a: any, b: any) => b.count - a.count || a.name.localeCompare(b.name));
+}
 
 const newMatchIds = Array.from(
   new Set(
@@ -1544,6 +1599,33 @@ let homepageListingTotal = 0;
 let errorMessage = "";
 
 try {
+  if (isGreaterVictoriaMarket) {
+    const apiUrl = new URL("/api/greater-victoria-listings", Astro.url);
+    apiUrl.search = Astro.url.search;
+    apiUrl.searchParams.set("city", routeCity);
+    apiUrl.searchParams.set("limit", "48");
+    apiUrl.searchParams.delete("offset");
+    apiUrl.searchParams.delete("facets");
+    apiUrl.searchParams.delete("countOnly");
+    // Shared city URLs express budgets in thousands; the listing API uses dollars.
+    for (const key of ["minPrice", "maxPrice"]) {
+      const amount = Number(apiUrl.searchParams.get(key) || 0);
+      if (amount > 0 && amount < 20000) apiUrl.searchParams.set(key, String(amount * 1000));
+    }
+    if (areas.length > 1) {
+      apiUrl.searchParams.delete("area");
+      apiUrl.searchParams.set("areas", areas.join("|"));
+    }
+    const response = await getGreaterVictoriaListings({ request: new Request(apiUrl) } as any);
+    if (!response.ok) throw new Error("Could not load Greater Victoria listings.");
+    const result = await response.json();
+    const rawById = new Map(greaterVictoriaData.listings.map((row: any) => [String(row.id), row]));
+    listings = result.listings.map((row: any) =>
+      greaterVictoriaHomepageListing(row, rawById.get(String(row.id)))
+    );
+    homepageInventory = greaterVictoriaData.listings;
+    homepageListingTotal = result.total;
+  } else {
   let cardQuery =
     supabase
       .from("listing_rows")
@@ -1685,6 +1767,7 @@ if (areas.length > 0) {
 
 
 
+}
 } catch (error: any) {
   errorMessage = error?.message || "Could not load listings.";
 }
@@ -1780,7 +1863,9 @@ if (isNanaimoMobilesSite) {
   homepageListingTotal = homepageInventory.length;
 }
 
-const homepageListingCount = homepageListingTotal || homepageInventory.length;
+const homepageListingCount = isGreaterVictoriaMarket
+  ? homepageListingTotal
+  : homepageListingTotal || homepageInventory.length;
 
 const homepageSearchTypeCounts = new Map<string, number>();
 
@@ -2027,6 +2112,16 @@ const priceBandOptions =
   priceBandOptionsByType[activeInventoryType] ||
   priceBandOptionsByType.all;
 
+// Retain a carried budget even when this district's suggested bands differ.
+if (isGreaterVictoriaDistrictMarket && url.searchParams.get("from") === "greater-victoria") {
+  if (maxPrice > 0 && !priceBandOptions.some((band: any) => band.kind === "under" && band.threshold === maxPrice)) {
+    priceBandOptions.unshift({ value: String(maxPrice), threshold: maxPrice, kind: "under", label: `Under ${formatPriceBand(maxPrice * 1000)}` });
+  }
+  if (minPrice > 0 && !maxPrice && !priceBandOptions.some((band: any) => band.kind === "over" && band.threshold === minPrice)) {
+    priceBandOptions.unshift({ value: `over-${minPrice}`, threshold: minPrice, kind: "over", label: `Over ${formatPriceBand(minPrice * 1000)}` });
+  }
+}
+
 const bedroomOptions =
   bedroomOptionsByType[activeInventoryType] ||
   bedroomOptionsByType.all ||
@@ -2256,7 +2351,9 @@ if (featuredListingMls) {
   }
 
   selectedFeaturedListing =
-    featuredListingRow ||
+    (isGreaterVictoriaMarket
+      ? greaterVictoriaData.listings.find((row: any) => String(row.mls_number || "").trim() === featuredListingMls)
+      : featuredListingRow) ||
     listings.find(
       (listing: any) =>
         String(listing?.mls_number || "").trim() === featuredListingMls
@@ -2307,7 +2404,11 @@ const featuredPrice = featuredPriceNumber > 0
   : "View price";
 
 const featuredArea =
-  routeCity === "saanich-east" ? "Saanich East" : routeCity === "saanich-west" ? "Saanich West" : String(
+  isGreaterVictoriaMarket
+    ? String(getListingArea(featuredListing || {}) || "").trim().toLowerCase() === "unknown"
+      ? titleCase(featuredListing?.__gvDistrict || featuredListing?.normalized_city || city)
+      : getListingArea(featuredListing || {}) || titleCase(featuredListing?.normalized_city || city)
+    : routeCity === "saanich-east" ? "Saanich East" : routeCity === "saanich-west" ? "Saanich West" : String(
         featuredListing?.normalized_area ||
         featuredListing?.area ||
         featuredListing?.neighbourhood ||
@@ -2450,7 +2551,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
           href={`/${city || "nanaimo"}/areas`}
           class="locus-btn locus-btn--secondary"
         >
-          Browse neighbourhoods
+          {isGreaterVictoriaMarket ? "Browse districts" : "Browse neighbourhoods"}
         </a>
       </div>
     </div>
@@ -2757,6 +2858,9 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
     method="get"
     action={`/${city || "nanaimo"}`}
   >
+    {isGreaterVictoriaDistrictMarket && (
+      <a class="gv-return-link" data-gv-return href="/greater-victoria/">&larr; All Greater Victoria</a>
+    )}
     {isLocal && (
       <input
         type="hidden"
@@ -2794,6 +2898,23 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
     </strong>
   </div>
 )}
+{isGreaterVictoriaMarket ? (
+<div class="locus-home-search__field area-multiselect" data-gv-district-navigation>
+  <span>District</span>
+  <button type="button" class="area-multiselect__trigger" data-gv-district-trigger aria-expanded="false" aria-controls="gv-district-menu">
+    <span>Choose a district</span><span class="area-multiselect__chevron" aria-hidden="true">&#8964;</span>
+  </button>
+  <div id="gv-district-menu" class="area-multiselect__menu" data-gv-district-menu hidden>
+    <div class="area-multiselect__scroll">
+      {greaterVictoriaData.districts.map((district: any) => (
+        <a class="area-multiselect__option" data-gv-district-link href={`/${district.slug}/`}>
+          <span>{district.name}</span><span class="area-multiselect__count">{district.count}</span><span aria-hidden="true">&rarr;</span>
+        </a>
+      ))}
+    </div>
+  </div>
+</div>
+) : (
 <div class="locus-home-search__field area-multiselect"
       data-area-multiselect
     >
@@ -2879,6 +3000,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
         </div>
       </div>
     </div>
+)}
 
 {isNanaimoMobilesSite && (
   <select name="type" hidden aria-hidden="true" tabindex="-1" style="display: none !important;">
@@ -4091,7 +4213,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
     <span class="locus-home-section-kicker">{cityName.toUpperCase()} HOME SEARCH</span>
     <h2>Find your next home</h2>
     <p>
-      Explore {cityName} by neighbourhood or home type. See what is available now, then narrow in on the places that fit.
+      Explore {cityName} by {isGreaterVictoriaMarket ? "district" : "neighbourhood"} or home type. See what is available now, then narrow in on the places that fit.
     </p>
     <a href={`/${city || "nanaimo"}`}>Explore all {cityName} listings &rarr;</a>
   </div>
@@ -4111,7 +4233,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
         aria-controls="explore-panel-areas"
         data-explore-tab="areas"
       >
-        Neighbourhoods
+        {isGreaterVictoriaMarket ? "Districts" : "Neighbourhoods"}
       </button>
 
       {!isNanaimoMobilesSite && (
@@ -4158,7 +4280,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
           href={`/${city || "nanaimo"}/areas`}
           class="locus-home-neighbourhood-card locus-home-neighbourhood-card--all"
         >
-          <strong>Every {cityName} neighbourhood</strong>
+          <strong>{isGreaterVictoriaMarket ? "All Greater Victoria districts" : `Every ${cityName} neighbourhood`}</strong>
           <span>Browse all areas</span>
           <b aria-hidden="true">&rarr;</b>
         </a>
@@ -5024,8 +5146,8 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 <input type="hidden" name="minPrice" value={minPrice || ""} />
 <input type="hidden" name="storyMaxPrice" value="" />
 <input type="hidden" name="storyAreas" value={areas.join("|")} />
-<select name="area" class="filter-select" aria-label="Area">
-  <option value="" selected={!area}>All Areas</option>
+<select name="area" class="filter-select" aria-label={isGreaterVictoriaMarket ? "Choose a district" : "Area"} data-gv-district-select={isGreaterVictoriaMarket ? "" : undefined}>
+  <option value="" selected={!area}>{isGreaterVictoriaMarket ? "All Greater Victoria" : "All Areas"}</option>
   {areaOptions.map((areaOption) => (
     <option value={areaOption} selected={area === areaOption}>
       {areaOption.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())}
@@ -7945,13 +8067,21 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
           heroTypeSelect.value
         );
 
-      const bands =
+      let bands =
         priceBandsByType[inventoryType] ||
         priceBandsByType.all ||
         [];
 
       const selectedValue =
         reset ? "" : heroPriceSelect.value;
+
+      if (!reset && selectedValue && new URLSearchParams(location.search).get("from") === "greater-victoria" && !bands.some((band) => String(band.value) === selectedValue)) {
+        const over = selectedValue.match(/^over-(\d+)$/);
+        const amount = Number(over ? over[1] : selectedValue);
+        if (Number.isFinite(amount) && amount > 0) {
+          bands = [{ value: selectedValue, label: `${over ? "Over" : "Under"} $${(amount * 1000).toLocaleString("en-CA")}` }, ...bands];
+        }
+      }
 
       rebuildSelectOptions(
         heroPriceSelect,
@@ -19945,5 +20075,91 @@ html[data-theme="dark"] #home-hero-search.locus-home-search > :is(
   } else {
     start();
   }
+})();
+</script>
+<style>
+  .gv-return-link { grid-column: 1 / -1; justify-self: start; font-size: 12px; font-weight: 600; color: var(--locus-ink, #122b3a); text-decoration: none; padding: 4px 0 8px; }
+  .gv-return-link:hover { text-decoration: underline; }
+  [data-gv-district-link] { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
+  [data-gv-district-link] > span:first-child { flex: 1; }
+</style>
+<script is:inline>
+(() => {
+  if (window.__gvDistrictNavigationInstalled) return;
+  window.__gvDistrictNavigationInstalled = true;
+  const districts = new Set(["victoria", "saanich-east", "saanich-west", "oak-bay", "esquimalt", "view-royal", "colwood", "langford", "highlands", "metchosin", "sooke", "central-saanich", "north-saanich", "sidney"]);
+  const keys = ["type", "minPrice", "maxPrice", "beds", "baths", "sort", "minSqft", "minYear", "primaryOnMain", "threeSameFloor", "fourSameFloor", "planMode", "viewType", "oceanViews", "waterfrontType", "waterfront", "age55", "otherPark", "petsAllowed", "siteDomain"];
+  function currentFilters() {
+    const params = new URLSearchParams(location.search);
+    const hero = document.getElementById("home-hero-search");
+    const results = document.getElementById("home-filter-form");
+    const value = (name) => {
+      const field = hero?.elements.namedItem(name) || results?.elements.namedItem(name);
+      if (!field) return params.get(name) || "";
+      if (field.type === "checkbox") return field.checked ? field.value : "";
+      return String(field.value || "");
+    };
+    const next = new URLSearchParams();
+    for (const key of keys) { const val = value(key); if (val && val !== "0" && val !== "false") next.set(key, val); }
+    const price = next.get("maxPrice") || "";
+    const over = price.match(/^over-(\d+)$/);
+    if (over) { next.delete("maxPrice"); next.set("minPrice", over[1]); }
+    const budget = Number(results?.elements.namedItem("storyMaxPrice")?.value || 0);
+    if (budget) { next.set("minPrice", String(Math.round(budget * .85))); next.set("maxPrice", String(Math.round(budget * 1.15))); }
+    const beds = next.get("beds") || "";
+    if (["primary-on-main", "three-same-floor", "four-same-floor"].includes(beds)) { next.delete("beds"); next.set("planMode", beds); }
+    if (next.get("type") === "homes") next.set("type", "house");
+    return next;
+  }
+  function destination(slug) {
+    const params = currentFilters();
+    if (slug) params.set("from", "greater-victoria");
+    const path = slug ? `/${slug}/` : "/greater-victoria/";
+    return path + (params.size ? `?${params}` : "");
+  }
+  function closeMenu() {
+    const menu = document.querySelector("[data-gv-district-menu]");
+    const trigger = document.querySelector("[data-gv-district-trigger]");
+    if (menu) menu.hidden = true;
+    document.querySelector("[data-gv-district-navigation]")?.classList.remove("is-open");
+    trigger?.setAttribute("aria-expanded", "false");
+  }
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-gv-district-trigger]");
+    if (trigger) {
+      const menu = document.querySelector("[data-gv-district-menu]");
+      if (menu) { menu.hidden = !menu.hidden; trigger.closest("[data-gv-district-navigation]")?.classList.toggle("is-open", !menu.hidden); trigger.setAttribute("aria-expanded", String(!menu.hidden)); }
+      return;
+    }
+    const link = event.target.closest("a");
+    if (link && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.button === 0 && !link.target && !link.hasAttribute("download")) {
+      if (link.matches("[data-gv-return]")) {
+        event.preventDefault(); event.stopImmediatePropagation(); location.assign(destination("")); return;
+      }
+      if (document.querySelector("[data-gv-district-navigation]")) {
+        const url = new URL(link.href, location.href);
+        const match = url.pathname.match(/^\/(?:greater-victoria\/)?([a-z-]+)\/?$/);
+        if (url.origin === location.origin && match && districts.has(match[1])) {
+          event.preventDefault(); event.stopImmediatePropagation(); location.assign(destination(match[1])); return;
+        }
+      }
+    }
+    if (!event.target.closest("[data-gv-district-navigation]")) closeMenu();
+  }, true);
+  document.addEventListener("change", (event) => {
+    if (!event.target.matches("[data-gv-district-select]")) return;
+    const slug = String(event.target.value || "").replace(/\s+/g, "-");
+    if (!districts.has(slug)) return;
+    event.preventDefault(); event.stopImmediatePropagation(); location.assign(destination(slug));
+  }, true);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && document.querySelector("[data-gv-district-menu]:not([hidden])")) {
+      closeMenu(); document.querySelector("[data-gv-district-trigger]")?.focus();
+    }
+    if (event.key === "ArrowDown" && event.target.matches("[data-gv-district-trigger]")) {
+      event.preventDefault(); const menu = document.querySelector("[data-gv-district-menu]");
+      if (menu) { menu.hidden = false; event.target.closest("[data-gv-district-navigation]")?.classList.add("is-open"); event.target.setAttribute("aria-expanded", "true"); menu.querySelector("a")?.focus(); }
+    }
+  });
 })();
 </script>

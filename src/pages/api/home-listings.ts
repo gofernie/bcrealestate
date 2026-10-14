@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { createClient } from "@supabase/supabase-js";
 import { mobileHomeParks } from "../../data/mobileHomeParks";
+import { GET as getGreaterVictoriaListings } from "./greater-victoria-listings";
 
 export const prerender = false;
 
@@ -323,6 +324,8 @@ const getMobileHomePark = (address: unknown) => {
 export const GET: APIRoute = async ({ request }) => {
   const url = new URL(request.url);
   const city = String(url.searchParams.get("city") || "nanaimo").trim().toLowerCase();
+  // The shared homepage keeps one API URL; regional requests use the existing regional data pipeline.
+  if (city === "greater-victoria") return getGreaterVictoriaListings({ request } as any);
   const cityDatabaseKeys =
     ["saanich-east", "saanich-west"].includes(city)
       ? [city, city.replace(/-/g, " "), "saanich"]
