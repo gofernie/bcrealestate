@@ -124,7 +124,7 @@ export async function loadGreaterVictoriaData() {
       }
     }
     const [rawListings, boundaries] = await Promise.all([
-      readAll("listing_rows","id,mls_number,updated_at,created_at,normalized_city,normalized_area,normalized_type,property_type,price,lat,lng","normalized_city",regionCityKeys,true),
+      readAll("listing_rows","*","normalized_city",regionCityKeys,true),
       readAll("area_boundaries","id,city,area_slug,area_name,polygon_geojson","city",regionCityKeys),
     ]);
     const byMls = new Map<string,any>();
