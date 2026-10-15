@@ -13246,14 +13246,39 @@ document.documentElement.style.visibility = "";
         // The server-rendered controls remain a complete fallback.
       }
     };
+    let facetsRequested = false;
 
     const schedule = () => {
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(loadFacets);
-      });
+      if (facetsRequested) return;
+      facetsRequested = true;
+      void loadFacets();
     };
 
-    if (document.readyState === "loading") {
+    const form = document.getElementById("home-filter-form");
+    const currentCity = String(
+      form?.elements?.city?.value || ""
+    ).trim().toLowerCase().replace(/\s+/g, "-");
+
+    // Greater Victoria's regional aggregation is intentionally deferred
+    // until the visitor first uses a search control.
+    if (currentCity === "greater-victoria") {
+      const loadOnFirstFilterIntent = () => {
+        schedule();
+        form?.removeEventListener("pointerdown", loadOnFirstFilterIntent);
+        form?.removeEventListener("focusin", loadOnFirstFilterIntent);
+        form?.removeEventListener("change", loadOnFirstFilterIntent);
+      };
+
+      form?.addEventListener("pointerdown", loadOnFirstFilterIntent, {
+        once: true,
+      });
+      form?.addEventListener("focusin", loadOnFirstFilterIntent, {
+        once: true,
+      });
+      form?.addEventListener("change", loadOnFirstFilterIntent, {
+        once: true,
+      });
+    } else if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", schedule, {
         once: true,
       });
