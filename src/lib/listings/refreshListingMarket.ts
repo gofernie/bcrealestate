@@ -359,6 +359,38 @@ export async function refreshListingMarket(
     const allListings: any[] = [];
     const seen = new Set<string>();
 
+    // bc-alberta-listing-boundary-v1
+    // City names are ambiguous across Canadian boards, so validate
+    // each listing's actual map coordinates before saving it.
+    const isBcOrAlbertaListing = (listing: any) => {
+      const lat = Number(
+        listing?.map?.latitude ??
+        listing?.map?.lat ??
+        listing?.latitude ??
+        listing?.lat
+      );
+      const lng = Number(
+        listing?.map?.longitude ??
+        listing?.map?.lng ??
+        listing?.longitude ??
+        listing?.lng
+      );
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return false;
+      }
+
+      const inBritishColumbia =
+        lat >= 48.0 && lat <= 60.1 &&
+        lng >= -139.3 && lng <= -114.0;
+
+      const inAlberta =
+        lat >= 48.9 && lat <= 60.1 &&
+        lng >= -120.1 && lng <= -109.2;
+
+      return inBritishColumbia || inAlberta;
+    };
+
     for (const fetchCity of citiesToFetch) {
       let page = 1;
 
@@ -421,6 +453,15 @@ export async function refreshListingMarket(
           listings.length;
 
         for (const listing of listings) {
+          if (!isBcOrAlbertaListing(listing)) {
+            console.warn(
+              `Skipping non-BC/Alberta listing returned for ${fetchCity}: ${
+                getListingId(listing) || "unknown listing"
+              }`
+            );
+            continue;
+          }
+
           const id = getListingId(listing);
 
           if (!id || seen.has(id)) {

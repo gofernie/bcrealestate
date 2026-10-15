@@ -11184,7 +11184,7 @@ Approximate driving times from{" "}
       );
     });
   </script>
-{areaFilterOptions.length > 0 && (
+{pageKind !== "area" && areaFilterOptions.length > 0 && (
   <select
     class="area-filter-select"
     aria-label="Filter by area"
@@ -16072,10 +16072,71 @@ document.getElementById("toggle-listings-btn")?.addEventListener("click", functi
   <script is:inline>
 const areaSelect = document.querySelector(".area-filter-select");
 const priceSelect = document.querySelector(".price-filter-select");
+
+/* Restore the price bands if client navigation leaves only Any Price. */
+if (priceSelect instanceof HTMLSelectElement && priceSelect.options.length < 2) {
+  const requestedPrice = new URLSearchParams(window.location.search).get("price") || "all";
+  const priceChoices = [
+    ["all", "Any Price"],
+    ["under-450", "Under $450k"],
+    ["450-650", "$450k - $650k"],
+    ["650-850", "$650k - $850k"],
+    ["850-1100", "$850k - $1.1M"],
+    ["1100-plus", "$1.1M+"],
+  ];
+
+  priceSelect.replaceChildren(
+    ...priceChoices.map(([value, label]) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      return option;
+    })
+  );
+
+  priceSelect.value = priceChoices.some(([value]) => value === requestedPrice)
+    ? requestedPrice
+    : "all";
+}
 const typeSelect = document.querySelector(".type-filter-select");
+
+/* Keep the complete Type menu after a type has been selected. */
+if (typeSelect instanceof HTMLSelectElement && typeSelect.options.length < 3) {
+  const requestedType = new URLSearchParams(window.location.search).get("type") || "all";
+  const typeChoices = [
+    ["all", "Any type"],
+    ["house", "Homes"],
+    ["condo", "Condos"],
+    ["townhouse", "Townhomes"],
+    ["mobile", "Mobile homes"],
+    ["land", "Lots and land"],
+  ];
+
+  typeSelect.replaceChildren(
+    ...typeChoices.map(([value, label]) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      return option;
+    })
+  );
+
+  typeSelect.value = typeChoices.some(([value]) => value === requestedType)
+    ? requestedType
+    : "all";
+}
 const sortSelect = document.querySelector(".sort-filter-select");
 const bedsSelect = document.querySelector(".beds-filter-select");
 const bathsSelect = document.querySelector(".baths-filter-select");
+
+/* Keep the primary filter order consistent: Type, Price, Beds, Baths. */
+if (
+  typeSelect instanceof HTMLElement &&
+  priceSelect instanceof HTMLElement &&
+  typeSelect.parentElement === priceSelect.parentElement
+) {
+  typeSelect.insertAdjacentElement("afterend", priceSelect);
+}
 
 const minSqftSelect =
   document.querySelector(".min-sqft-filter-select");
@@ -21318,7 +21379,20 @@ document.addEventListener("click", (event) => {
 
     const options =
       fernieOwnershipOptions() ||
-      regularOptions(getPrices());
+      (() => {
+        const prices = getPrices();
+
+        return prices.length
+          ? regularOptions(prices)
+          : [
+              { label: "Any Price", value: "all" },
+              { label: "Under $450k", value: "under-450" },
+              { label: "$450k - $650k", value: "450-650" },
+              { label: "$650k - $850k", value: "650-850" },
+              { label: "$850k - $1.1M", value: "850-1100" },
+              { label: "$1.1M+", value: "1100-plus" },
+            ];
+      })();
 
     priceSelect.replaceChildren();
 
@@ -21353,6 +21427,91 @@ document.addEventListener("click", (event) => {
 })();
 </script>
 <script is:inline>
+  /* Keep filter menus usable after inventory-aware controls rebuild. */
+  (() => {
+    const syncMenu = (select, kind) => {
+      if (!(select instanceof HTMLSelectElement)) return;
+
+      const dropdown = select.parentElement?.querySelector(`.filter-dd--${kind}`);
+      const menu = dropdown?.querySelector(".filter-dd__menu");
+      const value = dropdown?.querySelector(".filter-dd__value");
+      if (!dropdown || !menu || !value) return;
+
+      menu.querySelectorAll(".filter-dd__option").forEach((button) => button.remove());
+
+      Array.from(select.options).forEach((option) => {
+        const button = document.createElement("button");
+        const text = document.createElement("span");
+        const check = document.createElement("span");
+
+        button.type = "button";
+        button.className = "filter-dd__option";
+        button.dataset.value = option.value;
+        text.textContent = option.textContent || option.value;
+        check.className = "filter-dd__check";
+        check.textContent = "✓";
+
+        button.append(text, check);
+        button.addEventListener("click", () => {
+          select.value = option.value;
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+          dropdown.classList.remove("is-open");
+        });
+
+        menu.appendChild(button);
+      });
+
+      const selected = select.options[select.selectedIndex] || select.options[0];
+      value.textContent = selected?.textContent || "";
+      menu.querySelectorAll(".filter-dd__option").forEach((button) => {
+        button.classList.toggle("is-selected", button.dataset.value === select.value);
+      });
+    };
+
+    const repairFilters = () => {
+      const type = document.querySelector(".type-filter-select");
+      const price = document.querySelector(".price-filter-select");
+
+      if (type instanceof HTMLSelectElement && type.options.length < 3) {
+        const selected = new URLSearchParams(location.search).get("type") || type.value || "all";
+        const choices = [
+          ["all", "Any type"],
+          ["house", "Homes"],
+          ["condo", "Condos"],
+          ["townhouse", "Townhomes"],
+          ["mobile", "Mobile homes"],
+          ["land", "Lots and land"],
+        ];
+
+        type.replaceChildren(...choices.map(([value, label]) => new Option(label, value)));
+        type.value = choices.some(([value]) => value === selected) ? selected : "all";
+      }
+
+      if (price instanceof HTMLSelectElement && price.options.length < 2) {
+        const selected = new URLSearchParams(location.search).get("price") || price.value || "all";
+        const choices = [
+          ["all", "Any Price"],
+          ["under-450", "Under $450k"],
+          ["450-650", "$450k - $650k"],
+          ["650-850", "$650k - $850k"],
+          ["850-1100", "$850k - $1.1M"],
+          ["1100-plus", "$1.1M+"],
+        ];
+
+        price.replaceChildren(...choices.map(([value, label]) => new Option(label, value)));
+        price.value = choices.some(([value]) => value === selected) ? selected : "all";
+      }
+
+      syncMenu(type, "type");
+      syncMenu(price, "price");
+    };
+
+    repairFilters();
+
+    document.querySelector(".type-filter-select")?.addEventListener("change", () => {
+      window.setTimeout(repairFilters, 0);
+    });
+  })();
   /* map-listing-modal-bridge-v1 */
   if (!window["__mapListingModalBridgeReady"]) {
     window["__mapListingModalBridgeReady"] = true;
