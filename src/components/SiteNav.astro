@@ -57,6 +57,16 @@ const slugify = (value: string) =>
     .replace(/\s+/g, "-");
 
 const isActive = (href: string) => {
+  const targetUrl = new URL(href, Astro.url);
+  const targetType = targetUrl.searchParams.get("type");
+  const currentType = Astro.url.searchParams.get("type");
+
+  if (targetType) {
+    return (
+      currentPath === (targetUrl.pathname.replace(/\/$/, "") || "/") &&
+      currentType === targetType
+    );
+  }
   const cleanHref = href.replace(/\/$/, "") || "/";
 
 if (
@@ -305,6 +315,24 @@ const finalNavLinks: NavItem[] =
       )
     : combinedNavLinks;
 
+const navHref = (item: NavItem) => {
+  const greaterVictoriaTypes: Record<string, string> = {
+    Homes: "house",
+    Condos: "condo",
+    Townhomes: "townhouse",
+    "Mobile Homes": "mobile",
+    "Lot / Land": "land",
+  };
+
+  const type = greaterVictoriaTypes[item.label];
+
+  return (
+    String(city).trim().toLowerCase() === "greater-victoria" && type
+      ? `/${slugify(city)}/?type=${type}#homepage-listings`
+      : item.href
+  );
+};
+
 const nanaimoMobileUtilityLinks: NavItem[] = [
   { label: "Park Directory", href: "/mobile-home-parks-in-nanaimo" },
   { label: "55+ Communities", href: "/mobile-home-parks-in-nanaimo?age=55-plus" },
@@ -405,12 +433,20 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
 </div>
 
    {finalNavLinks.map((item) => (
-  <a class:list={{ active: isActive(item.href) }} href={item.href}>
+  <a class:list={{ active: isActive(navHref(item)) }} href={navHref(item)}>
     {item.label}
   </a>
 ))}
 {isNanaimoMobilesSite && nanaimoMobileUtilityLinks.map((item) => (
-  <a class:list={{ active: isActive(item.href) }} href={item.href}>
+  <a
+    class:list={{ active: isActive(item.href) }}
+    href={
+      String(city).trim().toLowerCase() === "greater-victoria" &&
+      item.href.includes("?type=")
+        ? `${item.href}#homepage-listings`
+        : item.href
+    }
+  >
     {item.label}
   </a>
 ))}
@@ -431,7 +467,15 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
   <div class="site-subnav">
     <div class="shell site-subnav__inner">
       {areaLinks.map((item) => (
-        <a class:list={{ active: isActive(item.href) }} href={item.href}>
+        <a
+    class:list={{ active: isActive(item.href) }}
+    href={
+      String(city).trim().toLowerCase() === "greater-victoria" &&
+      item.href.includes("?type=")
+        ? `${item.href}#homepage-listings`
+        : item.href
+    }
+  >
           {item.label}
         </a>
       ))}
@@ -1152,3 +1196,165 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
     filter: brightness(.97);
   }
 </style>
+<script is:inline>
+  // greater-victoria-listings-anchor-v1
+  (() => {
+    const scrollToListings = () => {
+      if (
+        !location.pathname.replace(/\/$/, "").endsWith("/greater-victoria") ||
+        location.hash !== "#homepage-listings"
+      ) return;
+
+      const results = document.querySelector(".home-results-experience");
+      if (!results) return;
+
+      results.id = "listings";
+      results.style.scrollMarginTop = "9.5rem";
+
+      requestAnimationFrame(() => {
+        results.scrollIntoView({ block: "start" });
+      });
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", scrollToListings, { once: true });
+    } else {
+      scrollToListings();
+    }
+  })();
+</script>
+<script is:inline>
+  // greater-victoria-type-nav-and-anchor-v1
+  (() => {
+    const isGreaterVictoria = (pathname = location.pathname) =>
+      pathname.replace(/\/$/, "").endsWith("/greater-victoria");
+
+    const typeLabels = {
+      house: "Homes",
+      condo: "Condos",
+      townhouse: "Townhomes",
+      townhome: "Townhomes",
+      mobile: "Mobile Homes",
+      land: "Lot / Land",
+    };
+
+    const applyTypeNav = () => {
+      if (!isGreaterVictoria()) return;
+
+      const type = new URLSearchParams(location.search).get("type");
+      const activeLabel = typeLabels[type];
+      if (!activeLabel) return;
+
+      document.querySelectorAll(".site-nav__links a").forEach((link) => {
+        if (link.textContent.trim() === activeLabel) {
+          link.classList.add("active");
+          link.setAttribute("aria-current", "page");
+        }
+      });
+    };
+
+    document.addEventListener("click", (event) => {
+      const link = event.target.closest(".site-nav__links a[href]");
+      if (
+        !link ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) return;
+
+      const target = new URL(link.href, location.href);
+      if (!isGreaterVictoria(target.pathname) || !target.searchParams.has("type")) {
+        return;
+      }
+
+      event.preventDefault();
+      target.hash = "homepage-listings";
+      location.assign(target.href);
+    });
+
+    const scrollToListings = () => {
+      if (!isGreaterVictoria() || location.hash !== "#homepage-listings") return;
+
+      const deadline = performance.now() + 4000;
+      const findAndScroll = () => {
+        const results = document.querySelector(".home-results-experience");
+
+        if (results) {
+          results.id = "listings";
+          results.style.scrollMarginTop = "9.5rem";
+          results.scrollIntoView({ block: "start" });
+          return;
+        }
+
+        if (performance.now() < deadline) {
+          requestAnimationFrame(findAndScroll);
+        }
+      };
+
+      requestAnimationFrame(findAndScroll);
+    };
+
+    const start = () => {
+      applyTypeNav();
+      scrollToListings();
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", start, { once: true });
+    } else {
+      start();
+    }
+  })();
+</script>
+<script is:inline>
+  // greater-victoria-type-nav-capture-v1
+  (() => {
+    const isGreaterVictoria = (pathname) =>
+      pathname.replace(/\/$/, "").endsWith("/greater-victoria");
+
+    const typeLabels = {
+      house: "Homes",
+      condo: "Condos",
+      townhouse: "Townhomes",
+      townhome: "Townhomes",
+      mobile: "Mobile Homes",
+      land: "Lot / Land",
+    };
+
+    document.addEventListener("click", (event) => {
+      const link = event.target.closest(".site-nav__links a[href]");
+      if (
+        !link ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) return;
+
+      const target = new URL(link.href, location.href);
+      const type = target.searchParams.get("type");
+
+      if (!isGreaterVictoria(target.pathname) || !type) return;
+
+      // Update the visible pill immediately.
+      const selectedLabel = typeLabels[type];
+      if (selectedLabel) {
+        document.querySelectorAll(".site-nav__links a").forEach((item) => {
+          const selected = item.textContent.trim() === selectedLabel;
+          item.classList.toggle("active", selected);
+          if (selected) item.setAttribute("aria-current", "page");
+          else item.removeAttribute("aria-current");
+        });
+      }
+
+      // Run before Astro's client-side router so the real anchor is honoured.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      target.hash = "homepage-listings";
+      window.location.href = target.href;
+    }, true);
+  })();
+</script>
