@@ -8,7 +8,7 @@ export const prerender = false;
 const region = await loadGreaterVictoriaData();
 const site = await getSite(Astro.url.hostname,"victoria");
 const mapData = region.districts.map((d:any)=>({slug:d.slug,name:d.name,count:d.count,outline:d.outline,
-  areas:d.areas.map((a:any)=>({slug:a.area_slug,name:a.area_name,count:a.count,geometry:a.polygon_geojson}))}));
+  areas:d.areas.map((a:any)=>({slug:a.area_slug,name:a.area_name,count:a.count,geometry:a.map_geojson || a.polygon_geojson}))}));
 const safeJson = (value:any)=>JSON.stringify(value).replace(/</g,"\\u003c");
 ---
 <Layout title="Explore Greater Victoria Areas" city="greater-victoria" site={site} accentColor={site?.accent_color || "#2f6f73"}>
@@ -166,7 +166,12 @@ l.on("mouseout",()=>{
       if(overviewBounds.isValid())map.fitBounds(overviewBounds,{padding:[35,35]});else map.setView([48.45,-123.38],10);
       const requested=new URLSearchParams(location.search).get("district");if(requested)selectDistrict(requested);else updateLabels();
     }
-    init().catch(()=>showError("The map could not load. You can still choose a district from the directory."));
+    const startMap=()=>init().catch(()=>showError("The map could not load. You can still choose a district from the directory."));
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(startMap,{timeout:350});
+    } else {
+      setTimeout(startMap,0);
+    }
   })();
   </script>
 </Layout>

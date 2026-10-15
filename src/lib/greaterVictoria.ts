@@ -18,13 +18,41 @@ export const regionSlug = (value: unknown) => String(value || "").trim().toLower
   .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const areaKey = (value: unknown) => regionSlug(value).replace(/-neighbou?rhood$/, "");
 
+const regionPolygonCache = new Map<string, any[]>();
+
 export function regionPolygons(value: any): any[] {
-  if (typeof value === "string") { try { value = JSON.parse(value); } catch { return []; } }
-  if (!value) return [];
-  if (value.type === "FeatureCollection") return (value.features || []).flatMap(regionPolygons);
-  if (value.type === "Feature") return regionPolygons(value.geometry);
-  if (["Polygon", "MultiPolygon"].includes(value.type)) return [turf.feature(value)];
-  return [];
+  const cacheKey = typeof value === "string" ? value : "";
+  if (cacheKey && regionPolygonCache.has(cacheKey)) return regionPolygonCache.get(cacheKey)!;
+
+  let result: any[] = [];
+  if (typeof value === "string") {
+    try { value = JSON.parse(value); } catch {
+      if (cacheKey) regionPolygonCache.set(cacheKey, result);
+      return result;
+    }
+  }
+  if (!value) result = [];
+  else if (value.type === "FeatureCollection") result = (value.features || []).flatMap(regionPolygons);
+  else if (value.type === "Feature") result = regionPolygons(value.geometry);
+  else if (["Polygon", "MultiPolygon"].includes(value.type)) result = [turf.feature(value)];
+
+  if (cacheKey) regionPolygonCache.set(cacheKey, result);
+  return result;
+}
+
+function simplifyMapGeometry(value: any) {
+  const features = regionPolygons(value).map((feature) => {
+    try {
+      return turf.simplify(feature as any, {
+        tolerance: 0.00004,
+        highQuality: false,
+        mutate: false,
+      });
+    } catch {
+      return feature;
+    }
+  });
+  return features.length === 1 ? features[0] : turf.featureCollection(features);
 }
 export function regionContains(geometry: any, lat: unknown, lng: unknown) {
   const x = Number(lng), y = Number(lat);
@@ -96,8 +124,8 @@ export async function loadGreaterVictoriaData() {
       }
     }
     const [rawListings, boundaries] = await Promise.all([
-      readAll("listing_rows","*","normalized_city",regionCityKeys,true),
-      readAll("area_boundaries","id,city,area_slug,area_name,polygon_geojson,short_description","city",regionCityKeys),
+      readAll("listing_rows","id,mls_number,updated_at,created_at,normalized_city,normalized_area,normalized_type,property_type,price,lat,lng","normalized_city",regionCityKeys,true),
+      readAll("area_boundaries","id,city,area_slug,area_name,polygon_geojson","city",regionCityKeys),
     ]);
     const byMls = new Map<string,any>();
     for (const row of rawListings) {
@@ -113,9 +141,12 @@ export async function loadGreaterVictoriaData() {
     const districts = regionDistricts.map((district) => {
       // KML imports can legitimately contain an area with the same slug as
       // its district (for example, View Royal). Keep every drawn boundary.
-      const areas = boundaries.filter((row) =>
-        regionSlug(row.city) === district.slug
-      );
+      const areas = boundaries
+        .filter((row) => regionSlug(row.city) === district.slug)
+        .map((row) => ({
+          ...row,
+          map_geojson: simplifyMapGeometry(row.polygon_geojson),
+        }));
       const parent = boundaries.find((row) => regionSlug(row.area_slug) === district.slug && row.polygon_geojson);
       return {...district, areas, outline: districtExterior(dissolve(areas) ?? (parent ? regionPolygons(parent.polygon_geojson)[0] : null)), count:0};
     });
@@ -139,7 +170,7 @@ export async function loadGreaterVictoriaData() {
     const available = districts.filter((d) => d.count > 0 || d.areas.length > 0);
     const result = {listings, boundaries, districts:available,
       unassigned: listings.filter((row) => !row.__gvDistrict).length};
-    cache = {expires:Date.now()+30000,data:result};
+    cache = {expires:Date.now()+5*60*1000,data:result};
     return result;
   })();
   try { return await pending; } finally { pending = undefined; }
