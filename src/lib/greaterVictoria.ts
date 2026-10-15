@@ -2,7 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import * as turf from "@turf/turf";
 
 export const regionDistricts = [
-  ["victoria", "Victoria"], ["saanich-east", "Saanich East"],
+  ["victoria", "Victoria"], ["victoria-west", "Victoria West"],
+  ["saanich-east", "Saanich East"],
   ["saanich-west", "Saanich West"], ["oak-bay", "Oak Bay"],
   ["esquimalt", "Esquimalt"], ["view-royal", "View Royal"],
   ["colwood", "Colwood"], ["langford", "Langford"],
@@ -70,7 +71,10 @@ function dissolve(rows: any[]) {
   try { return (turf.union as any)(turf.featureCollection(polygons)); }
   catch {
     try { return polygons.slice(1).reduce((merged, next) => (turf.union as any)(merged,next),polygons[0]); }
-    catch { return null; }
+    catch {
+      // Keep every original neighbourhood shape visible if they cannot be dissolved.
+      return turf.featureCollection(polygons);
+    }
   }
 }
 let cache: { expires: number; data: any } | undefined;
@@ -107,8 +111,11 @@ export async function loadGreaterVictoriaData() {
           (Date.parse(old.updated_at || old.created_at || "") || 0)) byMls.set(key,row);
     }
     const districts = regionDistricts.map((district) => {
-      const areas = boundaries.filter((row) => regionSlug(row.city) === district.slug &&
-        !regionDistricts.some((d) => d.slug === regionSlug(row.area_slug)));
+      // KML imports can legitimately contain an area with the same slug as
+      // its district (for example, View Royal). Keep every drawn boundary.
+      const areas = boundaries.filter((row) =>
+        regionSlug(row.city) === district.slug
+      );
       const parent = boundaries.find((row) => regionSlug(row.area_slug) === district.slug && row.polygon_geojson);
       return {...district, areas, outline: districtExterior(dissolve(areas) ?? (parent ? regionPolygons(parent.polygon_geojson)[0] : null)), count:0};
     });

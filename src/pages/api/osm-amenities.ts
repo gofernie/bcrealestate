@@ -39,7 +39,7 @@ export const GET: APIRoute = async ({ url }) => {
     const city = String(url.searchParams.get("city") || "nanaimo")
       .toLowerCase()
       .trim()
-      .replace(/\s+/g, "-");
+      .replace(/-/g, " ");
 
     const lat = Number(url.searchParams.get("lat"));
     const lng = Number(url.searchParams.get("lng"));
