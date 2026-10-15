@@ -218,7 +218,7 @@ function polygonContainsPoint(geojson: any, lat: number, lng: number) {
 
 /* Returns true when a point is inside a boundary or within the requested
    distance of its outer edge. This deliberately works from the drawn area
-   geometryâ€”not an MLS area labelâ€”so nearby homes are not missed. */
+   geometryGÇönot an MLS area labelGÇöso nearby homes are not missed. */
 function polygonContainsOrIsNearPoint(
   geojson: any,
   lat: number,
@@ -276,7 +276,7 @@ function polygonContainsOrIsNearPoint(
 const normaliseParkAddress = (value: unknown) =>
   String(value || "")
     .toLowerCase()
-    .replace(/[â€™'".,#]/g, "")
+    .replace(/[GÇÖ'".,#]/g, "")
     .replace(/^\s*(?:unit\s*)?\d{1,4}\s*-\s*(?=\d{1,5}\s)/, "")
     .replace(/\bstreet\b/g, "st")
     .replace(/\broad\b/g, "rd")
@@ -337,6 +337,7 @@ export const GET: APIRoute = async ({ request }) => {
   const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
   const limit = Math.min(48, Math.max(1, Number(url.searchParams.get("limit") || 24)));
   const countOnly = url.searchParams.get("countOnly") === "1";
+  const includeMarkers = url.searchParams.get("markers") !== "0";
   const area = String(url.searchParams.get("area") || "").trim().toLowerCase();
   const areaBufferKm = Math.min(
     5,
