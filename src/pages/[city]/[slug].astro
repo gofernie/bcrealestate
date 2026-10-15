@@ -15379,8 +15379,20 @@ async function loadAreaAmenities(category = "schools") {
     };
 
     const scopedCategories = {};
+    const amenityCategoryAliases = {
+      school: "schools",
+      park: "parks",
+      restaurant: "restaurants",
+      playground: "playgrounds",
+      trail: "trails",
+      beach: "beaches",
+      marina: "marinas",
+      ev_charging: "evCharging",
+    };
+
     for (const [key, items] of Object.entries(payload.categories || {})) {
-      scopedCategories[key] = items
+      const normalizedKey = amenityCategoryAliases[key] || key;
+      scopedCategories[normalizedKey] = (items || [])
         .filter(inScope)
         .sort((a, b) => Number(a.distKm) - Number(b.distKm));
     }
@@ -15442,10 +15454,19 @@ async function loadAreaAmenities(category = "schools") {
     amenityMarkers.forEach((marker) => marker.remove());
     amenityMarkers = [];
 
+    // Keep category places above listing pins on high-inventory area maps.
+    const amenityPaneName = "areaAmenityPane";
+    if (!currentMap.getPane(amenityPaneName)) {
+      const amenityPane = currentMap.createPane(amenityPaneName);
+      amenityPane.style.zIndex = "650";
+      amenityPane.style.pointerEvents = "auto";
+    }
+
     const clusteringAvailable = typeof L.markerClusterGroup === "function";
 
     if (clusteringAvailable) {
       amenityClusterLayer = L.markerClusterGroup({
+        clusterPane: amenityPaneName,
         maxClusterRadius: 60,
         // Keep clustering until maximum zoom; overlapping places can spiderfy.
         showCoverageOnHover: false,
@@ -15486,7 +15507,10 @@ async function loadAreaAmenities(category = "schools") {
     mapRows.forEach((item, index) => {
       const marker = L.marker(
         [Number(item.lat), Number(item.lng)],
-        { icon: makeAmenityIcon(index + 1) }
+        {
+          icon: makeAmenityIcon(index + 1),
+          pane: amenityPaneName,
+        }
       );
 
       const name = String(item.name || "").trim() || label;
@@ -15986,6 +16010,13 @@ document.querySelectorAll(".amenity-chip").forEach((button) => {
   button.addEventListener("click", () => {
     document.querySelectorAll(".amenity-chip").forEach((c) => c.classList.remove("active"));
     button.classList.add("active");
+
+    // Show the selected places clearly on high-inventory area maps.
+    const listingsToggle = document.getElementById("toggle-listings-btn");
+    if (listingsToggle?.dataset.listingsVisible !== "false") {
+      listingsToggle.click();
+    }
+
     const category = amenityCategoryMap[button.dataset.amenity] || "schools";
     loadAreaAmenities(category);
   });
@@ -22055,11 +22086,16 @@ document.addEventListener("click", (event) => {
         button.classList.toggle("is-active", amenity === activeAmenity);
 
         button.addEventListener("click", () => {
-          document
-            .querySelector(
-              `.area-flow__nearby-choice[data-amenity="${amenity}"]`
-            )
-            ?.click();
+          // Use the real amenity chip: it owns the list and map refresh.
+          const nativeAmenityChip = document.querySelector(
+            `.amenity-chip[data-amenity="${amenity}"]:not(#toggle-listings-btn)`
+          );
+
+          if (nativeAmenityChip instanceof HTMLElement) {
+            nativeAmenityChip.click();
+          } else if (typeof loadAreaAmenities === "function") {
+            loadAreaAmenities(amenity);
+          }
 
           buttons.querySelectorAll("button").forEach((item) => {
             item.classList.toggle(
