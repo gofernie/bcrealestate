@@ -1,0 +1,259 @@
+import type { APIRoute } from "astro";
+import { createClient } from "@supabase/supabase-js";
+
+export const prerender = false;
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+  });
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+function cleanHost(request: Request) {
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
+  return host.split(",")[0].trim().replace(/^www\./, "").split(":")[0];
+}
+
+async function getSiteId(request: Request, id?: string | null) {
+  const cleanId = String(id || "").trim();
+  if (cleanId && cleanId !== "undefined" && cleanId !== "null") return cleanId;
+
+  const { data, error } = await supabase
+    .from("sites")
+    .select("id")
+    .eq("domain", cleanHost(request))
+    .maybeSingle();
+
+  if (error) throw error;
+  return data?.id || null;
+}
+
+function collectListingPhotoUrls(...values: unknown[]) {
+  const urls = new Set<string>();
+
+  const visit = (value: unknown) => {
+    if (!value) return;
+
+    if (typeof value === "string") {
+      const text = value.trim();
+
+      if (/^https?:\/\/\S+$/i.test(text)) {
+        urls.add(text);
+        return;
+      }
+
+      try {
+        if (
+          (text.startsWith("[") && text.endsWith("]")) ||
+          (text.startsWith("{") && text.endsWith("}"))
+        ) {
+          visit(JSON.parse(text));
+        }
+      } catch {}
+
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+
+    if (typeof value === "object") {
+      Object.values(value as Record<string, unknown>).forEach(visit);
+    }
+  };
+
+  values.forEach(visit);
+  return [...urls].slice(0, 80);
+}
+export const GET: APIRoute = async ({ request, url }) => {
+  try {
+    const siteId = await getSiteId(request, url.searchParams.get("id"));
+    if (!siteId) return json({ ok: false, error: "Site not found." }, 404);
+
+    const { data, error } = await supabase
+      .from("sites")
+      .select("*")
+      .eq("id", siteId)
+      .maybeSingle();
+
+    if (error) return json({ ok: false, error: error.message }, 500);
+    let agent: Record<string, any> | null = null;
+    if (data?.agent_id) {
+      const { data: agentData, error: agentError } = await supabase
+        .from("agents")
+        .select("name, title, phone, email")
+        .eq("id", data.agent_id)
+        .maybeSingle();
+
+      if (agentError) {
+        return json({ ok: false, error: agentError.message }, 500);
+      }
+
+      agent = agentData;
+    }
+
+    return json({
+      ok: true,
+      data: {
+        ...data,
+        ...(agent
+          ? {
+              agentName: agent.name || "",
+              agentTitle: agent.title || "",
+              phone: agent.phone || "",
+              email: agent.email || "",
+            }
+          : {}),
+        accentColor: data?.accent_color || "#2f6f73",
+        savedColours: Array.isArray(data?.saved_colours)
+          ? data.saved_colours
+          : [],
+      },
+    });
+  } catch (error: any) {
+    return json({ ok: false, error: error?.message || "Could not load site settings." }, 500);
+  }
+};
+
+export const POST: APIRoute = async ({ request }) => {
+  try {
+    const body = await request.json();
+    const data = body?.data || {};
+    const siteId = await getSiteId(request, body?.id);
+    if (!siteId) return json({ ok: false, error: "Site not found." }, 404);
+
+    const accentColor = String(data.accentColor || "").trim();
+    if (accentColor && !/^#[0-9a-f]{6}$/i.test(accentColor)) {
+      return json({ ok: false, error: "Accent colour must be a six-digit hex colour." }, 400);
+    }
+
+    const rawSecondaryMarkets = Array.isArray(data.secondaryMarkets)
+      ? data.secondaryMarkets
+      : [];
+
+    const secondaryMarkets = rawSecondaryMarkets
+      .map((market: any) => ({
+        city: String(market?.city || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, ""),
+        label: String(market?.label || "").trim().slice(0, 80),
+        imageUrl: String(market?.imageUrl || "").trim().slice(0, 1000),
+      }))
+      .filter((market: any) => market.city)
+      .slice(0, 3);
+
+    const uniqueCities = new Set(
+      secondaryMarkets.map((market: any) => market.city)
+    );
+
+    if (uniqueCities.size !== secondaryMarkets.length) {
+      return json(
+        { ok: false, error: "Each secondary market can only be selected once." },
+        400
+      );
+    }
+
+    if (
+      data.city &&
+      secondaryMarkets.some(
+        (market: any) =>
+          market.city === String(data.city).trim().toLowerCase()
+      )
+    ) {
+      return json(
+        {
+          ok: false,
+          error: "The primary market cannot also be a secondary market.",
+        },
+        400
+      );
+    }
+
+    const savedColours = Array.from(
+      new Map(
+        (Array.isArray(data.savedColours) ? data.savedColours : [])
+          .map((item: any) => {
+            const colour = String(item?.colour || "")
+              .trim()
+              .toLowerCase();
+
+            if (!/^#[0-9a-f]{6}$/.test(colour)) return null;
+
+            return [
+              colour,
+              {
+                colour,
+                name: String(item?.name || colour.toUpperCase())
+                  .trim()
+                  .slice(0, 40),
+              },
+            ];
+          })
+          .filter(Boolean)
+      ).values()
+    ).slice(0, 20);
+    const featuredListingMls = String(data.featuredListingMls || "")
+      .trim()
+      .replace(/\s+/g, "")
+      .slice(0, 80) || null;
+
+    const { error } = await supabase
+      .from("sites")
+      .update({
+        site_name: data.siteName || data.site_name,
+        accent_color: accentColor || null,
+        saved_colours: savedColours,
+        city: data.city,
+        hero_eyebrow: data.heroEyebrow,
+        hero_heading: data.heroHeading,
+        hero_copy: data.heroIntro,
+        intro_copy: data.cityIntro,
+        bio: String(data.agentBio || "").trim() || null,
+        contact_copy: String(data.agentContactCopy || "").trim() || null,
+        secondary_markets: secondaryMarkets,
+        featured_listing_mls: featuredListingMls,
+        featured_listing_images: featuredListingImages,
+      })
+      .eq("id", siteId);
+
+    if (error) return json({ ok: false, error: error.message }, 500);
+    const { data: site, error: siteLookupError } = await supabase
+      .from("sites")
+      .select("agent_id")
+      .eq("id", siteId)
+      .maybeSingle();
+
+    if (siteLookupError) {
+      return json({ ok: false, error: siteLookupError.message }, 500);
+    }
+
+    if (site?.agent_id) {
+      const { error: agentError } = await supabase
+        .from("agents")
+        .update({
+          name: String(data.agentName || "").trim() || null,
+          title: String(data.agentTitle || "").trim() || null,
+          phone: String(data.phone || "").trim() || null,
+          email: String(data.email || "").trim() || null,
+        })
+        .eq("id", site.agent_id);
+
+      if (agentError) {
+        return json({ ok: false, error: agentError.message }, 500);
+      }
+    }
+
+    return json({ ok: true });
+  } catch (error: any) {
+    return json({ ok: false, error: error?.message || "Could not save site settings." }, 500);
+  }
+};

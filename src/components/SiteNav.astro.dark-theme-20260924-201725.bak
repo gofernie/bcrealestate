@@ -1,0 +1,807 @@
+---
+type NavItem = {
+  label: string;
+  href: string;
+};
+
+const {
+  city = "nanaimo",
+  areas = [],
+  intentPages = [],
+  site = null,
+  showAreaNav = false,
+  activeSection = "",
+} = Astro.props;
+
+const currentPath = Astro.url.pathname.replace(/\/$/, "") || "/";
+
+const cityLabel = String(city)
+  .replace(/-/g, " ")
+  .replace(/\b\w/g, (char) => char.toUpperCase());
+
+// Agent-owned domains retain the agent's identity across every market.
+// The central platform remains branded by the current market.
+const hostname = Astro.url.hostname
+  .toLowerCase()
+  .replace(/^www\./, "");
+
+const localAgentMatch =
+  hostname.match(/^([a-z0-9-]+)\.localhost$/);
+
+const effectiveBrandHostname =
+  localAgentMatch
+    ? `${localAgentMatch[1]}.bc.realestate`
+    : hostname;
+
+const isCentralPlatform =
+  effectiveBrandHostname === "bc.realestate" ||
+  effectiveBrandHostname === "localhost" ||
+  effectiveBrandHostname === "127.0.0.1";
+
+const configuredSiteName =
+  String(site?.site_name || "").trim();
+
+const navBrandLabel =
+  !isCentralPlatform && configuredSiteName
+    ? configuredSiteName
+    : `${cityLabel} Homes`;
+const slugify = (value: string) =>
+  String(value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-");
+
+const isActive = (href: string) => {
+  const cleanHref = href.replace(/\/$/, "") || "/";
+
+if (
+    cleanHref === `/${slugify(city)}-real-estate-market` &&
+    currentPath.startsWith(`/${slugify(city)}/areas/`)
+  ) {
+    return true;
+  }
+
+if (
+    cleanHref === `/${slugify(city)}/areas` &&
+    (
+      currentPath === `/${slugify(city)}/areas` ||
+      currentPath.startsWith(`/${slugify(city)}/areas/`) ||
+      (
+        currentPath.startsWith(`/${slugify(city)}/`) &&
+        currentPath !== `/${slugify(city)}/` &&
+        !typeLinks.some((t) => t.href === currentPath) &&
+        !finalNavLinks.some((t) => t.href === currentPath) &&
+        areaLinks.some((a) => a.href === currentPath)
+      )
+    )
+  ) {
+    return true;
+  }
+
+  return currentPath === cleanHref;
+};
+
+const TYPE_PAGE_MAP: Record<string, string> = {
+  house: "homes",
+  home: "homes",
+  condo: "condos",
+  townhouse: "townhomes",
+  townhome: "townhomes",
+  land: "land",
+};
+
+// ordered-core-navigation
+const defaultTypeOrder = [
+  "house",
+  "condo",
+  "townhouse",
+  "mobile",
+  "land",
+];
+
+const typeLinkMap: Record<
+  string,
+  NavItem
+> = {
+  house: {
+    label: "Homes",
+    href: `/${slugify(city)}/homes`,
+  },
+  condo: {
+    label: "Condos",
+    href: `/${slugify(city)}/condos`,
+  },
+  townhouse: {
+    label: "Townhomes",
+    href: `/${slugify(city)}/townhomes`,
+  },
+  mobile: {
+    label: "Mobile Homes",
+    href: `/${slugify(city)}/mobile-homes`,
+  },
+  land: {
+    label: "Lot / Land",
+    href: `/${slugify(city)}/land`,
+  },
+};
+
+const configuredTypeOrder =
+  Array.isArray(site?.nav_property_types)
+    ? site.nav_property_types
+        .map((value: unknown) =>
+          String(value).trim().toLowerCase()
+        )
+        .filter((value: string) =>
+          Boolean(typeLinkMap[value])
+        )
+    : defaultTypeOrder;
+
+const typeLinks: NavItem[] =
+  configuredTypeOrder.map(
+    (propertyType: string) =>
+      typeLinkMap[propertyType]
+  );
+
+const cleanAreaLabel = (value: string) =>
+  String(value || "")
+    .replace(/^pq\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const areaLinks: NavItem[] = areas.slice(0, 8).map((area: string) => ({
+  label: cleanAreaLabel(area),
+  href: `/${slugify(city)}/${slugify(area)}`,
+}));
+
+
+
+const canonicalIntentHref = (pageSlug: string) => {
+  const citySlug = slugify(city);
+  const normalizedSlug = slugify(String(pageSlug || ""));
+
+  const slugWithoutCity =
+    normalizedSlug.startsWith(`${citySlug}-`)
+      ? normalizedSlug.slice(citySlug.length + 1)
+      : normalizedSlug;
+
+  const canonicalTypeSlugs: Record<string, string> = {
+    home: "homes",
+    homes: "homes",
+    house: "homes",
+    houses: "homes",
+
+    condo: "condos",
+    condos: "condos",
+
+    townhome: "townhomes",
+    townhomes: "townhomes",
+    townhouse: "townhomes",
+    townhouses: "townhomes",
+
+    mobile: "mobile-homes",
+    mobiles: "mobile-homes",
+    "mobile-home": "mobile-homes",
+    "mobile-homes": "mobile-homes",
+
+    lot: "land",
+    lots: "land",
+    land: "land",
+    "lot-land": "land",
+  };
+
+  const canonicalTypeSlug =
+    canonicalTypeSlugs[slugWithoutCity];
+
+  if (canonicalTypeSlug) {
+    return `/${citySlug}/${canonicalTypeSlug}`;
+  }
+
+  return `/${citySlug}/${normalizedSlug}`;
+};
+
+const intentLinks: NavItem[] = intentPages.slice(0, 6).map((page: any) => ({
+  label:
+    page.nav_label ||
+    page.card_title ||
+    page.hero_heading ||
+    page.seo_heading ||
+    page.lifestyle_angle ||
+    page.slug
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (char: string) => char.toUpperCase()),
+  href: canonicalIntentHref(page.slug),
+}));
+
+const navIntentLinks: NavItem[] = intentPages
+  .filter((p: any) => p.show_in_nav)
+  .map((page: any) => ({
+    label:
+      page.nav_label ||
+      page.card_title ||
+      page.hero_heading ||
+      page.seo_heading ||
+      page.slug
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (char: string) => char.toUpperCase()),
+    href: canonicalIntentHref(page.slug),
+  }));
+
+const standardTypeLinksByHref = new Map(
+  typeLinks.map((item) => [item.href, item])
+);
+
+const uniqueNavIntentLinks: NavItem[] = Array.from(
+  new Map(
+    navIntentLinks.map((item) => {
+      const normalizedItem =
+        standardTypeLinksByHref.get(item.href) || item;
+
+      return [normalizedItem.href, normalizedItem];
+    })
+  ).values()
+);
+
+const isNanaimoMobilesSite =
+  effectiveBrandHostname === "nanaimomobiles.com";
+
+const combinedNavLinks: NavItem[] =
+  Array.from(
+    new Map(
+      [
+        ...typeLinks,
+        ...uniqueNavIntentLinks,
+      ].map((item) => [item.href, item])
+    ).values()
+  );
+
+const finalNavLinks: NavItem[] =
+  isNanaimoMobilesSite
+    ? typeLinks.filter(
+        (item) =>
+          item.label === "Mobile Homes"
+      )
+    : combinedNavLinks;
+---
+
+<nav class="site-nav">
+  <div class="shell site-nav__inner">
+   <a
+    class="site-nav__brand"
+    href={isNanaimoMobilesSite ? "/" : `/${slugify(city)}/`}
+    aria-label={`${navBrandLabel} home`}
+  >
+    {navBrandLabel}
+  </a>
+
+    <button
+      class="site-nav__toggle"
+      type="button"
+      aria-label="Open menu"
+      aria-expanded="false"
+      aria-controls="site-nav-links"
+    >
+      <span aria-hidden="true">&equiv;</span>
+    </button>
+
+    <div class="site-nav__links" id="site-nav-links">
+   <div class="site-nav__areas">
+  <a
+    class="site-nav__areas-desktop"
+    class:list={{
+      active:
+        activeSection === "areas" ||
+        isActive(`/${slugify(city)}/areas`)
+    }}
+    href={`/${slugify(city)}/areas`}
+  >
+    Areas
+  </a>
+
+  <button
+    class="site-nav__areas-toggle"
+    type="button"
+    aria-expanded="false"
+    aria-controls="site-nav-area-links"
+  >
+    <span>Areas</span>
+    <span
+      class="site-nav__areas-chevron"
+      aria-hidden="true"
+    >
+      &#8964;
+    </span>
+  </button>
+
+  <div
+    class="site-nav__area-links"
+    id="site-nav-area-links"
+    hidden
+  >
+    {areaLinks.map((item) => (
+      <a
+        class:list={{
+          active: isActive(item.href)
+        }}
+        href={item.href}
+      >
+        {item.label}
+      </a>
+    ))}
+
+    <a
+      class="site-nav__all-areas"
+      href={`/${slugify(city)}/areas`}
+    >
+      View all {cityLabel} areas →
+    </a>
+  </div>
+</div>
+
+   {finalNavLinks.map((item) => (
+  <a class:list={{ active: isActive(item.href) }} href={item.href}>
+    {item.label}
+  </a>
+))}
+<a
+  class:list={{
+    active: isActive(`/${slugify(city)}/market-intelligence`)
+  }}
+  href={`/${slugify(city)}/market-intelligence`}
+>Market Intel</a>
+    </div>
+  </div>
+</nav>
+
+{showAreaNav && areaLinks.length > 0 && (
+  <div class="site-subnav">
+    <div class="shell site-subnav__inner">
+      {areaLinks.map((item) => (
+        <a class:list={{ active: isActive(item.href) }} href={item.href}>
+          {item.label}
+        </a>
+      ))}
+    </div>
+  </div>
+)}
+
+<script is:inline>
+  const navToggle = document.querySelector(".site-nav__toggle");
+  const navLinks = document.querySelector(".site-nav__links");
+
+  navToggle?.addEventListener("click", () => {
+    const isOpen = navLinks?.classList.toggle("open");
+    navToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  });
+</script>
+
+
+
+<script is:inline>
+  /* dynamic-area-menu-handler-v3 */
+  const areaMenuToggle =
+    document.querySelector(
+      ".site-nav__areas-toggle"
+    );
+
+  const areaMenu =
+    document.getElementById(
+      "site-nav-area-links"
+    );
+
+  areaMenuToggle?.addEventListener(
+    "click",
+    (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (!areaMenu) return;
+
+      const willOpen = areaMenu.hidden;
+
+      areaMenu.hidden = !willOpen;
+
+      areaMenuToggle.setAttribute(
+        "aria-expanded",
+        String(willOpen)
+      );
+    }
+  );
+</script>
+<style>
+  .site-nav {
+    position: sticky;
+    top: 0;
+    z-index: 2147482000;
+    background: #fff;
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .site-nav__inner {
+    min-height: 58px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+  }
+
+  .site-nav__brand {
+    font-family: var(--f-display, Georgia, serif);
+    font-size: 1.35rem;
+    font-weight: 600;
+    letter-spacing: -0.04em;
+    white-space: nowrap;
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .site-nav__toggle {
+    display: none;
+  }
+
+  .site-nav__toggle span {
+    transform: translateY(-1px);
+  }
+
+.site-nav__links,
+.site-subnav__inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.site-nav__links {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.site-nav__links::-webkit-scrollbar {
+  display: none;
+}
+
+.site-subnav__inner {
+  flex-wrap: wrap;
+}
+
+.site-nav__links a {
+  white-space: nowrap;
+}
+
+.site-nav__areas {
+  display: flex;
+  align-items: center;
+}
+
+.site-nav__areas-desktop {
+  display: inline-block;
+}
+
+  .site-nav__links a,
+  .site-subnav__inner a {
+ padding: 9px 14px;
+    border-radius: 6px;
+    color: var(--muted);
+    font-family: system-ui, sans-serif;
+    font-size: 0.86rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition:
+      background 0.18s ease,
+      color 0.18s ease,
+      box-shadow 0.18s ease;
+  }
+
+  .site-nav__links a:hover,
+  .site-subnav__inner a:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .site-nav__links a.active,
+  .site-subnav__inner a.active {
+    background: var(--accent) !important;
+    color: #fff !important;
+    border-color: var(--accent) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 32%, transparent) !important;
+  }
+
+  .site-subnav {
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .site-subnav__inner {
+    min-height: 50px;
+    padding: 6px 0;
+  }
+
+.site-nav .shell {
+  width: min(1400px, calc(100% - 80px)) !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+  }
+
+
+  @media (max-width: 760px) {
+    .site-nav .shell {
+      width: calc(100% - 28px) !important;
+    }
+
+    .site-nav__inner {
+      position: relative;
+      min-height: 58px;
+      flex-direction: row;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .site-nav__toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: auto;
+      width: 42px;
+      height: 38px;
+ border-radius: 6px;
+      border: 1px solid var(--line-warm);
+      background: var(--surface);
+      color: var(--ink);
+      font-size: 1.2rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .site-nav__links {
+      display: none;
+    }
+
+
+    .site-nav__links.open {
+      position: absolute;
+      top: 58px;
+      bottom: auto;
+      height: auto;
+      max-height: calc(100dvh - 78px);
+      box-sizing: border-box;
+      left: 0;
+      right: auto;
+      z-index: 2147482001;
+
+      display: grid;
+      align-content: start;
+      gap: 8px;
+
+      width: min(78vw, 310px);
+      padding: 22px 16px;
+      overflow-x: hidden;
+      overflow-y: auto;
+
+      background: rgba(255, 255, 255, 0.98);
+      border: 0;
+      border-right: 1px solid var(--line-warm);
+      border-radius: 0 16px 16px 0;
+
+      box-shadow:
+        22px 0 50px rgba(10, 31, 45, 0.16),
+        100vw 0 0 100vw rgba(10, 31, 45, 0.2);
+
+      animation: mobile-nav-enter 280ms
+        cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .site-nav__links.open a {
+      display: block;
+      width: auto;
+      box-sizing: border-box;
+      padding: 13px 14px;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      white-space: nowrap;
+    }
+
+    .site-nav__links.open a:hover,
+    .site-nav__links.open a:focus-visible,
+    .site-nav__links.open a.active {
+      background: var(--surface);
+      border-color: var(--line-warm);
+    }
+
+    @keyframes mobile-nav-enter {
+      from {
+        opacity: 0;
+        transform: translateX(-100%);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .site-subnav__inner {
+      width: 100%;
+      overflow-x: auto;
+      flex-wrap: nowrap;
+      padding-bottom: 4px;
+    }
+
+    .site-subnav__inner a {
+      white-space: nowrap;
+      background: var(--surface);
+      border: 1px solid var(--line-warm);
+    }
+  }
+  
+  /* dynamic-mobile-area-menu-v1 */
+  .site-nav__areas-toggle,
+  .site-nav__area-links {
+    display: none;
+  }
+
+  .site-nav__areas {
+    position: relative;
+  }
+
+  @media (max-width: 760px) {
+    .site-nav__areas-desktop {
+      display: none !important;
+    }
+
+    .site-nav__areas-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 13px 14px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-family: system-ui, sans-serif;
+      font-size: .86rem;
+      font-weight: 700;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .site-nav__areas-toggle:hover,
+    .site-nav__areas-toggle:focus-visible,
+    .site-nav__areas-toggle[aria-expanded="true"] {
+      border-color: var(--line-warm);
+      background: var(--surface);
+      color: var(--accent);
+    }
+
+    .site-nav__areas-chevron {
+      font-size: 1rem;
+      transition: transform .18s ease;
+    }
+
+    .site-nav__areas-toggle[aria-expanded="true"]
+      .site-nav__areas-chevron {
+      transform: rotate(180deg);
+    }
+
+    .site-nav__area-links {
+      display: grid;
+      gap: 3px;
+      padding: 5px 0 6px 12px;
+    }
+
+    .site-nav__area-links[hidden] {
+      display: none !important;
+    }
+
+    .site-nav__links.open
+      .site-nav__area-links a {
+      padding: 9px 11px;
+      color: var(--muted);
+      font-size: .78rem;
+      font-weight: 650;
+    }
+
+    .site-nav__links.open
+      .site-nav__area-links a.active {
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .site-nav__links.open
+      .site-nav__area-links
+      .site-nav__all-areas {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 4px;
+      color: var(--accent);
+      font-weight: 800;
+    }
+  }</style>
+
+<script is:inline>
+  // content-aware-nav-breakpoint
+  (() => {
+    const navInner =
+      document.querySelector(".site-nav__inner");
+
+    const brand =
+      document.querySelector(".site-nav__brand");
+
+    const links =
+      document.querySelector(".site-nav__links");
+
+    if (!navInner || !brand || !links) return;
+
+    function getMobileMediaRules() {
+      const matches = [];
+
+      for (const sheet of document.styleSheets) {
+        let rules;
+
+        try {
+          rules = sheet.cssRules;
+        } catch {
+          continue;
+        }
+
+        for (const rule of rules) {
+          if (
+            rule instanceof CSSMediaRule &&
+            /max-width:\s*(?:760|\d+)px/.test(
+              rule.media.mediaText
+            ) &&
+            Array.from(rule.cssRules).some((child) =>
+              child.cssText.includes("site-nav")
+            )
+          ) {
+            matches.push(rule);
+          }
+        }
+      }
+
+      return matches;
+    }
+
+    function setNaturalBreakpoint() {
+      const mediaRules = getMobileMediaRules();
+
+      if (!mediaRules.length) return;
+
+      // Temporarily expose the full desktop navigation for measurement.
+      mediaRules.forEach((rule) => {
+        rule.media.mediaText = "(max-width: 0px)";
+      });
+
+      requestAnimationFrame(() => {
+        const styles = getComputedStyle(navInner);
+        const gap = parseFloat(styles.columnGap || styles.gap) || 24;
+
+        const requiredShellWidth =
+          Math.ceil(
+            brand.getBoundingClientRect().width +
+            links.scrollWidth +
+            gap
+          );
+
+        // Desktop shell removes 40px from each side.
+        const breakpoint = requiredShellWidth + 80;
+
+        mediaRules.forEach((rule) => {
+          rule.media.mediaText =
+            `(max-width: ${breakpoint}px)`;
+        });
+      });
+    }
+
+    setNaturalBreakpoint();
+
+    document.fonts?.ready?.then(
+      setNaturalBreakpoint
+    );
+  })();
+</script>

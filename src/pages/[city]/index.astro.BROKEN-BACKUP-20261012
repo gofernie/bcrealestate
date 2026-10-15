@@ -1,0 +1,218 @@
+import "dotenv/config";
+import { randomUUID } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+const genericEmail = "no-reply@bc.realestate";
+const genericName = "bc.realestate";
+
+const { data: usersData, error: usersError } =
+  await supabase.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000,
+  });
+
+if (usersError) throw usersError;
+
+let genericUser = (usersData.users || []).find(
+  (user) => String(user.email || "").toLowerCase() === genericEmail
+);
+
+if (!genericUser) {
+  const { data, error } = await supabase.auth.admin.createUser({
+    email: genericEmail,
+    password: randomUUID(),
+    email_confirm: true,
+  });
+
+  if (error) throw error;
+  genericUser = data.user;
+  console.log("Created internal generic account.");
+}
+
+const { error: agentError } = await supabase
+  .from("agents")
+  .upsert(
+    {
+      id: genericUser.id,
+      name: genericName,
+      credentials: "Local Market Guides",
+      email: null,
+      phone: null,
+      brokerage: null,
+      legal_name: null,
+      brokerage_logo_url: null,
+    },
+    { onConflict: "id" }
+  );
+
+if (agentError) throw agentError;
+
+const { data: sites, error: sitesError } = await supabase
+  .from("sites")
+  .select("id, city, site_name")
+  .eq("domain", "bc.realestate")
+  .in("city", ["victoria", "oak bay"]);
+
+if (sitesError) throw sitesError;
+
+if (!sites?.length) {
+  throw new Error("Could not find the Victoria or Oak Bay bc.realestate site records.");
+}
+
+const { error: updateError } = await supabase
+  .from("sites")
+  .update({ agent_id: genericUser.id })
+  .in("id", sites.map((site) => site.id));
+
+if (updateError) throw updateError;
+
+console.table(
+  sites.map((site) => ({
+    city: site.city,
+    site: site.site_name,
+    agent: genericName,
+  }))
+);
+
+<script is:inline>
+/* featured-listing-photo-picker-v1 */
+(() => {
+  const mlsInput = document.querySelector(
+    'input[name="featuredListingMls"]'
+  );
+  const selectionInput = document.querySelector(
+    'input[name="featuredListingImages"]'
+  );
+  const loadButton = document.getElementById(
+    "loadFeaturedListingPhotos"
+  );
+  const grid = document.getElementById(
+    "featuredListingPhotoGrid"
+  );
+  const hint = document.getElementById(
+    "featuredListingPhotoHint"
+  );
+
+  if (
+    !(mlsInput instanceof HTMLInputElement) ||
+    !(selectionInput instanceof HTMLInputElement) ||
+    !(loadButton instanceof HTMLButtonElement) ||
+    !(grid instanceof HTMLElement)
+  ) {
+    return;
+  }
+
+  let photos = [];
+
+  const readSelection = () => {
+    try {
+      return JSON.parse(selectionInput.value || "{}") || {};
+    } catch {
+      return {};
+    }
+  };
+
+  const render = () => {
+    const selected = readSelection();
+    grid.replaceChildren();
+
+    photos.forEach((url, index) => {
+      const card = document.createElement("div");
+      card.style.cssText =
+        "border:1px solid #d8d3ca;border-radius:10px;overflow:hidden;background:#fff;";
+
+      const image = document.createElement("img");
+      image.src = url;
+      image.alt = `Listing photo ${index + 1}`;
+      image.loading = "lazy";
+      image.style.cssText =
+        "display:block;width:100%;height:104px;object-fit:cover;";
+
+      const actions = document.createElement("div");
+      actions.style.cssText =
+        "display:flex;flex-wrap:wrap;gap:5px;padding:7px;";
+
+      [
+        ["hero", "Use as hero", "Hero selected"],
+        ["card", "Use on card", "Card selected"],
+      ].forEach(([key, label, chosen]) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn btn--ghost";
+        button.style.cssText =
+          "font-size:12px;padding:6px 8px;";
+        button.textContent =
+          selected[key] === url ? chosen : label;
+
+        button.addEventListener("click", () => {
+          selectionInput.value = JSON.stringify({
+            ...readSelection(),
+            [key]: url,
+          });
+          render();
+        });
+
+        actions.append(button);
+      });
+
+      card.append(image, actions);
+      grid.append(card);
+    });
+  };
+
+  loadButton.addEventListener("click", async () => {
+    const mls = mlsInput.value.trim();
+
+    if (!mls) {
+      hint.textContent = "Enter or choose an MLS number first.";
+      return;
+    }
+
+    loadButton.disabled = true;
+    loadButton.textContent = "Loading…";
+
+    try {
+      const response = await fetch(
+        `/api/site-settings?listing_mls=${encodeURIComponent(mls)}`
+      );
+      const result = await response.json();
+
+      if (
+        !response.ok ||
+        !result?.ok ||
+        !Array.isArray(result.images) ||
+        !result.images.length
+      ) {
+        throw new Error(
+          result?.error || "No listing photos were found."
+        );
+      }
+
+      photos = result.images.filter((url) =>
+        /^https?:\/\/\S+$/i.test(String(url || ""))
+      );
+
+      hint.textContent =
+        "Choose a Hero image and a Card image, then click Save featured home.";
+
+      render();
+    } catch (error) {
+      hint.textContent =
+        error?.message || "Could not load listing photos.";
+    } finally {
+      loadButton.disabled = false;
+      loadButton.textContent = "Load listing photos";
+    }
+  });
+
+  mlsInput.addEventListener("change", () => {
+    photos = [];
+    grid.replaceChildren();
+  });
+})();
+</script>

@@ -1,0 +1,2810 @@
+---
+import { createClient } from "@supabase/supabase-js";
+import Layout from "../../layouts/Layout.astro";
+import SiteNav from "../../components/SiteNav.astro";
+import { getSite } from "../../lib/getSite";
+import { getNavIntentPages } from "../../lib/getNavIntentPages";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const city = String(
+  Astro.params.city ||
+  Astro.url.searchParams.get("city") ||
+  "nanaimo"
+)
+  .toLowerCase()
+  .trim();
+
+const reservedCityRoutes = new Set([
+  "404",
+  "about",
+  "about-bc",
+  "bc",
+  "buying-guide",
+  "contact",
+  "explore",
+  "market-insights",
+  "privacy",
+  "terms",
+  "admin",
+  "api",
+  "listings",
+  "shortlists",
+  "for",
+  "learn",
+  "sitemap",
+  "sitemap.xml",
+  "robots",
+  "robots.txt",
+  "favicon",
+]);
+
+const legacyMarketSuffix =
+  /(?:-real-estate-market)+$/i;
+
+if (legacyMarketSuffix.test(city)) {
+  const cleanCity = city
+    .replace(/(?:-real-estate-market)+$/i, "")
+    .replace(/-+$/g, "")
+    .trim();
+
+  if (!cleanCity || reservedCityRoutes.has(cleanCity)) {
+    return Astro.rewrite("/404");
+  }
+
+  return Astro.redirect(`/${cleanCity}/areas`, 301);
+}
+
+if (reservedCityRoutes.has(city)) {
+  return Astro.rewrite("/404");
+}
+
+const cityDatabaseKeys = Array.from(
+  new Set(
+    ["saanich-east", "saanich-west"].includes(city) ? [city, city.replace(/-/g, " "), "saanich"]
+      : city === "comox"
+        ? ["comox", "courtenay", "cumberland", "black creek", "merville", "union bay", "fanny bay", "royston", "denman island"]
+        : [city, city.replace(/-/g, " ")]
+  )
+);
+
+const {
+  data: validCityRow,
+  error: validCityError,
+} = await supabase
+  .from("listing_rows")
+  .select("normalized_city")
+  .in("normalized_city", cityDatabaseKeys)
+  .limit(1)
+  .maybeSingle();
+
+if (validCityError) {
+  console.error(
+    "Areas city validation failed:",
+    validCityError
+  );
+}
+
+if (!validCityError && !validCityRow) {
+  return Astro.rewrite("/404");
+}
+
+const cityLabel = city
+  .replace(/-/g, " ")
+  .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const site = await getSite(Astro.url.hostname, city);
+
+const isNanaimoMobilesSite =
+  Astro.url.hostname
+    .toLowerCase()
+    .replace(/^www\./, "") === "nanaimomobiles.com" ||
+  Astro.url.searchParams
+    .get("siteDomain")
+    ?.toLowerCase()
+    .replace(/^www\./, "") === "nanaimomobiles.com";
+
+let listingQuery = supabase
+  .from("listing_rows")
+  .select("lat, lng")
+  .in("normalized_city", cityDatabaseKeys)
+  .eq("status", "A");
+
+if (isNanaimoMobilesSite) {
+  listingQuery = listingQuery.eq("normalized_type", "mobile");
+}
+
+const { data: listings = [], error: listingsError } =
+  await listingQuery;
+
+if (listingsError) {
+  console.error("Areas listing query failed:", listingsError);
+}
+
+const { data: rawAreaRows = [], error: areasError } =
+  await supabase
+    .from("area_boundaries")
+    .select(`
+      area_slug,
+      area_name,
+      short_description,
+      hero_image_url,
+      polygon_geojson
+    `)
+    .in("city", cityDatabaseKeys)
+    .order("area_name", { ascending: true });
+
+if (areasError) {
+  console.error("Area metadata query failed:", areasError);
+}
+
+/*
+  Saanich East and Saanich West are parent MLS regions.
+  Hide them from the city-wide neighbourhood directory/map when
+  the named neighbourhood boundaries are also available.
+*/
+const areaRows =
+  ["saanich", "saanich-east", "saanich-west"].includes(city) && rawAreaRows.length > 2
+    ? rawAreaRows.filter((row) => {
+        const slug = String(
+          row.area_slug || row.area_name || ""
+        )
+          .toLowerCase()
+          .trim();
+
+        return !["saanich-east", "saanich-west"].includes(slug);
+      })
+    : rawAreaRows;
+
+const areaToSlug = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/^pq[\s-]+/i, "")
+    .replace(/&/g, "and")
+    .replace(/\//g, "-")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const titleCase = (value) =>
+  String(value || "")
+    .replace(/^pq[\s-]+/i, "")
+    .replace(/-/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+function pointInRing(point, ring) {
+  const [x, y] = point;
+  let inside = false;
+
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = Number(ring[i][0]);
+    const yi = Number(ring[i][1]);
+    const xj = Number(ring[j][0]);
+    const yj = Number(ring[j][1]);
+
+    if (
+      yi > y !== yj > y &&
+      x < ((xj - xi) * (y - yi)) / (yj - yi) + xi
+    ) inside = !inside;
+  }
+
+  return inside;
+}
+
+function polygonContainsPoint(geojson, lat, lng) {
+  if (!geojson) return false;
+
+  const geometry = geojson.type === "Feature"
+    ? geojson.geometry
+    : geojson;
+
+  if (!geometry) return false;
+
+  const point = [lng, lat];
+
+  if (geometry.type === "Polygon") {
+    return geometry.coordinates.some((ring) =>
+      pointInRing(point, ring)
+    );
+  }
+
+  if (geometry.type === "MultiPolygon") {
+    return geometry.coordinates.some((poly) =>
+      poly.some((ring) => pointInRing(point, ring))
+    );
+  }
+
+  return false;
+}
+
+/*
+  Saanich East is a distinct market made from its named
+  neighbourhood boundaries, while the listing feed is broadly
+  labelled "saanich". Keep only listings inside those boundaries.
+*/
+const scopedListings =
+  ["saanich-east", "saanich-west"].includes(city) ? listings.filter((listing) =>
+        areaRows.some((row) =>
+          polygonContainsPoint(
+            row.polygon_geojson,
+            Number(listing.lat),
+            Number(listing.lng)
+          )
+        )
+      )
+    : listings;
+
+const areaCountMap = areaRows.reduce((result, row) => {
+  const slug = areaToSlug(row.area_slug || row.area_name);
+
+  result[slug] = scopedListings.filter((listing) =>
+    polygonContainsPoint(
+      row.polygon_geojson,
+      Number(listing.lat),
+      Number(listing.lng)
+    )
+  ).length;
+
+  return result;
+}, {});
+
+const areas = areaRows
+  .map((row) => {
+    const slug = areaToSlug(row.area_slug || row.area_name);
+
+    return {
+      name: titleCase(row.area_name || row.area_slug),
+      slug,
+      count: Number(areaCountMap[slug] || 0),
+      description: String(row.short_description || "").trim(),
+      image: String(row.hero_image_url || "").trim(),
+    };
+  })
+  .filter((area) => area.slug)
+  .sort(
+    (a, b) =>
+      b.count - a.count ||
+      a.name.localeCompare(b.name)
+  );
+
+const areaMapBoundaries = areaRows
+  .map((row) => {
+    const slug = areaToSlug(row.area_slug || row.area_name);
+
+    return {
+      name: titleCase(row.area_name || row.area_slug),
+      slug,
+      count: Number(areaCountMap[slug] || 0),
+      href: `/${city}/${slug}`,
+      geometry: row.polygon_geojson || null,
+    };
+  })
+  .filter((area) => area.slug && area.geometry);
+const heroImageUrl = String(
+  areaRows.find((row) =>
+    String(row.hero_image_url || "").trim()
+  )?.hero_image_url ||
+  site?.hero_image_url ||
+  ""
+).trim();
+
+const safeHeroImage =
+  heroImageUrl.replace(/"/g, "%22");
+
+const topArea =
+  areas[0]?.name ||
+  cityLabel;
+
+const navAreas =
+  areas.map((area) => area.name);
+
+const navIntentPages =
+  await getNavIntentPages(
+    supabase,
+    site?.id
+  );
+
+const navTypes = [
+  "house",
+  "condo",
+  "townhouse",
+  "mobile",
+  "land",
+];
+
+const accent =
+  site?.accent_color ||
+  "#633a98";
+
+
+const findArea = (
+  keywords: string[],
+  fallbackIndex = 0
+) => {
+  const match = areas.find((area) => {
+    const searchable = `${area.name} ${area.slug} ${area.description}`
+      .toLowerCase();
+
+    return keywords.some((keyword) =>
+      searchable.includes(keyword)
+    );
+  });
+
+  return match || areas[fallbackIndex] || areas[0] || null;
+};
+
+const skiCities = new Set([
+  "fernie",
+  "whistler",
+  "revelstoke",
+  "golden",
+  "rossland",
+  "kimberley",
+  "invermere",
+  "panorama",
+  "sun-peaks",
+  "big-white",
+  "silver-star",
+]);
+
+const coastalCities = new Set([
+  "nanaimo",
+  "parksville",
+  "qualicum-beach",
+  "tofino",
+  "ucluelet",
+  "victoria",
+  "saanich",
+  "comox",
+  "courtenay",
+  "campbell-river",
+  "ladysmith",
+  "lantzville",
+]);
+
+const isSkiTown =
+  skiCities.has(city);
+
+const isCoastalTown =
+  coastalCities.has(city);
+
+const primaryLifestyleRecommendation =
+  isSkiTown
+    ? {
+        eyebrow: "Mountain lifestyle",
+        title: "Ski access",
+        description:
+          "Start close to the slopes, trails, and year-round mountain recreation.",
+        icon: "mountain",
+        area: findArea(
+          ["alpine resort", "ski", "resort"],
+          0
+        ),
+      }
+    : isCoastalTown
+      ? {
+          eyebrow: "Coastal lifestyle",
+          title: "Ocean and waterfront",
+          description:
+            "Explore communities near the ocean, beaches, marinas, and coastal trails.",
+          icon: "water",
+          area: findArea(
+            [
+              "waterfront",
+              "ocean",
+              "bay",
+              "beach",
+              "harbour",
+              "harbor",
+            ],
+            0
+          ),
+        }
+      : {
+          eyebrow: "Outdoor lifestyle",
+          title: "Parks and nature",
+          description:
+            "Start near trails, parks, green space, and outdoor recreation.",
+          icon: "trees",
+          area: findArea(
+            ["park", "trail", "nature", "rural"],
+            0
+          ),
+        };
+
+const lifestyleRecommendations = [
+  primaryLifestyleRecommendation,
+  {
+    eyebrow: "Everyday convenience",
+    title: "Walkable living",
+    description:
+      "Explore neighbourhoods close to shops, restaurants, and local services.",
+    icon: "walk",
+    area: findArea(
+      [
+        "downtown",
+        "old city",
+        "centre",
+        "center",
+      ],
+      1
+    ),
+  },
+  {
+    eyebrow: "Room to settle in",
+    title: "Family friendly",
+    description:
+      "Look for quieter streets, parks, schools, and practical home layouts.",
+    icon: "family",
+    area: findArea(
+      [
+        "family",
+        "west",
+        "annex",
+        "heights",
+      ],
+      2
+    ),
+  },
+  {
+    eyebrow: "Trail connections",
+    title: "Bike and explore",
+    description:
+      "Find areas with quick access to trails, parks, and outdoor recreation.",
+    icon: "bike",
+    area: findArea(
+      [
+        "montane",
+        "trail",
+        "mountain",
+        "park",
+      ],
+      3
+    ),
+  },
+  {
+    eyebrow: "A little more space",
+    title: "Quiet living",
+    description:
+      "Browse neighbourhoods known for privacy, larger lots, and a calmer pace.",
+    icon: "trees",
+    area: findArea(
+      [
+        "ridgemont",
+        "rural",
+        "acreage",
+        "quiet",
+        "cedar",
+      ],
+      4
+    ),
+  },
+  {
+    eyebrow: "Compare your options",
+    title: "More for your budget",
+    description:
+      "See where current inventory offers the widest range of homes and prices.",
+    icon: "value",
+    area:
+      [...areas]
+        .filter((area) => area.count > 0)
+        .sort((a, b) => b.count - a.count)[0] ||
+      areas[0] ||
+      null,
+  },
+].filter((item) => item.area);
+
+const featureCandidates =
+  areas.filter((area) => area.count > 0);
+
+const cityRotationValue =
+  [...city].reduce(
+    (total, character) =>
+      total + character.charCodeAt(0),
+    0
+  );
+
+const currentDayNumber =
+  Math.floor(Date.now() / 86400000);
+
+const featuredArea =
+  featureCandidates.length > 0
+    ? featureCandidates[
+        (
+          currentDayNumber +
+          cityRotationValue
+        ) % featureCandidates.length
+      ]
+    : areas[0] || null;
+
+const areasWithListings =
+  areas.filter((area) => area.count > 0).length;
+
+const averageListingsPerArea =
+  areasWithListings > 0
+    ? Math.round(
+        listings.length / areasWithListings
+      )
+    : 0;
+const jawgAccessToken =
+  import.meta.env.PUBLIC_JAWG_ACCESS_TOKEN || "";
+---
+
+<script
+  id="areas-jawg-map-config"
+  is:inline
+  define:vars={{ jawgAccessToken }}
+>
+  window.__JAWG_TILE_URL__ = jawgAccessToken
+    ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d0562bb6d/{z}/{x}/{y}.png?access-token=${encodeURIComponent(jawgAccessToken)}`
+    : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+
+  window.__JAWG_ATTRIBUTION__ = jawgAccessToken
+    ? '&copy; <a href="https://www.jawg.io/" target="_blank" rel="noopener">Jawg Maps</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+    : "&copy; OpenStreetMap contributors";
+</script>
+<Layout
+  title={`${cityLabel} Neighbourhoods and Areas`}
+  description={`Explore ${cityLabel} neighbourhoods and homes for sale.`}
+  accentColor={accent}
+  city={city}
+>
+  <SiteNav
+    city={city}
+    site={site}
+    areas={navAreas}
+    types={navTypes}
+    intentPages={navIntentPages}
+    showAreaNav={false}
+  />
+
+  <div
+    class="areas-page"
+    style="--areas-accent:var(--accent, #633a98);"
+  >
+    <section class="areas-hero areas-hero--editorial">
+      <div class="areas-hero__shade"></div>
+
+      <div class="areas-hero__inner">
+        <div class="areas-hero__content">
+          <p class="areas-eyebrow">
+            {cityLabel} neighbourhoods
+          </p>
+
+          <h1>
+            Find your {cityLabel}
+            <br />
+            neighbourhood<span>.</span>
+          </h1>
+
+          <p class="areas-hero__copy">
+            Start with an area. Each guide brings together current homes,
+            prices, property types, and the local context that matters.
+          </p>
+
+          <div class="areas-stats">
+            <article>
+              <strong>{scopedListings.length.toLocaleString()}</strong>
+              <small>Active listings</small>
+            </article>
+
+            <article>
+              <strong>{areas.length}</strong>
+              <small>Neighbourhoods</small>
+            </article>
+
+            <article>
+              <strong>{topArea}</strong>
+              <small>Most listings</small>
+            </article>
+          </div>
+
+          <div class="areas-actions">
+            <a class="areas-button areas-button--primary" href="#neighbourhoods">
+              Browse neighbourhoods
+              <span aria-hidden="true">↓</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <main class="areas-main">
+      <section class="areas-discovery">
+        <div class="areas-heading">
+          <div>
+            <p class="areas-eyebrow">
+              Need a starting point?
+            </p>
+
+            <h2>
+              Begin with the kind of life you want.
+            </h2>
+          </div>
+
+          <p>
+            These are useful shortcuts when you are not yet sure
+            which Nanaimo neighbourhood belongs on your shortlist.
+          </p>
+        </div>
+
+        <div class="areas-lifestyle-grid">
+          {
+            lifestyleRecommendations.map((item) => (
+              <a
+                class="areas-lifestyle-card"
+                href={`/${city}/${item.area.slug}`}
+              >
+                <span
+                  class={`areas-lifestyle-icon areas-lifestyle-icon--${item.icon}`}
+                  aria-hidden="true"
+                >
+                  {
+                    item.icon === "mountain"
+                      ? "▲"
+                      : item.icon === "water"
+                        ? "≈"
+                        : item.icon === "walk"
+                        ? "↟"
+                        : item.icon === "family"
+                          ? "⌂"
+                          : item.icon === "bike"
+                            ? "◉"
+                            : item.icon === "trees"
+                              ? "♧"
+                              : "$"
+                  }
+                </span>
+
+                <div>
+                  <small>{item.eyebrow}</small>
+                  <strong>{item.title}</strong>
+                  <p>{item.description}</p>
+                  <b>
+                    Explore {item.area.name}
+                    <span aria-hidden="true">→</span>
+                  </b>
+                </div>
+              </a>
+            ))
+          }
+        </div>
+      </section>
+
+      {
+        featuredArea && (
+          <section class="areas-featured">
+            <div class="areas-featured__copy">
+              <p class="areas-eyebrow">
+                Featured neighbourhood today
+              </p>
+
+              <h2>{featuredArea.name}</h2>
+
+              <p>
+                {
+                  featuredArea.description ||
+                  `Explore current homes, local information, and market activity in ${featuredArea.name}.`
+                }
+              </p>
+
+              <div class="areas-featured__stats">
+                <span>
+                  <strong>
+                    {featuredArea.count.toLocaleString()}
+                  </strong>
+                  active listings
+                </span>
+
+                <span>
+                  <strong>{cityLabel}</strong>
+                  local area guide
+                </span>
+              </div>
+
+              <a
+                class="areas-button areas-button--primary"
+                href={`/${city}/${featuredArea.slug}`}
+              >
+                Explore {featuredArea.name}
+              </a>
+            </div>
+
+            <a
+              class="areas-featured__visual"
+              href={`/${city}/${featuredArea.slug}`}
+              aria-label={`Explore ${featuredArea.name}`}
+              style={
+                featuredArea.image || heroImageUrl
+                  ? `--featured-area-image:url("${String(
+                      featuredArea.image || heroImageUrl
+                    ).replace(/"/g, "%22")}");`
+                  : undefined
+              }
+            >
+              <span>{featuredArea.name}</span>
+              <b aria-hidden="true">→</b>
+            </a>
+          </section>
+        )
+      }
+
+      <section
+        class="areas-overview-map"
+        aria-labelledby="areas-overview-map-title"
+      >
+        <div class="areas-overview-map__heading">
+          <div>
+            <p class="areas-eyebrow">The whole city, at a glance</p>
+            <h2 id="areas-overview-map-title">
+              See every {cityLabel} neighbourhood
+            </h2>
+          </div>
+
+          <p>
+            Choose an outlined area on the map, or keep scrolling
+            to browse the full directory below.
+          </p>
+        </div>
+
+        <div
+          id="areas-overview-map"
+          class="areas-overview-map__canvas"
+          aria-label={`Map of ${cityLabel} neighbourhoods`}
+        ></div>
+      </section>
+
+      <script
+        id="areas-overview-map-data"
+        type="application/json"
+        set:html={JSON.stringify(areaMapBoundaries)}
+      />
+      <section
+        id="neighbourhoods"
+        class="areas-neighbourhood-picker"
+      >
+        <div class="areas-heading">
+          <div>
+            <p class="areas-eyebrow">
+              Browse by area
+            </p>
+
+            <h2>
+              Choose a {cityLabel} neighbourhood
+            </h2>
+          </div>
+
+          <p>
+            Start with an area, then explore current listings,
+            property types, prices, and local information.
+          </p>
+        </div>
+
+        <div class="areas-grid">
+          {
+            areas.map((area) => (
+              <a
+                class="areas-card"
+                href={`/${city}/${area.slug}`}
+              >
+                <div>
+                  <strong>{area.name}</strong>
+
+                  <span>
+                    {area.count.toLocaleString()}{" "}
+                    {area.count === 1
+                      ? "listing"
+                      : "listings"}
+                  </span>
+
+                  {
+                    area.description && (
+                      <p>{area.description}</p>
+                    )
+                  }
+                </div>
+
+                <b aria-hidden="true">→</b>
+              </a>
+            ))
+          }
+        </div>
+      </section>
+      <style is:global>
+  .areas-overview-map {
+    margin: 14px 0 62px;
+  }
+
+  .areas-overview-map__heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, .78fr);
+    gap: 28px;
+    align-items: end;
+    margin-bottom: 22px;
+  }
+
+  .areas-overview-map__heading h2 {
+    max-width: 700px;
+    margin: 7px 0 0;
+    font-family: Georgia, serif;
+    font-size: clamp(2.3rem, 4vw, 4.25rem);
+    font-weight: 500;
+    letter-spacing: -.055em;
+    line-height: .96;
+  }
+
+  .areas-overview-map__heading > p {
+    max-width: 370px;
+    margin: 0 0 4px;
+    color: var(--muted, #655f59);
+    font-size: .95rem;
+    line-height: 1.65;
+  }
+
+  .areas-overview-map__canvas {
+    position: relative;
+    min-height: clamp(370px, 54vw, 650px);
+    overflow: hidden;
+    border: 1px solid rgba(38, 32, 28, .12);
+    border-radius: 16px;
+    background: #e8ece8;
+    box-shadow: 0 18px 44px rgba(35, 28, 24, .09);
+  }
+
+  .areas-overview-map__canvas::before {
+    content: "Loading neighbourhood map";
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: #756f68;
+    font-size: .88rem;
+    letter-spacing: .04em;
+  }
+
+  .areas-overview-map__canvas.is-ready::before {
+    display: none;
+  }
+
+  .areas-overview-map__canvas .leaflet-control-zoom {
+    overflow: hidden;
+    border: 0;
+    border-radius: 9px;
+    box-shadow: 0 8px 22px rgba(31, 27, 23, .16);
+  }
+
+  .areas-overview-map__canvas .leaflet-control-zoom a {
+    width: 32px;
+    height: 32px;
+    border: 0;
+    color: #26221e;
+    font-size: 18px;
+    line-height: 32px;
+  }
+  .areas-overview-map__canvas .leaflet-tooltip {
+    padding: 7px 9px;
+    border: 1px solid rgba(38, 32, 28, .12);
+    border-radius: 6px;
+    background: rgba(255, 253, 249, .96);
+    color: #26221e;
+    box-shadow: 0 7px 20px rgba(31, 27, 23, .14);
+    font-family: Arial, sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .01em;
+    white-space: nowrap;
+  }
+
+  .areas-overview-map__canvas .leaflet-tooltip::before {
+    border-top-color: rgba(255, 253, 249, .96);
+  }
+
+  .areas-overview-map__canvas .leaflet-control-attribution {
+    padding: 2px 5px;
+    background: rgba(255, 255, 255, .72);
+    font-size: 9px;
+  }
+
+  @media (max-width: 720px) {
+    .areas-overview-map {
+      margin-bottom: 44px;
+    }
+
+    .areas-overview-map__heading {
+      display: block;
+      margin-bottom: 17px;
+    }
+
+    .areas-overview-map__heading h2 {
+      font-size: clamp(2.25rem, 11vw, 3.25rem);
+    }
+
+    .areas-overview-map__heading > p {
+      margin-top: 14px;
+    }
+
+    .areas-overview-map__canvas {
+      min-height: 430px;
+      margin-left: calc(50% - 50vw);
+      width: 100vw;
+      border-right: 0;
+      border-left: 0;
+      border-radius: 0;
+    }
+
+    .areas-overview-map__canvas .leaflet-tooltip {
+      font-size: 10px;
+    }
+  }
+
+/* valuable-areas-market-guide */
+  .areas-market-guide {
+    display: grid;
+    grid-template-columns:
+      minmax(280px, .78fr)
+      minmax(480px, 1.22fr);
+    gap: clamp(42px, 7vw, 92px);
+    align-items: center;
+    margin: 74px 0 84px;
+    padding: clamp(34px, 5vw, 64px);
+    border: 1px solid
+      color-mix(
+        in srgb,
+        var(--areas-accent) 13%,
+        transparent
+      );
+    border-radius: 16px;
+    background:
+      linear-gradient(
+        135deg,
+        color-mix(
+          in srgb,
+          var(--areas-accent) 7%,
+          white
+        ),
+        color-mix(
+          in srgb,
+          var(--areas-accent) 2%,
+          white
+        )
+      );
+  }
+
+  .areas-market-guide__intro h2 {
+    max-width: 500px;
+    margin: 7px 0 18px;
+    font-family: Georgia, serif;
+    font-size: clamp(2.15rem, 4vw, 3.6rem);
+    font-weight: 500;
+    line-height: .98;
+    letter-spacing: -.045em;
+  }
+
+  .areas-market-guide__intro > p:not(.areas-eyebrow) {
+    max-width: 500px;
+    margin: 0;
+    color: #625f5b;
+    font-size: .93rem;
+    line-height: 1.65;
+  }
+
+  .areas-market-guide__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    align-items: center;
+    margin-top: 27px;
+  }
+
+  .areas-market-guide__secondary {
+    display: inline-flex;
+    gap: 9px;
+    align-items: center;
+    color: var(--areas-ink);
+    font-size: .82rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .areas-inventory-ranking {
+    overflow: hidden;
+    border: 1px solid rgba(28, 25, 23, .1);
+    border-radius: 13px;
+    background: rgba(255, 255, 255, .8);
+    box-shadow: 0 16px 44px rgba(28, 25, 23, .055);
+  }
+
+  .areas-inventory-ranking__head {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    align-items: end;
+    padding: 21px 23px 18px;
+    border-bottom: 1px solid rgba(28, 25, 23, .09);
+  }
+
+  .areas-inventory-ranking__head div {
+    display: grid;
+    gap: 3px;
+  }
+
+  .areas-inventory-ranking__head small,
+  .areas-inventory-ranking__head > span {
+    color: #77716b;
+    font-size: .67rem;
+    font-weight: 750;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .areas-inventory-ranking__head strong {
+    font-family: Georgia, serif;
+    font-size: 1.18rem;
+  }
+
+  .areas-inventory-row {
+    display: grid;
+    grid-template-columns:
+      30px
+      minmax(0, 1fr)
+      auto
+      18px;
+    gap: 14px;
+    align-items: center;
+    min-height: 66px;
+    padding: 11px 22px;
+    border-bottom: 1px solid rgba(28, 25, 23, .075);
+    color: inherit;
+    text-decoration: none;
+    transition:
+      background .18s ease,
+      transform .18s ease;
+  }
+
+  .areas-inventory-row:hover {
+    background:
+      color-mix(
+        in srgb,
+        var(--areas-accent) 6%,
+        white
+      );
+  }
+
+  .areas-inventory-row__rank {
+    color: var(--areas-accent);
+    font-family: Georgia, serif;
+    font-size: .9rem;
+  }
+
+  .areas-inventory-row__details {
+    display: grid;
+    gap: 8px;
+  }
+
+  .areas-inventory-row__details > strong {
+    font-family: Georgia, serif;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .areas-inventory-row__track {
+    display: block;
+    width: 100%;
+    height: 3px;
+    overflow: hidden;
+    border-radius: 999px;
+    background:
+      color-mix(
+        in srgb,
+        var(--areas-accent) 9%,
+        #ece9e6
+      );
+  }
+
+  .areas-inventory-row__track > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--areas-accent);
+    opacity: .72;
+  }
+
+  .areas-inventory-row__count {
+    display: grid;
+    min-width: 55px;
+    justify-items: end;
+  }
+
+  .areas-inventory-row__count strong {
+    color: var(--areas-ink);
+    font-size: .92rem;
+  }
+
+  .areas-inventory-row__count small {
+    color: #77716b;
+    font-size: .62rem;
+  }
+
+  .areas-inventory-row__arrow {
+    color: var(--areas-accent);
+    font-size: .9rem;
+  }
+
+  .areas-inventory-ranking__note {
+    margin: 0;
+    padding: 13px 22px 15px;
+    color: #77716b;
+    font-size: .68rem;
+  }
+
+  @media (max-width: 900px) {
+    .areas-market-guide {
+      grid-template-columns: 1fr;
+      gap: 34px;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .areas-market-guide {
+      margin: 52px 0 62px;
+      padding: 26px 18px;
+      border-radius: 11px;
+    }
+
+    .areas-market-guide__intro h2 {
+      font-size: clamp(2rem, 11vw, 3rem);
+    }
+
+    .areas-market-guide__actions {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .areas-inventory-row {
+      grid-template-columns:
+        25px
+        minmax(0, 1fr)
+        auto;
+      gap: 10px;
+      padding: 11px 14px;
+    }
+
+    .areas-inventory-row__arrow {
+      display: none;
+    }
+
+    .areas-inventory-ranking__head {
+      padding: 18px 15px 15px;
+    }
+
+    .areas-inventory-ranking__note {
+      padding: 12px 15px 14px;
+    }
+  }
+</style>
+
+      <section class="areas-market-guide">
+        <div class="areas-market-guide__intro">
+          <p class="areas-eyebrow">
+            Live neighbourhood inventory
+          </p>
+
+          <h2>
+            Where buyers have the most choice.
+          </h2>
+
+          <p>
+            Inventory changes constantly. These neighbourhoods currently
+            offer the widest selection of homes in {cityLabel}.
+          </p>
+
+          <div class="areas-market-guide__actions">
+            <a
+              class="areas-button areas-button--primary"
+              href={`/explore?city=${encodeURIComponent(city)}`}
+            >
+              Compare everything in Explore
+            </a>
+
+            <a
+              class="areas-market-guide__secondary"
+              href={`/${city}/market-intelligence`}
+            >
+              View market intelligence
+              <span aria-hidden="true">→</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="areas-inventory-ranking">
+          <div class="areas-inventory-ranking__head">
+            <div>
+              <small>Most active now</small>
+              <strong>Neighbourhoods by listings</strong>
+            </div>
+
+            <span>Live inventory</span>
+          </div>
+
+          <div class="areas-inventory-ranking__rows">
+            {
+              areas
+                .filter((area) => area.count > 0)
+                .slice(0, 5)
+                .map((area, index) => {
+                  const largestAreaCount = Math.max(
+                    ...areas.map((item) => item.count),
+                    1
+                  );
+
+                  const inventoryWidth = Math.max(
+                    8,
+                    Math.round(
+                      (area.count / largestAreaCount) * 100
+                    )
+                  );
+
+                  return (
+                    <a
+                      class="areas-inventory-row"
+                      href={`/${city}/${area.slug}`}
+                    >
+                      <span class="areas-inventory-row__rank">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+
+                      <span class="areas-inventory-row__details">
+                        <strong>{area.name}</strong>
+
+                        <span class="areas-inventory-row__track">
+                          <span
+                            style={`width: ${inventoryWidth}%`}
+                          ></span>
+                        </span>
+                      </span>
+
+                      <span class="areas-inventory-row__count">
+                        <strong>{area.count}</strong>
+                        <small>
+                          {area.count === 1 ? "listing" : "listings"}
+                        </small>
+                      </span>
+
+                      <span
+                        class="areas-inventory-row__arrow"
+                        aria-hidden="true"
+                      >
+                        →
+                      </span>
+                    </a>
+                  );
+                })
+            }
+          </div>
+
+          <p class="areas-inventory-ranking__note">
+            Counts reflect active listings currently available on this site.
+          </p>
+        </div>
+      </section>
+</main>
+  </div>
+
+  <style>
+    .areas-page {
+      --areas-ink: #17131c;
+      --areas-muted: #6d6872;
+      --areas-line: rgba(45, 35, 55, 0.11);
+      overflow: hidden;
+      background: #fff;
+      color: var(--areas-ink);
+    }
+
+    .areas-hero {
+      position: relative;
+      min-height: 430px;
+      background-image:
+        var(
+          --areas-hero-image,
+          url("https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2200&q=90")
+        );
+      background-position: center;
+      background-size: cover;
+    }
+
+    .areas-hero__shade {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(
+          90deg,
+          rgba(247,249,251,.99) 0%,
+          rgba(247,249,251,.96) 27%,
+          rgba(247,249,251,.78) 46%,
+          rgba(247,249,251,.18) 72%,
+          rgba(247,249,251,.02) 100%
+        );
+    }
+
+    /* Exact same width as RealEstateHomepage */
+    .areas-hero__inner,
+    .areas-main {
+      width: min(1400px, calc(100% - 80px));
+      margin-right: auto;
+      margin-left: auto;
+    }
+
+    .areas-hero__inner {
+      position: relative;
+      z-index: 1;
+      padding: 46px 0 42px;
+    }
+
+    .areas-hero__content {
+      max-width: 620px;
+    }
+
+    .areas-eyebrow {
+      margin: 0 0 15px;
+      color: var(--areas-accent);
+      font-size: .72rem;
+      font-weight: 850;
+      letter-spacing: .17em;
+      text-transform: uppercase;
+    }
+
+    .areas-hero h1 {
+      max-width: 620px;
+      margin: 0;
+      font-family: var(--f-display, Georgia, serif);
+      font-size: clamp(3.6rem, 5vw, 4.8rem);
+      font-weight: 500;
+      line-height: .91;
+      letter-spacing: -.055em;
+    }
+
+    .areas-hero h1 span {
+      color: var(--areas-accent);
+    }
+
+    .areas-hero__copy {
+      max-width: 520px;
+      margin: 18px 0 0;
+      color: #3f4a45;
+      font-size: clamp(1rem, 1.3vw, 1.13rem);
+      line-height: 1.6;
+    }
+
+    .areas-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 28px;
+      margin-top: 22px;
+    }
+
+    .areas-stats article {
+      min-width: 135px;
+    }
+
+    .areas-stats strong,
+    .areas-stats small {
+      display: block;
+    }
+
+    .areas-stats strong {
+      font-size: 1rem;
+    }
+
+    .areas-stats small {
+      margin-top: 4px;
+      color: var(--areas-muted);
+      font-size: .69rem;
+    }
+
+    .areas-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 29px;
+    }
+
+    .areas-button {
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 22px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      font-size: .79rem;
+      font-weight: 850;
+      text-decoration: none;
+    }
+
+    .areas-button--primary {
+      background: var(--areas-accent);
+      color: #fff;
+    }
+
+    .areas-button--secondary {
+      border-color: var(--areas-line);
+      background: rgba(255,255,255,.94);
+      color: var(--areas-accent);
+    }
+
+    .areas-main {
+      padding: 0 0 90px;
+    }
+
+    .areas-heading {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      align-items: end;
+      margin-bottom: 28px;
+    }
+
+    .areas-heading h2 {
+      margin: 0;
+      font-family: var(--f-display, Georgia, serif);
+      font-size: clamp(2.4rem, 4vw, 4rem);
+      font-weight: 500;
+      line-height: .95;
+      letter-spacing: -.052em;
+    }
+
+    .areas-heading > p {
+      max-width: 480px;
+      margin: 0;
+      color: var(--areas-muted);
+      font-size: .9rem;
+      line-height: 1.6;
+    }
+
+    .areas-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .areas-card {
+      min-height: 155px;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 22px;
+      border: 1px solid var(--areas-line);
+      border-radius: 12px;
+      background:
+        color-mix(
+          in srgb,
+          var(--areas-accent) 4%,
+          white
+        );
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .areas-card strong,
+    .areas-card span,
+    .areas-card p {
+      display: block;
+    }
+
+    .areas-card strong {
+      font-family: var(--f-display, Georgia, serif);
+      font-size: 1.35rem;
+      font-weight: 500;
+    }
+
+    .areas-card span {
+      margin-top: 6px;
+      color: var(--areas-muted);
+      font-size: .75rem;
+    }
+
+    .areas-card p {
+      margin: 12px 0 0;
+      color: var(--areas-muted);
+      font-size: .75rem;
+      line-height: 1.45;
+    }
+
+    .areas-card b {
+      align-self: flex-end;
+      color: var(--areas-accent);
+    }
+
+    @media (max-width: 1100px) {
+      .areas-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      .areas-hero {
+        min-height: 440px;
+      }
+
+      .areas-hero__inner,
+      .areas-main {
+        width: calc(100% - 32px);
+      }
+
+      .areas-hero__inner {
+        padding: 38px 0 36px;
+      }
+
+      .areas-hero h1 {
+        font-size: clamp(3rem, 13vw, 4rem);
+      }
+
+      .areas-heading {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      .areas-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 500px) {
+      .areas-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  
+  .areas-discovery {
+    position: relative;
+    margin-bottom: 58px;
+    padding: 54px 0 48px;
+    background:
+      linear-gradient(
+        180deg,
+        #e9edf1 0%,
+        #f2eef5 38%,
+        #faf9fa 100%
+      );
+    box-shadow: 0 0 0 100vmax #f2eef5;
+    clip-path: inset(0 -100vmax);
+  }
+
+  .areas-lifestyle-grid {
+    display: grid;
+    grid-template-columns:
+      repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .areas-lifestyle-card {
+    display: flex;
+    min-height: 152px;
+    gap: 18px;
+    padding: 20px;
+    border: 1px solid rgba(28, 25, 23, 0.1);
+    border-radius: 12px;
+    background: #fff;
+    color: inherit;
+    text-decoration: none;
+    box-shadow: 0 4px 24px rgba(28, 25, 23, 0.04);
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease,
+      border-color 0.2s ease;
+  }
+
+  /* areas-tonal-lifestyle-cards */
+.areas-lifestyle-card {
+  border-color: color-mix(
+    in srgb,
+    var(--areas-accent) 11%,
+    rgba(28, 25, 23, 0.08)
+  );
+  box-shadow: 0 7px 22px rgba(39, 34, 45, 0.045);
+}
+
+.areas-lifestyle-card:nth-child(3n + 1) {
+  background: #eef3f4;
+}
+
+.areas-lifestyle-card:nth-child(3n + 2) {
+  background: #f2eef7;
+}
+
+.areas-lifestyle-card:nth-child(3n) {
+  background: #f6f1ee;
+}
+.areas-lifestyle-card:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(
+      in srgb,
+      var(--areas-accent) 45%,
+      transparent
+    );
+    box-shadow: 0 16px 38px rgba(28, 25, 23, 0.09);
+  }
+
+  .areas-lifestyle-icon {
+    display: grid;
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    border-radius: 50%;
+    background: color-mix(
+      in srgb,
+      var(--areas-accent) 12%,
+      white
+    );
+    color: var(--areas-accent);
+    font-size: 1.05rem;
+    font-weight: 800;
+  }
+
+  .areas-lifestyle-card small {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--areas-accent);
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+
+  .areas-lifestyle-card strong {
+    display: block;
+    font-family: Georgia, serif;
+    font-size: 1.2rem;
+    line-height: 1.15;
+  }
+
+  .areas-lifestyle-card p {
+    margin: 7px 0 11px;
+    color: #625f5b;
+    font-size: 0.9rem;
+    line-height: 1.48;
+  }
+
+  .areas-lifestyle-card b {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    color: var(--areas-accent);
+    font-size: 0.82rem;
+  }
+
+  .areas-featured {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 0.9fr)
+      minmax(340px, 1.1fr);
+    overflow: hidden;
+    margin: 72px 0;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--areas-accent) 28%, #17131c);
+    color: #fff;
+  }
+
+  .areas-featured__copy {
+    padding: clamp(32px, 6vw, 72px);
+  }
+
+  .areas-featured h2 {
+    margin: 7px 0 15px;
+    color: #fff;
+    font-family: Georgia, serif;
+    font-size: clamp(2rem, 4vw, 3.35rem);
+  }
+
+  .areas-featured__copy > p:not(.areas-eyebrow) {
+    max-width: 580px;
+    color: rgba(255, 255, 255, 0.74);
+    line-height: 1.75;
+  }
+
+  .areas-featured__stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 28px;
+    margin: 28px 0;
+  }
+
+  .areas-featured__stats span {
+    display: grid;
+    gap: 3px;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.78rem;
+  }
+
+  .areas-featured__stats strong {
+    color: #fff;
+    font-size: 1.2rem;
+  }
+
+  .areas-featured__visual {
+    position: relative;
+    display: flex;
+    min-height: 390px;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 34px;
+    background-color: var(--areas-accent);
+    background-image:
+      linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--areas-accent) 24%, transparent),
+        rgba(23, 19, 28, 0.74)
+      ),
+      var(--featured-area-image);
+    background-position: center;
+    background-size: cover;
+    color: #fff;
+    text-decoration: none;
+  }
+
+  .areas-featured__visual span {
+    max-width: 80%;
+    font-family: Georgia, serif;
+    font-size: clamp(1.6rem, 3vw, 2.6rem);
+  }
+
+  .areas-featured__visual b {
+    display: grid;
+    width: 46px;
+    height: 46px;
+    place-items: center;
+    border-radius: 50%;
+    background: #fff;
+    color: color-mix(in srgb, var(--areas-accent) 72%, #17131c);
+  }
+
+  .areas-snapshot {
+    display: grid;
+    grid-template-columns: 0.8fr 1.2fr;
+    gap: 48px;
+    align-items: end;
+    margin: 84px 0;
+    padding: clamp(30px, 5vw, 58px);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--areas-accent) 6%, white);
+  }
+
+  .areas-snapshot h2,
+  .areas-map-callout h2 {
+    margin: 6px 0 0;
+    font-family: Georgia, serif;
+    font-size: clamp(1.8rem, 3.5vw, 3rem);
+    line-height: 1.08;
+  }
+
+  .areas-snapshot__grid {
+    display: grid;
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .areas-snapshot__grid article {
+    display: grid;
+    gap: 4px;
+    min-height: 118px;
+    align-content: center;
+    padding: 22px;
+    border: 1px solid rgba(28, 25, 23, 0.08);
+    border-radius: 10px;
+    background: #fff;
+  }
+
+  .areas-snapshot__grid strong {
+    color: var(--areas-accent);
+    font-family: Georgia, serif;
+    font-size: 2rem;
+  }
+
+  .areas-snapshot__grid span {
+    color: #696560;
+    font-size: 0.8rem;
+  }
+
+  .areas-map-callout {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 0.8fr)
+      minmax(340px, 1.2fr);
+    gap: 48px;
+    align-items: center;
+    margin: 84px 0;
+  }
+
+  .areas-map-callout > div > p:not(.areas-eyebrow) {
+    max-width: 560px;
+    margin: 18px 0 26px;
+    color: #68635e;
+    line-height: 1.7;
+  }
+
+  .areas-map-preview {
+    position: relative;
+    display: grid;
+    min-height: 360px;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid rgba(28, 25, 23, 0.09);
+    border-radius: 16px;
+    background:
+      linear-gradient(
+        rgba(255, 255, 255, 0.08) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.08) 1px,
+        transparent 1px
+      ),
+      linear-gradient(135deg, color-mix(in srgb, var(--areas-accent) 48%, #17131c), color-mix(in srgb, var(--areas-accent) 20%, #17131c));
+    background-size: 42px 42px, 42px 42px, auto;
+    color: #fff;
+    text-decoration: none;
+  }
+  .areas-map-preview::before {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(
+        circle at 24% 28%,
+        color-mix(in srgb, var(--areas-accent) 30%, transparent),
+        transparent 24%
+      ),
+      radial-gradient(
+        circle at 72% 66%,
+        rgba(74, 133, 112, 0.26),
+        transparent 27%
+      );
+    content: "";
+  }
+
+  .areas-map-preview__road {
+    position: absolute;
+    z-index: 1;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(217, 235, 226, 0.42);
+    transform-origin: left center;
+  }
+
+  .areas-map-preview__road--one {
+    top: 53%;
+    left: 8%;
+    width: 88%;
+    transform: rotate(-9deg);
+  }
+
+  .areas-map-preview__road--two {
+    top: 19%;
+    left: 48%;
+    width: 58%;
+    transform: rotate(71deg);
+  }
+
+  .areas-map-preview__area {
+    position: absolute;
+    z-index: 3;
+    padding: 7px 11px;
+    border: 2px solid rgba(255, 255, 255, 0.86);
+    border-radius: 999px;
+    background: var(--areas-accent);
+    box-shadow: 0 5px 15px rgba(6, 22, 17, 0.22);
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .areas-map-preview__area--1 {
+    top: 18%;
+    left: 13%;
+  }
+
+  .areas-map-preview__area--2 {
+    top: 31%;
+    right: 13%;
+  }
+
+  .areas-map-preview__area--3 {
+    top: 55%;
+    left: 31%;
+  }
+
+  .areas-map-preview__area--4 {
+    right: 21%;
+    bottom: 15%;
+  }
+
+  .areas-map-preview__area--5 {
+    left: 11%;
+    bottom: 14%;
+  }
+  @media (max-width: 900px) {
+    .areas-lifestyle-grid {
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+    }
+
+    .areas-featured,
+    .areas-snapshot,
+    .areas-map-callout {
+      grid-template-columns: 1fr;
+    }
+
+    .areas-featured__visual {
+      min-height: 300px;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .areas-lifestyle-grid,
+    .areas-snapshot__grid {
+      grid-template-columns: 1fr;
+    }
+
+    .areas-lifestyle-card {
+      min-height: 0;
+      padding: 20px;
+    }
+
+    .areas-featured,
+    .areas-snapshot,
+    .areas-map-preview {
+      border-radius: 10px;
+    }
+
+    .areas-map-preview {
+      min-height: 290px;
+    }
+  }
+
+  /* editorial-lifestyle-layout-final */
+  .areas-discovery {
+    position: relative;
+    z-index: 0;
+    margin-bottom: 0;
+    padding: 52px 0 58px;
+    background: transparent;
+    box-shadow: none;
+    clip-path: none;
+  }
+
+  .areas-discovery::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 100vw;
+    transform: translateX(-50%);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(
+          in srgb,
+          var(--areas-accent) 5%,
+          #edf1f2
+        ) 0%,
+        color-mix(
+          in srgb,
+          var(--areas-accent) 4%,
+          #f3f1f2
+        ) 44%,
+        color-mix(
+          in srgb,
+          var(--areas-accent) 1.5%,
+          #faf9f8
+        ) 100%
+      );
+  }
+
+  .areas-lifestyle-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .areas-lifestyle-card {
+    min-height: 0;
+    grid-column: span 3;
+  }
+
+  .areas-lifestyle-card:nth-child(-n + 2) {
+    grid-column: span 6;
+    min-height: 170px;
+    padding: 26px;
+  }
+
+  .areas-lifestyle-card:nth-child(n + 3) {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 13px;
+    padding: 18px;
+  }
+
+  .areas-lifestyle-card:nth-child(n + 3)
+    .areas-lifestyle-icon {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+  }
+
+  .areas-lifestyle-card:nth-child(n + 3) small {
+    font-size: .62rem;
+  }
+
+  .areas-lifestyle-card:nth-child(n + 3) strong {
+    font-size: 1.08rem;
+  }
+
+  .areas-lifestyle-card:nth-child(n + 3) p {
+    margin: 6px 0 9px;
+    font-size: .82rem;
+    line-height: 1.42;
+  }
+
+  .areas-lifestyle-card:nth-child(n + 3) b {
+    font-size: .75rem;
+  }
+
+  .areas-featured {
+    margin-top: 58px;
+  }
+
+  @media (max-width: 1000px) {
+    .areas-lifestyle-card,
+    .areas-lifestyle-card:nth-child(-n + 2) {
+      grid-column: span 6;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .areas-discovery {
+      padding: 42px 0 46px;
+    }
+
+    .areas-lifestyle-card,
+    .areas-lifestyle-card:nth-child(-n + 2) {
+      grid-column: 1 / -1;
+      min-height: 0;
+      padding: 19px;
+    }
+
+    .areas-lifestyle-card:nth-child(n + 3) {
+      grid-template-columns: 36px minmax(0, 1fr);
+    }
+
+    .areas-featured {
+      margin-top: 44px;
+    }
+  }
+
+  /* restrained-lifestyle-cards-final */
+
+  /* Remove the assorted pastel card colours. */
+  .areas-lifestyle-card,
+  .areas-lifestyle-card:nth-child(3n + 1),
+  .areas-lifestyle-card:nth-child(3n + 2),
+  .areas-lifestyle-card:nth-child(3n) {
+    background: rgba(255, 255, 255, .46);
+    border-color: rgba(28, 25, 23, .11);
+    box-shadow: none;
+  }
+
+  /* The two lead cards remain quietly defined. */
+  .areas-lifestyle-card:nth-child(-n + 2) {
+    background: rgba(255, 255, 255, .58);
+    border: 1px solid rgba(28, 25, 23, .12);
+  }
+
+  /* The four supporting choices become editorial links. */
+  .areas-lifestyle-card:nth-child(n + 3) {
+    border: 0;
+    border-top: 1px solid rgba(28, 25, 23, .16);
+    border-radius: 0;
+    background: transparent;
+    padding: 20px 4px 14px;
+  }
+
+  .areas-lifestyle-card:hover,
+  .areas-lifestyle-card:nth-child(n + 3):hover {
+    background: rgba(255, 255, 255, .68);
+    border-color: rgba(28, 25, 23, .2);
+    box-shadow: none;
+    transform: translateY(-2px);
+  }
+
+  /* Lose the candy-coloured icon circles. */
+  .areas-lifestyle-icon,
+  .areas-lifestyle-card:nth-child(n + 3)
+    .areas-lifestyle-icon {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+    border: 1px solid rgba(28, 25, 23, .14);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .42);
+    color: #514b54;
+    font-size: .78rem;
+  }
+
+  .areas-lifestyle-card {
+    color: #201d22;
+  }
+
+  .areas-lifestyle-card small {
+    color: #655d69;
+    letter-spacing: .12em;
+  }
+
+  .areas-lifestyle-card b {
+    color: #514459;
+    font-weight: 750;
+  }
+
+  @media (max-width: 620px) {
+    .areas-lifestyle-card:nth-child(n + 3) {
+      padding: 18px 2px 14px;
+    }
+  }
+
+  /* compact-spectrum-lifestyle-final */
+  .areas-discovery {
+    padding-top: 44px;
+    padding-bottom: 48px;
+  }
+
+  .areas-lifestyle-grid {
+    gap: 11px;
+  }
+
+  .areas-lifestyle-card {
+    --card-tone: #748891;
+    min-height: 0;
+  }
+
+  .areas-lifestyle-card:nth-child(1) {
+    --card-tone: #668991;
+  }
+
+  .areas-lifestyle-card:nth-child(2) {
+    --card-tone: #77758f;
+  }
+
+  .areas-lifestyle-card:nth-child(3) {
+    --card-tone: #8b7d70;
+  }
+
+  .areas-lifestyle-card:nth-child(4) {
+    --card-tone: #6f8580;
+  }
+
+  .areas-lifestyle-card:nth-child(5) {
+    --card-tone: #80778b;
+  }
+
+  .areas-lifestyle-card:nth-child(6) {
+    --card-tone: #8b8172;
+  }
+
+  .areas-lifestyle-card,
+  .areas-lifestyle-card:nth-child(3n + 1),
+  .areas-lifestyle-card:nth-child(3n + 2),
+  .areas-lifestyle-card:nth-child(3n) {
+    background:
+      color-mix(
+        in srgb,
+        var(--card-tone) 6%,
+        rgba(255, 255, 255, .62)
+      );
+    border-color:
+      color-mix(
+        in srgb,
+        var(--card-tone) 22%,
+        transparent
+      );
+  }
+
+  .areas-lifestyle-card:nth-child(-n + 2) {
+    min-height: 132px;
+    padding: 19px 21px;
+    background:
+      color-mix(
+        in srgb,
+        var(--card-tone) 7%,
+        rgba(255, 255, 255, .72)
+      );
+  }
+
+  .areas-lifestyle-card:nth-child(n + 3) {
+    padding: 15px 3px 11px;
+    background: transparent;
+    border-color:
+      color-mix(
+        in srgb,
+        var(--card-tone) 28%,
+        transparent
+      );
+  }
+
+  .areas-lifestyle-icon,
+  .areas-lifestyle-card:nth-child(n + 3)
+    .areas-lifestyle-icon {
+    width: 27px;
+    height: 27px;
+    flex-basis: 27px;
+    border-color:
+      color-mix(
+        in srgb,
+        var(--card-tone) 28%,
+        transparent
+      );
+    background:
+      color-mix(
+        in srgb,
+        var(--card-tone) 10%,
+        rgba(255, 255, 255, .66)
+      );
+    color: color-mix(
+      in srgb,
+      var(--card-tone) 72%,
+      #29252c
+    );
+    font-size: .7rem;
+  }
+
+  .areas-lifestyle-card strong {
+    font-size: 1.04rem;
+  }
+
+  .areas-lifestyle-card p {
+    margin: 5px 0 8px;
+    font-size: .81rem;
+    line-height: 1.4;
+  }
+
+  .areas-lifestyle-card small {
+    margin-bottom: 3px;
+    font-size: .59rem;
+  }
+
+  .areas-lifestyle-card b {
+    font-size: .72rem;
+  }
+
+  .areas-lifestyle-card:hover,
+  .areas-lifestyle-card:nth-child(n + 3):hover {
+    background:
+      color-mix(
+        in srgb,
+        var(--card-tone) 9%,
+        rgba(255, 255, 255, .8)
+      );
+  }
+
+  @media (max-width: 620px) {
+    .areas-discovery {
+      padding-top: 38px;
+      padding-bottom: 42px;
+    }
+
+    .areas-lifestyle-card,
+    .areas-lifestyle-card:nth-child(-n + 2),
+    .areas-lifestyle-card:nth-child(n + 3) {
+      padding: 16px;
+    }
+  }
+
+  /* force-compact-neighbourhood-cards */
+  .areas-grid {
+    gap: 9px !important;
+  }
+
+  .areas-card {
+    aspect-ratio: auto !important;
+    height: 104px !important;
+    min-height: 104px !important;
+    padding: 14px 16px !important;
+    border-radius: 9px !important;
+    box-shadow: none !important;
+  }
+
+  .areas-card:nth-child(4n + 1) {
+    background: #f2f6f6 !important;
+  }
+
+  .areas-card:nth-child(4n + 2) {
+    background: #f3f3f7 !important;
+  }
+
+  .areas-card:nth-child(4n + 3) {
+    background: #f6f2f6 !important;
+  }
+
+  .areas-card:nth-child(4n) {
+    background: #f7f4f0 !important;
+  }
+
+  .areas-card h3 {
+    margin: 0 0 3px !important;
+    font-size: 1.04rem !important;
+    line-height: 1.1 !important;
+  }
+
+  .areas-card p {
+    margin: 5px 0 0 !important;
+    font-size: .72rem !important;
+    line-height: 1.3 !important;
+  }
+
+  .areas-card:hover {
+    transform: translateY(-2px);
+    filter: saturate(1.08);
+    box-shadow: 0 8px 20px rgba(28, 25, 23, .055) !important;
+  }
+
+  @media (max-width: 760px) {
+    .areas-card {
+      height: 94px !important;
+      min-height: 94px !important;
+      padding: 13px 14px !important;
+    }
+  }
+
+  /* accent-only-neighbourhood-spectrum */
+  .areas-card:nth-child(4n + 1) {
+    background:
+      color-mix(
+        in srgb,
+        var(--areas-accent) 3%,
+        white
+      ) !important;
+  }
+
+  .areas-card:nth-child(4n + 2) {
+    background:
+      color-mix(
+        in srgb,
+        var(--areas-accent) 4.5%,
+        white
+      ) !important;
+  }
+
+  .areas-card:nth-child(4n + 3) {
+    background:
+      color-mix(
+        in srgb,
+        var(--areas-accent) 6%,
+        white
+      ) !important;
+  }
+
+  .areas-card:nth-child(4n) {
+    background:
+      color-mix(
+        in srgb,
+        var(--areas-accent) 7.5%,
+        white
+      ) !important;
+  }
+
+  .areas-card {
+    border-color:
+      color-mix(
+        in srgb,
+        var(--areas-accent) 16%,
+        rgba(28, 25, 23, .08)
+      ) !important;
+  }
+
+  .areas-card:hover {
+    background:
+      color-mix(
+        in srgb,
+        var(--areas-accent) 10%,
+        white
+      ) !important;
+    border-color:
+      color-mix(
+        in srgb,
+        var(--areas-accent) 32%,
+        rgba(28, 25, 23, .08)
+      ) !important;
+  }
+
+  /* randomized-accent-card-distribution */
+
+  .areas-card:nth-child(3),
+  .areas-card:nth-child(5),
+  .areas-card:nth-child(10),
+  .areas-card:nth-child(15) {
+    background:
+      color-mix(
+        in srgb,
+        var(--areas-accent) 3%,
+        white
+      ) !important;
+  }
+
+  .areas-card:nth-child(1),
+  .areas-card:nth-child(8),
+  .areas-card:nth-child(11),
+  .areas-card:nth-child(14) {
+    background:
+      color-mix(
+        in srgb,
+        var(--areas-accent) 4.5%,
+        white
+      ) !important;
+  }
+
+  .areas-card:nth-child(4),
+  .areas-card:nth-child(6),
+  .areas-card:nth-child(12),
+  .areas-card:nth-child(13) {
+    background:
+      color-mix(
+        in srgb,
+        var(--areas-accent) 6%,
+        white
+      ) !important;
+  }
+
+  .areas-card:nth-child(2),
+  .areas-card:nth-child(7),
+  .areas-card:nth-child(9),
+  .areas-card:nth-child(16) {
+    background:
+      color-mix(
+        in srgb,
+        var(--areas-accent) 7.5%,
+        white
+      ) !important;
+  }
+
+  .areas-card:hover {
+    background:
+      color-mix(
+        in srgb,
+        var(--areas-accent) 10%,
+        white
+      ) !important;
+  }
+    /* Area-first hierarchy */
+    .areas-main { display: flex; flex-direction: column; }
+    .areas-neighbourhood-picker { order: 1; padding-top: 56px; scroll-margin-top: 92px; }
+    .areas-featured { order: 2; margin: 50px 0 34px; }
+    .areas-discovery { order: 3; margin-top: 20px; }
+    .areas-market-guide { order: 4; }
+    .areas-hero { min-height: 370px; }
+    .areas-hero__inner { padding: 38px 0 36px; }
+    .areas-hero h1 { max-width: 680px; font-size: clamp(3.15rem, 4.6vw, 4.45rem); }
+    .areas-hero__copy { max-width: 475px; }
+    .areas-actions .areas-button { gap: 10px; }
+
+    @media (max-width: 760px) {
+      .areas-neighbourhood-picker { padding-top: 38px; }
+      .areas-hero { min-height: 400px; }
+    }
+
+    /* Give every lifestyle option a clearly defined card surface. */
+    .areas-lifestyle-card,
+    .areas-lifestyle-card:nth-child(-n + 2),
+    .areas-lifestyle-card:nth-child(n + 3) {
+      border: 1px solid rgba(28, 25, 23, .13);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .72);
+      box-shadow: 0 7px 18px rgba(28, 25, 23, .035);
+    }
+
+    .areas-lifestyle-card:nth-child(n + 3) {
+      padding: 18px;
+    }
+
+    .areas-lifestyle-card:hover,
+    .areas-lifestyle-card:nth-child(n + 3):hover {
+      border-color: color-mix(
+        in srgb,
+        var(--areas-accent) 44%,
+        rgba(28, 25, 23, .14)
+      );
+      background: #fff;
+      box-shadow: 0 13px 28px rgba(28, 25, 23, .07);
+    }
+
+    /* Smooth, stable hover for neighbourhood cards. */
+    .areas-card {
+      position: relative;
+      transition:
+        transform .18s ease,
+        box-shadow .18s ease,
+        border-color .18s ease,
+        background-color .18s ease;
+      will-change: transform;
+    }
+
+    .areas-card:hover {
+      transform: translateY(-3px);
+      border-color: color-mix(
+        in srgb,
+        var(--areas-accent) 42%,
+        rgba(28, 25, 23, .14)
+      );
+      background: #fff;
+      box-shadow: 0 14px 26px rgba(28, 25, 23, .09);
+    }
+
+    .areas-card:focus-visible {
+      outline: 3px solid color-mix(
+        in srgb,
+        var(--areas-accent) 42%,
+        transparent
+      );
+      outline-offset: 3px;
+    }
+
+    /* Compact no-photo intro: the city map is now the page's visual hero. */
+    .areas-hero--editorial {
+      min-height: 0;
+      background: #f3f1eb;
+      background-image: none;
+      border-bottom: 1px solid rgba(38, 32, 28, .09);
+    }
+
+    .areas-hero--editorial .areas-hero__shade {
+      display: none;
+    }
+
+    .areas-hero--editorial .areas-hero__inner {
+      display: block;
+      min-height: 0;
+      padding-top: clamp(44px, 6vw, 76px);
+      padding-bottom: clamp(40px, 5vw, 62px);
+    }
+
+    .areas-hero--editorial .areas-hero__content {
+      max-width: 830px;
+    }
+
+    .areas-hero--editorial h1 {
+      max-width: 760px;
+      margin-bottom: 18px;
+      font-size: clamp(3rem, 5.3vw, 5.35rem);
+      line-height: .93;
+    }
+
+    .areas-hero--editorial .areas-hero__copy {
+      max-width: 610px;
+      margin-bottom: 28px;
+      color: #514c48;
+      font-size: clamp(1rem, 1.35vw, 1.14rem);
+      line-height: 1.65;
+    }
+
+    .areas-hero--editorial .areas-stats {
+      max-width: 690px;
+      padding-top: 22px;
+      border-top: 1px solid rgba(38, 32, 28, .13);
+    }
+
+    .areas-hero--editorial .areas-stats article {
+      min-width: 132px;
+    }
+
+    .areas-hero--editorial .areas-actions {
+      display: none;
+    }
+
+    @media (max-width: 720px) {
+      .areas-hero--editorial .areas-hero__inner {
+        padding-top: 38px;
+        padding-bottom: 35px;
+      }
+
+      .areas-hero--editorial h1 {
+        font-size: clamp(2.9rem, 13vw, 4.25rem);
+      }
+
+      .areas-hero--editorial .areas-stats {
+        gap: 18px;
+      }
+
+      .areas-hero--editorial .areas-stats article {
+        min-width: 0;
+      }
+    }</style>
+      <script is:inline>
+        (() => {
+          const mapElement = document.getElementById(
+            "areas-overview-map"
+          );
+          const dataElement = document.getElementById(
+            "areas-overview-map-data"
+          );
+
+          if (!mapElement || !dataElement) return;
+
+          let areas = [];
+
+          try {
+            areas = JSON.parse(dataElement.textContent || "[]");
+          } catch {
+            return;
+          }
+
+          if (!areas.length) {
+            mapElement.classList.add("is-ready");
+            mapElement.textContent =
+              "Neighbourhood boundaries are being added.";
+            return;
+          }
+
+          const leafletCss =
+            "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+          const leafletJs =
+            "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+
+          if (!document.querySelector(`link[href="${leafletCss}"]`)) {
+            const link = document.createElement("link");
+            link.rel = "stylesheet";
+            link.href = leafletCss;
+            document.head.appendChild(link);
+          }
+
+          const startMap = () => {
+            if (!window.L || mapElement.dataset.mapReady === "true") return;
+
+            mapElement.dataset.mapReady = "true";
+
+            const map = window.L.map(mapElement, {
+              attributionControl: true,
+              scrollWheelZoom: false,
+              zoomControl: true,
+              preferCanvas: true,
+            });
+
+            window.L.tileLayer(window.__JAWG_TILE_URL__, {
+              maxZoom: 19,
+              attribution: window.__JAWG_ATTRIBUTION__,
+            }).addTo(map);
+
+            const colours = [
+              "#315f87",
+              "#8d4964",
+              "#8a6a22",
+              "#44785f",
+              "#735fa3",
+              "#a3533e",
+              "#3e7580",
+              "#7a6a50",
+            ];
+
+            const features = areas
+              .map((area) => {
+                let geometry = area.geometry;
+
+                if (typeof geometry === "string") {
+                  try {
+                    geometry = JSON.parse(geometry);
+                  } catch {
+                    geometry = null;
+                  }
+                }
+
+                const actualGeometry =
+                  geometry?.type === "Feature"
+                    ? geometry.geometry
+                    : geometry;
+
+                if (!actualGeometry?.type) return null;
+
+                return {
+                  type: "Feature",
+                  properties: area,
+                  geometry: actualGeometry,
+                };
+              })
+              .filter(Boolean);
+
+            let boundaryLayer;
+
+            boundaryLayer = window.L.geoJSON(
+              {
+                type: "FeatureCollection",
+                features,
+              },
+              {
+                style(feature) {
+                  const index = Math.max(
+                    0,
+                    features.indexOf(feature)
+                  );
+                  const colour = colours[index % colours.length];
+
+                  return {
+                    color: colour,
+                    weight: 2,
+                    opacity: .88,
+                    fillColor: colour,
+                    fillOpacity: .24,
+                  };
+                },
+                onEachFeature(feature, areaLayer) {
+                  const area = feature.properties || {};
+                  const count = Number(area.count || 0);
+                  const label =
+                    `${area.name || "Area"} · ` +
+                    `${count.toLocaleString()} ` +
+                    `${count === 1 ? "listing" : "listings"}`;
+                  areaLayer.bindTooltip(label, {
+                    sticky: true,
+                    direction: "top",
+                    offset: [0, -8],
+                    opacity: .98,
+                    className: "areas-overview-map__label",
+                  });
+
+                  areaLayer.on({
+                    mouseover() {
+                      areaLayer.setStyle({
+                        weight: 3,
+                        fillOpacity: .45,
+                      });
+                      areaLayer.bringToFront();
+                    },
+                    mouseout() {
+                      boundaryLayer.resetStyle(areaLayer);
+                    },
+                    click() {
+                      if (area.href) window.location.assign(area.href);
+                    },
+                  });
+                },
+              }
+            ).addTo(map);
+
+            const bounds = boundaryLayer.getBounds();
+
+            if (bounds.isValid()) {
+              map.fitBounds(bounds, {
+                padding: [30, 30],
+                maxZoom: 12,
+              });
+            } else {
+              map.setView([49.1659, -123.9401], 11);
+            }
+
+            mapElement.classList.add("is-ready");
+
+            window.addEventListener(
+              "resize",
+              () => map.invalidateSize(),
+              { passive: true }
+            );
+          };
+
+          if (window.L) {
+            startMap();
+            return;
+          }
+
+          const script = document.createElement("script");
+          script.src = leafletJs;
+          script.async = true;
+          script.onload = startMap;
+          document.head.appendChild(script);
+        })();
+      </script>
+</Layout>
