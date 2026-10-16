@@ -1088,17 +1088,38 @@ const normalizeListingImageUrl = (value: any) => {
   return cleaned;
 };
 
-const getListingImage = (listing: any) => {
-  const image = listing.image_url || listing.image || listing.photo || listing.images?.[0] || listing.images?.[1] || listing.raw?.images?.[0] || listing.raw?.images?.[1] || listing.raw?.images?.[0]?.url || listing.raw?.images?.[1]?.url;
+const getListingOriginalImage = (listing: any) => {
+  const image =
+    listing.image_url ||
+    listing.image ||
+    listing.photo ||
+    listing.images?.[0] ||
+    listing.images?.[1] ||
+    listing.raw?.images?.[0] ||
+    listing.raw?.images?.[1] ||
+    listing.raw?.images?.[0]?.url ||
+    listing.raw?.images?.[1]?.url;
+
   return normalizeListingImageUrl(image);
 };
+
+const getListingCardImage = (source: string) => {
+  if (!source || source.includes("placehold.co")) return source;
+
+  return `/.netlify/images?url=${encodeURIComponent(source)}&w=760&h=380&fit=cover&fm=webp&q=76`;
+};
+
+const getListingImage = (listing: any) =>
+  getListingCardImage(getListingOriginalImage(listing));
+
+
 
 const getListingImages = (listing: any) => {
   const rawImages = listing.images || listing.photo_urls || listing.photos || listing.raw?.images || [];
   const images = Array.isArray(rawImages)
     ? rawImages.map((img: any) => typeof img === "string" ? normalizeListingImageUrl(img) : normalizeListingImageUrl(img.highRes || img.mediumRes || img.lowRes || img.url || img.src || img.href || img.path || "")).filter(Boolean)
     : [];
-  const firstImage = getListingImage(listing);
+  const firstImage = getListingOriginalImage(listing);
   return Array.from(new Set([firstImage, ...images].filter(Boolean)));
 };
 
