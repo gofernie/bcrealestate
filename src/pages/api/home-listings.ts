@@ -114,6 +114,17 @@ const listingImages = (listing: any) => {
   );
 };
 
+const lotSizeToSqft = (value: unknown) => {
+  const text = String(value ?? "").trim().toLowerCase().replace(/,/g, "");
+  const amount = Number(text.match(/[\d.]+/)?.[0] || 0);
+
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+
+  return /\b(?:ac|acre|acres)\b/.test(text)
+    ? Math.round(amount * 43560)
+    : Math.round(amount);
+};
+
 const normalizeListing = (listing: any) => {
   const rawPrice = Number(listing.price ?? listing.listPrice ?? listing.priceNumber ?? 0);
   const images = listingImages(listing);
@@ -149,7 +160,23 @@ const normalizeListing = (listing: any) => {
     propertyType: type.replace(/[_-]+/g, " ").replace(/\b\w/g, (character: string) => character.toUpperCase()),
     type,
     year: listing.year_built || listing.yearBuilt || listing.details?.yearBuilt || "",
-    lotSize: listing.lot_size || listing.lotSize || listing.details?.lotSize || "",
+    lotSize: (() => {
+      const sqft =
+        Number(listing.lot_size_sqft || 0) ||
+        Math.round(Number(listing.lot_size_acres || 0) * 43560);
+
+      if (!sqft) return "";
+
+      return sqft > 10890
+        ? `${(sqft / 43560).toLocaleString("en-CA", {
+            maximumFractionDigits: 2,
+          })} acres`
+        : `${sqft.toLocaleString("en-CA")} sq ft`;
+    })(),
+    lotSqft:
+      Number(listing.lot_size_sqft || 0) ||
+      Math.round(Number(listing.lot_size_acres || 0) * 43560) ||
+      0,
     brokerage: String(
       listing.listing_brokerage ||
       listing.brokerage ||
@@ -355,6 +382,7 @@ export const GET: APIRoute = async ({ request }) => {
   const age55 = url.searchParams.get("age55") === "true";
   const otherPark = url.searchParams.get("otherPark") === "true";
   const petsAllowed = url.searchParams.get("petsAllowed") === "true";const minSqft = Number(url.searchParams.get("minSqft") || 0);
+  const minLotSqft = Number(url.searchParams.get("minLotSqft") || 0);
   const minYear = Number(url.searchParams.get("minYear") || 0);
   const primaryOnMain =
     url.searchParams.get("primaryOnMain") === "true";
@@ -536,6 +564,7 @@ export const GET: APIRoute = async ({ request }) => {
     if (beds && Number(listing.beds || 0) < beds) return false;
     if (baths && Number(listing.baths || 0) < baths) return false;
     if (minSqft && Number(listing.sqft || 0) < minSqft) return false;
+    if (minLotSqft && Number(listing.lotSqft || 0) < minLotSqft) return false;
     if (minYear && Number(listing.year || 0) < minYear) return false;
     if (primaryOnMain && !listing.primaryOnMain) return false;
     if (threeSameFloor && !listing.threeBedsSameFloor) return false;

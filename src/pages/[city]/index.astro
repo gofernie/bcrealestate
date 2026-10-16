@@ -996,6 +996,7 @@ const baths = Number(url.searchParams.get("baths") || 0);
 const age55 = url.searchParams.get("age55") === "true";
 const petsAllowed = url.searchParams.get("petsAllowed") === "true";
 const minSqft = Number(url.searchParams.get("minSqft") || 0);
+const minLotSqft = Number(url.searchParams.get("minLotSqft") || 0);
 const minYear = Number(url.searchParams.get("minYear") || 0);
 const primaryOnMain = url.searchParams.get("primaryOnMain") === "true";
 const threeSameFloor = url.searchParams.get("threeSameFloor") === "true";
@@ -1128,7 +1129,21 @@ const getListingBaths = (listing: any) => listing.baths || listing.bathrooms || 
 const getListingSqft = (listing: any) => listing.sqft || listing.square_feet || listing.squareFeet || listing.details?.sqft || listing.details?.squareFeet || listing.raw?.details?.sqft || listing.raw?.details?.squareFeet || "";
 const getListingDescription = (listing: any) => listing.description || listing.publicRemarks || listing.remarks || listing.details?.description || listing.details?.publicRemarks || listing.details?.remarks || listing.raw?.description || listing.raw?.publicRemarks || listing.raw?.remarks || listing.raw?.details?.description || listing.raw?.details?.publicRemarks || listing.raw?.details?.remarks || "A quiet preview of this property.";
 const getListingYearBuilt = (listing: any) => listing.year_built || listing.yearBuilt || listing.details?.yearBuilt || listing.raw?.details?.yearBuilt || "";
-const getListingLotSize = (listing: any) => listing.lot_size || listing.lotSize || listing.details?.lotSize || listing.raw?.details?.lotSize || "";
+const getListingLotSize = (listing: any) => {
+  const sqft = Number(listing.lot_size_sqft || 0);
+  const acres = Number(listing.lot_size_acres || 0);
+  const normalizedSqft = sqft || Math.round(acres * 43560);
+
+  if (!normalizedSqft) return "";
+
+  if (normalizedSqft > 10890) {
+    return `${(normalizedSqft / 43560).toLocaleString("en-CA", {
+      maximumFractionDigits: 2,
+    })} acres`;
+  }
+
+  return `${normalizedSqft.toLocaleString("en-CA")} sq ft`;
+};
 const getListingArea = (listing: any) => listing.normalized_area || listing.area || listing.neighborhood || listing.addressObj?.neighborhood || listing.address?.neighborhood || listing.details?.area || listing.details?.subArea || listing.raw?.address?.neighborhood || listing.raw?.details?.area || listing.raw?.details?.subArea || "";
 const getListingPropertyType = (listing: any) => String(listing.normalized_type || listing.property_type || listing.propertyType || listing.type || listing.details?.propertyType || listing.raw?.details?.propertyType || "Home").replace(/[_-]+/g, " ").replace(/\b\w/g, (char: string) => char.toUpperCase());
 
@@ -1414,7 +1429,7 @@ const groupLabel = [  area || "",
   type ? type.replace(/-/g, " ") : "",
   maxPrice ? `under $${maxPrice}k` : "",
   minPrice ? `over $${minPrice}k` : ""
-].filter(Boolean).join(" ÃŽâ€œÃƒÂ¶Ã‚Â¼ÃŽâ€œÃƒÂ²ÃƒÂ» ");
+].filter(Boolean).join(" ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â» ");
 
 let areaOptions: string[] = [];
 let navAreaOptions: string[] = [];
@@ -1455,7 +1470,7 @@ try {
 const normaliseParkAddress = (value: unknown) =>
   String(value || "")
     .toLowerCase()
-    .replace(/[ÃŽâ€œÃƒâ€¡Ãƒâ€“'".,]/g, "")
+    .replace(/[ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“'".,]/g, "")
     .replace(/^\s*\d{1,4}\s*-\s*(?=\d{1,5}\s)/, "")
     .replace(/\bstreet\b/g, "st")
     .replace(/\broad\b/g, "rd")
@@ -1775,7 +1790,7 @@ if (areas.length > 0) {
 
   // One MLS listing may have more than one stored row after a feed refresh.
   // Keep the first result from the already-sorted query, so counts and cards
-  // represent homesÃŽâ€œÃƒâ€¡ÃƒÂ¶not duplicate database rows.
+  // represent homesÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶not duplicate database rows.
   const seenHomepageListingMls = new Set<string>();
 
   listings = listings.filter((listing: any) => {
@@ -1876,7 +1891,7 @@ const getInventoryType = (listing: any) => {
 const normaliseParkAddress = (value: unknown) =>
   String(value || "")
     .toLowerCase()
-    .replace(/[ÃŽâ€œÃƒâ€¡Ãƒâ€“'".,]/g, "")
+    .replace(/[ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“'".,]/g, "")
     .replace(/^\s*\d{1,4}\s*-\s*(?=\d{1,5}\s)/, "")
     .replace(/\bstreet\b/g, "st")
     .replace(/\broad\b/g, "rd")
@@ -2452,14 +2467,13 @@ const featuredArea =
     ? String(getListingArea(featuredListing || {}) || "").trim().toLowerCase() === "unknown"
       ? titleCase(featuredListing?.__gvDistrict || featuredListing?.normalized_city || city)
       : getListingArea(featuredListing || {}) || titleCase(featuredListing?.normalized_city || city)
-    : routeCity === "saanich-east" ? "Saanich East" : routeCity === "saanich-west" ? "Saanich West" : String(
-        featuredListing?.normalized_area ||
+    : routeCity === "saanich-east" ? "Saanich East" : routeCity === "saanich-west" ? "Saanich West" : titleCase(String(featuredListing?.normalized_area ||
         featuredListing?.area ||
         featuredListing?.neighbourhood ||
         featuredListing?.community ||
         city ||
         "Nanaimo"
-      ).replace(/-/g, " ");
+      ).replace(/-/g, " "));
 
 const featuredAddress = String(
   featuredListing?.address ||
@@ -2626,7 +2640,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
             <span class="locus-home-featured__area">{featuredArea}</span>
             <span class="locus-home-featured__stats">
               {featuredListing?.beds ? `${featuredListing.beds} bed` : "Home"}
-              {featuredListing?.baths ? ` Ã¢â€Â¬Ã¢â€¢â€“ ${featuredListing.baths} bath` : ""}
+              {featuredListing?.baths ? ` | ${featuredListing.baths} bath` : ""}
             </span>
           </div>
         </div>
@@ -3161,6 +3175,20 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
                 <option value="1500" selected={minSqft === 1500}>1,500+ sq ft</option>
                 <option value="2000" selected={minSqft === 2000}>2,000+ sq ft</option>
                 <option value="2500" selected={minSqft === 2500}>2,500+ sq ft</option>
+              </select>
+            </label>
+            <label>
+              <span>Minimum lot size</span>
+              <select name="minLotSqft">
+                <option value="" selected={!minLotSqft}>Any lot size</option>
+                <option value="2500" selected={minLotSqft === 2500}>2,500+ sq ft</option>
+                <option value="5000" selected={minLotSqft === 5000}>5,000+ sq ft</option>
+                <option value="7500" selected={minLotSqft === 7500}>7,500+ sq ft</option>
+                <option value="10890" selected={minLotSqft === 10890}>0.25+ acres</option>
+                <option value="21780" selected={minLotSqft === 21780}>0.5+ acres</option>
+                <option value="43560" selected={minLotSqft === 43560}>1+ acre</option>
+                <option value="87120" selected={minLotSqft === 87120}>2+ acres</option>
+                <option value="217800" selected={minLotSqft === 217800}>5+ acres</option>
               </select>
             </label>
             <label>
@@ -3831,17 +3859,17 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 <!-- /locus-dark-neighbourhood-hover-runtime-v3 -->
 <section class="home-story-panel" id="home-story-panel" hidden>
   <div class="home-story-panel__head">
-    <button type="button" id="home-story-back">Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“Ãƒâ€˜Ã¢â€Å“ÃƒÂ« Back</button>
+    <button type="button" id="home-story-back">ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â« Back</button>
     <span id="home-story-progress">Step 1 of 5</span>
   </div>
 
-  <h2 id="home-story-question">IÃ¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“ÃƒÂ»m...</h2>
+  <h2 id="home-story-question">IÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â»m...</h2>
 
   <div class="home-story-options" id="home-story-options"></div>
 
   <div class="home-story-panel__footer">
     <button type="button" class="home-story-primary" id="home-story-next">
-      Next Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“Ãƒâ€˜Ã¢â€Å“ÃƒÂ¥
+      Next ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¥
     </button>
   </div>
 </section>
@@ -4225,7 +4253,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
   }
 
   .locus-market-strip__markets a + a::before {
-    content: "Ã¢â€Â¬Ã¢â€¢â€“";
+    content: "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“";
     margin: 0 10px;
     color: var(--muted);
     font-weight: 400;
@@ -4444,7 +4472,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 
       <div class="locus-home-market__primary">
         <span>AVAILABLE NOW</span>
-        <strong data-home-live-total aria-live="polite">ÃŽâ€œÃƒâ€¡ÃƒÂ¶</strong>
+        <strong data-home-live-total aria-live="polite">ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶</strong>
         <small>homes for sale in {cityName}</small>
       </div>
 
@@ -5170,11 +5198,11 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
       <span>matching homes</span>
     </div>
     <div>
-      <strong id="summary-price-range">Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“Ã¢â€¢Â¢</strong>
+      <strong id="summary-price-range">ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¢</strong>
       <span>price range</span>
     </div>
     <div>
-      <strong id="summary-area-count">Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“Ã¢â€¢Â¢</strong>
+      <strong id="summary-area-count">ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¢</strong>
       <span>areas represented</span>
     </div>
   </div>
@@ -5257,6 +5285,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 </select>
 
 <input type="hidden" name="minSqft" value={minSqft || ""} />
+<input type="hidden" name="minLotSqft" value={minLotSqft || ""} />
 <input type="hidden" name="minYear" value={minYear || ""} />
 <input type="hidden" name="primaryOnMain" value={primaryOnMain ? "true" : ""} />
 <input type="hidden" name="threeSameFloor" value={threeSameFloor ? "true" : ""} />
@@ -5363,7 +5392,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
                     data-raw-price={String(listing?.price || 0)}
                     data-listed-at={String(listing?.listed_at || listing?.created_at || "")}
                     data-address={address}
-                    data-meta={`${beds || "-"} bed ÃŽâ€œÃƒÂ¶Ã‚Â¼ÃŽâ€œÃƒÂ²ÃƒÂ» ${baths || "-"} bath`}
+                    data-meta={`${beds || "-"} bed ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â» ${baths || "-"} bath`}
                     data-image={image}
                     data-images={JSON.stringify(images)}
                     data-beds={String(beds)}
@@ -5389,7 +5418,7 @@ data-liked-tags="[]"
                     data-city={String(listing?.normalized_city || listing?.city || city || "")}
                     data-mls={mls}
                     data-listing-brokerage={brokerage}
-                    aria-label={`${price} Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“Ã¢â€¢Â¢ ${address}`}
+                    aria-label={`${price} ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¢ ${address}`}
                   >
                <div class="card-image-wrap" style="position: relative; overflow: hidden;">
   <img src={image || "https://placehold.co/800x600?text=Photos+coming+soon"} alt={address || "Listing"} loading="lazy" decoding="async" />
@@ -5405,7 +5434,7 @@ data-liked-tags="[]"
                         <span>{beds || "-"} bd</span>
                         <span>{baths || "-"} ba</span>
                         {sqft && <span>{Number(sqft).toLocaleString()} sq ft</span>}
-                        {getListingLotSize(listing) && <span>{getListingLotSize(listing)}</span>}
+                        {getListingLotSize(listing) && <span>Lot {getListingLotSize(listing)}</span>}
                       </div>
 
                       {brokerage && (
@@ -5482,7 +5511,7 @@ data-liked-tags="[]"
 <p>
   Refine the listings above:
  <div id="refine-update-note" class="refine-update-note" hidden>
-  Showing updated matches above Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“Ãƒâ€˜Ã¢â€Å“Ã‚Âª
+  Showing updated matches above ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âª
 </div>
 </p>  <div class="homepage-refine-chips">
     <button type="button" data-refine="views">Views</button>
@@ -6077,16 +6106,16 @@ data-liked-tags="[]"
   color: #d3a24f;
 }
 
-.home-story-option[data-value="views"]::before { content: "ÃŽâ€œÃƒÂ«ÃƒÂ­Ã¢â€¢Å¾Ãƒâ€ Ã¢â€Å“Ã‚Â«Ã¢â€Å“Ã‚Â¿"; }
-.home-story-option[data-value="waterfront"]::before { content: "Ã¢â€¢Â§Ãƒâ€¡Ã¢â€Å“ÃƒÂ§ÃŽâ€œÃƒÂ»ÃƒÂ¦ÃŽâ€œÃƒÂªÃ¢Å’ÂÃŽâ€œÃƒÂ²ÃƒÂ²Ã¢â€Å“ÃƒÂ "; }
-.home-story-option[data-value="walkability"]::before { content: "ÃŽâ€œÃƒÂ«ÃƒÂ­Ã¢â€¢Å¾Ãƒâ€ Ã¢â€Å“Ã‚Â£ÃŽâ€œÃƒÂ²ÃƒÂ³"; }
-.home-story-option[data-value="beach"]::before { content: "Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Â¬ÃƒÂ³ÃŽâ€œÃƒÂ»Ãƒâ€ ÃŽâ€œÃƒÂªÃ¢Å’ÂÃŽâ€œÃƒÂ²ÃƒÂ²Ã¢â€Å“ÃƒÂ "; }
-.home-story-option[data-value="quiet"]::before { content: "ÃŽâ€œÃƒÂ«ÃƒÂ­Ã¢â€¢Å¾Ãƒâ€ Ã¢â€Å“Ã‚Â«ÃŽâ€œÃƒÂ¶ÃƒÂ©"; }
-.home-story-option[data-value="yard"]::before { content: "ÃŽâ€œÃƒÂ«ÃƒÂ­Ã¢â€¢Å¾Ãƒâ€ Ã¢â€Å“Ã‚Â«ÃŽâ€œÃƒÂ»ÃƒÂ´"; }
-.home-story-option[data-value="garage"]::before { content: "Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“Ã¢â€¢â€”Ã¢â€Å“Ã¢â€¢â€˜"; }
-.home-story-option[data-value="suite"]::before { content: "ÃŽâ€œÃƒÂ¶Ã‚Â£ÃŽâ€œÃƒÂ»ÃƒÂ¦ÃŽâ€œÃƒÂ¶Ã¢â€¢ÂÃŽâ€œÃƒÂ²ÃƒÂ²ÃŽâ€œÃƒÂ¶Ã‚Â¼Ã¢â€Å“ÃƒÂ ÃŽâ€œÃƒÂ¶Ã‚Â¼Ã¢â€Å“ÃƒÂ­"; }
-.home-story-option[data-value="updated"]::before { content: "ÃŽâ€œÃƒÂ«ÃƒÂ­Ã¢â€¢Å¾Ãƒâ€ Ã¢â€Â¬ÃƒÂ³Ã¢â€Å“Ã‚Â»ÃŽâ€œÃƒÂªÃ¢Å’ÂÃŽâ€œÃƒÂ²ÃƒÂ²Ã¢â€Å“ÃƒÂ "; }
-.home-story-option[data-value="investment"]::before { content: "Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“Ãƒâ€˜Ã¢â€Å“Ã¢â€¢Â£"; }
+.home-story-option[data-value="views"]::before { content: "ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â«ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â«ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿"; }
+.home-story-option[data-value="waterfront"]::before { content: "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â»ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚ÂªÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬â„¢Ãƒâ€šÃ‚ÂÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â "; }
+.home-story-option[data-value="walkability"]::before { content: "ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â«ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³"; }
+.home-story-option[data-value="beach"]::before { content: "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â»ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚ÂªÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬â„¢Ãƒâ€šÃ‚ÂÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â "; }
+.home-story-option[data-value="quiet"]::before { content: "ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â«ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â«ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©"; }
+.home-story-option[data-value="yard"]::before { content: "ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â«ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â«ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â»ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´"; }
+.home-story-option[data-value="garage"]::before { content: "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“"; }
+.home-story-option[data-value="suite"]::before { content: "ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â»ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­"; }
+.home-story-option[data-value="updated"]::before { content: "ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â«ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚ÂªÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬â„¢Ãƒâ€šÃ‚ÂÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â "; }
+.home-story-option[data-value="investment"]::before { content: "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â£"; }
 
 @media (max-width: 650px) {
 
@@ -6740,8 +6769,18 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
   font-weight: 500;
 }
 
+  .meta {
+    gap: 0;
+  }
+
   .meta span {
     white-space: nowrap;
+  }
+
+  .meta span + span::before {
+    content: "Ã¢â‚¬Â¢";
+    margin: 0 8px;
+    color: currentColor;
   }
 
 .card-brokerage {
@@ -7172,7 +7211,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
 }
 
 .home-story-panel.is-popover .home-story-option.is-selected::after {
-  content: "Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Â¬ÃƒÂºÃ¢â€Å“Ã¢â€Â¤";
+  content: "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚ÂºÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¤";
   position: absolute;
   right: 18px;
   top: 50%;
@@ -7212,7 +7251,7 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
 .home-story-panel.is-popover .home-story-option.is-selected::after,
 .home-story-panel.is-popover .home-story-option.active::after,
 .home-story-panel.is-popover .home-story-option[aria-pressed="true"]::after {
-  content: "Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Â¬ÃƒÂºÃ¢â€Å“Ã¢â€Â¤" !important;
+  content: "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚ÂºÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¤" !important;
   position: absolute;
   right: 16px;
   top: 50%;
@@ -8921,7 +8960,7 @@ await loadMapScript(
         baths: card.dataset.baths,
         _hidden: card.hidden,
       })).filter((l) => l.lat && l.lng && !l._hidden);
-      // But we want ALL matching cards, not just the paginated 8 Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“Ã¢â€¢Â¢ unhide logic runs separately
+      // But we want ALL matching cards, not just the paginated 8 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¢ unhide logic runs separately
       // so read all cards and check filter match directly
       const form = document.getElementById("home-filter-form");
       const areaVal = String(form?.elements?.area?.value || "").trim().toLowerCase();
@@ -9046,7 +9085,7 @@ const cardWaterfront = String(card.dataset.waterfront || "").toLowerCase();
     if (!leafletMap) {
       leafletMap = L.map(intentMapEl, { zoomControl: true, attributionControl: false, scrollWheelZoom: false });
       L.tileLayer(window.__JAWG_TILE_URL__, { maxZoom: 19, attribution: window.__JAWG_ATTRIBUTION__ }).addTo(leafletMap);
-      L.control.attribution({ prefix: false }).addAttribution('ÃŽâ€œÃƒÂ¶Ã‚Â¼ÃŽâ€œÃƒÂ®Ãƒâ€° <a href="https://openstreetmap.org">OSM</a>').addTo(leafletMap);
+      L.control.attribution({ prefix: false }).addAttribution('ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â®ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â° <a href="https://openstreetmap.org">OSM</a>').addTo(leafletMap);
     }
 
 
@@ -9438,7 +9477,7 @@ area: [],
     const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
 
     const labels = {
-      buyer: "IÃ¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“ÃƒÂ»m...",
+      buyer: "IÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â»m...",
       type: "Looking for a...",
      budget: "Around...",
 beds: "With...",
@@ -9775,7 +9814,7 @@ const matchCount = document.getElementById("results-count")?.textContent || visi
     `${titleCase(areaLabel)} ${titleCase(typeLabel)} Search`;
 
   document.getElementById("home-search-summary-copy").textContent =
-    `Based on what you told us, weÃ¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“ÃƒÂ»re showing ${typeLabel.toLowerCase()} options around ${budgetLabel.toLowerCase()} in ${areaLabel}, with attention to ${featuresLabel.toLowerCase()}.`;
+    `Based on what you told us, weÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â»re showing ${typeLabel.toLowerCase()} options around ${budgetLabel.toLowerCase()} in ${areaLabel}, with attention to ${featuresLabel.toLowerCase()}.`;
 
 document.getElementById("summary-match-count").textContent =
     String(matchCount);
@@ -9786,18 +9825,18 @@ if (summaryPriceRange) {
   if (state.budget && state.budget !== "1200plus") {
     const min = Math.round(Number(state.budget) * 0.85);
     const max = Math.round(Number(state.budget) * 1.15);
-    summaryPriceRange.textContent = `$${min}kÃ¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“Ã¢â€Â¤$${max}k`;
+    summaryPriceRange.textContent = `$${min}kÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¤$${max}k`;
   } else if (state.budget === "1200plus") {
     summaryPriceRange.textContent = "$1.2M+";
   } else {
     summaryPriceRange.textContent = prices.length
-      ? `$${Math.round(prices[0] / 1000)}kÃ¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“Ã¢â€Â¤$${Math.round(prices[prices.length - 1] / 1000)}k`
-      : "Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“Ã¢â€¢Â¢";
+      ? `$${Math.round(prices[0] / 1000)}kÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¤$${Math.round(prices[prices.length - 1] / 1000)}k`
+      : "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¢";
   }
 }
 
   document.getElementById("summary-area-count").textContent =
-    areas.size ? String(areas.size) : "Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“Ã¢â€¢Â¢";
+    areas.size ? String(areas.size) : "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¢";
 
   summary.hidden = false;
 }
@@ -9969,7 +10008,7 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
       data-raw-price="${esc(listing.rawPrice)}"
       data-listed-at="${esc(listing.listedAt)}"
       data-address="${esc(listing.address)}"
-      data-meta="${esc(`${listing.beds || "-"} bed ÃŽâ€œÃƒÂ¶Ã‚Â¼ÃŽâ€œÃƒÂ²ÃƒÂ» ${listing.baths || "-"} bath`)}"
+      data-meta="${esc(`${listing.beds || "-"} bed ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â» ${listing.baths || "-"} bath`)}"
       data-image="${esc(listing.image)}"
       data-images='${esc(JSON.stringify(listing.images || []))}'
       data-beds="${esc(listing.beds)}"
@@ -9995,7 +10034,7 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
       data-city="${esc(listing.city)}"
       data-mls="${esc(listing.mls)}"
       data-listing-brokerage="${esc(brokerage)}"
-      aria-label="${esc(`${listing.price} Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“Ã¢â€¢Â¢ ${listing.address}`)}"
+      aria-label="${esc(`${listing.price} ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¢ ${listing.address}`)}"
     >
       <div class="card-image-wrap" style="position: relative; overflow: hidden;">
         <img src="${esc(listing.image || "https://placehold.co/800x600?text=Photos+coming+soon")}" alt="${esc(listing.address || "Listing")}" loading="lazy" decoding="async" />
@@ -10011,6 +10050,7 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
           <span>${esc(listing.beds || "-")} bd</span>
           <span>${esc(listing.baths || "-")} ba</span>
           ${sqft ? `<span>${esc(sqft)} sq ft</span>` : ""}
+          ${listing.lotSize ? `<span>Lot ${esc(listing.lotSize)}</span>` : ""}
         </div>
 
         ${brokerage ? `<div class="card-brokerage">Courtesy of ${esc(brokerage)}</div>` : ""}
@@ -10592,6 +10632,7 @@ const maxPriceVal = storyBudgetVal
     : 0;
   const bathsVal = Number(form.elements.baths?.value || 0);
   const minSqftVal = Number(form.elements.minSqft?.value || 0);
+  const minLotSqftVal = Number(form.elements.minLotSqft?.value || 0);
   const minYearVal = Number(form.elements.minYear?.value || 0);
   const primaryOnMainVal =
     String(form.elements.primaryOnMain?.value || "") === "true";
@@ -10675,6 +10716,7 @@ const selectedFeatures = String(document.querySelector(".story-blank[data-story-
   if (bedsVal) params.set("beds", String(bedsVal));
   if (bathsVal) params.set("baths", String(bathsVal));
   if (minSqftVal) params.set("minSqft", String(minSqftVal));
+  if (minLotSqftVal) params.set("minLotSqft", String(minLotSqftVal));
   if (minYearVal) params.set("minYear", String(minYearVal));
   if (primaryOnMainVal) params.set("primaryOnMain", "true");
   if (threeSameFloorVal) params.set("threeSameFloor", "true");
@@ -10856,15 +10898,15 @@ if (summaryPriceRange) {
   if (storyBudgetVal) {
     const min = Math.round(storyBudgetVal * 0.85);
     const max = Math.round(storyBudgetVal * 1.15);
-    summaryPriceRange.textContent = `$${min}kÃ¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“Ã¢â€Â¤$${max}k`;
+    summaryPriceRange.textContent = `$${min}kÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¤$${max}k`;
   } else {
     const prices = Array.from(grid.querySelectorAll(".card"))
       .map((card) => Number(card.dataset.rawPrice || 0))
       .filter(Boolean);
 
     summaryPriceRange.textContent = prices.length
-      ? `$${Math.round(Math.min(...prices) / 1000)}kÃ¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“Ã¢â€Â¤$${Math.round(Math.max(...prices) / 1000)}k`
-      : "Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“Ã¢â€¢Â¢";
+      ? `$${Math.round(Math.min(...prices) / 1000)}kÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¤$${Math.round(Math.max(...prices) / 1000)}k`
+      : "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¢";
   }
 }
   const resultsCount = document.getElementById("results-count");
@@ -11032,7 +11074,7 @@ const HOME_INTENT_COLLECTIONS = JSON.parse(
       <span class="intent-type">${esc(card.type)}</span>
       <h3>${esc(card.title)}</h3>
       <p>${esc(card.description)}</p>
-      <span class="intent-link">View search ÃŽâ€œÃƒÂ¥Ãƒâ€ </span>
+      <span class="intent-link">View search ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¥ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â </span>
     </a>
   `).join("");
 }
@@ -11152,7 +11194,7 @@ const note = document.getElementById("refine-update-note");
 
 if (note) {
   note.hidden = false;
-  note.textContent = "Showing updated matches above Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“Ãƒâ€˜Ã¢â€Å“Ã‚Âª";
+  note.textContent = "Showing updated matches above ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âª";
 
   note.onclick = () => {
     document.querySelector(".results-heading")?.scrollIntoView({
@@ -11439,7 +11481,7 @@ document.documentElement.style.visibility = "";
 <style is:global>
 
 /* ==========================================================
-   LOCUS CITY HOMEPAGE Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“Ã¢â€¢Â¢ MOCKUP REDESIGN
+   LOCUS CITY HOMEPAGE ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¢ MOCKUP REDESIGN
    ========================================================== */
 
 :root {
@@ -12067,7 +12109,7 @@ document.documentElement.style.visibility = "";
   }
 }
 
-/* NEIGHBOURHOOD DIRECTORY ÃŽâ€œÃƒÂ²Ã‚Â¼Ã¢â€Å“Ã¢â€Â¤ÃŽâ€œÃƒÂ¶Ã‚Â£Ã¢â€Å“Ã‚ÂºÃŽâ€œÃƒÂ¶Ã‚Â£ÃŽâ€œÃƒÂ²ÃƒÂ³ FUSED PANEL */
+/* NEIGHBOURHOOD DIRECTORY ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¤ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂºÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ FUSED PANEL */
 
 .locus-home-neighbourhoods {
   gap: 0;
@@ -12140,7 +12182,7 @@ document.documentElement.style.visibility = "";
   }
 }
 
-/* NEIGHBOURHOOD DIRECTORY ÃŽâ€œÃƒÂ²Ã‚Â¼Ã¢â€Å“Ã¢â€Â¤ÃŽâ€œÃƒÂ¶Ã‚Â£Ã¢â€Å“Ã‚ÂºÃŽâ€œÃƒÂ¶Ã‚Â£ÃŽâ€œÃƒÂ²ÃƒÂ³ COMPACT ROWS */
+/* NEIGHBOURHOOD DIRECTORY ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¤ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂºÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ COMPACT ROWS */
 
 .locus-home-neighbourhood-grid {
   grid-auto-rows: 78px;
@@ -12162,7 +12204,7 @@ document.documentElement.style.visibility = "";
   }
 }
 
-/* NEIGHBOURHOOD DIRECTORY ÃŽâ€œÃƒÂ²Ã‚Â¼Ã¢â€Å“Ã¢â€Â¤ÃŽâ€œÃƒÂ¶Ã‚Â£Ã¢â€Å“Ã‚ÂºÃŽâ€œÃƒÂ¶Ã‚Â£ÃŽâ€œÃƒÂ²ÃƒÂ³ MOBILE COMPACT */
+/* NEIGHBOURHOOD DIRECTORY ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¤ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂºÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ MOBILE COMPACT */
 
 @media (max-width: 520px) {
   .locus-home-neighbourhoods__intro {
@@ -12214,7 +12256,7 @@ document.documentElement.style.visibility = "";
   border-radius: 10px !important;
 }
 
-/* MARKET SNAPSHOT Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“Ã¢â€¢Â¢ SUPPORTING METRICS */
+/* MARKET SNAPSHOT ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¢ SUPPORTING METRICS */
 
 .locus-home-market .locus-home-market__support > div {
   display: flex !important;
@@ -12237,7 +12279,7 @@ document.documentElement.style.visibility = "";
   line-height: 1 !important;
 }
 
-/* MARKET SNAPSHOT Ã¢â€¢Â¬ÃƒÂ´Ã¢â€Å“ÃƒÂ§Ã¢â€Å“Ã¢â€¢Â¢ METRIC SCALE */
+/* MARKET SNAPSHOT ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢Ãƒâ€šÃ‚Â¢ METRIC SCALE */
 
 .locus-home-market .locus-home-market__support span {
   font-size: .69rem !important;
@@ -13258,6 +13300,42 @@ document.documentElement.style.visibility = "";
 </style>
 
 <script is:inline data-astro-rerun src="/home-search-dropdowns.js?v=25"></script>
+<script is:inline>
+  (() => {
+    const heroForm = document.getElementById("home-hero-search");
+    const resultsForm = document.getElementById("home-filter-form");
+
+    const heroLot = heroForm?.elements?.namedItem("minLotSqft");
+    const resultsLot = resultsForm?.elements?.namedItem("minLotSqft");
+
+    if (!(heroLot instanceof HTMLSelectElement) ||
+        !(resultsLot instanceof HTMLInputElement) ||
+        !resultsForm) return;
+
+    heroLot.addEventListener("change", () => {
+      resultsLot.value = heroLot.value;
+
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete("minLotSqft");
+
+      if (heroLot.value) {
+        nextUrl.searchParams.set("minLotSqft", heroLot.value);
+      }
+
+      nextUrl.hash = "homepage-listings";
+
+      window.history.replaceState(
+        {},
+        "",
+        `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
+      );
+
+      resultsForm.dispatchEvent(
+        new Event("change", { bubbles: true })
+      );
+    }, true);
+  })();
+</script>
 <script is:inline data-astro-rerun>
   /* homepage-search-facets-after-paint-v1 */
   (() => {
@@ -15217,7 +15295,7 @@ const navBottom = () => {
         }
       })
       .catch(() => {
-        output.textContent = "ÃŽâ€œÃƒâ€¡ÃƒÂ¶";
+        output.textContent = "ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶";
       });
   })();
 </script>
@@ -16007,7 +16085,7 @@ const navBottom = () => {
 
 #home-hero-search .locus-home-more-panel__selects {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -17257,7 +17335,7 @@ intro h2,
 
         form.reset();
         if (status) {
-          status.textContent = "Thanks ÃŽâ€œÃƒâ€¡ÃƒÂ¶ your message has been sent.";
+          status.textContent = "Thanks ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ your message has been sent.";
         }
       } catch (error) {
         if (status) {
@@ -17469,7 +17547,7 @@ intro h2,
         if (!response.ok) throw new Error("Could not send your message.");
 
         form.reset();
-        if (status) status.textContent = "Thanks ÃŽâ€œÃƒâ€¡ÃƒÂ¶ your message has been sent.";
+        if (status) status.textContent = "Thanks ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ your message has been sent.";
       } catch (error) {
         if (status) {
           status.textContent =
@@ -17635,7 +17713,7 @@ intro h2,
   color: #eef2f4 !important;
 }
 
-/* Desktop agent guide ÃŽâ€œÃƒâ€¡ÃƒÂ¶ preserve the portrait/photo. */
+/* Desktop agent guide ÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ preserve the portrait/photo. */
 :global(html[data-theme="dark"] .agent-brand-strip) {
   background: #17191b !important;
   border-color: #394149 !important;
@@ -19655,12 +19733,12 @@ html[data-theme="dark"] #home-hero-search.locus-home-search > :is(
         nextUrl.hash = "homepage-listings";
 
         // This is intentionally a fresh page search: it prevents the
-        // previous areaÃŽâ€œÃƒâ€¡Ãƒâ€“s cards, map state, and completion state leaking in.
+        // previous areaÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“s cards, map state, and completion state leaking in.
                 /* smooth-adjacent-area-navigation-v1 */
         button.disabled = true;
         button.setAttribute("aria-busy", "true");
         button.textContent =
-          `Opening ${titleCase(suggestedArea)} listingsÃŽâ€œÃƒâ€¡Ã‚Âª`;
+          `Opening ${titleCase(suggestedArea)} listingsÃƒÆ’Ã…Â½ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âª`;
 
         document.documentElement.classList.add(
           "is-adjacent-area-navigating"
@@ -20157,7 +20235,7 @@ html[data-theme="dark"] #home-hero-search.locus-home-search > :is(
   if (window.__gvDistrictNavigationInstalled) return;
   window.__gvDistrictNavigationInstalled = true;
   const districts = new Set(["victoria", "saanich-east", "saanich-west", "oak-bay", "esquimalt", "view-royal", "colwood", "langford", "highlands", "metchosin", "sooke", "central-saanich", "north-saanich", "sidney"]);
-  const keys = ["type", "minPrice", "maxPrice", "beds", "baths", "sort", "minSqft", "minYear", "primaryOnMain", "threeSameFloor", "fourSameFloor", "planMode", "viewType", "oceanViews", "waterfrontType", "waterfront", "age55", "otherPark", "petsAllowed", "siteDomain"];
+  const keys = ["type", "minPrice", "maxPrice", "beds", "baths", "sort", "minSqft", "minLotSqft", "minYear", "primaryOnMain", "threeSameFloor", "fourSameFloor", "planMode", "viewType", "oceanViews", "waterfrontType", "waterfront", "age55", "otherPark", "petsAllowed", "siteDomain"];
   function currentFilters() {
     const params = new URLSearchParams(location.search);
     const hero = document.getElementById("home-hero-search");
@@ -20232,3 +20310,15 @@ html[data-theme="dark"] #home-hero-search.locus-home-search > :is(
   });
 })();
 </script>
+
+<style is:global>
+  /* homepage-meta-dot-colour-v1 */
+  #home-listings-grid .meta span + span::before {
+    color: rgb(0 0 0 / 40%) !important;
+    opacity: 1 !important;
+  }
+
+  html[data-theme="dark"] #home-listings-grid .meta span + span::before {
+    color: rgb(255 255 255 / 45%) !important;
+  }
+</style>

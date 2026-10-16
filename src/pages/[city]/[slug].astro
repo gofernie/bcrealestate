@@ -1437,7 +1437,8 @@ const listingCardFields = `
   beds,
   baths,
   sqft,
-  year_built,
+  lot_size_sqft,
+  lot_size_acres,  year_built,
   address,
   description,
   listing_brokerage,
@@ -2480,6 +2481,20 @@ const relatedIntentPages = relatedIntentPagesRaw
 function formatPrice(price: number) {
   return `$${Number(price || 0).toLocaleString()}`;
 }
+function formatLotSize(listing: any): string {
+  const lotSqft =
+    Number(listing?.lot_size_sqft || listing?.lotSqft || 0) ||
+    Math.round(Number(listing?.lot_size_acres || listing?.lotAcres || 0) * 43560);
+
+  if (!lotSqft) return String(listing?.lotSize || listing?.lot_size || "").trim();
+
+  return lotSqft > 10890
+    ? `${(lotSqft / 43560).toLocaleString("en-CA", {
+        maximumFractionDigits: 2,
+      })} acres`
+    : `${lotSqft.toLocaleString("en-CA")} sq ft`;
+}
+
 function formatAddress(value: any): string {
   if (!value) return "";
   let obj = value;
@@ -9858,7 +9873,7 @@ grid-template-columns: 30px minmax(0, 1fr);
           <p class="area-flow__eyebrow">Area overview</p>
           <h2>Living in {titleCase(page.area || city)}</h2>
           <p>{page.neighbourhood_copy || page.intro_copy || page.seo_intro || `${titleCase(page.area || city)} is a neighbourhood in ${titleCase(city)} with homes, local services and everyday amenities nearby.`}</p>
-          <a href="#type-listings">See {listingCount} homes for sale â†’</a>
+          <a href="#type-listings">See {listingCount} homes for sale →</a>
 
 <!-- census-in-area-overview -->
 {(censusData?.population_2021 || censusData?.pop_change_pct != null || censusData?.median_age || censusData?.pct_owned != null) && (
@@ -9866,13 +9881,13 @@ grid-template-columns: 30px minmax(0, 1fr);
     {censusData?.population_2021 && (
       <div>
         <strong>{Number(censusData.population_2021).toLocaleString()}</strong>
-        <span>Population Â· 2021</span>
+        <span>Population · 2021</span>
       </div>
     )}
     {censusData?.pop_change_pct != null && (
       <div>
         <strong>{Number(censusData.pop_change_pct) > 0 ? "+" : ""}{censusData.pop_change_pct}%</strong>
-        <span>Growth Â· 2016â€“2021</span>
+        <span>Growth · 2016–2021</span>
       </div>
     )}
     {censusData?.median_age && (
@@ -9932,7 +9947,7 @@ grid-template-columns: 30px minmax(0, 1fr);
           <h2>Choose what to see on the map</h2>
           <div class="area-flow__nearby-grid">
             <button type="button" class="amenity-chip area-flow__nearby-choice active" data-amenity="schools"><strong>{osmSummary.schools}</strong><span>Schools</span></button>
-            <button type="button" class="amenity-chip area-flow__nearby-choice" data-amenity="restaurants"><strong>{osmSummary.restaurants}</strong><span>Food & cafÃ©s</span></button>
+            <button type="button" class="amenity-chip area-flow__nearby-choice" data-amenity="restaurants"><strong>{osmSummary.restaurants}</strong><span>Food & cafés</span></button>
             <button type="button" class="amenity-chip area-flow__nearby-choice" data-amenity="grocery"><strong>{osmSummary.grocery}</strong><span>Grocery</span></button>
             <button type="button" class="amenity-chip area-flow__nearby-choice" data-amenity="parks"><strong>{osmSummary.parks}</strong><span>Parks</span></button>
             <button type="button" class="amenity-chip area-flow__nearby-choice" data-amenity="medical"><strong>{osmSummary.medical}</strong><span>Medical</span></button>
@@ -10914,7 +10929,7 @@ Approximate driving times from{" "}
     {censusData?.population_2021 && (
       <div class="area-census-snapshot__stat">
         <strong>{Number(censusData.population_2021).toLocaleString()}</strong>
-        <span>Population Â· 2021</span>
+        <span>Population · 2021</span>
       </div>
     )}
 
@@ -10924,7 +10939,7 @@ Approximate driving times from{" "}
           {Number(censusData.pop_change_pct) > 0 ? "+" : ""}
           {censusData.pop_change_pct}%
         </strong>
-        <span>Population Â· 2016â€“2021</span>
+        <span>Population · 2016–2021</span>
       </div>
     )}
 
@@ -10932,7 +10947,7 @@ Approximate driving times from{" "}
       class="area-census-snapshot__link"
       href={`/explore?city=${encodeURIComponent(city)}&area=${encodeURIComponent(slug)}`}
     >
-      Open Explorer â†’
+      Open Explorer →
     </a>
   </section>
 )}
@@ -11891,6 +11906,7 @@ data-listed-at={String(listing?.listed_at || listing?.created_at || "")}
                 data-beds={String(listing?.beds || "-")}
                 data-baths={String(listing?.baths || "-")}
                 data-sqft={String(listing?.sqft || "")}
+                data-lot-size={formatLotSize(listing)}
 data-type={String(listing?.normalized_type || listing?.property_type || page.property_type || "Home")}                data-year={String(listing?.year_built || "")}
                 data-dom={String(listing?.days_on_market || listing?.dom || "")}
                 data-description={String(listing?.description || "").replace(/"/g, "&quot;")}
@@ -11956,6 +11972,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
   {listing.sqft && (
     <span>{Number(listing.sqft).toLocaleString()} sq ft</span>
   )}
+  {formatLotSize(listing) && <span>Lot {formatLotSize(listing)}</span>}
 </div>
   {String(listing?.listing_brokerage ||
     listing?.brokerage ||
@@ -12044,6 +12061,8 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
           beds: listing.beds,
           baths: listing.baths,
           sqft: listing.sqft,
+lot_size_sqft: listing.lot_size_sqft,
+lot_size_acres: listing.lot_size_acres,
           normalized_type: listing.normalized_type,
           normalized_city: listing.normalized_city || listing.city,
           normalized_area: listing.normalized_area || listing.area,
@@ -12321,6 +12340,20 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
       return amount ? `$${amount.toLocaleString()}` : "";
     }
 
+    function formatLotSizeClient(listing) {
+      const lotSqft =
+        Number(listing?.lot_size_sqft || listing?.lotSqft || 0) ||
+        Math.round(Number(listing?.lot_size_acres || listing?.lotAcres || 0) * 43560);
+
+      if (!lotSqft) return String(listing?.lotSize || listing?.lot_size || "").trim();
+
+      return lotSqft > 10890
+        ? `${(lotSqft / 43560).toLocaleString("en-CA", {
+            maximumFractionDigits: 2,
+          })} acres`
+        : `${lotSqft.toLocaleString("en-CA")} sq ft`;
+    }
+
     function getOwnershipBadge(listing) {
       const ownershipText = [
         listing?.description,
@@ -12391,6 +12424,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
       article.dataset.beds = String(listing.beds || "-");
       article.dataset.baths = String(listing.baths || "-");
       article.dataset.sqft = String(listing.sqft || "");
+      article.dataset.lotSize = formatLotSizeClient(listing);
       article.dataset.type = String(listing.normalized_type || listing.type || "Home");
       article.dataset.lat = listing.lat || "";
       article.dataset.lng = listing.lng || "";
@@ -12413,6 +12447,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
   <span>${listing.beds || "-"} bd</span>
   <span>${listing.baths || "-"} ba</span>
   ${listing.sqft ? `<span>${Number(listing.sqft).toLocaleString()} sq ft</span>` : ""}
+${formatLotSizeClient(listing) ? `<span>Lot ${formatLotSizeClient(listing)}</span>` : ""}
 </div>
                   ${brokerageHtml}
         </div>
@@ -13467,7 +13502,7 @@ style="display:grid;grid-template-columns:1fr 1fr;gap:18px;"
 
     [
       ['schools', 'Schools'],
-      ['restaurants', 'Food & cafÃ©s'],
+      ['restaurants', 'Food & cafés'],
       ['grocery', 'Grocery'],
       ['parks', 'Parks'],
       ['medical', 'Medical']
@@ -13631,7 +13666,7 @@ style="display:grid;grid-template-columns:1fr 1fr;gap:18px;"
     [
       ['', 'âŒ– Nearby'],
       ['schools', 'Schools'],
-      ['restaurants', 'Food & cafÃ©s'],
+      ['restaurants', 'Food & cafés'],
       ['grocery', 'Grocery'],
       ['parks', 'Parks'],
       ['medical', 'Medical']
@@ -15340,7 +15375,7 @@ async function loadAreaAmenities(category = "schools") {
   const labels = {
     schools: "Schools",
     parks: "Parks & recreation",
-    restaurants: "Food & cafÃ©s",
+    restaurants: "Food & cafés",
     grocery: "Grocery places",
     medical: "Medical places",
     childcare: "Childcare places",
@@ -17112,6 +17147,7 @@ data-address="${fmtAddr(listing.address)}"            data-meta="${listing.beds 
             data-beds="${listing.beds || "-"}"
             data-baths="${listing.baths || "-"}"
             data-sqft="${listing.sqft || ""}"
+data-lot-size="${formatLotSizeClient(listing)}"
 data-type="${listing.normalized_type || listing.property_type || listing.type || document.querySelector('.stat-card:nth-child(2) .stat-value')?.textContent || "Home"}"            data-year="${listing.year_built || ""}"
             data-dom="${listing.days_on_market || listing.dom || ""}"
             data-description="${String(listing.description || "").replace(/"/g, "&quot;")}"
@@ -17142,6 +17178,7 @@ style="position:absolute;top:16px;right:14px;display:inline-flex;align-items:cen
   <span>${listing.beds || "-"} bd</span>
   <span>${listing.baths || "-"} ba</span>
   ${listing.sqft ? `<span>${Number(listing.sqft).toLocaleString()} sq ft</span>` : ""}
+${formatLotSizeClient(listing) ? `<span>Lot ${formatLotSizeClient(listing)}</span>` : ""}
 </div>
             </div>
           </article>
@@ -21073,7 +21110,7 @@ document.addEventListener("click", (event) => {
     ).toLowerCase();
 
     return (
-      /\b\d+[a-z]\s*[-â€“]/i.test(text) ||
+      /\b\d+[a-z]\s*[-–]/i.test(text) ||
       /\b(?:fractional|quarter[- ]?share|1\/4|1\/8|shared ownership)\b/i.test(text)
     );
   };
@@ -21233,7 +21270,7 @@ document.addEventListener("click", (event) => {
       const previous = cuts[index];
 
       options.push({
-        label: `${formatBandPrice(previous)}â€“${formatBandPrice(cut)}`,
+        label: `${formatBandPrice(previous)}–${formatBandPrice(cut)}`,
         value: `${Math.round(previous / 1000)}-${Math.round(cut / 1000)}`,
       });
     });
@@ -21297,7 +21334,7 @@ document.addEventListener("click", (event) => {
         value: "all",
       },
       {
-        label: `Fractional ownership Â· under ${formatBandPrice(
+        label: `Fractional ownership · under ${formatBandPrice(
           fractionalPrices.at(-1)
         )}`,
         value: `under-${Math.round(
@@ -21310,9 +21347,9 @@ document.addEventListener("click", (event) => {
 
     fullCuts.forEach((upperBound) => {
       options.push({
-        label: `Full ownership Â· ${formatBandPrice(
+        label: `Full ownership · ${formatBandPrice(
           lowerBound
-        )}â€“${formatBandPrice(upperBound)}`,
+        )}–${formatBandPrice(upperBound)}`,
         value: `${Math.round(
           lowerBound / 1000
         )}-${Math.round(
@@ -21324,7 +21361,7 @@ document.addEventListener("click", (event) => {
     });
 
     options.push({
-      label: `Full ownership Â· ${formatBandPrice(
+      label: `Full ownership · ${formatBandPrice(
         lowerBound
       )}+`,
       value: `${Math.round(
@@ -22088,7 +22125,7 @@ document.addEventListener("click", (event) => {
 
       [
         ["schools", "Schools"],
-        ["restaurants", "Food & cafÃ©s"],
+        ["restaurants", "Food & cafés"],
         ["grocery", "Grocery"],
         ["parks", "Parks"],
         ["medical", "Medical"],
@@ -22375,5 +22412,63 @@ document.addEventListener("click", (event) => {
     font: 700 12px/1 system-ui, sans-serif !important;
     white-space: nowrap;
     box-shadow: 0 2px 6px #0003;
+  }
+
+/* listing-card-meta-separators */
+.card .meta {
+  gap: 0 !important;
+}
+
+.card .meta span {
+  white-space: nowrap;
+}
+
+.card .meta span + span::before {
+  content: "•";
+  display: inline-block;
+  margin: 0 8px;
+  color: currentColor;
+  opacity: 0.5;
+}
+/* type-area-meta-dot-colour-v1 */
+.grid > .card .meta span + span::before {
+  color: rgb(0 0 0 / 40%) !important;
+  opacity: 1 !important;
+}
+
+:global(html[data-theme="dark"]) .grid > .card .meta span + span::before {
+  color: rgb(255 255 255 / 45%) !important;
+}</style>
+
+<style is:global>
+  /* type-area-dynamic-meta-dots-v1 */
+  .grid > .card .meta span + span::before {
+    color: rgb(0 0 0 / 40%) !important;
+    opacity: 1 !important;
+  }
+
+  html[data-theme="dark"] .grid > .card .meta span + span::before {
+    color: rgb(255 255 255 / 45%) !important;
+  }
+</style>
+<style is:global>
+  /* type-area-meta-spacing-v1 */
+  .grid > .card .meta {
+    gap: 0 !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .grid > .card .meta span {
+    white-space: nowrap !important;
+  }
+
+  .grid > .card .meta span + span::before {
+    margin: 0 8px !important;
+  }
+</style>
+<style is:global>
+  /* type-area-meta-dot-balance-v1 */
+  .grid > .card .meta span {
+    gap: 0 !important;
   }
 </style>
