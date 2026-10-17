@@ -1199,6 +1199,13 @@ const filterMinSqft =
       : page.min_sqft || 0
   );
 
+const filterMinLotSqft =
+  Number(
+    searchParams.has("minLotSqft")
+      ? searchParams.get("minLotSqft")
+      : page.min_lot_sqft || 0
+  );
+
 const filterMinYear =
   Number(
     searchParams.has("minYear")
@@ -1437,8 +1444,7 @@ const listingCardFields = `
   beds,
   baths,
   sqft,
-  lot_size_sqft,
-  lot_size_acres,  year_built,
+  year_built,
   address,
   description,
   listing_brokerage,
@@ -1636,6 +1642,10 @@ if (filterBaths > 0) {
 
 if (filterMinSqft > 0) {
   query = query.gte("sqft", filterMinSqft);
+}
+
+if (filterMinLotSqft > 0) {
+  query = query.gte("lot_size_sqft", filterMinLotSqft);
 }
 
 if (filterMinYear > 0) {
@@ -2483,10 +2493,10 @@ function formatPrice(price: number) {
 }
 function formatLotSize(listing: any): string {
   const lotSqft =
-    Number(listing?.lot_size_sqft || listing?.lotSqft || 0) ||
-    Math.round(Number(listing?.lot_size_acres || listing?.lotAcres || 0) * 43560);
+    Number(listing?.lot_size_sqft || 0) ||
+    Math.round(Number(listing?.lot_size_acres || 0) * 43560);
 
-  if (!lotSqft) return String(listing?.lotSize || listing?.lot_size || "").trim();
+  if (!lotSqft) return "";
 
   return lotSqft > 10890
     ? `${(lotSqft / 43560).toLocaleString("en-CA", {
@@ -3483,6 +3493,7 @@ const socialUrl =
       )}`
     : `${Astro.url.origin}${Astro.url.pathname}`;
 const jawgAccessToken = import.meta.env.PUBLIC_JAWG_ACCESS_TOKEN || "";
+
 ---
 <script is:inline define:vars={{ jawgAccessToken }}>
   window.__JAWG_TILE_URL__ = jawgAccessToken
@@ -9010,7 +9021,7 @@ grid-template-columns: 30px minmax(0, 1fr);
 .type-more-filters-panel {
   width: 100%;
   box-sizing: border-box;
-  margin: -20px 0 22px;
+  margin: -21px 0 22px;
   padding: 22px 24px 24px;
   border: 1px solid rgba(18, 58, 90, 0.11);
   border-top: 0;
@@ -11630,6 +11641,22 @@ Approximate driving times from{" "}
         </label>
 
         <label>
+          <span>Minimum lot size</span>
+          <select
+            class="min-lot-sqft-filter-select"
+            aria-label="Minimum lot size"
+          >
+            <option value="" selected={!filterMinLotSqft}>Any lot size</option>
+            <option value="5000" selected={filterMinLotSqft === 5000}>5,000+ sq ft</option>
+            <option value="10890" selected={filterMinLotSqft === 10890}>0.25+ acres</option>
+            <option value="21780" selected={filterMinLotSqft === 21780}>0.5+ acres</option>
+            <option value="43560" selected={filterMinLotSqft === 43560}>1+ acre</option>
+            <option value="87120" selected={filterMinLotSqft === 87120}>2+ acres</option>
+            <option value="217800" selected={filterMinLotSqft === 217800}>5+ acres</option>
+          </select>
+        </label>
+
+        <label>
           <span>Year built</span>
 
           <select
@@ -11659,8 +11686,9 @@ Approximate driving times from{" "}
       </div>
     </section>
 
-    <section class="type-more-filter-group">
+    <section class="type-more-filter-group type-more-layout-group">
       <h3>Layout</h3>
+      <span class="type-more-layout-label" style="font-size:0.78rem;font-weight:700;color:var(--ink, #17212b);">Bedroom configuration</span>
 
       <div class="type-more-filter-checks">
         <label>
@@ -11763,6 +11791,12 @@ Approximate driving times from{" "}
             </option>
           </select>
         </label>
+      </div>
+    </section>
+    <section class="type-more-filter-group type-more-refinements-group">
+      <h3>More refinements</h3>
+      <div class="type-more-refinements-placeholder" style="transform:translateY(0) !important;">
+        Saved searches and alerts are coming soon.
       </div>
     </section>
 
@@ -12342,10 +12376,10 @@ lot_size_acres: listing.lot_size_acres,
 
     function formatLotSizeClient(listing) {
       const lotSqft =
-        Number(listing?.lot_size_sqft || listing?.lotSqft || 0) ||
-        Math.round(Number(listing?.lot_size_acres || listing?.lotAcres || 0) * 43560);
+        Number(listing?.lot_size_sqft || 0) ||
+        Math.round(Number(listing?.lot_size_acres || 0) * 43560);
 
-      if (!lotSqft) return String(listing?.lotSize || listing?.lot_size || "").trim();
+      if (!lotSqft) return "";
 
       return lotSqft > 10890
         ? `${(lotSqft / 43560).toLocaleString("en-CA", {
@@ -12573,6 +12607,8 @@ ${formatLotSizeClient(listing) ? `<span>Lot ${formatLotSizeClient(listing)}</spa
       if (dataEl.dataset.beds) params.set("beds", dataEl.dataset.beds);
       if (dataEl.dataset.baths) params.set("baths", dataEl.dataset.baths);
       if (dataEl.dataset.minSqft) params.set("minSqft", dataEl.dataset.minSqft);
+      const activeLotSize = new URLSearchParams(window.location.search).get("minLotSqft");
+      if (activeLotSize) params.set("minLotSqft", activeLotSize);
       if (dataEl.dataset.minYear) params.set("minYear", dataEl.dataset.minYear);
       if (dataEl.dataset.viewType) params.set("viewType", dataEl.dataset.viewType);
       if (dataEl.dataset.waterfrontType) {
@@ -16221,6 +16257,9 @@ if (
 const minSqftSelect =
   document.querySelector(".min-sqft-filter-select");
 
+const minLotSqftSelect =
+  document.querySelector(".min-lot-sqft-filter-select");
+
 const minYearSelect =
   document.querySelector(".min-year-filter-select");
 
@@ -16253,6 +16292,7 @@ function getAdvancedFilterCount() {
   let count = 0;
 
   if (minSqftSelect?.value) count++;
+  if (minLotSqftSelect?.value) count++;
   if (minYearSelect?.value) count++;
   if (primaryMainFilter?.checked) count++;
   if (threeFloorFilter?.checked) count++;
@@ -16290,6 +16330,7 @@ function setMoreFiltersOpen(open) {
 
 const hasInitialAdvancedFilters =
   initialParams.has("minSqft") ||
+  initialParams.has("minLotSqft") ||
   initialParams.has("minYear") ||
   initialParams.get("primaryOnMain") === "true" ||
   initialParams.get("threeSameFloor") === "true" ||
@@ -16572,6 +16613,11 @@ function updateSearchFromFilters() {
   );
 
   setOrDelete(
+    "minLotSqft",
+    minLotSqftSelect?.value || ""
+  );
+
+  setOrDelete(
     "baths",
     bathsSelect?.value || ""
   );
@@ -16669,6 +16715,7 @@ const nextSearch = params.toString();
       apiParams.set("baths", bathsSelect.value);
     }
     if (minSqftSelect?.value) apiParams.set("minSqft", minSqftSelect.value);
+    if (minLotSqftSelect?.value) apiParams.set("minLotSqft", minLotSqftSelect.value);
     if (minYearSelect?.value) apiParams.set("minYear", minYearSelect.value);
     if (viewTypeSelect?.value) apiParams.set("viewType", viewTypeSelect.value);
     if (waterfrontTypeSelect?.value) {
@@ -16726,6 +16773,7 @@ const nextSearch = params.toString();
         fastData.dataset.baths = bathsSelect?.value === "all" ? "" : (bathsSelect?.value || "");
         fastData.dataset.price = price === "all" ? "" : price;
         fastData.dataset.minSqft = minSqftSelect?.value || "";
+        fastData.dataset.minLotSqft = minLotSqftSelect?.value || "";
         fastData.dataset.minYear = minYearSelect?.value || "";
         fastData.dataset.viewType = viewTypeSelect?.value || "";
         fastData.dataset.waterfrontType = waterfrontTypeSelect?.value || "";
@@ -16786,6 +16834,11 @@ bedsSelect?.addEventListener("change", updateSearchFromFilters);
 bathsSelect?.addEventListener("change", updateSearchFromFilters);
 
 minSqftSelect?.addEventListener(
+  "change",
+  updateSearchFromFilters
+);
+
+minLotSqftSelect?.addEventListener(
   "change",
   updateSearchFromFilters
 );
@@ -21849,8 +21902,6 @@ document.addEventListener("click", (event) => {
 
       if (
         !controls ||
-        !fastData ||
-        fastData.dataset.fastListings !== "true" ||
         controls.dataset.stickyResultFilters === "true"
       ) return;
 
@@ -21901,33 +21952,12 @@ document.addEventListener("click", (event) => {
         // Preserve the exact desktop bar geometry before moving it to the
         // fixed rail. This keeps every control in the same place on screen.
         const bounds = controls.getBoundingClientRect();
-        controls.style.setProperty("width", `${bounds.width}px`, "important");
-        controls.style.setProperty("margin-left", `${bounds.left}px`, "important");
+        controls.style.setProperty("width", "100vw", "important");
+        controls.style.setProperty("margin-left", "0", "important");
         controls.style.setProperty("margin-right", "0", "important");
         controls.style.setProperty("margin-top", "0", "important");
         controls.style.setProperty("margin-bottom", "0", "important");
         rail.appendChild(controls);
-
-        // The expanded panel is a sibling in normal page flow. Move it with
-        // the bar so it remains directly below â€œMore filtersâ€ while docked.
-        if (moreFiltersPanel) {
-          moreFiltersPanel.style.setProperty(
-            "width",
-            `${bounds.width}px`,
-            "important"
-          );
-          moreFiltersPanel.style.setProperty(
-            "margin-left",
-            `${bounds.left}px`,
-            "important"
-          );
-          moreFiltersPanel.style.setProperty(
-            "margin-right",
-            "0",
-            "important"
-          );
-          rail.appendChild(moreFiltersPanel);
-        }
         docked = true;
         showRail();
       };
@@ -21940,13 +21970,6 @@ document.addEventListener("click", (event) => {
         controls.style.removeProperty("margin-right");
         controls.style.removeProperty("margin-top");
         controls.style.removeProperty("margin-bottom");
-
-        if (moreFiltersPanel) {
-          controls.after(moreFiltersPanel);
-          moreFiltersPanel.style.removeProperty("width");
-          moreFiltersPanel.style.removeProperty("margin-left");
-          moreFiltersPanel.style.removeProperty("margin-right");
-        }
         docked = false;
         hideRail();
       };
@@ -22413,62 +22436,432 @@ document.addEventListener("click", (event) => {
     white-space: nowrap;
     box-shadow: 0 2px 6px #0003;
   }
-
-/* listing-card-meta-separators */
-.card .meta {
-  gap: 0 !important;
-}
-
-.card .meta span {
-  white-space: nowrap;
-}
-
-.card .meta span + span::before {
-  content: "•";
-  display: inline-block;
-  margin: 0 8px;
-  color: currentColor;
-  opacity: 0.5;
-}
-/* type-area-meta-dot-colour-v1 */
-.grid > .card .meta span + span::before {
-  color: rgb(0 0 0 / 40%) !important;
-  opacity: 1 !important;
-}
-
-:global(html[data-theme="dark"]) .grid > .card .meta span + span::before {
-  color: rgb(255 255 255 / 45%) !important;
-}</style>
+</style>
 
 <style is:global>
-  /* type-area-dynamic-meta-dots-v1 */
-  .grid > .card .meta span + span::before {
-    color: rgb(0 0 0 / 40%) !important;
-    opacity: 1 !important;
+  /* type-area-more-filters-seamless-join-v1 */
+  #listing-results-anchor.intent-controls:has(~ #type-more-filters:not([hidden])) {
+    margin-bottom: 20px !important;
+    border-radius: 14px 14px 0 0 !important;
+    border-bottom-color: transparent !important;
+    box-shadow: none !important;
   }
 
-  html[data-theme="dark"] .grid > .card .meta span + span::before {
-    color: rgb(255 255 255 / 45%) !important;
+  #type-more-filters.type-more-filters-panel:not([hidden]) {
+    margin-top: -20px !important;
+    border-top-color: transparent !important;
+    border-radius: 0 0 14px 14px !important;
+    box-shadow: 0 10px 24px rgb(15 38 57 / 8%) !important;
+  }
+</style>
+
+<style is:global>
+  /* type-area-more-filters-four-column-v1 */
+  #type-more-filters .type-more-filters-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 28px !important;
+    align-items: start !important;
+  }
+
+  #type-more-filters .type-more-filter-group h3 {
+    margin-bottom: 11px !important;
+  }
+
+  #type-more-filters .type-more-filter-selects {
+    gap: 11px !important;
+  }
+
+  #type-more-filters select {
+    min-height: 40px !important;
+    padding-top: 7px !important;
+    padding-bottom: 7px !important;
+  }
+
+  #type-more-filters .type-more-filter-checks {
+    gap: 8px !important;
+  }
+
+  #type-more-filters .type-more-filter-checks label {
+    min-height: 36px !important;
+    padding: 0 9px !important;
+  }
+
+  #type-more-filters .type-more-filters-grid::after {
+    content: "More refinements\A are on the way.";
+    white-space: pre-line;
+    display: block;
+    box-sizing: border-box;
+    margin-top: 30px;
+    padding: 14px 15px;
+    border: 1px dashed rgb(31 52 69 / 16%);
+    border-radius: 10px;
+    color: #7b8790;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+
+  @media (max-width: 1050px) {
+    #type-more-filters .type-more-filters-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    #type-more-filters .type-more-filters-grid::after {
+      display: none;
+    }
+  }
+
+  @media (max-width: 760px) {
+    #type-more-filters .type-more-filters-grid {
+      grid-template-columns: 1fr !important;
+      gap: 24px !important;
+    }
   }
 </style>
 <style is:global>
-  /* type-area-meta-spacing-v1 */
-  .grid > .card .meta {
-    gap: 0 !important;
-    flex-wrap: nowrap !important;
+  /* type-area-four-column-desktop-fix-v1 */
+  @media (min-width: 600px) {
+    #type-more-filters .type-more-filters-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    }
+
+    #type-more-filters .type-more-filters-grid::after {
+      display: block !important;
+    }
+  }
+</style>
+<style>
+/* type-area-layout-first-checkbox-align-v1 */
+@media (min-width: 900px) {
+  #type-more-filters .type-more-filter-checks > label:first-child {
+    margin-top: 22px;
+  }
+}
+</style>
+<style>
+/* type-area-layout-column-align-v2 */
+@media (min-width: 900px) {
+  #type-more-filters .type-more-filter-checks {
+    padding-top: 22px;
+  }
+}
+</style>
+<style>
+/* type-area-more-filter-column-order-v1 */
+@media (min-width: 900px) {
+  #type-more-filters .type-more-filter-group:nth-of-type(1) { order: 1; }
+  #type-more-filters .type-more-filter-group:nth-of-type(2) { order: 3; }
+  #type-more-filters .type-more-filter-group:nth-of-type(3) { order: 2; }
+
+  #type-more-filters .type-more-filters-grid::after {
+    order: 4;
+  }
+}
+</style>
+<style>
+/* type-area-more-refinements-column-v1 */
+@media (min-width: 900px) {
+  /* Restore Layout's first option to the shared control baseline. */
+  #type-more-filters .type-more-filter-checks {
+    padding-top: 0 !important;
   }
 
-  .grid > .card .meta span {
-    white-space: nowrap !important;
+  /* Turn the fourth column into a proper future-refinement group. */
+  #type-more-filters .type-more-filters-grid::before {
+    content: "MORE REFINEMENTS";
+    grid-column: 4;
+    grid-row: 1;
+    order: 4;
+    align-self: start;
+    color: var(--ink, #17212b);
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    line-height: 1.2;
   }
 
-  .grid > .card .meta span + span::before {
-    margin: 0 8px !important;
+  #type-more-filters .type-more-filters-grid::after {
+    content: "Saved searches and alerts\A are coming soon.";
+    grid-column: 4;
+    grid-row: 1;
+    order: 4;
+    align-self: start;
+    box-sizing: border-box;
+    min-height: 44px;
+    margin-top: 42px;
+    padding: 10px 14px;
+    border: 1px dashed #d7dde3;
+    border-radius: 10px;
+    color: #718096;
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1.35;
+    white-space: pre-line;
+  }
+}
+</style>
+<style>
+/* type-area-more-refinements-real-group-v1 */
+#type-more-filters .type-more-filters-grid::before,
+#type-more-filters .type-more-filters-grid::after {
+  content: none !important;
+  display: none !important;
+}
+
+#type-more-filters .type-more-refinements-placeholder {
+  box-sizing: border-box;
+  min-height: 44px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border: 1px dashed rgb(31 52 69 / 16%);
+  border-radius: 10px;
+  color: #7b8790;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+@media (min-width: 600px) {
+  #type-more-filters .type-more-refinements-group {
+    order: 4;
+  }
+}
+</style>
+<style is:global>
+/* type-area-hide-legacy-refinement-pseudos-v1 */
+#type-more-filters .type-more-filters-grid::before,
+#type-more-filters .type-more-filters-grid::after {
+  content: "" !important;
+  display: none !important;
+}
+</style>
+<style is:global>
+/* type-area-more-refinements-control-align-v1 */
+#type-more-filters .type-more-refinements-placeholder {
+  margin-top: 33px !important;
+}
+</style>
+<style is:global>
+/* type-area-more-refinements-transform-align-v1 */
+@media (min-width: 600px) {
+  #type-more-filters .type-more-refinements-placeholder {
+    transform: translateY(21px) !important;
+  }
+}
+</style>
+<style is:global>
+/* type-area-layout-micro-label-v1 */
+#type-more-filters .type-more-layout-group {
+  position: relative;
+}
+
+#type-more-filters .type-more-layout-label {
+  position: absolute;
+  top: 27px;
+  left: 0;
+  color: #697784;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+</style>
+<style is:global>
+/* more-filters-do-not-dock-v1 */
+#type-more-filters {
+  position: static !important;
+  top: auto !important;
+  z-index: auto !important;
+}
+</style>
+<style is:global>
+  /* type-area-more-filters-right-action-v1 */
+  @media (min-width: 900px) {
+    #listing-results-anchor.intent-controls .type-more-filters-toggle {
+      margin-left: auto !important;
+      border-left: 1px solid rgb(31 52 69 / 12%) !important;
+      padding-left: 24px !important;
+      padding-right: 24px !important;
+      min-width: 156px;
+      justify-content: center;
+    }
   }
 </style>
 <style is:global>
-  /* type-area-meta-dot-balance-v1 */
-  .grid > .card .meta span {
-    gap: 0 !important;
+  /* type-area-more-filters-right-grid-v2 */
+  @media (min-width: 900px) {
+    #listing-results-anchor.intent-controls {
+      grid-template-columns:
+        154px
+        170px
+        170px
+        145px
+        145px
+        minmax(0, 1fr)
+        max-content !important;
+    }
+
+    #listing-results-anchor.intent-controls .type-more-filters-toggle {
+      grid-column: 7 !important;
+      justify-self: end !important;
+      margin-left: 0 !important;
+      border-left: 1px solid rgb(31 52 69 / 12%) !important;
+      padding: 0 24px !important;
+      min-width: 156px;
+      justify-content: center;
+    }
   }
 </style>
+<style is:global>
+  /* type-area-more-filters-soft-action-v1 */
+  @media (min-width: 900px) {
+    #listing-results-anchor.intent-controls .type-more-filters-toggle {
+      align-self: stretch;
+      margin: 9px 10px 9px 0 !important;
+      padding: 0 18px !important;
+      border: 1px solid rgb(31 52 69 / 9%) !important;
+      border-radius: 9px;
+      background: rgb(42 112 119 / 6%);
+      color: #254a4e;
+      transition: background 160ms ease, border-color 160ms ease;
+    }
+
+    #listing-results-anchor.intent-controls .type-more-filters-toggle:hover {
+      background: rgb(42 112 119 / 11%);
+      border-color: rgb(42 112 119 / 20%) !important;
+    }
+  }
+</style>
+<style is:global>
+  /* type-area-more-filters-soft-action-v2 */
+  @media (min-width: 900px) {
+    #listing-results-anchor.intent-controls .type-more-filters-toggle {
+      align-self: stretch !important;
+      margin: 9px 10px 9px 0 !important;
+      padding: 0 18px !important;
+      border: 1px solid rgb(31 52 69 / 9%) !important;
+      border-radius: 9px !important;
+      background: rgb(42 112 119 / 6%) !important;
+      color: #254a4e !important;
+    }
+
+    #listing-results-anchor.intent-controls .type-more-filters-toggle:hover {
+      background: rgb(42 112 119 / 11%) !important;
+      border-color: rgb(42 112 119 / 20%) !important;
+    }
+  }
+</style>
+<style is:global>
+  /* type-area-docked-more-panel-controller-v4 */
+  .listing-filter-rail > #type-more-filters {
+    box-sizing: border-box;
+    border-radius: 0 0 14px 14px;
+  }
+</style>
+<style is:global>
+  /* type-area-docked-more-panel-controller-v5 */
+  .listing-filter-rail > #type-more-filters {
+    box-sizing: border-box;
+    border-radius: 0 0 14px 14px;
+  }
+</style>
+<script is:inline>
+  /* type-area-docked-more-panel-v6 */
+  (() => {
+    const start = () => {
+      const controls = document.querySelector(
+        "#listing-results-anchor.intent-controls"
+      );
+      const panel = document.querySelector("[data-type-more-panel]");
+      const toggle = document.querySelector("[data-type-more-toggle]");
+
+      if (!controls || !panel || !toggle) return;
+
+      const home = document.createComment("more-filters-home");
+      panel.before(home);
+
+      let wasDocked = false;
+      let frame = 0;
+
+      const isDocked = () =>
+        Boolean(controls.closest(".listing-filter-rail"));
+
+      const restorePanel = () => {
+        if (!home.parentNode) return;
+        home.after(panel);
+        panel.style.removeProperty("width");
+        panel.style.removeProperty("margin-left");
+        panel.style.removeProperty("margin-right");
+        panel.style.removeProperty("margin-top");
+      };
+
+      const closePanel = () => {
+        panel.hidden = true;
+        toggle.setAttribute("aria-expanded", "false");
+        toggle.classList.remove("is-open");
+      };
+
+      const placePanelBelowDockedBar = () => {
+        if (!isDocked() || panel.hidden) return;
+
+        const bounds = controls.getBoundingClientRect();
+
+        panel.style.setProperty("width", "${bounds.width}px", "important");
+        panel.style.setProperty(
+          "margin-left",
+          "${bounds.left}px",
+          "important"
+        );
+        panel.style.setProperty("margin-right", "0", "important");
+        panel.style.setProperty("margin-top", "0", "important");
+
+        controls.after(panel);
+      };
+
+      const syncDockState = () => {
+        frame = 0;
+        const docked = isDocked();
+
+        if (docked && !wasDocked) {
+          if (!panel.hidden) closePanel();
+          restorePanel();
+        }
+
+        if (!docked && wasDocked) {
+          restorePanel();
+        }
+
+        wasDocked = docked;
+      };
+
+      const requestSync = () => {
+        if (!frame) frame = requestAnimationFrame(syncDockState);
+      };
+
+      // Runs after the existing button handler, even after the bar is moved.
+      document.addEventListener("click", (event) => {
+        if (!(event.target instanceof Element)) return;
+        if (!event.target.closest("[data-type-more-toggle]")) return;
+
+        requestAnimationFrame(() => {
+          syncDockState();
+
+          if (isDocked() && !panel.hidden) {
+            placePanelBelowDockedBar();
+          } else if (!isDocked()) {
+            restorePanel();
+          }
+        });
+      });
+
+      window.addEventListener("scroll", requestSync, { passive: true });
+      window.addEventListener("resize", requestSync, { passive: true });
+      requestSync();
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", start, { once: true });
+    } else {
+      start();
+    }
+  })();
+</script>
