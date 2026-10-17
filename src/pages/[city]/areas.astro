@@ -784,6 +784,51 @@ const jawgAccessToken =
               .filter(Boolean);
 
             let boundaryLayer;
+            const areaHoverFrames = new WeakMap();
+            const areaHoverDuration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240;
+            const easeOutCubic = (value) => 1 - Math.pow(1 - value, 3);
+
+            const animateAreaHover = (areaLayer, isHovering) => {
+              const target = isHovering
+                ? { weight: 3, opacity: 1, fillOpacity: .45 }
+                : { weight: 2, opacity: .88, fillOpacity: .24 };
+
+              const start = {
+                weight: Number(areaLayer.options.weight ?? 2),
+                opacity: Number(areaLayer.options.opacity ?? .88),
+                fillOpacity: Number(areaLayer.options.fillOpacity ?? .24),
+              };
+
+              const existingFrame = areaHoverFrames.get(areaLayer);
+              if (existingFrame != null) cancelAnimationFrame(existingFrame);
+
+              if (!areaHoverDuration) {
+                areaLayer.setStyle(target);
+                if (!isHovering) boundaryLayer.resetStyle(areaLayer);
+                return;
+              }
+
+              const startedAt = performance.now();
+              const tick = (now) => {
+                const progress = Math.min(1, (now - startedAt) / areaHoverDuration);
+                const eased = easeOutCubic(progress);
+
+                areaLayer.setStyle({
+                  weight: start.weight + (target.weight - start.weight) * eased,
+                  opacity: start.opacity + (target.opacity - start.opacity) * eased,
+                  fillOpacity: start.fillOpacity + (target.fillOpacity - start.fillOpacity) * eased,
+                });
+
+                if (progress < 1) {
+                  areaHoverFrames.set(areaLayer, requestAnimationFrame(tick));
+                } else {
+                  areaHoverFrames.delete(areaLayer);
+                  if (!isHovering) boundaryLayer.resetStyle(areaLayer);
+                }
+              };
+
+              areaHoverFrames.set(areaLayer, requestAnimationFrame(tick));
+            };
 
             boundaryLayer = window.L.geoJSON(
               {
@@ -826,15 +871,12 @@ const jawgAccessToken =
                   areaLayer.on({
                     mouseover() {
                       rows.find((row) => row.dataset.areaSlug === area.slug)?.classList.add("is-highlighted");
-                      areaLayer.setStyle({
-                        weight: 3,
-                        fillOpacity: .45,
-                      });
+                      animateAreaHover(areaLayer, true);
                       areaLayer.bringToFront();
                     },
                     mouseout() {
                       rows.find((row) => row.dataset.areaSlug === area.slug)?.classList.remove("is-highlighted");
-                      boundaryLayer.resetStyle(areaLayer);
+                      animateAreaHover(areaLayer, false);
                     },
                     click() {
                       if (area.href) window.location.assign(area.href);
@@ -847,11 +889,11 @@ const jawgAccessToken =
             rows.forEach((row) => {
               const highlight = () => {
                 const layer = layersBySlug.get(row.dataset.areaSlug);
-                if (layer) { layer.setStyle({weight:3, fillOpacity:.45}); layer.bringToFront(); }
+                if (layer) { animateAreaHover(layer, true); layer.bringToFront(); }
               };
               const reset = () => {
                 const layer = layersBySlug.get(row.dataset.areaSlug);
-                if (layer) boundaryLayer.resetStyle(layer);
+                if (layer) animateAreaHover(layer, false);
               };
               row.addEventListener("mouseenter", highlight);
               row.addEventListener("mouseleave", reset);

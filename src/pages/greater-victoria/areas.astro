@@ -53,21 +53,21 @@ const safeJson = (value:any)=>JSON.stringify(value).replace(/</g,"\\u003c");
     const layers=new Map(),areaLayers=new Map();
     const accent=getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()||"#2f6f73";
     const districtColours={
-      "victoria":"#7c3aed",
-      "victoria-west":"#c026d3",
-      "oak-bay":"#d97706",
-      "saanich-east":"#0284c7",
-      "saanich-west":"#dc2626",
-      "esquimalt":"#059669",
-      "view-royal":"#db2777",
-      "colwood":"#4f46e5",
-      "langford":"#a16207",
-      "highlands":"#0f766e",
-      "metchosin":"#65a30d",
-      "sooke":"#9333ea",
-      "central-saanich":"#ea580c",
-      "north-saanich":"#2563eb",
-      "sidney":"#be185d"
+      "victoria":"#315f87",
+      "victoria-west":"#8d4964",
+      "saanich-east":"#8a6a22",
+      "saanich-west":"#44785f",
+      "oak-bay":"#735fa3",
+      "esquimalt":"#a3533e",
+      "view-royal":"#3e7580",
+      "colwood":"#7a6a50",
+      "langford":"#315f87",
+      "highlands":"#8d4964",
+      "metchosin":"#8a6a22",
+      "sooke":"#44785f",
+      "central-saanich":"#735fa3",
+      "north-saanich":"#a3533e",
+      "sidney":"#3e7580"
     };
     const districtColour=slug=>districtColours[slug]||accent;
     const showError=message=>{const el=document.getElementById("gv-map-error");el.hidden=false;el.textContent=message;};
@@ -78,11 +78,11 @@ const safeJson = (value:any)=>JSON.stringify(value).replace(/</g,"\\u003c");
       const active=selected===slug;
       if(layer){
         layer.setStyle(on
-          ? {weight:5,opacity:1,fillOpacity:.30}
+          ? {weight:3,opacity:1,fillOpacity:.45}
           : {
-              weight:selected?(active?5:3):3.5,
-              opacity:selected?(active?1:.7):1,
-              fillOpacity:selected?(active?.24:.10):.18
+              weight:selected?(active?3:1.5):2,
+              opacity:selected?(active?1:.42):.88,
+              fillOpacity:selected?(active ? .38 : .07):.24
             });
         layer.eachLayer(l=>on?l.openTooltip():l.closeTooltip());
       }
@@ -124,7 +124,7 @@ const safeJson = (value:any)=>JSON.stringify(value).replace(/</g,"\\u003c");
       guide.hidden=false;guide.href=`/${slug}`;guide.textContent=`Open ${district.name} guide`;
       list.innerHTML=district.areas.length?district.areas.map(a=>`<a data-astro-reload class="gv-area-link" href="/${slug}/${encodeURIComponent(a.slug)}"><span><strong>${esc(clean(a.name))}</strong><small>${a.count.toLocaleString()} listings</small></span><span aria-hidden="true">→</span></a>`).join(""):`<p class="gv-small" style="padding:20px">Neighbourhood guides will appear here as they are added. You can search the entire district now.</p>`;
       list.scrollTop=0;
-      layers.forEach((layer,key)=>layer.setStyle({weight:key===slug?5:3,opacity:key===slug?1:.7,fillOpacity:key===slug?.24:.10}));
+      layers.forEach((layer,key)=>layer.setStyle({weight:key===slug?3:1.5,opacity:key===slug?1:.42,fillOpacity:key===slug ? .38 : .07}));
       areaLayers.forEach((layer,key)=>layer.setStyle({weight:key===slug?1:0.6,opacity:key===slug?.45:.18}));
       const bounds=layers.get(slug)?.getBounds()||areaLayers.get(slug)?.getBounds();
       if(zoom&&map&&bounds?.isValid())map.fitBounds(bounds,{padding:[45,45],maxZoom:13});
@@ -135,7 +135,7 @@ const safeJson = (value:any)=>JSON.stringify(value).replace(/</g,"\\u003c");
       selected="";title.textContent="Choose a district";copy.textContent=`${total.toLocaleString()} active listings across the available districts.`;
       search.href="/greater-victoria";search.textContent="Search all Greater Victoria homes";guide.hidden=true;
       list.innerHTML=districts.map(d=>`<button class="gv-district-button" type="button" data-district="${d.slug}"><span><strong>${esc(d.name)}</strong><small>${d.count.toLocaleString()} listings · ${d.areas.length} neighbourhoods</small></span><span aria-hidden="true">→</span></button>`).join("");
-      layers.forEach(l=>l.setStyle({weight:3.5,opacity:1,fillOpacity:.18}));areaLayers.forEach(l=>l.setStyle({weight:.6,opacity:.18}));
+      layers.forEach(l=>l.setStyle({weight:2,opacity:.88,fillOpacity:.24}));areaLayers.forEach(l=>l.setStyle({weight:.6,opacity:.18}));
       if(map&&overviewBounds?.isValid())map.fitBounds(overviewBounds,{padding:[35,35]});updateLabels();history.replaceState(null,"","/greater-victoria/areas");
     }
     list.addEventListener("click",event=>{const button=event.target.closest("[data-district]");if(button)window.location.href=`/${button.dataset.district}/areas`;});
@@ -160,16 +160,16 @@ const safeJson = (value:any)=>JSON.stringify(value).replace(/</g,"\\u003c");
         })};
         const inner=L.geoJSON(collection,{pane:"gv-neighbourhoods",style:{color:"#64748b",weight:.6,opacity:.18,fill:false},onEachFeature(f,l){l.bindTooltip(`${esc(clean(f.properties.name))} · ${f.properties.count}`,{permanent:false,direction:"center",className:"gv-map-label gv-map-area-label"});l.on("click",()=>{window.location.href=`/${d.slug}/areas`;});}}).addTo(map);areaLayers.set(d.slug,inner);
         if(inner.getBounds().isValid())overviewBounds.extend(inner.getBounds());
-        if(d.outline){const outer=L.geoJSON(d.outline,{pane:"gv-districts",style:{color:districtColour(d.slug),fillColor:districtColour(d.slug),weight:3.5,opacity:1,fillOpacity:.18},onEachFeature(f,l){l.bindTooltip(`${esc(d.name)} · ${d.count.toLocaleString()} listings`,{permanent:false,direction:"center",className:"gv-map-label"});l.on("click",()=>{window.location.href=`/${d.slug}/areas`;});
+        if(d.outline){const outer=L.geoJSON(d.outline,{pane:"gv-districts",style:{color:districtColour(d.slug),fillColor:districtColour(d.slug),weight:2,opacity:.88,fillOpacity:.24},onEachFeature(f,l){l.bindTooltip(`${esc(d.name)} · ${d.count.toLocaleString()} listings`,{permanent:false,direction:"center",className:"gv-map-label"});l.on("click",()=>{window.location.href=`/${d.slug}/areas`;});
 l.on("mouseover",()=>{
   highlightDistrict(d.slug,true);
 });
 l.on("mouseout",()=>{
   highlightDistrict(d.slug,false); const active=selected===d.slug;
   l.setStyle({
-    weight:selected?(active?5:3):3.5,
-    opacity:selected?(active?1:.7):1,
-    fillOpacity:selected?(active?.24:.10):.18
+    weight:selected?(active?3:1.5):2,
+    opacity:selected?(active?1:.42):.88,
+    fillOpacity:selected?(active ? .38 : .07):.24
   });
 });
 }}).addTo(map);layers.set(d.slug,outer);if(outer.getBounds().isValid())overviewBounds.extend(outer.getBounds());}
