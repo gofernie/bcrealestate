@@ -2197,18 +2197,27 @@ waterfront_type: (() => {
       listing?.waterfront
   );
 
-  if (!isWaterfront) return null;
+  if (!isWaterfront) return null;  // A listing must already be confirmed waterfront before its public
+  // remarks can refine whether it is oceanfront.
+  const waterSource = [
+    listing?.details?.waterfront,
+    listing?.raw?.details?.waterfront,
+    listing?.details?.waterfrontType,
+    listing?.raw?.details?.waterfrontType,
+    listing?.details?.viewType,
+    listing?.raw?.details?.viewType,
+    listing?.view_type,
+    getDescription(listing),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 
-  const viewSource = String(
-    listing?.details?.viewType ||
-      listing?.raw?.details?.viewType ||
-      listing?.view_type ||
-      ""
-  ).toLowerCase();
-
-  if (viewSource.includes("river")) return "riverfront";
-  if (viewSource.includes("lake")) return "lakefront";
-  if (viewSource.includes("ocean")) return "oceanfront";
+  if (waterSource.includes("river")) return "riverfront";
+  if (waterSource.includes("lake")) return "lakefront";
+  if (/\b(ocean|sea|marine|saltwater)\b/.test(waterSource)) {
+    return "oceanfront";
+  }
 
   return "waterfront";
 })(),
