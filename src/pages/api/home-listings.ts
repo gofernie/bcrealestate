@@ -173,6 +173,14 @@ const normalizeListing = (listing: any) => {
           })} acres`
         : `${sqft.toLocaleString("en-CA")} sq ft`;
     })(),
+    lot_size_sqft:
+      Number(listing.lot_size_sqft || 0) ||
+      Math.round(Number(listing.lot_size_acres || 0) * 43560) ||
+      0,
+    lot_size_acres:
+      Number(listing.lot_size_acres || 0) ||
+      Number(listing.lot_size_sqft || 0) / 43560 ||
+      0,
     lotSqft:
       Number(listing.lot_size_sqft || 0) ||
       Math.round(Number(listing.lot_size_acres || 0) * 43560) ||
