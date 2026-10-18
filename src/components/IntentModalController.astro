@@ -560,10 +560,11 @@ html {
   type="button"
   id="sheet-photo-share-btn"
   class="panel__photo-share-btn"
-  aria-label="Share this photo"
-  title="Share this photo"
+  aria-label="Share photo or listing"
+  title="Share photo or listing"
+  style="width:auto !important;min-width:88px !important;height:42px !important;min-height:42px !important;padding:0 11px !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;gap:7px !important;font:700 13px/1 system-ui,sans-serif !important;white-space:nowrap !important;"
 >
-  <svg viewBox="0 0 24 24" aria-hidden="true">
+  <svg viewBox="0 0 24 24" aria-hidden="true" style="width:18px !important;height:18px !important;flex:0 0 auto !important;">
     <path
       d="M12 16V3m0 0L7.5 7.5M12 3l4.5 4.5M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"
       fill="none"
@@ -573,6 +574,7 @@ html {
       stroke-linejoin="round"
     />
   </svg>
+  <span data-photo-share-label style="display:block;line-height:1;">Share</span>
 </button>
 <button
   type="button"
@@ -2436,7 +2438,7 @@ function getPhotoShareUrl() {
   if (!listingId) return "";
 
   const shareUrl = new URL(
-    modalReturnUrl || window.location.href,
+    window.location.pathname,
     window.location.origin
   );
 
@@ -2472,35 +2474,637 @@ function showPhotoShareCopied() {
   });
 }
 
-async function shareActivePhoto(event) {
-  event?.preventDefault();
-  event?.stopPropagation();
+/* photo-share-dialog-v1 */
+let photoShareDialog = null;
+let photoShareDialogReturnFocus = null;
+let photoShareCopyResetTimer = 0;
 
+function getPhotoShareDetails() {
   const shareUrl = getPhotoShareUrl();
-
-  if (!shareUrl) return;
-
   const address = activeCard?.dataset?.address || "this property";
   const photoNumber = Math.max(1, activePhotoIndex + 1);
 
+  return {
+    address,
+    photoNumber,
+    shareUrl,
+    subject: `${address} - photo ${photoNumber}`,
+    message: `Take a look at photo ${photoNumber} of ${address}: ${shareUrl}`,
+  };
+}
+
+function closePhotoShareDialog(restoreFocus = true) {
+  if (!photoShareDialog) return;
+
+  photoShareDialog.style.removeProperty("display");
+  photoShareDialog.hidden = true;
+
+  const trigger = photoShareDialogReturnFocus;
+  photoShareDialogReturnFocus = null;
+
+  if (
+    restoreFocus &&
+    trigger instanceof HTMLElement &&
+    trigger.isConnected
+  ) {
+    window.setTimeout(() => trigger.focus(), 0);
+  }
+}
+
+async function copyPhotoShareText(text) {
   try {
-    if (navigator.share) {
-      await navigator.share({
-        title: `${address} - photo ${photoNumber}`,
-        text: `Take a look at photo ${photoNumber} of ${address}`,
-        url: shareUrl,
-      });
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Try the selection fallback below.
+  }
+
+  const helper = document.createElement("textarea");
+  helper.value = text;
+  helper.setAttribute("readonly", "");
+  helper.setAttribute("aria-hidden", "true");
+  helper.style.cssText =
+    "position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none;";
+
+  document.body.appendChild(helper);
+  helper.focus({ preventScroll: true });
+  helper.select();
+  helper.setSelectionRange(0, helper.value.length);
+
+  let copied = false;
+
+  try {
+    copied = document.execCommand("copy");
+  } catch {
+    copied = false;
+  }
+
+  helper.remove();
+  return copied;
+}
+
+function ensurePhotoShareDialog() {
+  if (photoShareDialog) return photoShareDialog;
+
+  const dialog = document.createElement("div");
+  dialog.id = "photo-share-dialog";
+  dialog.hidden = true;
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-labelledby", "photo-share-dialog-title");
+  dialog.style.cssText =
+    "position:fixed;inset:0;z-index:2147483647;display:flex;" +
+    "align-items:center;justify-content:center;padding:20px;" +
+    "background:rgba(6,12,18,.54);backdrop-filter:blur(7px);" +
+    "-webkit-backdrop-filter:blur(7px);";
+
+  const panel = document.createElement("section");
+  panel.style.cssText =
+    "width:min(100%,360px);box-sizing:border-box;padding:22px;" +
+    "border:1px solid rgba(255,255,255,.18);border-radius:18px;" +
+    "background:#fff;color:#172330;box-shadow:0 20px 60px rgba(0,0,0,.32);" +
+    "font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;";
+
+  const header = document.createElement("div");
+  header.style.cssText =
+    "display:flex;align-items:flex-start;justify-content:space-between;gap:16px;";
+
+  const headingWrap = document.createElement("div");
+
+  const title = document.createElement("h2");
+  title.id = "photo-share-dialog-title";
+  title.style.cssText = "margin:0;font-size:19px;line-height:1.2;";
+
+  const subtitle = document.createElement("p");
+  subtitle.dataset.photoShareSubtitle = "true";
+  subtitle.style.cssText =
+    "margin:5px 0 0;color:#61717f;font-size:13px;line-height:1.35;";
+
+  headingWrap.append(title, subtitle);
+
+  const close = document.createElement("button");
+  close.type = "button";
+  close.textContent = "\u00d7";
+  close.setAttribute("aria-label", "Close share options");
+  close.style.cssText =
+    "flex:0 0 auto;width:34px;height:34px;padding:0;border:0;border-radius:9px;" +
+    "background:#eef2f5;color:#334657;font-size:25px;line-height:1;cursor:pointer;";
+  close.addEventListener("click", () => closePhotoShareDialog());
+
+  header.append(headingWrap, close);
+
+  const actions = document.createElement("div");
+  actions.style.cssText =
+    "display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px;";
+
+  const actionStyle =
+    "display:flex;align-items:center;justify-content:center;min-height:46px;" +
+    "box-sizing:border-box;padding:10px 12px;border:1px solid #ced9e1;" +
+    "border-radius:10px;background:#fff;color:#173348;font:700 14px/1 system-ui,sans-serif;" +
+    "text-decoration:none;cursor:pointer;";
+
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.textContent = "Copy link";
+  copy.dataset.photoShareCopy = "true";
+  copy.style.cssText =
+    actionStyle + "grid-column:1 / -1;background:#173348;color:#fff;border-color:#173348;";
+
+  const sms = document.createElement("a");
+  sms.textContent = "Send SMS";
+  sms.dataset.photoShareSms = "true";
+  sms.style.cssText = actionStyle;
+
+  const email = document.createElement("a");
+  email.textContent = "Email";
+  email.dataset.photoShareEmail = "true";
+  email.style.cssText = actionStyle;
+
+  const whatsapp = document.createElement("a");
+  whatsapp.textContent = "WhatsApp";
+  whatsapp.dataset.photoShareWhatsapp = "true";
+  whatsapp.target = "_blank";
+  whatsapp.rel = "noopener noreferrer";
+  whatsapp.style.cssText = actionStyle + "grid-column:1 / -1;";
+
+  actions.append(copy, sms, email, whatsapp);
+
+  const status = document.createElement("p");
+  status.dataset.photoShareStatus = "true";
+  status.setAttribute("aria-live", "polite");
+  status.style.cssText =
+    "min-height:18px;margin:14px 0 0;color:#476071;font-size:13px;line-height:1.35;";
+
+  const manualCopy = document.createElement("input");
+  manualCopy.type = "text";
+  manualCopy.readOnly = true;
+  manualCopy.hidden = true;
+  manualCopy.dataset.photoShareManualCopy = "true";
+  manualCopy.style.cssText =
+    "width:100%;box-sizing:border-box;margin-top:10px;padding:10px;" +
+    "border:1px solid #b9c8d2;border-radius:8px;color:#173348;background:#f8fafb;";
+
+  panel.append(header, actions, status, manualCopy);
+  dialog.appendChild(panel);
+
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) closePhotoShareDialog();
+  });
+
+  copy.addEventListener("click", async () => {
+    const shareUrl = dialog.dataset.shareUrl || "";
+    const manualInput = dialog.querySelector("[data-photo-share-manual-copy]");
+    const statusLine = dialog.querySelector("[data-photo-share-status]");
+
+    if (!shareUrl || !(manualInput instanceof HTMLInputElement)) return;
+
+    copy.disabled = true;
+    copy.textContent = "Copying...";
+
+    const copied = await copyPhotoShareText(shareUrl);
+
+    copy.disabled = false;
+
+    if (copied) {
+      manualInput.hidden = true;
+      if (statusLine) statusLine.textContent = "Link copied.";
+      copy.textContent = "Copied";
+      showPhotoShareCopied();
+
+      window.clearTimeout(photoShareCopyResetTimer);
+      photoShareCopyResetTimer = window.setTimeout(() => {
+        copy.textContent = "Copy link";
+      }, 1600);
       return;
     }
 
-    await navigator.clipboard.writeText(shareUrl);
-    showPhotoShareCopied();
-  } catch (error) {
-    if (error?.name !== "AbortError") {
-      console.error("Photo share failed:", error);
+    manualInput.hidden = false;
+    manualInput.value = shareUrl;
+    manualInput.focus({ preventScroll: true });
+    manualInput.select();
+
+    if (statusLine) {
+      statusLine.textContent = "Your browser blocked copying. Press Ctrl+C to copy the selected link.";
+    }
+
+    copy.textContent = "Copy link";
+  });
+
+  [sms, email, whatsapp].forEach((link) => {
+    link.addEventListener("click", () => {
+      window.setTimeout(() => closePhotoShareDialog(false), 0);
+    });
+  });
+
+  document.body.appendChild(dialog);
+  photoShareDialog = dialog;
+  return dialog;
+}
+
+function openPhotoShareDialog(event) {
+  event?.preventDefault();
+  event?.stopPropagation();
+
+  const { address, photoNumber, shareUrl, subject, message } =
+    getPhotoShareDetails();
+
+  if (!shareUrl) return;
+
+  const dialog = ensurePhotoShareDialog();
+  const title = dialog.querySelector("#photo-share-dialog-title");
+  const subtitle = dialog.querySelector("[data-photo-share-subtitle]");
+  const statusLine = dialog.querySelector("[data-photo-share-status]");
+  const copy = dialog.querySelector("[data-photo-share-copy]");
+  const sms = dialog.querySelector("[data-photo-share-sms]");
+  const email = dialog.querySelector("[data-photo-share-email]");
+  const whatsapp = dialog.querySelector("[data-photo-share-whatsapp]");
+  const manualInput = dialog.querySelector("[data-photo-share-manual-copy]");
+
+  if (
+    !(copy instanceof HTMLButtonElement) ||
+    !(sms instanceof HTMLAnchorElement) ||
+    !(email instanceof HTMLAnchorElement) ||
+    !(whatsapp instanceof HTMLAnchorElement) ||
+    !(manualInput instanceof HTMLInputElement)
+  ) {
+    return;
+  }
+
+  photoShareDialogReturnFocus =
+    event?.currentTarget instanceof HTMLElement
+      ? event.currentTarget
+      : document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
+  dialog.dataset.shareUrl = shareUrl;
+  if (title) title.textContent = `Share photo ${photoNumber}`;
+  if (subtitle) subtitle.textContent = address;
+  if (statusLine) statusLine.textContent = "";
+
+  copy.disabled = false;
+  copy.textContent = "Copy link";
+  manualInput.hidden = true;
+  manualInput.value = "";
+
+  const encodedMessage = encodeURIComponent(message);
+  const encodedSubject = encodeURIComponent(subject);
+  const isAppleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+  sms.href = isAppleMobile
+    ? `sms:&body=${encodedMessage}`
+    : `sms:?body=${encodedMessage}`;
+  email.href = `mailto:?subject=${encodedSubject}&body=${encodedMessage}`;
+  whatsapp.href = `https://wa.me/?text=${encodedMessage}`;
+
+  dialog.hidden = false;
+  dialog.style.display = "flex";
+
+  window.setTimeout(() => copy.focus(), 0);
+}
+
+/* photo-share-picker-v4 */
+function shareActivePhoto(event) {
+  event?.preventDefault();
+  event?.stopPropagation();
+
+  const escapeHtml = (value) =>
+    String(value).replace(
+      /[&<>"']/g,
+      (character) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[character]
+    );
+
+  const copyText = async (text) => {
+    try {
+      if (navigator.clipboard?.writeText && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      // Use the fallback below.
+    }
+
+    const helper = document.createElement("textarea");
+    helper.value = text;
+    helper.setAttribute("readonly", "");
+    helper.setAttribute("aria-hidden", "true");
+    helper.style.cssText =
+      "position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none;";
+    document.body.appendChild(helper);
+    helper.focus({ preventScroll: true });
+    helper.select();
+    helper.setSelectionRange(0, helper.value.length);
+
+    let copied = false;
+    try {
+      copied = document.execCommand("copy");
+    } catch {
+      copied = false;
+    }
+
+    helper.remove();
+    return copied;
+  };
+
+  const getListingId = () =>
+    String(
+      activeCard?.dataset?.listingId ||
+        activeCard?.dataset?.itemId ||
+        activeCard?.dataset?.mls ||
+        ""
+    ).trim();
+
+  const getCleanShareUrl = (photoNumber = null) => {
+    const listingId = getListingId();
+    if (!listingId) return "";
+
+    const marketPath = window.location.pathname.replace(
+      /\/listing\/[^/]+\/?$/i,
+      "/"
+    );
+    const shareUrl = new URL(marketPath || "/", window.location.origin);
+    shareUrl.searchParams.set("listing_id", listingId);
+
+    if (photoNumber !== null) {
+      shareUrl.searchParams.set("photo", String(photoNumber));
+    }
+
+    return shareUrl.toString();
+  };
+
+  const getDetails = (mode = "photo") => {
+    const address = activeCard?.dataset?.address || "this property";
+
+    if (mode === "listing") {
+      const shareUrl = getCleanShareUrl();
+
+      return {
+        mode,
+        shareUrl,
+        subtitle: address,
+        copyLabel: "Copy listing link",
+        copiedMessage: "Listing link copied.",
+        subject: address,
+        message: `Take a look at ${address}: ${shareUrl}`,
+      };
+    }
+
+    const photoNumber = Math.max(1, activePhotoIndex + 1);
+    const totalPhotos = Math.max(
+      photoNumber,
+      Array.isArray(activePhotoUrls) ? activePhotoUrls.length : 0
+    );
+    const photoPosition =
+      totalPhotos > 1
+        ? `Photo ${photoNumber} of ${totalPhotos}`
+        : `Photo ${photoNumber}`;
+
+    const shareUrl = getCleanShareUrl(photoNumber);
+
+    return {
+      mode,
+      shareUrl,
+      subtitle: `${photoPosition} · ${address}`,
+      copyLabel: "Copy photo link",
+      copiedMessage: "Photo link copied.",
+      subject: `${address} · photo ${photoNumber}`,
+      message: `Take a look at photo ${photoNumber} of ${address}: ${shareUrl}`,
+    };
+  };
+
+  if (!getDetails().shareUrl) return;
+
+  const existingDialog = document.getElementById("photo-share-dialog");
+  if (existingDialog instanceof HTMLElement) {
+    if (typeof existingDialog.__closePhotoShareDialog === "function") {
+      existingDialog.__closePhotoShareDialog(false);
+    } else {
+      existingDialog.remove();
     }
   }
+
+  const returnFocus =
+    event?.currentTarget instanceof HTMLElement
+      ? event.currentTarget
+      : document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+  let mode = "photo";
+
+  const dialog = document.createElement("div");
+  dialog.id = "photo-share-dialog";
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-labelledby", "photo-share-dialog-title");
+  dialog.style.cssText =
+    "position:fixed;inset:0;z-index:2147483647;display:flex;" +
+    "align-items:center;justify-content:center;padding:20px;" +
+    "background:rgba(6,12,18,.54);backdrop-filter:blur(7px);" +
+    "-webkit-backdrop-filter:blur(7px);";
+
+  const close = (restoreFocus = true) => {
+    window.removeEventListener("keydown", onKeyDown, true);
+    dialog.__closePhotoShareDialog = null;
+    dialog.remove();
+
+    if (
+      restoreFocus &&
+      returnFocus instanceof HTMLElement &&
+      returnFocus.isConnected
+    ) {
+      window.setTimeout(() => returnFocus.focus(), 0);
+    }
+  };
+
+  const render = () => {
+    const details = getDetails(mode);
+    if (!details.shareUrl) {
+      close(false);
+      return;
+    }
+
+    const encodedMessage = encodeURIComponent(details.message);
+    const encodedSubject = encodeURIComponent(details.subject);
+    const isAppleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const smsHref = isAppleMobile
+      ? `sms:&body=${encodedMessage}`
+      : `sms:?body=${encodedMessage}`;
+
+    dialog.dataset.shareMode = mode;
+    dialog.dataset.shareUrl = details.shareUrl;
+
+    dialog.innerHTML = `
+      <style>
+        #photo-share-dialog .photo-share-panel { width:min(100%,390px); box-sizing:border-box; padding:22px; border:1px solid rgba(255,255,255,.18); border-radius:18px; background:#fff; color:#172330; box-shadow:0 20px 60px rgba(0,0,0,.32); font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+        #photo-share-dialog .photo-share-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+        #photo-share-dialog h2 { margin:0; font-size:19px; line-height:1.2; }
+        #photo-share-dialog .photo-share-subtitle { margin:5px 0 0; color:#61717f; font-size:13px; line-height:1.35; }
+        #photo-share-dialog .photo-share-close { flex:0 0 auto; width:34px; height:34px; padding:0; border:0; border-radius:9px; background:#eef2f5; color:#334657; font-size:25px; line-height:1; cursor:pointer; }
+        #photo-share-dialog .photo-share-targets { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:19px; }
+        #photo-share-dialog .photo-share-target { min-height:68px; box-sizing:border-box; padding:11px 10px; border:1px solid #cbd8e0; border-radius:11px; background:#f8fafb; color:#173348; text-align:left; font:inherit; cursor:pointer; }
+        #photo-share-dialog .photo-share-target strong { display:block; font-size:13px; line-height:1.2; }
+        #photo-share-dialog .photo-share-target small { display:block; margin-top:5px; color:#61717f; font-size:11px; line-height:1.25; }
+        #photo-share-dialog .photo-share-target.is-selected { border-color:#173348; background:#173348; color:#fff; box-shadow:0 5px 14px rgba(23,51,72,.2); }
+        #photo-share-dialog .photo-share-target.is-selected small { color:rgba(255,255,255,.78); }
+        #photo-share-dialog .photo-share-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:15px; }
+        #photo-share-dialog .photo-share-action { display:flex; align-items:center; justify-content:center; min-height:46px; box-sizing:border-box; padding:10px 12px; border:1px solid #ced9e1; border-radius:10px; background:#fff; color:#173348; font:700 14px/1 system-ui,sans-serif; text-decoration:none; cursor:pointer; }
+        #photo-share-dialog .photo-share-copy { grid-column:1 / -1; background:#173348; color:#fff; border-color:#173348; }
+        #photo-share-dialog .photo-share-whatsapp { grid-column:1 / -1; }
+        #photo-share-dialog .photo-share-status { min-height:18px; margin:14px 0 0; color:#476071; font-size:13px; line-height:1.35; }
+        #photo-share-dialog .photo-share-manual { width:100%; box-sizing:border-box; margin-top:10px; padding:10px; border:1px solid #b9c8d2; border-radius:8px; color:#173348; background:#f8fafb; }
+      </style>
+      <section class="photo-share-panel" role="document">
+        <header class="photo-share-header">
+          <div>
+            <h2 id="photo-share-dialog-title">Share</h2>
+            <p class="photo-share-subtitle">${escapeHtml(details.subtitle)}</p>
+          </div>
+          <button class="photo-share-close" type="button" data-photo-share-action="close" aria-label="Close share options">&times;</button>
+        </header>
+        <div class="photo-share-targets" role="group" aria-label="Choose what to share">
+          <button class="photo-share-target${mode === "photo" ? " is-selected" : ""}" type="button" data-photo-share-action="mode" data-share-mode="photo" aria-pressed="${mode === "photo"}">
+            <strong>Share this photo</strong>
+            <small>Exact photo link</small>
+          </button>
+          <button class="photo-share-target${mode === "listing" ? " is-selected" : ""}" type="button" data-photo-share-action="mode" data-share-mode="listing" aria-pressed="${mode === "listing"}">
+            <strong>Share full listing</strong>
+            <small>Photos, details and map</small>
+          </button>
+        </div>
+        <div class="photo-share-actions">
+          <button class="photo-share-action photo-share-copy" type="button" data-photo-share-action="copy">${escapeHtml(details.copyLabel)}</button>
+          <a class="photo-share-action" data-photo-share-action="sms" href="${escapeHtml(smsHref)}">Send SMS</a>
+          <a class="photo-share-action" data-photo-share-action="email" href="mailto:?subject=${encodedSubject}&amp;body=${encodedMessage}">Email</a>
+          <a class="photo-share-action photo-share-whatsapp" data-photo-share-action="whatsapp" href="https://wa.me/?text=${encodedMessage}" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+        </div>
+        <p class="photo-share-status" data-photo-share-status aria-live="polite"></p>
+        <input class="photo-share-manual" data-photo-share-manual type="text" readonly hidden />
+      </section>`;
+
+    dialog.querySelector("[data-photo-share-action=copy]")?.focus();
+  };
+
+  const onKeyDown = (keyboardEvent) => {
+    if (keyboardEvent.key !== "Escape") return;
+    keyboardEvent.preventDefault();
+    keyboardEvent.stopImmediatePropagation();
+    close();
+  };
+
+  dialog.addEventListener("click", async (clickEvent) => {
+    const target =
+      clickEvent.target instanceof Element ? clickEvent.target : null;
+
+    if (target === dialog) {
+      close();
+      return;
+    }
+
+    const action = target
+      ?.closest("[data-photo-share-action]")
+      ?.getAttribute("data-photo-share-action");
+
+    if (!action) return;
+
+    if (action === "close") {
+      clickEvent.preventDefault();
+      close();
+      return;
+    }
+
+    if (action === "mode") {
+      clickEvent.preventDefault();
+      const requestedMode = target
+        ?.closest("[data-share-mode]")
+        ?.getAttribute("data-share-mode");
+
+      if (requestedMode === "photo" || requestedMode === "listing") {
+        mode = requestedMode;
+        render();
+      }
+      return;
+    }
+
+    if (action === "sms" || action === "email" || action === "whatsapp") {
+      window.setTimeout(() => close(false), 0);
+      return;
+    }
+
+    if (action !== "copy") return;
+    clickEvent.preventDefault();
+
+    const details = getDetails(mode);
+    const copyButton = target.closest("button");
+    const status = dialog.querySelector("[data-photo-share-status]");
+    const manualInput = dialog.querySelector("[data-photo-share-manual]");
+
+    if (
+      !details.shareUrl ||
+      !(copyButton instanceof HTMLButtonElement) ||
+      !(manualInput instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+
+    copyButton.disabled = true;
+    copyButton.textContent = "Copying...";
+
+    const copied = await copyText(details.shareUrl);
+    copyButton.disabled = false;
+
+    if (copied) {
+      manualInput.hidden = true;
+      if (status) status.textContent = details.copiedMessage;
+      copyButton.textContent = "Copied";
+
+      if (mode === "photo" && typeof showPhotoShareCopied === "function") {
+        showPhotoShareCopied();
+      }
+
+      window.setTimeout(() => {
+        if (dialog.isConnected && dialog.dataset.shareMode === mode) {
+          copyButton.textContent = details.copyLabel;
+        }
+      }, 1600);
+      return;
+    }
+
+    manualInput.hidden = false;
+    manualInput.value = details.shareUrl;
+    manualInput.focus({ preventScroll: true });
+    manualInput.select();
+
+    if (status) {
+      status.textContent =
+        "Your browser blocked copying. Press Ctrl+C to copy the selected link.";
+    }
+
+    copyButton.textContent = details.copyLabel;
+  });
+
+  window.addEventListener("keydown", onKeyDown, true);
+  dialog.__closePhotoShareDialog = close;
+  document.body.appendChild(dialog);
+  render();
 }
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && photoShareDialog && !photoShareDialog.hidden) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closePhotoShareDialog();
+  }
+});
 
 function syncListingUrl(card, mode = "replace") {
   const listingUrl = getListingUrl(card);
@@ -3201,22 +3805,16 @@ async function openListingDeepLink() {
 
   if (!requestedId) return;
 
+  /* photo-deep-link-index-persistence-v1 */
   const openDeepLinkedListing = (card) => {
-    const previousPhotoIndex = card.dataset.openAtPhotoIndex;
-
+    // Keep this value through async detail hydration. The gallery reads it
+    // again after the complete image list arrives.
     if (requestedPhotoIndex !== null) {
       card.dataset.openAtPhotoIndex = String(requestedPhotoIndex);
     }
 
     openSheet(card, { skipHistory: true });
-
-    if (previousPhotoIndex === undefined) {
-      delete card.dataset.openAtPhotoIndex;
-    } else {
-      card.dataset.openAtPhotoIndex = previousPhotoIndex;
-    }
   };
-
   const existingCard = getCards().find((candidate) =>
     [
       candidate.dataset.listingId,
@@ -7061,20 +7659,22 @@ function openDesktopPhotoOverlay() {
       "background:rgba(8,12,16,.58);color:#fff;font-size:27px;line-height:1;cursor:pointer;";
     close.addEventListener("click", closeDesktopPhotoOverlay);
 
+        /* photo-share-pills-v1 */
     const share = document.createElement("button");
     share.type = "button";
     share.innerHTML =
-      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3m0 0L7.5 7.5M12 3l4.5 4.5M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    share.setAttribute("aria-label", "Share this photo");
-    share.setAttribute("title", "Share this photo");
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3m0 0L7.5 7.5M12 3l4.5 4.5M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-photo-share-label>Share</span>';
+    share.setAttribute("aria-label", "Share photo or listing");
+    share.setAttribute("title", "Share photo or listing");
     share.dataset.desktopPhotoAction = "share";
     share.style.cssText =
-      "position:absolute;z-index:3;top:13px;right:60px;width:38px;height:38px;" +
-      "display:grid;place-items:center;padding:0;" +
+      "position:absolute;z-index:3;top:13px;right:60px;min-width:88px;height:38px;" +
+      "display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0 11px;" +
       "border:1px solid rgba(255,255,255,.34);border-radius:10px;" +
-      "background:rgba(8,12,16,.58);color:#fff;cursor:pointer;";
+      "background:rgba(8,12,16,.58);color:#fff;font:700 13px/1 system-ui,sans-serif;" +
+      "white-space:nowrap;cursor:pointer;";
     share.querySelector("svg").style.cssText =
-      "width:19px;height:19px;fill:none;stroke:currentColor;";
+      "width:18px;height:18px;flex:0 0 auto;fill:none;stroke:currentColor;";
     share.addEventListener("click", shareActivePhoto);
 
     const previous = document.createElement("button");
