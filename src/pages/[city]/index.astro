@@ -1350,6 +1350,38 @@ if (type) {
 }
 
 intentCollections = intentCollections.slice(0, 8);
+
+const featuredIntentCollections = allIntentCollections
+  .filter(
+    (collection, index, collections) =>
+      collections.findIndex(
+        (candidate) =>
+          candidate.title.trim().toLowerCase() ===
+          collection.title.trim().toLowerCase()
+      ) === index
+  )
+  .slice(0, 6);
+const featuredIntentHrefs = new Set(
+  featuredIntentCollections.map((collection) => collection.href)
+);
+const remainingIntentPageRows = (intentPageRows || []).filter(
+  (page: any) => !featuredIntentHrefs.has(`/${page.city}/${page.slug}`)
+);
+/* city-home-stacked-title-v1 */
+const stackedCollectionTitle = (value: string) => {
+  const title = String(value || "")
+    .replace(/\bHomes\s+Homes\b/gi, "Homes")
+    .trim();
+
+  const cityPrefix = `${cityName} `.toLowerCase();
+  const withoutCity = title.toLowerCase().startsWith(cityPrefix)
+    ? title.slice(cityPrefix.length).trim()
+    : title;
+
+  return /^homes$/i.test(withoutCity)
+    ? `All ${cityName} Homes`
+    : titleCase(withoutCity);
+};
 const propertyTypeOrder = [
   "homes",
   "condo",
@@ -1620,7 +1652,7 @@ href: boundary.home_href || `/${city || "nanaimo"}/${String(boundary.area_slug |
   })
   .filter((card) => card.count > 0)
   .sort((a, b) => b.count - a.count)
-  .slice(0, 7);
+  .slice(0, 10);
 } catch {}
 
 // The regional page chooses a district. Neighbourhoods belong on district sites.
@@ -2315,7 +2347,7 @@ if (homepageAreaCards.length === 0) {
       href: `/${city || "nanaimo"}/${name.replace(/\s+/g, "-")}`,
     }))
     .sort((a, b) => b.count - a.count)
-    .slice(0, 7);
+    .slice(0, 10);
 }
 
 const homepageNeighbourhoodImages = [
@@ -4106,7 +4138,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
   /* home-explore-tabs-v2 */
   .locus-home-explore {
     display: grid;
-    grid-template-columns: minmax(230px, .78fr) minmax(0, 1.42fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
     margin: 42px auto 54px;
     overflow: hidden;
     border: 1px solid var(--line);
@@ -4268,46 +4300,73 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
     user-select: none;
   }</style>
 
-<section class="locus-home-explore">
-  <div class="locus-home-explore__intro">
-    <span class="locus-home-section-kicker">{cityName.toUpperCase()} HOME SEARCH</span>
-    <h2>Find your next home</h2>
-    <p>
-      Explore {cityName} by {isGreaterVictoriaMarket ? "district" : "neighbourhood"} or home type. See what is available now, then narrow in on the places that fit.
-    </p>
-    <a href={`/${city || "nanaimo"}`}>Explore all {cityName} listings &rarr;</a>
+<section class="locus-home-explore locus-home-explore--stacked">
+  <div class="locus-home-explore__collections">
+    <div class="locus-home-explore__collections-head">
+      <div>
+        <span class="locus-home-section-kicker">{cityName.toUpperCase()} COLLECTIONS</span>
+        <h2>Search by what matters.</h2>
+        <p>
+          Start with a curated search built around the way you want to live.
+        </p>
+      </div>
+
+      <a href={`/${city || "nanaimo"}`} class="locus-home-explore__browse-all">
+        Browse all {cityName} listings <b aria-hidden="true">&rarr;</b>
+      </a>
+    </div>
+
+    {featuredIntentCollections.length > 0 && (
+      <div class="city-home-intent-grid" aria-label={`Featured ${cityName} collections`}>
+        {featuredIntentCollections.map((collection) => (
+          <a href={collection.href} class="city-home-intent-card">
+            <strong>{stackedCollectionTitle(collection.title)}</strong>
+            <span>
+              {collection.description ||
+                "A curated collection built around the way you want to live."}
+            </span>
+            <small>Browse listings</small>
+            <b aria-hidden="true">&rarr;</b>
+          </a>
+        ))}
+      </div>
+    )}
   </div>
 
-  <div class="locus-home-explore__panel">
-    <div
-      class="locus-home-explore__tabs"
-      role="tablist"
-      aria-label="Browse Nanaimo homes"
-    >
-      <button
-        class="is-active"
-        id="explore-tab-areas"
-        type="button"
-        role="tab"
-        aria-selected="true"
-        aria-controls="explore-panel-areas"
-        data-explore-tab="areas"
-      >
-        {isGreaterVictoriaMarket ? "Districts" : "Neighbourhoods"}
-      </button>
+  <div class="locus-home-explore__browse">
+    <div class="locus-home-explore__browse-head">
+      <h2>Explore by area</h2>
 
-      {!isNanaimoMobilesSite && (
+      <div
+        class="locus-home-explore__tabs"
+        role="tablist"
+        aria-label={`Browse ${cityName} homes`}
+      >
         <button
-          id="explore-tab-types"
+          class="is-active"
+          id="explore-tab-areas"
           type="button"
           role="tab"
-          aria-selected="false"
-          aria-controls="explore-panel-types"
-          data-explore-tab="types"
+          aria-selected="true"
+          aria-controls="explore-panel-areas"
+          data-explore-tab="areas"
         >
-          Home types
+          {isGreaterVictoriaMarket ? "Districts" : "Neighbourhoods"}
         </button>
-      )}
+
+        {!isNanaimoMobilesSite && (
+          <button
+            id="explore-tab-types"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="explore-panel-types"
+            data-explore-tab="types"
+          >
+            Home types
+          </button>
+        )}
+      </div>
     </div>
 
     <div
@@ -4321,14 +4380,9 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
         class="locus-home-neighbourhood-grid"
         data-home-neighbourhood-grid
       >
-        {homepageAreaCards.slice(0, 7).map((card) => (
-          <a
-            href={card.href}
-            class="locus-home-neighbourhood-card"
-          >
-            <strong>
-              {titleCase(card.name).replace(/^Pq\s+/i, "")}
-            </strong>
+        {homepageAreaCards.slice(0, 10).map((card) => (
+          <a href={card.href} class="locus-home-neighbourhood-card">
+            <strong>{titleCase(card.name).replace(/^Pq\s+/i, "")}</strong>
             <span>
               {card.count} {card.count === 1 ? "listing" : "listings"}
             </span>
@@ -4340,7 +4394,11 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
           href={`/${city || "nanaimo"}/areas`}
           class="locus-home-neighbourhood-card locus-home-neighbourhood-card--all"
         >
-          <strong>{isGreaterVictoriaMarket ? "All Greater Victoria districts" : `Every ${cityName} neighbourhood`}</strong>
+          <strong>
+            {isGreaterVictoriaMarket
+              ? "Every Greater Victoria district"
+              : `Every ${cityName} neighbourhood`}
+          </strong>
           <span>Browse all areas</span>
           <b aria-hidden="true">&rarr;</b>
         </a>
@@ -4357,7 +4415,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
         hidden
       >
         <div class="locus-home-neighbourhood-grid">
-          {homepageTypeCards.slice(0, 7).map((card) => (
+          {homepageTypeCards.slice(0, 10).map((card) => (
             <a
               href={buildFilterUrl({ type: card.value })}
               class="locus-home-neighbourhood-card"
@@ -5636,10 +5694,10 @@ data-liked-tags="[]"
 </section>
 <RelatedIntentCards
           city={city}
-          pages={intentPageRows || []}
+          pages={remainingIntentPageRows}
           inventory={relatedIntentCardInventory || []}
           currentType={type}
-          title="Search by what matters."
+          title="More ways to explore."
         />
       </div>
 
@@ -15169,7 +15227,7 @@ const navBottom = () => {
               (a, b) =>
                 b.count - a.count || a.slug.localeCompare(b.slug)
             )
-            .slice(0, 7)
+            .slice(0, 10)
             .forEach((card) => {
               const link = document.createElement("a");
               link.className = "locus-home-neighbourhood-card";
@@ -20831,4 +20889,1825 @@ html[data-theme="dark"] #home-hero-search.locus-home-search > :is(
     top: 4px !important;
   }
 }
+</style>
+<style is:global>
+/* city-home-collections-v1 */
+.locus-home-explore {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.locus-home-explore__intro {
+  display: flex;
+  flex-direction: column;
+  padding: 24px 26px;
+}
+
+.locus-home-explore__intro h2 {
+  max-width: none;
+  margin: 6px 0 7px;
+}
+
+.locus-home-explore__intro p.locus-home-explore__lede {
+  max-width: 38ch;
+  margin: 0 0 15px;
+}
+
+.locus-home-collection-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 15px;
+}
+
+.locus-home-collection-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 76px;
+  padding: 11px 31px 11px 12px;
+  border: 1px solid rgba(8, 36, 58, .16);
+  border-radius: 7px;
+  background: #f6fafb;
+  color: var(--ink);
+  text-decoration: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.locus-home-collection-card:hover {
+  border-color: rgba(8, 36, 58, .34);
+  box-shadow: 0 8px 20px rgba(8, 36, 58, .09);
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+
+.locus-home-collection-card span {
+  color: var(--locus-muted, #687785);
+  font-size: .61rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.locus-home-collection-card strong {
+  max-width: 18ch;
+  margin-top: 7px;
+  font-size: .91rem;
+  line-height: 1.15;
+  letter-spacing: -.015em;
+}
+
+.locus-home-collection-card b {
+  position: absolute;
+  right: 11px;
+  bottom: 12px;
+  color: var(--accent);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.locus-home-explore__intro a.locus-home-explore__all-listings {
+  display: inline-flex;
+  align-items: center;
+  margin-top: auto;
+  color: var(--ink);
+  font-size: .78rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.locus-home-explore__intro a.locus-home-explore__all-listings:hover {
+  color: var(--accent);
+}
+
+.locus-home-explore__content .locus-home-neighbourhood-grid {
+  grid-auto-rows: 72px;
+}
+
+.locus-home-explore__content .locus-home-neighbourhood-card {
+  min-height: 0;
+  padding: 12px 13px;
+  gap: 8px;
+}
+
+.locus-home-explore__content .locus-home-neighbourhood-card strong {
+  font-size: .9rem;
+}
+
+.locus-home-explore__content .locus-home-neighbourhood-card span {
+  font-size: .68rem;
+}
+
+:global(html[data-theme="dark"]) .locus-home-collection-card {
+  border-color: #394149;
+  background: #1d2125;
+  color: #f1f4f5;
+}
+
+:global(html[data-theme="dark"]) .locus-home-collection-card:hover {
+  border-color: #5a6773;
+  color: #f1f4f5;
+}
+
+:global(html[data-theme="dark"]) .locus-home-collection-card span {
+  color: #aeb9c2;
+}
+
+@media (max-width: 760px) {
+  .locus-home-explore {
+    grid-template-columns: 1fr;
+  }
+
+  .locus-home-explore__intro {
+    padding: 24px 22px 22px;
+  }
+
+  .locus-home-explore__intro a.locus-home-explore__all-listings {
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .locus-home-collection-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+<style is:global>
+/* city-home-collections-v2 */
+.locus-home-explore__intro {
+  padding: 30px !important;
+}
+
+.locus-home-explore__intro h2 {
+  max-width: none !important;
+  margin: 6px 0 8px !important;
+}
+
+.locus-home-explore__intro p.locus-home-explore__lede {
+  max-width: 42ch !important;
+  margin-bottom: 18px !important;
+}
+
+.locus-home-collection-grid {
+  gap: 12px !important;
+  margin-bottom: 18px !important;
+}
+
+.locus-home-explore .locus-home-collection-card {
+  display: grid !important;
+  grid-template-rows: 48px minmax(78px, 1fr) !important;
+  min-height: 130px !important;
+  padding: 0 !important;
+  overflow: hidden;
+  border: 1px solid rgba(8, 36, 58, .22) !important;
+  border-radius: 9px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.locus-home-explore .locus-home-collection-card__header {
+  display: flex !important;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 13px !important;
+  background: #f0f0f0;
+  color: #4e555b !important;
+  font-size: initial !important;
+  font-weight: initial !important;
+  letter-spacing: normal !important;
+  line-height: 1 !important;
+  text-transform: none !important;
+}
+
+.locus-home-explore .locus-home-collection-card:nth-child(2) .locus-home-collection-card__header {
+  background: #edf8fa;
+}
+
+.locus-home-explore .locus-home-collection-card:nth-child(3) .locus-home-collection-card__header {
+  background: #f4f0fb;
+}
+
+.locus-home-explore .locus-home-collection-card:nth-child(4) .locus-home-collection-card__header {
+  background: #f4f7ed;
+}
+
+.locus-home-explore .locus-home-collection-card__icon {
+  color: #4f565b !important;
+  font-size: 1.35rem !important;
+  line-height: 1 !important;
+}
+
+.locus-home-explore .locus-home-collection-card__header > span:last-child {
+  color: #59626a !important;
+  font-size: .66rem !important;
+  font-weight: 800 !important;
+  letter-spacing: .07em !important;
+  line-height: 1.1 !important;
+  text-transform: uppercase !important;
+}
+
+.locus-home-explore .locus-home-collection-card__body {
+  position: relative;
+  display: block !important;
+  padding: 13px 38px 13px 14px !important;
+  background: #fff;
+  color: var(--ink) !important;
+  font-size: initial !important;
+  font-weight: initial !important;
+  letter-spacing: normal !important;
+  line-height: normal !important;
+  text-transform: none !important;
+}
+
+.locus-home-explore .locus-home-collection-card__body strong {
+  display: block;
+  max-width: 19ch;
+  margin: 0 !important;
+  color: var(--ink);
+  font-family: Georgia, serif;
+  font-size: 1.08rem !important;
+  font-weight: 400 !important;
+  letter-spacing: -.02em !important;
+  line-height: 1.14 !important;
+}
+
+.locus-home-explore .locus-home-collection-card__body b {
+  right: 14px !important;
+  bottom: 15px !important;
+  color: var(--accent) !important;
+  font-size: 1rem !important;
+}
+
+.locus-home-explore .locus-home-collection-card:hover {
+  border-color: rgba(8, 36, 58, .42) !important;
+  box-shadow: 0 8px 18px rgba(8, 36, 58, .08) !important;
+  transform: translateY(-1px) !important;
+}
+
+@media (min-width: 761px) {
+  .locus-home-explore {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .locus-home-explore {
+    grid-template-columns: 1fr !important;
+  }
+
+  .locus-home-explore__intro {
+    padding: 25px 22px !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .locus-home-collection-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+</style>
+
+<style is:global>
+  /* city-home-explore-six-rows-v1 */
+  .locus-home-explore .locus-home-neighbourhood-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-auto-rows: 72px !important;
+    min-height: 0 !important;
+    align-content: start !important;
+    overflow: hidden !important;
+    border-color: rgba(8, 36, 58, .18) !important;
+    box-shadow: none !important;
+  }
+
+  .locus-home-explore .locus-home-neighbourhood-card {
+    display: grid !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    grid-template-columns: minmax(0, 1fr) auto 14px !important;
+    align-items: center !important;
+    column-gap: 8px !important;
+    min-height: 0 !important;
+    padding: 0 14px !important;
+    border-top: 0 !important;
+    border-left: 0 !important;
+    border-right: 1px solid rgba(8, 36, 58, .16) !important;
+    border-bottom: 1px solid rgba(8, 36, 58, .16) !important;
+    background: #fff !important;
+    color: #08243a !important;
+    box-shadow: none !important;
+  }
+
+  .locus-home-explore .locus-home-neighbourhood-card strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: .9rem !important;
+    line-height: 1.15 !important;
+    letter-spacing: -.012em !important;
+  }
+
+  .locus-home-explore .locus-home-neighbourhood-card span {
+    justify-self: end;
+    padding: 4px 6px;
+    border-radius: 999px;
+    background: #f1f5f6;
+    color: #617581 !important;
+    font-size: .65rem !important;
+    line-height: 1 !important;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .locus-home-explore .locus-home-neighbourhood-card b {
+    justify-self: end;
+    color: #0d526e !important;
+    font-size: .98rem !important;
+    line-height: 1 !important;
+  }
+
+  .locus-home-explore .locus-home-neighbourhood-card:hover {
+    background: #eef8fb !important;
+    color: #08243a !important;
+  }
+
+  .locus-home-explore__content[data-explore-panel="areas"]
+    .locus-home-neighbourhood-card:nth-child(2n) {
+    border-right: 0 !important;
+  }
+
+  .locus-home-explore__content[data-explore-panel="types"]
+    .locus-home-neighbourhood-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .locus-home-explore__content[data-explore-panel="types"]
+    .locus-home-neighbourhood-card {
+    border-right: 0 !important;
+  }
+
+  .locus-home-explore .locus-home-neighbourhood-card--all {
+    grid-column: 1 / -1 !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+    background: #edf8fa !important;
+  }
+
+  .locus-home-explore .locus-home-neighbourhood-card--all span {
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .locus-home-neighbourhood-grid {
+    background: #17191b !important;
+    border-color: #394149 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .locus-home-neighbourhood-card {
+    background: #1d2125 !important;
+    border-color: #394149 !important;
+    color: #f1f4f5 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .locus-home-neighbourhood-card span {
+    background: #262d32;
+    color: #c3cdd3 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .locus-home-neighbourhood-card--all {
+    background: #1b313d !important;
+  }
+
+  @media (max-width: 760px) {
+    .locus-home-explore .locus-home-neighbourhood-grid,
+    .locus-home-explore__content[data-explore-panel="types"] .locus-home-neighbourhood-grid {
+      grid-template-columns: 1fr !important;
+      grid-auto-rows: auto !important;
+    }
+
+    .locus-home-explore .locus-home-neighbourhood-card {
+      min-height: 64px !important;
+      padding: 12px 14px !important;
+      border-right: 0 !important;
+    }
+  }
+</style>
+
+<style is:global>
+  /* city-home-collection-emphasis-v1 */
+  .locus-home-explore .locus-home-collection-card {
+    display: grid !important;
+    grid-template-rows: 48px minmax(84px, 1fr) !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background: #fff !important;
+    border: 1px solid rgba(8, 36, 58, .2) !important;
+    box-shadow: 0 9px 20px rgba(8, 36, 58, .055) !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__header {
+    box-sizing: border-box;
+    display: flex !important;
+    align-items: center !important;
+    gap: 9px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 48px !important;
+    padding: 0 14px !important;
+    color: #16445d !important;
+    border-bottom: 1px solid rgba(8, 36, 58, .08);
+  }
+
+  .locus-home-explore .locus-home-collection-card:nth-child(1)
+    .locus-home-collection-card__header {
+    background: #e2eaee !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card:nth-child(2)
+    .locus-home-collection-card__header {
+    background: #d9f0f5 !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card:nth-child(3)
+    .locus-home-collection-card__header {
+    background: #e9e2f6 !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card:nth-child(4)
+    .locus-home-collection-card__header {
+    background: #eef1df !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__icon {
+    flex: 0 0 auto;
+    font-size: 1rem !important;
+    line-height: 1;
+  }
+
+  .locus-home-explore .locus-home-collection-card__header > span:last-child {
+    font-size: .68rem !important;
+    font-weight: 800 !important;
+    letter-spacing: .09em !important;
+    text-transform: uppercase;
+  }
+
+  .locus-home-explore .locus-home-collection-card__body {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 18px !important;
+    align-items: center !important;
+    gap: 12px !important;
+    min-height: 0;
+    padding: 14px !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__body strong {
+    min-width: 0;
+    color: #08243a !important;
+    font-size: 1.08rem !important;
+    line-height: 1.06 !important;
+    letter-spacing: -.025em !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__body b {
+    justify-self: end;
+    color: #0d526e !important;
+    font-size: 1.1rem !important;
+    line-height: 1;
+  }
+
+  .locus-home-explore .locus-home-collection-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 25px rgba(8, 36, 58, .1) !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card:hover
+    .locus-home-collection-card__header {
+    filter: saturate(1.12) brightness(.985);
+  }
+
+  html[data-theme="dark"] .locus-home-explore .locus-home-collection-card {
+    background: #1d2125 !important;
+    border-color: #394149 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .locus-home-collection-card__header {
+    background: #27313a !important;
+    color: #d8e5ea !important;
+    border-color: #394149 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .locus-home-collection-card__body strong {
+    color: #f1f4f5 !important;
+  }
+
+  @media (max-width: 620px) {
+    .locus-home-explore .locus-home-collection-card {
+      grid-template-rows: 44px minmax(78px, 1fr) !important;
+    }
+
+    .locus-home-explore .locus-home-collection-card__header {
+      min-height: 44px !important;
+      padding: 0 12px !important;
+    }
+
+    .locus-home-explore .locus-home-collection-card__body {
+      padding: 12px !important;
+    }
+  }
+</style>
+
+<style is:global>
+  /* city-home-collection-title-in-band-v1 */
+  .locus-home-explore .locus-home-collection-card {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 80px minmax(52px, 1fr) !important;
+    min-height: 132px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background: #fff !important;
+    border: 1px solid rgba(8, 36, 58, .2) !important;
+    box-shadow: 0 8px 18px rgba(8, 36, 58, .05) !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__header {
+    display: grid !important;
+    align-content: center !important;
+    justify-self: stretch !important;
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    padding: 12px 14px !important;
+    gap: 7px !important;
+    color: #123f58 !important;
+    border-bottom: 1px solid rgba(8, 36, 58, .1);
+  }
+
+  .locus-home-explore .locus-home-collection-card:nth-child(1)
+    .locus-home-collection-card__header {
+    background: #dcebf2 !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card:nth-child(2)
+    .locus-home-collection-card__header {
+    background: #d3f0f5 !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card:nth-child(3)
+    .locus-home-collection-card__header {
+    background: #e8dff4 !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card:nth-child(4)
+    .locus-home-collection-card__header {
+    background: #eaf0da !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__eyebrow {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    min-width: 0;
+    color: #31586d !important;
+    font-size: .62rem !important;
+    font-weight: 800 !important;
+    letter-spacing: .1em !important;
+    line-height: 1 !important;
+    text-transform: uppercase;
+  }
+
+  .locus-home-explore .locus-home-collection-card__icon {
+    flex: 0 0 auto;
+    font-size: .92rem !important;
+    line-height: 1;
+  }
+
+  .locus-home-explore .locus-home-collection-card__header > strong {
+    display: block !important;
+    color: #08243a !important;
+    font-family: Georgia, "Times New Roman", serif !important;
+    font-size: 1.13rem !important;
+    font-weight: 500 !important;
+    line-height: 1.04 !important;
+    letter-spacing: -.025em !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__body {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 18px !important;
+    align-items: center !important;
+    gap: 10px !important;
+    min-height: 0 !important;
+    padding: 0 14px !important;
+    background: #fff !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__body > span {
+    color: #637985 !important;
+    font-size: .62rem !important;
+    font-weight: 800 !important;
+    letter-spacing: .08em !important;
+    line-height: 1 !important;
+    text-transform: uppercase;
+  }
+
+  .locus-home-explore .locus-home-collection-card__body b {
+    justify-self: end;
+    color: #0d526e !important;
+    font-size: 1.08rem !important;
+    line-height: 1;
+  }
+
+  .locus-home-explore .locus-home-collection-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 25px rgba(8, 36, 58, .11) !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card:hover
+    .locus-home-collection-card__header {
+    filter: saturate(1.12) brightness(.985);
+  }
+
+  html[data-theme="dark"] .locus-home-explore .locus-home-collection-card {
+    background: #1d2125 !important;
+    border-color: #394149 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .locus-home-collection-card__header {
+    background: #27313a !important;
+    border-color: #394149 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .locus-home-collection-card__header > strong {
+    color: #f1f4f5 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .locus-home-collection-card__body {
+    background: #1d2125 !important;
+  }
+
+  @media (max-width: 620px) {
+    .locus-home-explore .locus-home-collection-card {
+      grid-template-rows: 76px minmax(50px, 1fr) !important;
+      min-height: 126px !important;
+    }
+  }
+</style>
+
+<style is:global>
+  /* city-home-collection-copy-v1 */
+  .locus-home-explore .locus-home-collection-card {
+    grid-template-rows: 64px minmax(68px, 1fr) !important;
+    min-height: 132px !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__header {
+    display: flex !important;
+    align-items: center !important;
+    justify-self: stretch !important;
+    width: auto !important;
+    min-height: 0 !important;
+    padding: 12px 14px !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__header > strong {
+    display: block !important;
+    max-width: 100%;
+    color: #08243a !important;
+    font-size: 1.1rem !important;
+    font-weight: 500 !important;
+    line-height: 1.05 !important;
+    letter-spacing: -.025em !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__body {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 18px !important;
+    align-items: start !important;
+    gap: 10px !important;
+    padding: 12px 14px !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__body > span {
+    display: -webkit-box !important;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    color: #506873 !important;
+    font-size: .76rem !important;
+    font-weight: 500 !important;
+    letter-spacing: 0 !important;
+    line-height: 1.3 !important;
+    text-transform: none !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__body b {
+    align-self: end;
+    color: #0d526e !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .locus-home-collection-card__header > strong {
+    color: #f1f4f5 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .locus-home-collection-card__body > span {
+    color: #bdc8ce !important;
+  }
+
+  @media (max-width: 620px) {
+    .locus-home-explore .locus-home-collection-card {
+      grid-template-rows: 60px minmax(66px, 1fr) !important;
+      min-height: 126px !important;
+    }
+
+    .locus-home-explore .locus-home-collection-card__body {
+      padding: 10px 12px !important;
+    }
+  }
+</style>
+
+<style is:global>
+  /* city-home-collections-lede-nowrap-v1 */
+  @media (min-width: 761px) {
+    .locus-home-explore__lede {
+      white-space: nowrap !important;
+      font-size: clamp(.78rem, 1.1vw, .94rem) !important;
+      letter-spacing: -.01em;
+    }
+  }
+</style>
+
+<style is:global>
+  /* city-home-collection-compact-six-v1 */
+  .locus-home-explore .locus-home-collection-grid {
+    gap: 10px !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card {
+    display: block !important;
+    min-height: 86px !important;
+    height: 86px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__header {
+    position: relative;
+    display: flex !important;
+    align-items: center !important;
+    justify-self: stretch !important;
+    width: auto !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    padding: 13px 40px 13px 14px !important;
+    box-sizing: border-box;
+    border-bottom: 0 !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__header > strong {
+    display: block !important;
+    max-width: 100%;
+    color: #08243a !important;
+    font-size: 1rem !important;
+    font-weight: 500 !important;
+    line-height: 1.1 !important;
+    letter-spacing: -.02em !important;
+  }
+
+  .locus-home-explore .locus-home-collection-card__header::after {
+    content: "\2192";
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #0d526e;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .locus-home-collection-card__header > strong {
+    color: #f1f4f5 !important;
+  }
+
+  @media (max-width: 620px) {
+    .locus-home-explore .locus-home-collection-card {
+      min-height: 76px !important;
+      height: 76px !important;
+    }
+  }
+</style>
+
+<style is:global>
+  /* city-home-explore-balance-v1 */
+  .locus-home-explore .city-home-collections-intro {
+    padding: 24px 24px 22px !important;
+  }
+
+  .locus-home-explore .city-home-collections-intro h2 {
+    max-width: none !important;
+    margin: 6px 0 7px !important;
+  }
+
+  .locus-home-explore .city-home-collections-intro .locus-home-explore__lede {
+    max-width: none !important;
+    margin: 0 0 15px !important;
+  }
+
+  .locus-home-explore .city-home-intent-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-auto-rows: 64px !important;
+    gap: 8px !important;
+    margin: 0 !important;
+  }
+
+  .locus-home-explore .city-home-intent-card {
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    min-width: 0 !important;
+    min-height: 64px !important;
+    height: 64px !important;
+    margin: 0 !important;
+    padding: 10px 34px 10px 13px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(8, 36, 58, .16) !important;
+    border-radius: 7px !important;
+    color: #08243a !important;
+    text-decoration: none !important;
+    box-shadow: none !important;
+    transform: none !important;
+    transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease !important;
+  }
+
+  .locus-home-explore .city-home-intent-card:nth-child(4n + 1) {
+    background: #e8f2f6 !important;
+    border-color: #bfd0d8 !important;
+  }
+
+  .locus-home-explore .city-home-intent-card:nth-child(4n + 2) {
+    background: #e7f7fa !important;
+    border-color: #b8d8df !important;
+  }
+
+  .locus-home-explore .city-home-intent-card:nth-child(4n + 3) {
+    background: #f0edff !important;
+    border-color: #d4cdef !important;
+  }
+
+  .locus-home-explore .city-home-intent-card:nth-child(4n + 4) {
+    background: #fcf8e7 !important;
+    border-color: #e2d9a9 !important;
+  }
+
+  .locus-home-explore .city-home-intent-card:hover {
+    border-color: rgba(8, 36, 58, .36) !important;
+    color: #08243a !important;
+    box-shadow: 0 7px 16px rgba(8, 36, 58, .09) !important;
+    transform: translateY(-1px) !important;
+  }
+
+  .locus-home-explore .city-home-intent-card strong {
+    display: -webkit-box !important;
+    overflow: hidden !important;
+    color: inherit !important;
+    font-size: .88rem !important;
+    font-weight: 800 !important;
+    line-height: 1.16 !important;
+    letter-spacing: -.012em !important;
+    -webkit-box-orient: vertical !important;
+    -webkit-line-clamp: 2 !important;
+  }
+
+  .locus-home-explore .city-home-intent-card b {
+    position: absolute !important;
+    right: 12px !important;
+    top: 50% !important;
+    color: #0d526e !important;
+    font-size: 1rem !important;
+    line-height: 1 !important;
+    transform: translateY(-50%) !important;
+  }
+
+  .locus-home-explore .city-home-collections-intro > .locus-home-explore__all-listings {
+    margin-top: 14px !important;
+  }
+
+  .locus-home-explore .city-home-explore-panel__intro {
+    min-height: 62px !important;
+    padding: 10px 22px 9px !important;
+    box-sizing: border-box !important;
+    border-bottom: 1px solid var(--line) !important;
+    background: linear-gradient(90deg, rgba(237, 248, 250, .9), rgba(255, 255, 255, 0)) !important;
+  }
+
+  .locus-home-explore .city-home-explore-panel__intro > span {
+    display: block !important;
+    margin-bottom: 3px !important;
+    color: var(--accent) !important;
+    font-size: .61rem !important;
+    font-weight: 900 !important;
+    letter-spacing: .1em !important;
+    line-height: 1.1 !important;
+  }
+
+  .locus-home-explore .city-home-explore-panel__intro h3 {
+    margin: 0 !important;
+    color: var(--ink) !important;
+    font-size: 1rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -.018em !important;
+    line-height: 1.15 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .city-home-intent-card:nth-child(4n + 1) {
+    background: #21323a !important;
+    border-color: #46606b !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .city-home-intent-card:nth-child(4n + 2) {
+    background: #18343a !important;
+    border-color: #3d6871 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .city-home-intent-card:nth-child(4n + 3) {
+    background: #2d2940 !important;
+    border-color: #575070 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .city-home-intent-card:nth-child(4n + 4) {
+    background: #383421 !important;
+    border-color: #69613b !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .city-home-intent-card,
+  html[data-theme="dark"] .locus-home-explore .city-home-intent-card:hover {
+    color: #f1f4f5 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .city-home-explore-panel__intro {
+    background: linear-gradient(90deg, rgba(27, 49, 61, .9), rgba(29, 33, 37, 0)) !important;
+  }
+
+  @media (min-width: 761px) {
+    .locus-home-explore .city-home-collections-intro .locus-home-explore__lede {
+      white-space: nowrap !important;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .locus-home-explore .city-home-intent-grid {
+      grid-template-columns: 1fr !important;
+      grid-auto-rows: auto !important;
+    }
+
+    .locus-home-explore .city-home-intent-card {
+      min-height: 58px !important;
+      height: auto !important;
+    }
+  }
+</style>
+
+<style is:global>
+  /* city-home-collection-editorial-six-v2 */
+  .locus-home-explore .city-home-collections-intro {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .locus-home-explore .city-home-intent-grid {
+    display: grid !important;
+    flex: 1 1 auto !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-template-rows: repeat(3, minmax(0, 1fr)) !important;
+    grid-auto-rows: auto !important;
+    min-height: 0 !important;
+    gap: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    border-top: 1px solid rgba(8, 36, 58, .14) !important;
+    border-bottom: 1px solid rgba(8, 36, 58, .14) !important;
+    border-radius: 0 !important;
+    background: #fbfcfc !important;
+  }
+
+  .locus-home-explore .city-home-intent-card {
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 18px 38px 18px 14px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    border: 0 !important;
+    border-right: 1px solid rgba(8, 36, 58, .14) !important;
+    border-bottom: 1px solid rgba(8, 36, 58, .14) !important;
+    border-radius: 0 !important;
+    color: #183746 !important;
+    text-decoration: none !important;
+    box-shadow: none !important;
+    transform: none !important;
+    transition: background 160ms ease, color 160ms ease !important;
+  }
+
+  .locus-home-explore .city-home-intent-card:nth-child(2n) {
+    border-right: 0 !important;
+  }
+
+  .locus-home-explore .city-home-intent-card:nth-child(n + 5) {
+    border-bottom: 0 !important;
+  }
+
+  .locus-home-explore .city-home-intent-card:nth-child(4n + 1) {
+    background: rgba(51, 111, 122, .035) !important;
+  }
+
+  .locus-home-explore .city-home-intent-card:nth-child(4n + 2) {
+    background: rgba(77, 124, 145, .03) !important;
+  }
+
+  .locus-home-explore .city-home-intent-card:nth-child(4n + 3) {
+    background: rgba(111, 92, 148, .028) !important;
+  }
+
+  .locus-home-explore .city-home-intent-card:nth-child(4n + 4) {
+    background: rgba(145, 119, 51, .028) !important;
+  }
+
+  .locus-home-explore .city-home-intent-card:hover {
+    background: #edf6f7 !important;
+    color: var(--accent) !important;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  .locus-home-explore .city-home-intent-card strong {
+    display: -webkit-box !important;
+    overflow: hidden !important;
+    color: inherit !important;
+    font-size: clamp(.92rem, 1.05vw, 1.02rem) !important;
+    font-weight: 700 !important;
+    line-height: 1.18 !important;
+    letter-spacing: -.018em !important;
+    -webkit-box-orient: vertical !important;
+    -webkit-line-clamp: 2 !important;
+  }
+
+  .locus-home-explore .city-home-intent-card b {
+    position: absolute !important;
+    right: 14px !important;
+    top: 50% !important;
+    color: #6b8189 !important;
+    font-size: .92rem !important;
+    font-weight: 500 !important;
+    line-height: 1 !important;
+    transform: translateY(-50%) !important;
+  }
+
+  .locus-home-explore .city-home-collections-intro > .locus-home-explore__all-listings {
+    flex: 0 0 auto !important;
+    margin-top: 16px !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .city-home-intent-grid {
+    border-color: #394149 !important;
+    background: #1d2125 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .city-home-intent-card {
+    border-color: #394149 !important;
+    color: #f1f4f5 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .city-home-intent-card:nth-child(4n + 1) {
+    background: rgba(77, 129, 141, .13) !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .city-home-intent-card:nth-child(4n + 2) {
+    background: rgba(86, 126, 143, .13) !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .city-home-intent-card:nth-child(4n + 3) {
+    background: rgba(121, 101, 151, .13) !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .city-home-intent-card:nth-child(4n + 4) {
+    background: rgba(143, 120, 59, .13) !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore .city-home-intent-card:hover {
+    background: #263b42 !important;
+  }
+
+  @media (max-width: 760px) {
+    .locus-home-explore .city-home-intent-grid {
+      flex: 0 0 auto !important;
+      grid-template-columns: 1fr !important;
+      grid-template-rows: none !important;
+      grid-auto-rows: 72px !important;
+    }
+
+    .locus-home-explore .city-home-intent-card,
+    .locus-home-explore .city-home-intent-card:nth-child(2n),
+    .locus-home-explore .city-home-intent-card:nth-child(n + 5) {
+      min-height: 72px !important;
+      height: 72px !important;
+      border-right: 0 !important;
+      border-bottom: 1px solid rgba(8, 36, 58, .14) !important;
+    }
+
+    .locus-home-explore .city-home-intent-card:last-child {
+      border-bottom: 0 !important;
+    }
+  }
+</style>
+
+<style is:global>
+  /* city-home-stacked-explore-v1 */
+  .locus-home-explore.locus-home-explore--stacked {
+    display: block !important;
+    margin: 42px auto 54px !important;
+    overflow: hidden !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 14px !important;
+    background: var(--card-bg) !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-explore__collections,
+  .locus-home-explore--stacked .locus-home-explore__browse {
+    padding: 32px !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-explore__browse {
+    border-top: 1px solid var(--line) !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-explore__collections-head,
+  .locus-home-explore--stacked .locus-home-explore__browse-head {
+    display: flex !important;
+    align-items: end !important;
+    justify-content: space-between !important;
+    gap: 20px !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-explore__collections-head {
+    margin-bottom: 24px !important;
+  }
+
+  .locus-home-explore--stacked h2 {
+    max-width: none !important;
+    margin: 6px 0 7px !important;
+    color: var(--ink) !important;
+    font-size: clamp(1.38rem, 2vw, 1.85rem) !important;
+    letter-spacing: -.035em !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-explore__collections-head p {
+    max-width: none !important;
+    margin: 0 !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-explore__browse-all {
+    display: inline-flex !important;
+    flex: 0 0 auto !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 10px 15px !important;
+    border: 1px solid currentColor !important;
+    border-radius: 999px !important;
+    color: var(--ink) !important;
+    font-size: .8rem !important;
+    font-weight: 800 !important;
+    text-decoration: none !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-explore__browse-all:hover {
+    color: var(--accent) !important;
+  }
+
+  .locus-home-explore--stacked .city-home-intent-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 14px !important;
+    margin: 0 !important;
+  }
+
+  .locus-home-explore--stacked .city-home-intent-card {
+    position: relative !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    min-width: 0 !important;
+    min-height: 114px !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 18px 42px 16px 18px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(8, 36, 58, .12) !important;
+    border-radius: 9px !important;
+    color: #08243a !important;
+    text-decoration: none !important;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  .locus-home-explore--stacked .city-home-intent-card:nth-child(4n + 1) {
+    background: #e8f6f9 !important;
+    border-color: #cce4e8 !important;
+  }
+
+  .locus-home-explore--stacked .city-home-intent-card:nth-child(4n + 2) {
+    background: #edf3f8 !important;
+    border-color: #d4e0e9 !important;
+  }
+
+  .locus-home-explore--stacked .city-home-intent-card:nth-child(4n + 3) {
+    background: #f0edff !important;
+    border-color: #ddd6f3 !important;
+  }
+
+  .locus-home-explore--stacked .city-home-intent-card:nth-child(4n + 4) {
+    background: #fcf6e5 !important;
+    border-color: #eee0b8 !important;
+  }
+
+  .locus-home-explore--stacked .city-home-intent-card:hover {
+    color: #08243a !important;
+    box-shadow: 0 8px 18px rgba(8, 36, 58, .08) !important;
+    transform: translateY(-1px) !important;
+  }
+
+  .locus-home-explore--stacked .city-home-intent-card strong {
+    display: block !important;
+    overflow: visible !important;
+    color: inherit !important;
+    font-size: .98rem !important;
+    font-weight: 800 !important;
+    line-height: 1.15 !important;
+    letter-spacing: -.018em !important;
+  }
+
+  .locus-home-explore--stacked .city-home-intent-card > span {
+    display: -webkit-box !important;
+    max-width: 26ch !important;
+    margin-top: 5px !important;
+    overflow: hidden !important;
+    color: #526a76 !important;
+    font-size: .75rem !important;
+    line-height: 1.3 !important;
+    -webkit-box-orient: vertical !important;
+    -webkit-line-clamp: 2 !important;
+  }
+
+  .locus-home-explore--stacked .city-home-intent-card small {
+    margin-top: auto !important;
+    color: #244f60 !important;
+    font-size: .69rem !important;
+    font-weight: 800 !important;
+  }
+
+  .locus-home-explore--stacked .city-home-intent-card b {
+    position: absolute !important;
+    right: 17px !important;
+    bottom: 18px !important;
+    color: #0d526e !important;
+    font-size: 1rem !important;
+    line-height: 1 !important;
+    transform: none !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-explore__browse-head {
+    margin-bottom: 18px !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-explore__browse-head h2 {
+    margin: 0 !important;
+    font-size: 1.2rem !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-explore__tabs {
+    display: inline-flex !important;
+    gap: 3px !important;
+    padding: 3px !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    background: #f0f4f5 !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-explore__tabs button {
+    padding: 9px 14px !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    color: #52636d !important;
+    font-size: .76rem !important;
+    font-weight: 800 !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-explore__tabs button.is-active {
+    border: 0 !important;
+    background: #08243a !important;
+    color: #fff !important;
+    box-shadow: 0 2px 5px rgba(8, 36, 58, .16) !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-neighbourhood-grid {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    grid-auto-rows: 68px !important;
+    gap: 0 !important;
+    overflow: visible !important;
+    border: 1px solid rgba(8, 36, 58, .11) !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-neighbourhood-card {
+    display: block !important;
+    min-height: 0 !important;
+    padding: 13px 16px !important;
+    border: 0 !important;
+    border-right: 1px solid rgba(8, 36, 58, .1) !important;
+    border-bottom: 1px solid rgba(8, 36, 58, .1) !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    color: #08243a !important;
+    box-shadow: none !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-neighbourhood-card:nth-child(5n) {
+    border-right: 0 !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-neighbourhood-card strong {
+    display: block !important;
+    overflow: hidden !important;
+    color: inherit !important;
+    font-size: .8rem !important;
+    font-weight: 800 !important;
+    line-height: 1.2 !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-neighbourhood-card span {
+    display: block !important;
+    margin-top: 5px !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: #617783 !important;
+    font-size: .68rem !important;
+    line-height: 1 !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-neighbourhood-card b {
+    display: none !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-neighbourhood-card:hover {
+    background: #f2f8f9 !important;
+    color: #08243a !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-neighbourhood-card--all {
+    display: flex !important;
+    grid-column: 1 / -1 !important;
+    align-items: center !important;
+    min-height: 38px !important;
+    padding: 14px 0 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-neighbourhood-card--all strong {
+    overflow: visible !important;
+    font-size: .76rem !important;
+    white-space: normal !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-neighbourhood-card--all span {
+    display: none !important;
+  }
+
+  .locus-home-explore--stacked .locus-home-neighbourhood-card--all b {
+    display: inline !important;
+    margin-left: 5px !important;
+    color: inherit !important;
+    font-size: .9rem !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore--stacked .locus-home-explore__tabs {
+    background: #252b30 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore--stacked .locus-home-explore__tabs button {
+    color: #c3cdd3 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore--stacked .locus-home-explore__tabs button.is-active {
+    background: #eaf4f6 !important;
+    color: #08243a !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore--stacked .locus-home-neighbourhood-grid,
+  html[data-theme="dark"] .locus-home-explore--stacked .locus-home-neighbourhood-card {
+    border-color: #394149 !important;
+    background: #1d2125 !important;
+    color: #f1f4f5 !important;
+  }
+
+  html[data-theme="dark"] .locus-home-explore--stacked .locus-home-neighbourhood-card span {
+    color: #b7c3c9 !important;
+  }
+
+  @media (max-width: 760px) {
+    .locus-home-explore--stacked .locus-home-explore__collections,
+    .locus-home-explore--stacked .locus-home-explore__browse {
+      padding: 24px 20px !important;
+    }
+
+    .locus-home-explore--stacked .locus-home-explore__collections-head,
+    .locus-home-explore--stacked .locus-home-explore__browse-head {
+      align-items: flex-start !important;
+      flex-direction: column !important;
+    }
+
+    .locus-home-explore--stacked .locus-home-explore__browse-all {
+      width: 100% !important;
+      justify-content: center !important;
+    }
+
+    .locus-home-explore--stacked .city-home-intent-grid {
+      grid-template-columns: 1fr !important;
+    }
+
+    .locus-home-explore--stacked .city-home-intent-card {
+      min-height: 108px !important;
+    }
+
+    .locus-home-explore--stacked .locus-home-neighbourhood-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      grid-auto-rows: 74px !important;
+    }
+
+    .locus-home-explore--stacked .locus-home-neighbourhood-card:nth-child(5n) {
+      border-right: 1px solid rgba(8, 36, 58, .1) !important;
+    }
+
+    .locus-home-explore--stacked .locus-home-neighbourhood-card:nth-child(2n) {
+      border-right: 0 !important;
+    }
+  }
+</style>
+
+<style is:global>
+  /* city-home-stacked-explore-grid-fix-v1 */
+  html body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    grid-template-rows: repeat(2, 116px) !important;
+    grid-auto-rows: 116px !important;
+    grid-auto-flow: row !important;
+    gap: 14px !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .city-home-intent-card {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    min-height: 116px !important;
+    height: 116px !important;
+    padding: 18px 42px 16px 18px !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .city-home-intent-card strong {
+    display: block !important;
+    margin: 0 !important;
+    font-size: .98rem !important;
+    line-height: 1.15 !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .city-home-intent-card > span {
+    display: -webkit-box !important;
+    margin-top: 5px !important;
+    font-size: .75rem !important;
+    line-height: 1.3 !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .city-home-intent-card small {
+    display: block !important;
+    margin-top: auto !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    grid-template-rows: repeat(2, 68px) auto !important;
+    grid-auto-rows: 68px !important;
+    grid-auto-flow: row !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-card {
+    display: block !important;
+    min-height: 0 !important;
+    height: 68px !important;
+    padding: 13px 16px !important;
+    border-right: 1px solid rgba(8, 36, 58, .1) !important;
+    border-bottom: 1px solid rgba(8, 36, 58, .1) !important;
+    background: #fff !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-card:nth-child(5n) {
+    border-right: 0 !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-card--all {
+    display: flex !important;
+    grid-column: 1 / -1 !important;
+    align-items: center !important;
+    min-height: 38px !important;
+    height: auto !important;
+    padding: 14px 0 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  @media (max-width: 760px) {
+    html body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid {
+      grid-template-columns: 1fr !important;
+      grid-template-rows: none !important;
+      grid-auto-rows: 112px !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .city-home-intent-card {
+      min-height: 112px !important;
+      height: 112px !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      grid-template-rows: none !important;
+      grid-auto-rows: 74px !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-card {
+      height: 74px !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-card:nth-child(5n) {
+      border-right: 1px solid rgba(8, 36, 58, .1) !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-card:nth-child(2n) {
+      border-right: 0 !important;
+    }
+  }
+  /* city-home-stacked-explore-card-edge-fix-v1 */
+  html body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid {
+    border-top: 0 !important;
+    border-bottom: 0 !important;
+  }
+  /* city-home-stacked-grid-divider-repair-v1 */
+  html body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    grid-template-rows: repeat(2, 116px) !important;
+    grid-auto-rows: 116px !important;
+    grid-auto-flow: row !important;
+    align-items: stretch !important;
+    gap: 14px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: visible !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a {
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+    min-height: 116px !important;
+    height: 116px !important;
+    margin: 0 !important;
+    border: 1px solid rgba(8, 36, 58, .18) !important;
+    border-radius: 6px !important;
+    overflow: hidden !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    grid-template-rows: repeat(2, 68px) auto !important;
+    grid-auto-rows: 68px !important;
+    grid-auto-flow: row !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    border: 1px solid rgba(8, 36, 58, .18) !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+    box-shadow: none !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card:not(.locus-home-neighbourhood-card--all) {
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: 68px !important;
+    margin: 0 !important;
+    padding: 13px 16px !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    border: 0 !important;
+    border-right: 1px solid rgba(8, 36, 58, .16) !important;
+    border-bottom: 1px solid rgba(8, 36, 58, .16) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card:nth-child(2n):not(.locus-home-neighbourhood-card--all) {
+    border-right: 1px solid rgba(8, 36, 58, .16) !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card:nth-last-child(-n + 2):not(.locus-home-neighbourhood-card--all) {
+    border-bottom: 1px solid rgba(8, 36, 58, .16) !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card:nth-child(5n):not(.locus-home-neighbourhood-card--all) {
+    border-right: 0 !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card:nth-child(n + 6):nth-child(-n + 10):not(.locus-home-neighbourhood-card--all) {
+    border-bottom: 0 !important;
+  }
+
+  html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card--all {
+    grid-column: 1 / -1 !important;
+    grid-row: 3 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 12px 16px !important;
+    border: 0 !important;
+    border-top: 1px solid rgba(8, 36, 58, .16) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  @media (max-width: 760px) {
+    html body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid {
+      grid-template-columns: 1fr !important;
+      grid-template-rows: none !important;
+      grid-auto-rows: auto !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a {
+      min-height: 104px !important;
+      height: auto !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      grid-template-rows: repeat(5, auto) auto !important;
+      grid-auto-rows: auto !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card:not(.locus-home-neighbourhood-card--all) {
+      min-height: 72px !important;
+      height: auto !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card:nth-child(5n):not(.locus-home-neighbourhood-card--all) {
+      border-right: 1px solid rgba(8, 36, 58, .16) !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card:nth-child(2n):not(.locus-home-neighbourhood-card--all) {
+      border-right: 0 !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card:nth-child(n + 6):nth-child(-n + 10):not(.locus-home-neighbourhood-card--all) {
+      border-bottom: 1px solid rgba(8, 36, 58, .16) !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card:nth-child(n + 9):nth-child(-n + 10):not(.locus-home-neighbourhood-card--all) {
+      border-bottom: 0 !important;
+    }
+  }
+  /* city-home-stacked-explore-hover-v1 */
+  @media (hover: hover) and (pointer: fine) {
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card {
+      transition: background-color 160ms ease, color 160ms ease !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card b {
+      transition: transform 160ms ease !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card:not(.locus-home-neighbourhood-card--all):hover {
+      background: #f2f7f8 !important;
+      color: #07394c !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card:not(.locus-home-neighbourhood-card--all):hover strong {
+      color: #07394c !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card:not(.locus-home-neighbourhood-card--all):hover span {
+      color: #527181 !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card:hover b {
+      transform: translateX(3px) !important;
+    }
+
+    html body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card--all:hover {
+      background: #eef7f9 !important;
+    }
+  }
+  /* city-home-stacked-title-tone-v1 */
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a strong,
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card strong {
+    color: #1a4659 !important;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .locus-home-neighbourhood-grid > .locus-home-neighbourhood-card:not(.locus-home-neighbourhood-card--all):hover strong {
+      color: #16536a !important;
+    }
+  }
+  /* city-home-stacked-accent-palette-v1 */
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a {
+    border-color: rgba(16, 74, 94, .20) !important;
+  }
+
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a:nth-child(6n + 1) {
+    background: #e8f3f6 !important;
+  }
+
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a:nth-child(6n + 2) {
+    background: #e5f2f2 !important;
+  }
+
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a:nth-child(6n + 3) {
+    background: #ebf0f6 !important;
+  }
+
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a:nth-child(6n + 4) {
+    background: #eaf3ef !important;
+  }
+
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a:nth-child(6n + 5) {
+    background: #e7f0f4 !important;
+  }
+
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a:nth-child(6n) {
+    background: #e5f3f5 !important;
+  }
+  /* city-home-stacked-accent-from-site-v1 */
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a {
+    background: #f1f3f2 !important;
+    background: color-mix(in srgb, var(--accent) 8%, #fff) !important;
+    border-color: color-mix(in srgb, var(--accent) 24%, #fff) !important;
+    transition: background-color 160ms ease, border-color 160ms ease !important;
+  }
+
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a:nth-child(6n + 1) {
+    background: color-mix(in srgb, var(--accent) 7%, #fff) !important;
+  }
+
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a:nth-child(6n + 2) {
+    background: color-mix(in srgb, var(--accent) 9%, #fff) !important;
+  }
+
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a:nth-child(6n + 3) {
+    background: color-mix(in srgb, var(--accent) 6%, #fff) !important;
+  }
+
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a:nth-child(6n + 4) {
+    background: color-mix(in srgb, var(--accent) 10%, #fff) !important;
+  }
+
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a:nth-child(6n + 5) {
+    background: color-mix(in srgb, var(--accent) 8%, #fff) !important;
+  }
+
+  html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a:nth-child(6n) {
+    background: color-mix(in srgb, var(--accent) 9%, #fff) !important;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    html:not([data-theme="dark"]) body .locus-home-explore.locus-home-explore--stacked .city-home-intent-grid > a:hover {
+      background: color-mix(in srgb, var(--accent) 14%, #fff) !important;
+      border-color: color-mix(in srgb, var(--accent) 36%, #fff) !important;
+    }
+  }
 </style>
