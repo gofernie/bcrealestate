@@ -2552,6 +2552,12 @@ const featuredHref = featuredListing?.mls_number
   ? `/${city || "nanaimo"}/?listing_id=${encodeURIComponent(String(featuredListing.mls_number))}`
   : `/${city || "nanaimo"}/`;
 
+const perfViaNetlify = (url, width) => { try { if (url && new URL(url).hostname === "cdn.repliers.io") return `/.netlify/images?url=${encodeURIComponent(url)}&w=${width}&fm=webp&q=72`; } catch {} return url; };
+const perfSrcSet = (url, widths) => { try { if (url && new URL(url).hostname === "cdn.repliers.io") return widths.map((w) => `${perfViaNetlify(url, w)} ${w}w`).join(", "); } catch {} return undefined; };
+const perfHeroSrc = featuredHeroImage ? perfViaNetlify(featuredHeroImage, 1280) : homepageHeroImageUrl;
+const perfHeroSrcSet = featuredHeroImage ? perfSrcSet(featuredHeroImage, [640, 960, 1280, 1600]) : homepageHeroImageSrcSet;
+const perfFeaturedSrc = featuredImage ? perfViaNetlify(featuredImage, 800) : featuredImage;
+const perfFeaturedSrcSet = featuredImage ? perfSrcSet(featuredImage, [480, 800, 1000]) : undefined;
 ---
 
 <script is:inline define:vars={{ jawgAccessToken }}>
@@ -2575,8 +2581,8 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
   <link
     rel="preload"
     as="image"
-    href={homepageHeroImageUrl}
-    imagesrcset={homepageHeroImageSrcSet}
+    href={perfHeroSrc}
+    imagesrcset={perfHeroSrcSet}
     imagesizes="100vw"
     fetchpriority="high"
     slot="head"
@@ -2630,13 +2636,13 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 />
 <header
   class="locus-home-hero"
-  style={`--hero-image: url("${featuredHeroImage || homepageHeroImageUrl}")`}
+  style={`--hero-image: url("${perfHeroSrc}")`}
 >
   <img
     class="locus-home-hero__image"
     style="transform:scale(1.13) !important;transform-origin:right center !important;object-position:center center !important;"
-    src={featuredHeroImage || homepageHeroImageUrl}
-    srcset={featuredHeroImage ? undefined : homepageHeroImageSrcSet}
+    src={perfHeroSrc}
+    srcset={perfHeroSrcSet}
     sizes="100vw"
     alt=""
     aria-hidden="true"
@@ -2686,9 +2692,13 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
             <img
               class="locus-home-featured__image"
               style="border-radius:12px 12px 0 0 !important;transform:scaleX(1.22) !important;transform-origin:right center !important;"
-              src={featuredImage}
+              src={perfFeaturedSrc}
+              srcset={perfFeaturedSrcSet}
+              sizes="(max-width: 700px) 92vw, 440px"
               alt={`Featured home at ${featuredAddress}`}
               loading="eager"
+              fetchpriority="high"
+              decoding="async"
             />
           ) : (
             <div class="locus-home-featured__image locus-home-featured__image--empty"></div>
