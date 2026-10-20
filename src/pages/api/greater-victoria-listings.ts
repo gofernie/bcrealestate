@@ -150,6 +150,7 @@ const normalizeListing = (listing: any) => {
     type,
     year: listing.year_built || listing.yearBuilt || listing.details?.yearBuilt || "",
     lotSize: listing.lot_size || listing.lotSize || listing.details?.lotSize || "",
+    lotSqft: Number(listing.lot_size_sqft || 0) || Math.round(Number(listing.lot_size_acres || 0) * 43560) || 0,
     brokerage: String(
       listing.listing_brokerage ||
       listing.brokerage ||
