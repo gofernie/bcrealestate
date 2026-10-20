@@ -22816,7 +22816,7 @@ document.addEventListener("click", (event) => {
   gap: 0 !important;
 }</style>
 <script is:inline>
-  /* type-area-docked-more-panel-v6 */
+  /* type-area-docked-more-panel-v7 */
   (() => {
     const start = () => {
       const controls = document.querySelector(
@@ -22836,6 +22836,17 @@ document.addEventListener("click", (event) => {
       const isDocked = () =>
         Boolean(controls.closest(".listing-filter-rail"));
 
+      const revealDockedPanel = () => {
+        panel.style.removeProperty("visibility");
+        panel.style.removeProperty("opacity");
+      };
+
+      const prepareDockedPanel = () => {
+        if (!isDocked()) return;
+        panel.style.setProperty("visibility", "hidden", "important");
+        panel.style.setProperty("opacity", "0", "important");
+      };
+
       const restorePanel = () => {
         if (!home.parentNode) return;
         home.after(panel);
@@ -22843,6 +22854,7 @@ document.addEventListener("click", (event) => {
         panel.style.removeProperty("margin-left");
         panel.style.removeProperty("margin-right");
         panel.style.removeProperty("margin-top");
+        revealDockedPanel();
       };
 
       const closePanel = () => {
@@ -22856,10 +22868,14 @@ document.addEventListener("click", (event) => {
 
         const bounds = controls.getBoundingClientRect();
 
-        panel.style.setProperty("width", "${bounds.width}px", "important");
+        panel.style.setProperty(
+          "width",
+          `${bounds.width}px`,
+          "important"
+        );
         panel.style.setProperty(
           "margin-left",
-          "${bounds.left}px",
+          `${bounds.left}px`,
           "important"
         );
         panel.style.setProperty("margin-right", "0", "important");
@@ -22888,16 +22904,18 @@ document.addEventListener("click", (event) => {
         if (!frame) frame = requestAnimationFrame(syncDockState);
       };
 
-      // Runs after the existing button handler, even after the bar is moved.
       document.addEventListener("click", (event) => {
         if (!(event.target instanceof Element)) return;
         if (!event.target.closest("[data-type-more-toggle]")) return;
+
+        prepareDockedPanel();
 
         requestAnimationFrame(() => {
           syncDockState();
 
           if (isDocked() && !panel.hidden) {
             placePanelBelowDockedBar();
+            requestAnimationFrame(revealDockedPanel);
           } else if (!isDocked()) {
             restorePanel();
           }
