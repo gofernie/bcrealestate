@@ -9,6 +9,13 @@ const {
   waterfrontType = "",
   requiresWaterfront = false,
   requiresOceanView = false,
+  bedsMin = "",
+  bathsMin = "",
+  minSqft = "",
+  minLotSqft = "",
+  minYear = "",
+  viewType = "",
+  primaryOnMain = false,
 } = Astro.props;
 ---
 
@@ -24,6 +31,13 @@ const {
   data-waterfront-type={waterfrontType}
   data-requires-waterfront={String(Boolean(requiresWaterfront))}
   data-requires-ocean-view={String(Boolean(requiresOceanView))}
+  data-beds-min={bedsMin ?? ""}
+  data-baths-min={bathsMin ?? ""}
+  data-min-sqft={minSqft ?? ""}
+  data-min-lot-sqft={minLotSqft ?? ""}
+  data-min-year={minYear ?? ""}
+  data-view-type={viewType ?? ""}
+  data-primary-on-main={String(Boolean(primaryOnMain))}
 >
   <div class="slug-save-search__links">
     <button
@@ -302,28 +316,35 @@ const priceLabel = hasPriceBand
   root.dataset.maxPrice ||
   root.dataset.minPrice ||
   "",
-        beds: params.get("beds") || "",
-        baths: params.get("baths") || "",
-        minSqft: params.get("minSqft") || "",
-        minYear: params.get("minYear") || "",
-        viewType: params.get("viewType") || "",
+        beds: params.get("beds") || root.dataset.bedsMin || "",
+        baths: params.get("baths") || root.dataset.bathsMin || "",
+        minSqft: params.get("minSqft") || root.dataset.minSqft || "",
+        minLotSqft: params.get("minLotSqft") || root.dataset.minLotSqft || "",
+        minYear: params.get("minYear") || root.dataset.minYear || "",
+        viewType: params.get("viewType") || root.dataset.viewType || "",
         waterfrontType: params.get("waterfrontType") || root.dataset.waterfrontType || "",
-        primaryOnMain: params.get("primaryOnMain") === "true",
+        primaryOnMain: params.get("primaryOnMain") === "true" || root.dataset.primaryOnMain === "true",
         threeSameFloor: params.get("threeSameFloor") === "true",
         fourSameFloor: params.get("fourSameFloor") === "true",
         sort: params.get("sort") || "newest",
       };
 
+      const ncYear = new Date().getFullYear() - 1;
+      const typeWord = type && type !== "all" ? type.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Homes";
+      const lotSqft = Number(criteria.minLotSqft || 0);
+      const lotLabel = lotSqft >= 43560 ? `on ${+(lotSqft / 43560).toFixed(2)}+ acres` : lotSqft ? `on ${lotSqft.toLocaleString("en-CA")}+ sq ft lots` : "";
+      const yearNum = Number(criteria.minYear || 0);
+      const cityLabel = (root.dataset.city || "this market").replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
       const parts = [
-        type && type !== "all"
-          ? type.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-          : "Homes",
-        chosenAreas.length
-          ? `in ${chosenAreas.map((area) => area.label).join(", ")}`
-          : `in ${(root.dataset.city || "this market").replace(/\b\w/g, (c) => c.toUpperCase())}`,
+        `${yearNum >= ncYear ? `New construction ${typeWord.toLowerCase()}` : typeWord}${lotLabel ? ` ${lotLabel}` : ""}`,
+        chosenAreas.length ? `in ${chosenAreas.map((area) => area.label).join(", ")}` : `in ${cityLabel}`,
         priceLabel,
         criteria.beds ? `${criteria.beds}+ beds` : "",
         criteria.baths ? `${criteria.baths}+ baths` : "",
+        criteria.minSqft ? `${Number(criteria.minSqft).toLocaleString("en-CA")}+ sq ft` : "",
+        yearNum && yearNum < ncYear ? `built ${yearNum}+` : "",
+        criteria.viewType ? `${criteria.viewType} view` : "",
+        criteria.primaryOnMain ? "primary bedroom on main" : "",
         expansionKm ? `${expansionKm} km beyond the selected area` : "",
       ].filter(Boolean);
 
@@ -671,4 +692,19 @@ const priceLabel = hasPriceBand
   .slug-saved-list__actions a { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 40px; padding: 0 14px; border-radius: 999px; font: inherit; font-size: .84rem; font-weight: 700; text-decoration: none; cursor: pointer; }
   .slug-saved-list__actions a { border: 1px solid #315d62; background: #315d62; color: #fff; }
   .slug-saved-list__note { margin: 24px 0 0; color: #53615a; font-size: .8rem; line-height: 1.5; }
+</style>
+
+
+<style is:global>
+  /* docked-listing-filter-rail-centre-v2 */
+  @media (min-width: 901px) {
+    html body .listing-filter-rail > .intent-controls {
+      box-sizing: border-box !important;
+      width: min(1400px, calc(100% - 80px)) !important;
+      max-width: calc(100% - 80px) !important;
+      flex: 0 0 min(1400px, calc(100% - 80px)) !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
+    }
+  }
 </style>
