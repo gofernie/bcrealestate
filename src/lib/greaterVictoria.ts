@@ -148,9 +148,7 @@ export async function loadGreaterVictoriaData() {
           map_geojson: simplifyMapGeometry(row.polygon_geojson),
         }));
       const parent = boundaries.find((row) => regionSlug(row.area_slug) === district.slug && row.polygon_geojson);
-      return {...district, areas, outline: districtExterior(
-        (parent ? regionPolygons(parent.polygon_geojson)[0] : null) ?? dissolve(areas)
-      ), count:0};
+      return {...district, areas, outline: districtExterior(dissolve(areas) ?? (parent ? regionPolygons(parent.polygon_geojson)[0] : null)), count:0};
     });
     const listings = [...byMls.values()].map((row) => {
       let slug = regionSlug(row.normalized_city);
