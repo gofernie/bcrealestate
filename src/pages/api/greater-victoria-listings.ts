@@ -218,7 +218,7 @@ function polygonContainsPoint(geojson: any, lat: number, lng: number) {
 
 /* Returns true when a point is inside a boundary or within the requested
    distance of its outer edge. This deliberately works from the drawn area
-   geometryGÇönot an MLS area labelGÇöso nearby homes are not missed. */
+   geometryGï¿½ï¿½not an MLS area labelGï¿½ï¿½so nearby homes are not missed. */
 function polygonContainsOrIsNearPoint(
   geojson: any,
   lat: number,
@@ -276,7 +276,7 @@ function polygonContainsOrIsNearPoint(
 const normaliseParkAddress = (value: unknown) =>
   String(value || "")
     .toLowerCase()
-    .replace(/[GÇÖ'".,#]/g, "")
+    .replace(/[Gï¿½ï¿½'".,#]/g, "")
     .replace(/^\s*(?:unit\s*)?\d{1,4}\s*-\s*(?=\d{1,5}\s)/, "")
     .replace(/\bstreet\b/g, "st")
     .replace(/\broad\b/g, "rd")
@@ -356,6 +356,7 @@ export const GET: APIRoute = async ({ request }) => {
   const otherPark = url.searchParams.get("otherPark") === "true";
   const petsAllowed = url.searchParams.get("petsAllowed") === "true";const minSqft = Number(url.searchParams.get("minSqft") || 0);
   const minYear = Number(url.searchParams.get("minYear") || 0);
+  const minLotSqft = Number(url.searchParams.get("minLotSqft") || 0);
   const primaryOnMain =
     url.searchParams.get("primaryOnMain") === "true";
   const threeSameFloor =
@@ -510,6 +511,7 @@ export const GET: APIRoute = async ({ request }) => {
     if (beds && Number(listing.beds || 0) < beds) return false;
     if (baths && Number(listing.baths || 0) < baths) return false;
     if (minSqft && Number(listing.sqft || 0) < minSqft) return false;
+    if (minLotSqft && (Number(listing.lotSqft || listing.lot_size_sqft || 0) || Math.round(Number(listing.lot_size_acres || 0) * 43560)) < minLotSqft) return false;
     if (minYear && Number(listing.year || 0) < minYear) return false;
     if (primaryOnMain && !listing.primaryOnMain) return false;
     if (threeSameFloor && !listing.threeBedsSameFloor) return false;
