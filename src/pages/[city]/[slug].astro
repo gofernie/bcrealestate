@@ -71,13 +71,18 @@ const rootPathSlug = Astro.url.pathname
   .split("/")
   .filter(Boolean)[0] || "";
 
+const isGvIntentRewrite = Astro.url.searchParams.get("gv_rewrite") === "1";
 const city = isInternalRootRewrite
   ? "nanaimo"
-  : Astro.params.city || "nanaimo";
+  : isGvIntentRewrite
+    ? "greater-victoria"
+    : Astro.params.city || "nanaimo";
 
 const slug = isInternalRootRewrite
   ? rootPathSlug
-  : Astro.params.slug || "";
+  : isGvIntentRewrite
+    ? String(Astro.url.searchParams.get("gv_slug") || "")
+    : Astro.params.slug || "";
 
 const normalizedRouteCity = String(city)
   .trim()
@@ -130,6 +135,11 @@ const reservedCityRoutes = new Set([
   "favicon",
 ]);
 
+if (isGvIntentRewrite) {
+  const { regionCityKeys: gvRegionKeys } = await import("../../lib/greaterVictoria");
+  cityDatabaseKeys.splice(0, cityDatabaseKeys.length, ...gvRegionKeys);
+}
+
 const legacyMarketSuffix =
   /(?:-real-estate-market)+$/i;
 
@@ -149,7 +159,7 @@ if (legacyMarketSuffix.test(normalizedRouteCity)) {
   );
 }
 
-if (reservedCityRoutes.has(normalizedRouteCity)) {
+if (reservedCityRoutes.has(normalizedRouteCity) && !isGvIntentRewrite) {
   return Astro.rewrite("/404");
 }
 
