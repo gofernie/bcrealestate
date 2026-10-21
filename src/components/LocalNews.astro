@@ -1,0 +1,68 @@
+﻿---
+import { createClient } from '@supabase/supabase-js';
+const { city, limit = 6, heading = "What's happening in town" } = Astro.props;
+const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.PUBLIC_SUPABASE_ANON_KEY);
+const { data } = await sb.from('local_news')
+  .select('title,blurb,tag,url,source,published_at')
+  .in('city', [city, 'elk-valley']).eq('status', 'approved')
+  .order('published_at', { ascending: false }).limit(limit);
+const items = data ?? [];
+const fmt = (d) => new Date(d).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
+---
+{items.length > 0 && (
+<section class="ln">
+  <h2 class="ln-h">{heading}</h2>
+  <div class="ln-grid">
+    {items.map((n) => (
+      <button class="ln-card" type="button" data-title={n.title} data-blurb={n.blurb} data-tag={n.tag}
+        data-url={n.url} data-meta={`${n.source} Â· ${fmt(n.published_at)}`}>
+        {n.tag && <span class="ln-tag">{n.tag}</span>}
+        <span class="ln-title">{n.title}</span>
+        <span class="ln-meta">{n.source} Â· {fmt(n.published_at)}</span>
+      </button>
+    ))}
+  </div>
+  <dialog class="ln-modal">
+    <button class="ln-x" type="button" aria-label="Close">&times;</button>
+    <span class="ln-tag" data-f="tag"></span>
+    <h3 data-f="title"></h3>
+    <p class="ln-meta" data-f="meta"></p>
+    <p data-f="blurb"></p>
+    <a class="ln-link" data-f="url" target="_blank" rel="noopener">Read the full story &rarr;</a>
+  </dialog>
+</section>
+)}
+
+<script>
+  document.querySelectorAll('.ln').forEach((root) => {
+    const dlg = root.querySelector('dialog');
+    const f = (k) => dlg.querySelector(`[data-f="${k}"]`);
+    root.querySelectorAll('.ln-card').forEach((c) => c.addEventListener('click', () => {
+      f('tag').textContent = c.dataset.tag || ''; f('tag').hidden = !c.dataset.tag; f('title').textContent = c.dataset.title;
+      f('meta').textContent = c.dataset.meta; f('blurb').textContent = c.dataset.blurb;
+      f('url').href = c.dataset.url; dlg.showModal();
+    }));
+    dlg.querySelector('.ln-x').addEventListener('click', () => dlg.close());
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+  });
+</script>
+
+<style>
+  .ln { width: min(1160px, calc(100% - 32px)); margin: 3rem auto 4rem; }
+  .ln-h { margin-bottom: 1rem; }
+  .ln-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .ln-card { all: unset; cursor: pointer; display: flex; flex-direction: column; gap: .5rem; padding: 1.1rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent); border-radius: 12px; background: #fff;
+    transition: border-color .15s, transform .15s; }
+  .ln-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .ln-tag { align-self: flex-start; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; padding: .2rem .55rem;
+    border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+  .ln-title { font-weight: 600; line-height: 1.3; }
+  .ln-meta { font-size: .8rem; opacity: .65; }
+  .ln-modal { max-width: 520px; width: calc(100% - 32px); border: 0; border-radius: 16px; padding: 1.75rem; }
+  .ln-modal::backdrop { background: rgb(0 0 0 / .45); }
+  .ln-modal h3 { margin: .6rem 0 .3rem; }
+  .ln-x { all: unset; cursor: pointer; float: right; font-size: 1.6rem; line-height: 1; opacity: .6; }
+  .ln-link { display: inline-block; margin-top: .5rem; color: var(--accent); font-weight: 600; }
+</style>
+
