@@ -1250,7 +1250,7 @@ const { data: relatedIntentCardInventory = [] } = isGreaterVictoriaMarket
   ? { data: greaterVictoriaData.listings }
   : await supabase
   .from("listing_rows")
-  .select("normalized_type, property_type, normalized_area, price, waterfront, waterfront_type, view_type")
+  .select("normalized_type, property_type, normalized_area, price, waterfront, waterfront_type, view_type, beds, baths, sqft, lot_size_sqft, lot_size_acres")
   .in("normalized_city", cityDatabaseKeys)
   .eq("status", "A");
 
@@ -3931,11 +3931,18 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 
     <style>
   /* tighten gap: search bar -> listings */
+  /* drop home-types tab */
+  .locus-home-explore__browse-head > *:not(h2):not(:has(h2)) { display: none !important; }
+  #homepage-agent-contact:not(.is-open) { display: none !important; }
+  .homepage-save-nudge-slot.is-open .homepage-save-nudge { display: none !important; }
+  /* hide seen-all while load-more visible */
+  #home-results-experience:has(#home-load-more:not([hidden]):not([style*="none"])) #home-search-complete { display: none !important; }
+  .gv-return-link { display: inline-block !important; margin: 10px 0 2px 18px !important; padding: 0 !important; }
   #homepage-listings { scroll-margin-top: 120px !important; }
   main.section { padding-top: 28px !important; }
   main.section > .intent-content-shell { padding-top: 0 !important; margin-top: 0 !important; }
   #home-results-experience { margin-top: 0 !important; padding-top: 0 !important; }
-  .homepage-save-nudge-slot { display: none !important; }
+  .homepage-save-nudge-slot:not(.is-open) { display: none !important; }
   .locus-home-listing-intro { margin-top: 0 !important; padding-top: 20px !important; }
 </style>
 <!-- locus-anchor-lock-v1 -->
@@ -3989,6 +3996,172 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
   document.addEventListener("astro:page-load", arm);
   window.addEventListener("load", arm);
 })();</script>
+<!-- locus-seen-all-copy-v1 -->
+<script is:inline>
+(() => {
+  if (window.__locusSeenAllCopy) return;
+  window.__locusSeenAllCopy = true;
+  const TYPE_LABELS = { house: "homes", condo: "condos", townhouse: "townhomes", mobile: "mobile homes", land: "lots", "multi-family": "multi-family homes" };
+  const vis = (el) => !!el && !el.hidden && getComputedStyle(el).display !== "none" && el.offsetParent !== null;
+  const tc = (v) => String(v || "").replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).trim();
+  const one = (label) => label.replace(/s$/, "");
+  const apply = () => {
+    const footer = document.getElementById("home-search-complete");
+    if (!footer || footer.offsetParent === null) return;
+    if (vis(document.getElementById("home-more-budget-btn")) || vis(document.getElementById("home-change-neighbourhood-btn"))) {
+      footer.querySelector("[data-seen-all-actions]")?.remove();
+      return;
+    }
+    const form = document.getElementById("home-filter-form");
+    const type = String(form?.elements?.type?.value || "").toLowerCase();
+    const typeLabel = TYPE_LABELS[type] || "homes";
+    const areaSel = form?.elements?.area;
+    const areaText = areaSel && areaSel.value ? areaSel.options[areaSel.selectedIndex]?.textContent : "";
+    const area = tc(areaText) || tc(location.pathname.split("/").filter(Boolean)[0] || "");
+    const n = Number(String(document.getElementById("results-count")?.textContent || "").replace(/\D/g, "")) || 0;
+    const ret = document.querySelector(".gv-return-link");
+    const parentName = ret ? String(ret.textContent || "").replace(/^[^A-Za-z]*All\s+/, "").trim() : "";
+    const title = footer.querySelector("strong");
+    const copy = document.getElementById("home-search-complete-copy");
+    const t = n
+      ? `You've seen all ${n} ${n === 1 ? one(typeLabel) : typeLabel} in ${area}.`
+      : `You've seen every ${one(typeLabel)} in ${area}.`;
+    const c = parentName
+      ? `New ${typeLabel} get sent the day they list, or widen your search to ${parentName}.`
+      : `New ${typeLabel} get sent the day they list. Looking for something that isn't on the market? Ask about off-market ${typeLabel}.`;
+    if (title && title.textContent !== t) title.textContent = t;
+    if (copy && copy.textContent !== c) copy.textContent = c;
+    if (footer.querySelector("[data-seen-all-actions]")) return;
+    const wrap = document.createElement("div");
+    wrap.setAttribute("data-seen-all-actions", "");
+    wrap.style.cssText = "display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;";
+    const mk = (tag, label, primary) => {
+      const el = document.createElement(tag);
+      el.textContent = label;
+      if (tag === "button") el.type = "button";
+      el.style.cssText = `display:inline-flex;align-items:center;padding:10px 16px;border-radius:8px;font-weight:700;font-size:.85rem;text-decoration:none;cursor:pointer;border:1px solid ${primary ? "var(--accent,#1f6feb)" : "currentColor"};background:${primary ? "var(--accent,#1f6feb)" : "transparent"};color:${primary ? "#fff" : "inherit"};`;
+      return el;
+    };
+    const alertBtn = mk("button", `Alert me to new ${typeLabel}`, true);
+    alertBtn.addEventListener("click", () => {
+      const ei = Element.prototype.scrollIntoView;
+      const ws = window.scrollTo;
+      const wb = window.scrollBy;
+      const hf = HTMLElement.prototype.focus;
+      Element.prototype.scrollIntoView = function () {};
+      window.scrollTo = function () {};
+      window.scrollBy = function () {};
+      HTMLElement.prototype.focus = function (o) { return hf.call(this, Object.assign({}, o || {}, { preventScroll: true })); };
+      const restore = () => { Element.prototype.scrollIntoView = ei; window.scrollTo = ws; window.scrollBy = wb; HTMLElement.prototype.focus = hf; };
+      const slot = document.querySelector(".homepage-save-nudge-slot");
+      if (slot) {
+        slot.classList.add("is-open");
+        const nudge = slot.querySelector(".homepage-save-nudge");
+        if (nudge) nudge.hidden = false;
+        (slot.querySelector(".homepage-save-nudge button") || slot.querySelector("button"))?.click();
+      }
+      const saveForm = document.querySelector(".homepage-save-search-form");
+      if (slot && footer.nextElementSibling !== slot) footer.after(slot);
+      if (saveForm && !(slot && slot.contains(saveForm))) (slot || footer).after(saveForm);
+      if (saveForm && (saveForm.hidden || getComputedStyle(saveForm).display === "none")) {
+        saveForm.hidden = false;
+        saveForm.style.display = "";
+      }
+      const target = saveForm || slot;
+      if (!target) {
+        restore();
+        document.getElementById("homepage-agent-contact")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      requestAnimationFrame(() => {
+        ei.call(target, { behavior: "smooth", block: "center" });
+        target.querySelector('input[type="email"], input:not([type="hidden"])')?.focus();
+      });
+      setTimeout(restore, 900);
+    });
+    wrap.appendChild(alertBtn);
+    if (ret) {
+      const u = new URL(ret.getAttribute("href") || "/", location.origin);
+      const sd = new URLSearchParams(location.search).get("siteDomain");
+      if (sd) u.searchParams.set("siteDomain", sd);
+      if (type) u.searchParams.set("type", type);
+      u.hash = "homepage-listings";
+      const a = mk("a", `See all ${typeLabel} in ${parentName} \u2192`, false);
+      a.href = u.pathname + u.search + u.hash;
+      a.setAttribute("data-astro-reload", "");
+      wrap.appendChild(a);
+    }
+    {
+      const contact = document.getElementById("homepage-agent-contact");
+      if (contact) {
+        const a = mk("button", `Ask about off-market ${typeLabel}`, false); if (ret) { a.style.border = "none"; a.style.background = "none"; a.style.padding = "10px 4px"; a.style.textDecoration = "underline"; a.style.textUnderlineOffset = "3px"; a.style.fontWeight = "600"; }
+        a.addEventListener("click", () => {
+          const ei = Element.prototype.scrollIntoView;
+          const ws = window.scrollTo;
+          const wb = window.scrollBy;
+          const hf = HTMLElement.prototype.focus;
+          Element.prototype.scrollIntoView = function () {};
+          window.scrollTo = function () {};
+          window.scrollBy = function () {};
+          HTMLElement.prototype.focus = function (o) { return hf.call(this, Object.assign({}, o || {}, { preventScroll: true })); };
+          const restore = () => { Element.prototype.scrollIntoView = ei; window.scrollTo = ws; window.scrollBy = wb; HTMLElement.prototype.focus = hf; };
+          contact.classList.add("is-open"); if (footer.nextElementSibling !== contact) footer.after(contact);
+          const cform = contact.querySelector("form");
+          const shown = () => !!cform && !cform.hidden && getComputedStyle(cform).display !== "none" && cform.offsetParent !== null;
+          if (!shown()) {
+            const opener = [...contact.querySelectorAll(".homepage-agent-nudge__actions button, .homepage-agent-nudge__actions a")]
+              .find((b) => !b.matches("[data-homepage-contact-cancel]") && !(b.tagName === "A" && (b.getAttribute("href") || "#")[0] !== "#"));
+            opener?.click();
+          }
+          if (cform && !shown()) { cform.hidden = false; cform.style.display = ""; }
+          const tag = `Off-market ${typeLabel}${area ? " \u2013 " + area : ""}`;
+          const msg = cform?.querySelector('textarea, [name="message"]');
+          if (msg && !msg.value.trim()) {
+            msg.value = `[${tag}]\nHi, I'm looking for ${typeLabel} in ${area || "the area"}. If anything off-market or coming soon comes up, please let me know.`;
+            msg.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+          let tagInput = cform?.querySelector('input[name="tag"]');
+          if (cform && !tagInput) { tagInput = document.createElement("input"); tagInput.type = "hidden"; tagInput.name = "tag"; cform.appendChild(tagInput); }
+          if (tagInput) tagInput.value = tag;
+          requestAnimationFrame(() => {
+            ei.call(cform || contact, { behavior: "smooth", block: "center" });
+            cform?.querySelector('input[name="name"]')?.focus();
+          });
+          setTimeout(restore, 900);
+        });
+        wrap.appendChild(a);
+      }
+    }
+    (copy?.parentElement || footer).appendChild(wrap);
+  };
+  const watch = () => {
+    const f = document.getElementById("home-search-complete");
+    if (!f || f.__seenAllObs) return;
+    f.__seenAllObs = true;
+    new MutationObserver(() => requestAnimationFrame(apply)).observe(f, { attributes: true, attributeFilter: ["hidden", "style"], childList: true, subtree: true, characterData: true });
+    apply();
+  };
+  watch();
+  document.addEventListener("DOMContentLoaded", watch);
+  document.addEventListener("astro:page-load", watch);
+})();
+</script>
+<!-- locus-explore-heading-v1 -->
+<script is:inline>
+(() => {
+  if (window.__locusExploreHeading) return;
+  window.__locusExploreHeading = true;
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest?.(".locus-home-explore__browse button, .locus-home-explore__browse [role='tab']");
+    if (!btn) return;
+    const label = String(btn.textContent || "").trim().toLowerCase();
+    const h = btn.closest(".locus-home-explore__browse")?.querySelector(".locus-home-explore__browse-head h2");
+    if (!h) return;
+    if (label.includes("home type")) h.textContent = "Explore by type";
+    else if (label.includes("neighbourhood") || label.includes("district")) h.textContent = "Explore by area";
+  });
+})();
+</script>
 <main class="section">
       <div class="intent-content-shell">
 <div
@@ -4791,38 +4964,15 @@ data-liked-tags="[]"
     user-select: none;
   }</style>
 
+<RelatedIntentCards
+          city={city}
+          pages={intentPageRows || []}
+          inventory={relatedIntentCardInventory || []}
+          currentType={type}
+          currentArea={isGreaterVictoriaDistrictMarket ? city : ""}
+          title="More ways to explore."
+        />
 <section class="locus-home-explore locus-home-explore--stacked">
-  <div class="locus-home-explore__collections">
-    <div class="locus-home-explore__collections-head">
-      <div>
-        <span class="locus-home-section-kicker">{cityName.toUpperCase()} COLLECTIONS</span>
-        <h2>Search by what matters.</h2>
-        <p>
-          Start with a curated search built around the way you want to live.
-        </p>
-      </div>
-
-      <a href={`/${city || "nanaimo"}`} class="locus-home-explore__browse-all">
-        Browse all {cityName} listings <b aria-hidden="true">&rarr;</b>
-      </a>
-    </div>
-
-    {featuredIntentCollections.length > 0 && (
-      <div class="city-home-intent-grid" aria-label={`Featured ${cityName} collections`}>
-        {featuredIntentCollections.map((collection) => (
-          <a href={collection.href} class="city-home-intent-card">
-            <strong>{stackedCollectionTitle(collection.title)}</strong>
-            <span>
-              {collection.description ||
-                "A curated collection built around the way you want to live."}
-            </span>
-            <small>Browse listings</small>
-            <b aria-hidden="true">&rarr;</b>
-          </a>
-        ))}
-      </div>
-    )}
-  </div>
 
   <div class="locus-home-explore__browse">
     <div class="locus-home-explore__browse-head">
@@ -5771,29 +5921,6 @@ data-liked-tags="[]"
   </form>
 </section>
 
-<section class="locus-home-final-cta">
-
-  <div>
-    <span class="locus-home-final-cta__icon">&#8962;</span>
-
-    <div>
-      <strong>Ready to find your place?</strong>
-      <p>Save your searches, explore neighbourhoods, and keep an eye on new opportunities.</p>
-    </div>
-  </div>
-
-  <a href="#homepage-listings">
-    Start your search &rarr;
-  </a>
-
-</section>
-<RelatedIntentCards
-          city={city}
-          pages={remainingIntentPageRows}
-          inventory={relatedIntentCardInventory || []}
-          currentType={type}
-          title="More ways to explore."
-        />
       </div>
 
 <style is:global>

@@ -5,6 +5,9 @@ const {
   inventory = [],
   title = "",
   currentType = "",
+  dedupeBy = "href",
+  currentArea = "",
+  limit = 6,
 } = Astro.props;
 
 const titleCase = (value: unknown) =>
@@ -68,7 +71,7 @@ for (const intent of pages) {
 
   const type = normalise(intent.property_type);
   const area = normalise(intent.area);
-  const cardIdentity = type ? `type:${type}:${area || "all"}` : href;
+  const cardIdentity = dedupeBy === "href" ? href : type ? `type:${type}:${area || "all"}` : href;
 
   if (
     !intent.slug ||
@@ -139,6 +142,19 @@ for (const intent of pages) {
 
   if (minPrice) matching = matching.filter((listing) => Number(listing.price || 0) >= minPrice);
   if (maxPrice) matching = matching.filter((listing) => Number(listing.price || 0) <= maxPrice);
+  const bedsMin = Number(intent.beds_min || 0);
+  const bathsMin = Number(intent.baths_min || 0);
+  const minSqft = Number(intent.min_sqft || 0);
+  const minLotSqft = Number(intent.min_lot_sqft || 0);
+  const minYear = Number(intent.min_year || 0);
+  const lotSqftOf = (listing: any) =>
+    Number(listing.lot_size_sqft || 0) || Number(listing.lot_size_acres || 0) * 43560;
+
+  if (bedsMin) matching = matching.filter((listing) => Number(listing.beds || 0) >= bedsMin);
+  if (bathsMin) matching = matching.filter((listing) => Number(listing.baths || 0) >= bathsMin);
+  if (minSqft) matching = matching.filter((listing) => Number(listing.sqft || 0) >= minSqft);
+  if (minLotSqft) matching = matching.filter((listing) => lotSqftOf(listing) >= minLotSqft);
+  if (minYear) matching = matching.filter((listing) => Number(listing.year_built || listing.year || 0) >= minYear);
 
   const prices = matching
     .map((listing) => Number(listing.price || 0))
@@ -186,6 +202,10 @@ for (const intent of pages) {
 
 
   cards.push({
+    _type: type,
+    _area: area,
+    _rank: Number(intent.featured_rank || 0),
+    _i: cards.length,
     href,
     label,
     count,
@@ -199,6 +219,46 @@ for (const intent of pages) {
 }
 
 
+/* card selection v1 */
+const limitN = Number(limit) || 6;
+const ctxType = activeType;
+const ctxArea = normalise(currentArea);
+const hasContext = Boolean(ctxType || ctxArea);
+const noRanks = !cards.some((c) => c._rank);
+const scoreOf = (c: any) => {
+  if (!hasContext && noRanks) return -c._i;
+  let s = 0;
+  if (ctxType && c._type === ctxType) s += 40;
+  if (ctxArea) {
+    if (c._area === ctxArea) s += 40;
+    else if (!c._area) s += 10;
+  }
+  if (c._rank) s += hasContext ? 8 : 1000 - c._rank;
+  s += Math.min(10, Math.log10(1 + Number(c.count || 0)) * 4);
+  return s;
+};
+const pool = cards
+  .filter((c) => Number(c.count || 0) >= (c._rank ? 1 : 3))
+  .map((c) => ({ c, s: scoreOf(c) }))
+  .sort((a, b) => b.s - a.s || a.c._i - b.c._i)
+  .map((x) => x.c);
+const picked: any[] = [];
+const perType = new Map<string, number>();
+const capFor = (t: string) => (ctxType && t === ctxType ? Math.max(1, limitN - 2) : 2);
+const takeCard = (c: any) => {
+  picked.push(c);
+  perType.set(c._type, (perType.get(c._type) || 0) + 1);
+};
+for (const c of pool) {
+  if (picked.length >= limitN) break;
+  if ((perType.get(c._type) || 0) >= capFor(c._type)) continue;
+  takeCard(c);
+}
+for (const c of pool) {
+  if (picked.length >= limitN) break;
+  if (!picked.includes(c)) takeCard(c);
+}
+const shownCards = picked;
 const cardIcons: Record<string, string> = {
   house: '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m3 11 9-7 9 7"/><path d="M5.5 10v10h13V10"/><path d="M9.5 20v-6h5v6"/></svg>',
   condo: '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2M11 21v-3h2v3"/></svg>',
@@ -223,37 +283,115 @@ const heading = title || `Keep looking in ${titleCase(city)}`;
     </div>
 
     <div class="related-intents__grid">
-      {cards.slice(0, 6).map((card) => (
+      {shownCards.map((card) => (
         <a class="related-intent-card" href={card.href}>
           <div class="related-intent-card__stat">
-            <span
-              class="related-intent-card__icon"
-              aria-hidden="true"
-              set:html={cardIcons[card.type] || cardIcons.listing}
-            ></span>
-
-            <div class="related-intent-card__stat-copy">
-              <strong>{card.count || "—"}</strong>
-              <span>
-                {card.count
-                  ? `${card.label} for sale`
-                  : `Explore ${card.label}`}
-              </span>
-            </div>
+            <h3 class="related-intent-card__title">{String(card.title).replace(new RegExp(`^${titleCase(city)}\\s+(?=\\S)`, "i"), "")}</h3>
           </div>
 
           <div class="related-intent-card__body">
-            <p class="related-intent-card__label">{card.label}</p>
-            <h3>{card.title}</h3>
+            <div class="related-intent-card__meta">
+              <span
+                class="related-intent-card__icon"
+                aria-hidden="true"
+                set:html={cardIcons[card.type] || cardIcons.listing}
+              ></span>
+              <div class="related-intent-card__stat-copy">
+                <strong>{card.count || "\u2014"}</strong>
+                <span>{card.count ? `${card.label} for sale` : `Explore ${card.label}`}</span>
+              </div>
+            </div>
             <p class="related-intent-card__copy">{card.copy}</p>
-            <span class="related-intent-card__link">See {card.label.toLowerCase()} →</span>
+            <span class="related-intent-card__link">See {card.label.toLowerCase()} &rarr;</span>
           </div>
         </a>
       ))}
     </div>
+
+    {cards.length > shownCards.length && (
+      <a class="related-intents__all" href={`/${city}/searches`}>See all {cards.length} {titleCase(city)} searches &rarr;</a>
+    )}
   </section>
 )}
 
+<style is:global>
+  /* card refresh v3: neutral, compact title row (global, wins over pastel rules) */
+  html body section.related-intents .related-intents__all { display: inline-block; margin-top: 18px; font-weight: 700; color: var(--accent, #2a6f73); text-decoration: none; }
+  html body section.related-intents .related-intents__all:hover { text-decoration: underline; text-underline-offset: 3px; }
+  html body section.related-intents a.related-intent-card {
+    background: #fff !important;
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  }
+  html body section.related-intents a.related-intent-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(15, 30, 45, .08);
+  }
+  html body section.related-intents a.related-intent-card .related-intent-card__stat {
+    background: transparent !important;
+    background-image: none !important;
+    padding: 18px 20px 12px !important;
+    min-height: 0 !important;
+    height: auto !important;
+    aspect-ratio: auto !important;
+    border-bottom: 1px solid rgba(15, 30, 45, .08) !important;
+  }
+  html body section.related-intents a.related-intent-card .related-intent-card__stat::before,
+  html body section.related-intents a.related-intent-card .related-intent-card__stat::after { display: none !important; }
+  html body section.related-intents .related-intent-card__title { font-size: 1.3rem !important; margin: 0 !important; }
+  html body section.related-intents .related-intent-card__body { padding-top: 14px !important; }
+  html body section.related-intents .related-intent-card__meta strong,
+  html body section.related-intents .related-intent-card__meta .related-intent-card__icon,
+  html body section.related-intents .related-intent-card__link { color: var(--accent, #2a6f73) !important; }
+</style>
+<style>
+  /* title-in-band layout v1 */
+  /* card refresh v2: single accent tint, compact band */
+  .related-intent-card { transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+  .related-intent-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15, 30, 45, .08); border-color: color-mix(in srgb, var(--accent, #2a6f73) 35%, #d8dde2); }
+  .related-intent-card .related-intent-card__stat {
+    background: color-mix(in srgb, var(--accent, #2a6f73) 7%, #fff) !important;
+    padding: 16px 20px !important;
+    min-height: 0 !important;
+    border-bottom: 1px solid color-mix(in srgb, var(--accent, #2a6f73) 14%, transparent);
+    transition: background .18s ease;
+  }
+  .related-intent-card:hover .related-intent-card__stat { background: color-mix(in srgb, var(--accent, #2a6f73) 12%, #fff) !important; }
+  .related-intent-card__title { font-size: 1.3rem !important; }
+  .related-intent-card__meta strong { color: var(--accent, #2a6f73); }
+  .related-intent-card__meta .related-intent-card__icon { color: var(--accent, #2a6f73); }
+  .related-intent-card__link { color: var(--accent, #2a6f73) !important; }
+  .related-intent-card__stat { align-items: center; }
+  .related-intent-card__title {
+    margin: 0;
+    font-family: "Instrument Serif", Georgia, serif;
+    font-weight: 400;
+    font-size: 1.45rem;
+    line-height: 1.15;
+    color: inherit;
+  }
+  .related-intent-card__meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .related-intent-card__meta .related-intent-card__icon { display: inline-flex; opacity: .85; }
+  .related-intent-card__meta .related-intent-card__icon :global(svg) { width: 26px; height: 26px; }
+  .related-intent-card__meta .related-intent-card__stat-copy { display: flex; align-items: baseline; gap: 6px; }
+  .related-intent-card__meta strong {
+    font-family: "Instrument Serif", Georgia, serif;
+    font-weight: 400;
+    font-size: 1.6rem;
+    line-height: 1;
+  }
+  .related-intent-card__meta .related-intent-card__stat-copy span {
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    opacity: .75;
+  }
+</style>
 <style>
   .related-intents {
     margin-top: 56px;

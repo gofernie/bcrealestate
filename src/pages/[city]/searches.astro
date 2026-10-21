@@ -1,0 +1,148 @@
+---
+import { createClient } from "@supabase/supabase-js";
+import Layout from "../../layouts/Layout.astro";
+import SiteNav from "../../components/SiteNav.astro";
+import { getSite } from "../../lib/getSite";
+import { getNavIntentPages } from "../../lib/getNavIntentPages";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const city = String(Astro.params.city || "nanaimo").toLowerCase().trim();
+const site = await getSite(Astro.url.hostname, city);
+const navIntentPages = await getNavIntentPages(supabase, site?.id);
+
+const titleCase = (value: unknown) =>
+  String(value || "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).trim();
+
+const cityLabel = titleCase(city);
+const accent = (site as any)?.accent_color || (site as any)?.accent || "#2a6f73";
+
+let query = supabase.from("intent_pages").select("*");
+query = site?.id ? query.eq("site_id", site.id) : query.is("site_id", null);
+const { data: rows } = await query;
+
+const typeLabels: Record<string, string> = {
+  house: "Homes",
+  condo: "Condos",
+  townhouse: "Townhomes",
+  mobile: "Mobile Homes",
+  land: "Land",
+};
+const typeOrder = ["Homes", "Condos", "Townhomes", "Mobile Homes", "Land", "More searches"];
+const cityPrefix = new RegExp(`^${cityLabel}\\s+(?=\\S)`, "i");
+
+const pages = (rows || [])
+  .filter((row: any) => row.slug)
+  .map((row: any) => ({
+    href: `/${row.city || city}/${String(row.slug).replace(/^\/+/, "")}`,
+    title: String(row.hero_heading || row.seo_heading || titleCase(row.slug)).replace(cityPrefix, ""),
+    type: String(row.property_type || "").toLowerCase(),
+    area: String(row.area || "").toLowerCase(),
+    copy: String(row.meta_description || row.intro_copy || "").replace(/\s+/g, " ").trim(),
+  }))
+  .sort((a: any, b: any) => a.title.localeCompare(b.title));
+
+const byType = new Map<string, any[]>();
+for (const p of pages) {
+  const key = typeLabels[p.type] || "More searches";
+  if (!byType.has(key)) byType.set(key, []);
+  byType.get(key)!.push(p);
+}
+const typeGroups = typeOrder.filter((k) => byType.has(k)).map((k) => [k, byType.get(k)!] as const);
+
+const byArea = new Map<string, any[]>();
+for (const p of pages.filter((p: any) => p.area)) {
+  const key = titleCase(p.area);
+  if (!byArea.has(key)) byArea.set(key, []);
+  byArea.get(key)!.push(p);
+}
+const areaGroups = [...byArea.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+const short = (text: string) => (text.length > 140 ? `${text.slice(0, 137).trim()}…` : text);
+---
+
+<Layout
+  title={`${cityLabel} Home Searches`}
+  description={`Every curated ${cityLabel} home search in one place, organized by home type and area.`}
+  accentColor={accent}
+  city={city}
+  site={site}
+>
+  <SiteNav
+    city={city}
+    site={site}
+    areas={[]}
+    types={["house", "condo", "townhouse", "mobile", "land"]}
+    intentPages={navIntentPages}
+    showAreaNav={false}
+    areaListingCounts={{}}
+  />
+
+  <main class="searches-hub">
+    <header class="searches-hub__head">
+      <p class="searches-hub__kicker">All searches</p>
+      <h1>Every {cityLabel} search.</h1>
+      <p class="searches-hub__lede">
+        {pages.length} curated searches, each one live and updated as listings change.
+        <a href={`/${city}#homepage-listings`}>Or browse every listing &rarr;</a>
+      </p>
+    </header>
+
+    <section class="searches-hub__section">
+      <h2>By home type</h2>
+      <div class="searches-hub__groups">
+        {typeGroups.map(([label, items]) => (
+          <div class="searches-hub__group">
+            <h3>{label}</h3>
+            <ul>
+              {items.map((p: any) => (
+                <li>
+                  <a href={p.href}>{p.title}</a>
+                  {p.copy && <span>{short(p.copy)}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    {areaGroups.length > 0 && (
+      <section class="searches-hub__section">
+        <h2>By area</h2>
+        <div class="searches-hub__groups">
+          {areaGroups.map(([label, items]) => (
+            <div class="searches-hub__group">
+              <h3>{label}</h3>
+              <ul>
+                {items.map((p: any) => (
+                  <li><a href={p.href}>{p.title}</a></li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+  </main>
+</Layout>
+
+<style>
+  .searches-hub { max-width: 1120px; margin: 0 auto; padding: 48px 20px 80px; }
+  .searches-hub__kicker { margin: 0 0 6px; font-size: .72rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; opacity: .65; }
+  .searches-hub__head h1 { margin: 0 0 10px; font-family: "Instrument Serif", Georgia, serif; font-weight: 400; font-size: clamp(2rem, 4vw, 2.8rem); }
+  .searches-hub__lede { margin: 0; max-width: 620px; opacity: .8; }
+  .searches-hub__lede a { margin-left: 6px; font-weight: 700; color: var(--accent, #2a6f73); }
+  .searches-hub__section { margin-top: 48px; }
+  .searches-hub__section > h2 { margin: 0 0 18px; padding-bottom: 10px; border-bottom: 1px solid rgba(15, 30, 45, .1); font-size: 1.1rem; }
+  .searches-hub__groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 28px 32px; }
+  .searches-hub__group h3 { margin: 0 0 10px; font-size: .78rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
+  .searches-hub__group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .searches-hub__group li a { font-weight: 700; color: var(--accent, #2a6f73); text-decoration: none; }
+  .searches-hub__group li a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .searches-hub__group li span { display: block; margin-top: 2px; font-size: .85rem; line-height: 1.45; opacity: .72; }
+</style>

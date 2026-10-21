@@ -188,6 +188,7 @@ export const GET: APIRoute = async () => {
   const corePages = [
     "",
     "areas",
+    "searches",
     "homes",
     "condos",
     "townhomes",
