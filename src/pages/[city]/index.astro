@@ -3929,8 +3929,464 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
   </div>
 </section>
 
-    <main class="section">
+    <style>
+  /* tighten gap: search bar -> listings */
+  #homepage-listings { scroll-margin-top: 120px !important; }
+  main.section { padding-top: 28px !important; }
+  main.section > .intent-content-shell { padding-top: 0 !important; margin-top: 0 !important; }
+  #home-results-experience { margin-top: 0 !important; padding-top: 0 !important; }
+  .homepage-save-nudge-slot { display: none !important; }
+  .locus-home-listing-intro { margin-top: 0 !important; padding-top: 20px !important; }
+</style>
+<!-- locus-anchor-lock-v1 -->
+<script is:inline>
+(() => {
+  if (window.__locusAnchorLock) return;
+  window.__locusAnchorLock = true;
+  const origIntoView = Element.prototype.scrollIntoView;
+  const origScrollTo = window.scrollTo.bind(window);
+  const RESULT_TARGETS = "#homepage-listings, #home-listings-grid, #home-results-experience, .results-heading, .explore-toolbar, #home-filter-form, .locus-home-listing-intro, #home-search-summary";
+  const pinnedHeight = () => {
+    let bottom = 0;
+    document.querySelectorAll("header, nav, .site-nav, .locus-home-search, .shared-listing-filter-bar").forEach((el) => {
+      const cs = getComputedStyle(el);
+      if (cs.position !== "sticky" && cs.position !== "fixed") return;
+      bottom = Math.max(bottom, (parseFloat(cs.top) || 0) + el.offsetHeight);
+    });
+    return bottom || 100;
+  };
+  const titleY = () => {
+    const t = document.getElementById("homepage-listings");
+    return t ? Math.max(0, t.getBoundingClientRect().top + window.scrollY - 175) : null;
+  };
+  const toTitle = (behavior = "instant") => {
+    const y = titleY();
+    if (y !== null) origScrollTo({ top: y, left: 0, behavior });
+  };
+  Element.prototype.scrollIntoView = function (...args) {
+    if (this.matches?.(RESULT_TARGETS)) {
+      const b = (args[0] && typeof args[0] === "object" && args[0].behavior) || "instant";
+      return toTitle(b);
+    }
+    return origIntoView.apply(this, args);
+  };
+  window.scrollTo = function (...args) {
+    const y = titleY();
+    const reqTop = typeof args[0] === "object" ? args[0]?.top : args[1];
+    if (y !== null && typeof reqTop === "number" && reqTop > y && reqTop < y + 700) {
+      const b = (typeof args[0] === "object" && args[0].behavior) || "instant";
+      return origScrollTo({ top: y, left: 0, behavior: b });
+    }
+    return origScrollTo(...args);
+  };
+  const arm = () => {
+    if (location.hash !== "#homepage-listings") return;
+    toTitle();
+    requestAnimationFrame(() => toTitle());
+    [150, 500, 1200].forEach((ms) => setTimeout(() => toTitle(), ms));
+  };
+  arm();
+  document.addEventListener("astro:page-load", arm);
+  window.addEventListener("load", arm);
+})();</script>
+<main class="section">
       <div class="intent-content-shell">
+<div
+  class:list={[
+    "home-results-experience",
+    { "is-filtered": hasActiveSearch },
+  ]}
+  id="home-results-experience"
+  data-active-search={String(hasActiveSearch)}
+>
+<div class="homepage-save-nudge-slot">
+<div class="homepage-save-nudge" data-save-search-prompt hidden={!hasActiveSearch}>
+  <div class="homepage-save-nudge__copy">
+    <strong>Like these results?</strong>
+    <span>Save this search and get matching new listings sent to you.</span>
+  </div>
+
+  <button
+    type="button"
+    class="interrupt-btn interrupt-primary"
+    id="hero-save-search-btn"
+  >
+    Save This Search
+  </button>
+</div>
+</div>
+
+<div class="homepage-save-search-form">
+    <SlugSaveSearch
+      siteId={site?.id}
+      city={city}
+      area={areas.join("|")}
+      propertyType={type}
+      minPrice={minPrice}
+      maxPrice={maxPrice}
+      waterfrontType=""
+      requiresWaterfront={false}
+      requiresOceanView={false}
+    />
+  </div>
+
+<div class="locus-home-listing-intro" id="homepage-listings">
+
+  <div>
+    <span class="locus-home-section-kicker">BROWSE EVERYTHING</span>
+    <h2 id="home-listings-title">All {cityName} Listings</h2>
+  </div>
+
+  <p>
+    Use the filters below to narrow the market, switch to map view,
+    or open any listing for full details.
+  </p>
+
+</div>
+
+<section class="home-search-summary" id="home-search-summary" hidden>
+  <div>
+    <p class="home-search-summary__eyebrow">Personalised Search</p>
+    <h2 id="home-search-summary-title">Your matched search</h2>
+    <p id="home-search-summary-copy"></p>
+  </div>
+
+  <div class="home-search-summary__stats">
+    <div>
+      <strong id="summary-match-count">0</strong>
+      <span>matching homes</span>
+    </div>
+    <div>
+      <strong id="summary-price-range"> </strong>
+      <span>price range</span>
+    </div>
+    <div>
+      <strong id="summary-area-count"> </strong>
+      <span>areas represented</span>
+    </div>
+  </div>
+</section>
+
+<div class="explore-toolbar">
+          <div class="view-pill">
+           <button type="button" class="view-pill__btn active" id="list-view-btn">&#9776; List</button>
+<button type="button" class="view-pill__btn" id="map-view-btn">&#8982; Map</button>
+          </div>
+              <form class="filter-form" method="get" id="home-filter-form">
+<input type="hidden" name="city" value={city || "nanaimo"} />
+<input type="hidden" name="minPrice" value={minPrice || ""} />
+<input type="hidden" name="storyMaxPrice" value="" />
+<input type="hidden" name="storyAreas" value={areas.join("|")} />
+<select name="area" class="filter-select" aria-label={isGreaterVictoriaMarket ? "Choose a district" : "Area"} data-gv-district-select={isGreaterVictoriaMarket ? "" : undefined}>
+  <option value="" selected={!area}>{isGreaterVictoriaMarket ? "All Greater Victoria" : "All Areas"}</option>
+  {areaOptions.map((areaOption) => (
+    <option value={areaOption} selected={area === areaOption}>
+      {areaOption.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())}
+    </option>
+  ))}
+</select>
+{isNanaimoMobilesSite ? (
+  <input type="hidden" name="type" value="mobile" />
+) : (
+  <select name="type" class="filter-select" aria-label="Property type">
+  <option value="" selected={!type}>All Types</option>
+
+  {propertyTypeOptions.map((propertyType) => (
+    <option value={propertyType === "homes" ? "house" : propertyType} data-count={homepageTypeOptionCount(propertyType)} selected={type === propertyType || type === "house" && propertyType === "homes"}>
+      {homepageTypeOptionLabel(propertyType)}
+    </option>
+  ))}
+</select>
+)}
+
+ <select name="maxPrice" class="filter-select" aria-label="Max price">
+  <option value="" selected={!maxPrice}>Any Price</option>
+
+  {priceBandOptions.map((band) => (
+    <option
+      value={band.value}
+            selected={
+              band.kind === "over"
+                ? minPrice === band.threshold && !maxPrice
+                : maxPrice === band.threshold && !minPrice
+            }
+    >
+      {band.label}
+    </option>
+  ))}
+</select>
+
+<select name="beds" class="filter-select" aria-label="Bedrooms and floor plan">
+  <option value="" selected={!beds && !planMode}>Any Beds</option>
+        <optgroup label="Bedroom count">
+          {/* inventory-bed-notify-labels-v2 */}
+          {[2, 3, 4, 5].map((bedCount) => (
+            <option
+              value={String(bedCount)}
+              selected={beds === bedCount}
+            >
+              {bedCount}+ Beds{
+                bedroomOptions.includes(bedCount)
+                  ? ""
+                  : " - notify me"
+              }
+            </option>
+          ))}
+        </optgroup>
+</select>
+
+<select name="baths" class="filter-select" aria-label="Bathrooms">
+  <option value="" selected={!baths}>Any Baths</option>
+  <option value="1" selected={baths === 1}>1+ Baths</option>
+  <option value="2" selected={baths === 2}>2+ Baths</option>
+  <option value="3" selected={baths === 3}>3+ Baths</option>
+  <option value="4" selected={baths === 4}>4+ Baths</option>
+</select>
+
+<input type="hidden" name="minSqft" value={minSqft || ""} />
+<input type="hidden" name="minLotSqft" value={minLotSqft || ""} />
+<input type="hidden" name="minYear" value={minYear || ""} />
+<input type="hidden" name="primaryOnMain" value={primaryOnMain ? "true" : ""} />
+<input type="hidden" name="threeSameFloor" value={threeSameFloor ? "true" : ""} />
+<input type="hidden" name="fourSameFloor" value={fourSameFloor ? "true" : ""} />
+<input type="hidden" name="oceanViews" value="" />
+<input type="hidden" name="viewType" value={viewType} />
+<input type="hidden" name="waterfrontType" value={waterfrontType} />
+<input type="hidden" name="age55" value={age55 ? "true" : ""} />
+<input type="hidden" name="petsAllowed" value={petsAllowed ? "true" : ""} />
+<select name="sort" class="filter-select" aria-label="Sort">
+  <option value="newest" selected={sort === "newest"}>Newest first</option>
+  <option value="price-low" selected={sort === "price-low"}>Price low to high</option>
+  <option value="price-high" selected={sort === "price-high"}>Price high to low</option>
+</select>
+
+  <a href="?" class="filter-clear mobile-clear-button">Clear</a>
+</form>
+
+          </div>
+
+       <div
+         class="results-heading"
+         id={isNewMatchesView ? "new-matches" : undefined}
+       >
+  <p id="results-update-note">
+    <span id="results-count">{homepageListingCount}</span>
+    {
+      isNewMatchesView
+        ? homepageListingCount === 1
+          ? " New Match"
+          : " New Matches"
+        : " Active Listings"
+    }
+  </p>
+</div>
+
+        {errorMessage && <div class="empty">{errorMessage}</div>}
+
+               {!errorMessage && homepageListingCount === 0 && (
+          <div class="empty">
+            {
+              isNewMatchesView
+                ? "These new matches are no longer active."
+                : "No matching homes found yet."
+            }
+          </div>
+        )}
+
+      {!errorMessage && homepageListingCount > 0 && (
+  <>
+    <div id="intent-map" class="intent-map" hidden></div>
+
+<section id="home-listings-grid" class="grid" aria-label={`${homepageListingCount} listings${city ? ` in ${city}` : ""}`}> {listings.slice(0, 24).map((listing: any) => {              const image = getListingImage(listing);
+              const address = getListingAddress(listing);
+              const price = getListingPrice(listing);
+              const beds = getListingBeds(listing);
+              const baths = getListingBaths(listing);
+              const sqft = getListingSqft(listing);
+              const mls = getListingMls(listing);
+              const propertyType = getListingPropertyType(listing);
+              const description = getListingDescription(listing);
+              const ownershipText = [
+                description,
+                listing?.description,
+                listing?.raw?.description,
+                listing?.raw?.details?.description,
+              ].filter(Boolean).join(" | ");
+
+              const ownershipBadge =
+                /\bfractional\b|\b1\s*\/\s*(?:4|8)\s*(?:ownership|interest|share)\b|\b(?:quarter|one[-\s]?quarter|half|one[-\s]?half|eighth|one[-\s]?eighth)[-\s]+(?:ownership|interest|share)\b/i.test(ownershipText)
+                  ? "Fractional Ownership"
+                  : /\btime[-\s]?share\b|\bweek\s+\d+\b/i.test(ownershipText)
+                    ? "Timeshare"
+                    : /\bphase\s*(?:ii|2)\b/i.test(ownershipText)
+                      ? "Hotel Phase II"
+                      : /\bhotel\b/i.test(ownershipText)
+                        ? "Hotel Suite"
+                        : "";
+
+              const isFractionalOwnership =
+                /\bfractional\b|\b1\s*\/\s*(?:4|8)\s*(?:ownership|interest|share)\b|\b(?:quarter|one[-\s]?quarter|half|one[-\s]?half|eighth|one[-\s]?eighth)[-\s]+(?:ownership|interest|share)\b/i.test(
+                  [
+                    description,
+                    listing?.ownership_type,
+                    listing?.ownershipType,
+                    listing?.raw?.ownership_type,
+                    listing?.raw?.ownershipType,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")
+                );
+              const images = getListingImages(listing);
+              const brokerage = String(
+                listing?.listing_brokerage || listing?.brokerage || ""
+              ).trim();
+
+          return (
+                                  <article
+                    class="card original-card"
+                    data-item-id={String(listing?.id || listing?.mls_number || "")}
+                    data-card-id={String(listing?.id || listing?.mls_number || "")}
+                    data-listing-id={String(listing?.id || listing?.mls_number || "")}
+                    data-price={price}
+                    data-raw-price={String(listing?.price || 0)}
+                    data-listed-at={String(listing?.listed_at || listing?.created_at || "")}
+                    data-address={address}
+                    data-meta={`${beds || "-"} bed | ${baths || "-"} bath`}
+                    data-image={image}
+                    data-images={JSON.stringify(images)}
+                    data-beds={String(beds)}
+                    data-baths={String(baths)}
+                    data-sqft={String(sqft)}
+                    data-description={description}
+
+                    data-fractional={String(isFractionalOwnership)}
+                    data-property-type={propertyType}
+                    data-type={getInventoryType(listing)}
+                    data-year={String(getListingYearBuilt(listing))}
+                    data-lot-size={String(getListingLotSize(listing))}
+                   data-area={String(getListingArea(listing))}
+data-ocean-view={String(listing?.ocean_view || "")}
+data-view-type={String(listing?.view_type || "")}
+data-waterfront={String(listing?.waterfront || "")}
+data-waterfront-type={String(listing?.waterfront_type || "")}
+data-liked-tags="[]"
+                    data-is-favourite="false"
+                    data-decision=""
+                    data-lat={listing?.lat || ""}
+                    data-lng={listing?.lng || ""}
+                    data-city={String(listing?.normalized_city || listing?.city || city || "")}
+                    data-mls={mls}
+                    data-listing-brokerage={brokerage}
+                    aria-label={`${price}   ${address}`}
+                  >
+               <div class="card-image-wrap" style="position: relative; overflow: hidden;">
+  <img src={image || "https://placehold.co/800x600?text=Photos+coming+soon"} alt={address || "Listing"} loading="lazy" decoding="async" />
+
+  {ownershipBadge && (<span class="fractional-ownership-badge" style="position:absolute;z-index:2;left:8px;bottom:8px;display:block;padding:3px 6px;background:rgba(23,35,44,.42);color:rgba(255,255,255,.9);border:0;border-radius:4px;font-size:10px;font-weight:600;line-height:1.1;text-transform:none;letter-spacing:0;box-shadow:none;">{ownershipBadge}</span>)}
+</div>
+
+                    <div class="card-body">
+                      <div class="price">{price}</div>
+                      <div class="address">{address}</div>
+<div class="card-city">{(city || "Nanaimo").replace(/\b\w/g, (char) => char.toUpperCase())}, BC</div>
+                      <div class="meta">
+                        <span>{beds || "-"} bd</span>
+                        <span>{baths || "-"} ba</span>
+                        {sqft && <span>{Number(sqft).toLocaleString()} sq ft</span>}
+                        {getListingLotSize(listing) && <span>Lot {getListingLotSize(listing)}</span>}
+                      </div>
+
+                      {brokerage && (
+                        <div class="card-brokerage">
+                          Courtesy of {brokerage}
+                        </div>
+                      )}
+
+                      <div class="card-decision-badge" hidden></div>
+                    </div>
+                                    </article>
+              );
+            })}
+                 </section>
+<button type="button" id="home-load-more" class="home-load-more-btn">Load more listings</button>
+
+<div
+  id="home-search-complete"
+  class="homepage-save-nudge home-search-complete-card"
+  hidden
+  aria-live="polite"
+  style="margin: 32px auto;"
+>
+  <div class="homepage-save-nudge__copy">
+    <span
+      id="home-search-complete-eyebrow"
+      style="display:block;margin-bottom:4px;font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.66;"
+    >
+      Search complete
+    </span>
+
+    <strong>You've seen every match</strong>
+
+    <span id="home-search-complete-copy">
+      Want to keep your search moving?
+    </span>
+  </div>
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <button
+      type="button"
+      class="interrupt-btn interrupt-primary"
+      id="home-more-budget-btn"
+      hidden
+    >
+      See more homes
+    </button>
+
+    <button
+      type="button"
+      class="interrupt-btn"
+      id="home-change-neighbourhood-btn"
+      hidden
+    >
+      Search nearby
+    </button>
+  </div>
+</div><div class="homepage-save-nudge-slot" style="margin-top: 32px;" data-save-search-prompt hidden={!hasActiveSearch}>
+  <div class="homepage-save-nudge">
+    <div class="homepage-save-nudge__copy">
+      <strong>Like these results?</strong>
+      <span>Save this search and get matching new listings sent to you.</span>
+    </div>
+
+    <button
+      type="button"
+      class="interrupt-btn interrupt-primary"
+      id="save-search-btn"
+    >
+      Save This Search
+    </button>
+  </div>
+  <div class="homepage-refine-panel" id="homepage-refine-panel" hidden>
+<p>
+  Refine the listings above:
+ <div id="refine-update-note" class="refine-update-note" hidden>
+  Showing updated matches above
+</div>
+</p>  <div class="homepage-refine-chips">
+    <button type="button" data-refine="views">Views</button>
+    <button type="button" data-refine="garage">Garage</button>
+    <button type="button" data-refine="yard">Yard</button>
+    <button type="button" data-refine="suite">Suite</button>
+    <button type="button" data-refine="updated">Updated</button>
+    <button type="button" data-refine="walkability">Walkable</button>
+  </div>
+</div>
+</div>
+
+  </>
+)}
+
+</div>
 
 
 
@@ -5213,402 +5669,6 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
 
 
 {isNanaimoMobilesSite && <MobileParksHome />}
-<div
-  class:list={[
-    "home-results-experience",
-    { "is-filtered": hasActiveSearch },
-  ]}
-  id="home-results-experience"
-  data-active-search={String(hasActiveSearch)}
->
-<div class="homepage-save-nudge-slot">
-<div class="homepage-save-nudge" data-save-search-prompt hidden={!hasActiveSearch}>
-  <div class="homepage-save-nudge__copy">
-    <strong>Like these results?</strong>
-    <span>Save this search and get matching new listings sent to you.</span>
-  </div>
-
-  <button
-    type="button"
-    class="interrupt-btn interrupt-primary"
-    id="hero-save-search-btn"
-  >
-    Save This Search
-  </button>
-</div>
-</div>
-
-<div class="homepage-save-search-form">
-    <SlugSaveSearch
-      siteId={site?.id}
-      city={city}
-      area={areas.join("|")}
-      propertyType={type}
-      minPrice={minPrice}
-      maxPrice={maxPrice}
-      waterfrontType=""
-      requiresWaterfront={false}
-      requiresOceanView={false}
-    />
-  </div>
-
-<div class="locus-home-listing-intro" id="homepage-listings">
-
-  <div>
-    <span class="locus-home-section-kicker">BROWSE EVERYTHING</span>
-    <h2 id="home-listings-title">All {cityName} Listings</h2>
-  </div>
-
-  <p>
-    Use the filters below to narrow the market, switch to map view,
-    or open any listing for full details.
-  </p>
-
-</div>
-
-<section class="home-search-summary" id="home-search-summary" hidden>
-  <div>
-    <p class="home-search-summary__eyebrow">Personalised Search</p>
-    <h2 id="home-search-summary-title">Your matched search</h2>
-    <p id="home-search-summary-copy"></p>
-  </div>
-
-  <div class="home-search-summary__stats">
-    <div>
-      <strong id="summary-match-count">0</strong>
-      <span>matching homes</span>
-    </div>
-    <div>
-      <strong id="summary-price-range"> </strong>
-      <span>price range</span>
-    </div>
-    <div>
-      <strong id="summary-area-count"> </strong>
-      <span>areas represented</span>
-    </div>
-  </div>
-</section>
-
-<div class="explore-toolbar">
-          <div class="view-pill">
-           <button type="button" class="view-pill__btn active" id="list-view-btn">&#9776; List</button>
-<button type="button" class="view-pill__btn" id="map-view-btn">&#8982; Map</button>
-          </div>
-              <form class="filter-form" method="get" id="home-filter-form">
-<input type="hidden" name="city" value={city || "nanaimo"} />
-<input type="hidden" name="minPrice" value={minPrice || ""} />
-<input type="hidden" name="storyMaxPrice" value="" />
-<input type="hidden" name="storyAreas" value={areas.join("|")} />
-<select name="area" class="filter-select" aria-label={isGreaterVictoriaMarket ? "Choose a district" : "Area"} data-gv-district-select={isGreaterVictoriaMarket ? "" : undefined}>
-  <option value="" selected={!area}>{isGreaterVictoriaMarket ? "All Greater Victoria" : "All Areas"}</option>
-  {areaOptions.map((areaOption) => (
-    <option value={areaOption} selected={area === areaOption}>
-      {areaOption.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())}
-    </option>
-  ))}
-</select>
-{isNanaimoMobilesSite ? (
-  <input type="hidden" name="type" value="mobile" />
-) : (
-  <select name="type" class="filter-select" aria-label="Property type">
-  <option value="" selected={!type}>All Types</option>
-
-  {propertyTypeOptions.map((propertyType) => (
-    <option value={propertyType === "homes" ? "house" : propertyType} data-count={homepageTypeOptionCount(propertyType)} selected={type === propertyType || type === "house" && propertyType === "homes"}>
-      {homepageTypeOptionLabel(propertyType)}
-    </option>
-  ))}
-</select>
-)}
-
- <select name="maxPrice" class="filter-select" aria-label="Max price">
-  <option value="" selected={!maxPrice}>Any Price</option>
-
-  {priceBandOptions.map((band) => (
-    <option
-      value={band.value}
-            selected={
-              band.kind === "over"
-                ? minPrice === band.threshold && !maxPrice
-                : maxPrice === band.threshold && !minPrice
-            }
-    >
-      {band.label}
-    </option>
-  ))}
-</select>
-
-<select name="beds" class="filter-select" aria-label="Bedrooms and floor plan">
-  <option value="" selected={!beds && !planMode}>Any Beds</option>
-        <optgroup label="Bedroom count">
-          {/* inventory-bed-notify-labels-v2 */}
-          {[2, 3, 4, 5].map((bedCount) => (
-            <option
-              value={String(bedCount)}
-              selected={beds === bedCount}
-            >
-              {bedCount}+ Beds{
-                bedroomOptions.includes(bedCount)
-                  ? ""
-                  : " - notify me"
-              }
-            </option>
-          ))}
-        </optgroup>
-</select>
-
-<select name="baths" class="filter-select" aria-label="Bathrooms">
-  <option value="" selected={!baths}>Any Baths</option>
-  <option value="1" selected={baths === 1}>1+ Baths</option>
-  <option value="2" selected={baths === 2}>2+ Baths</option>
-  <option value="3" selected={baths === 3}>3+ Baths</option>
-  <option value="4" selected={baths === 4}>4+ Baths</option>
-</select>
-
-<input type="hidden" name="minSqft" value={minSqft || ""} />
-<input type="hidden" name="minLotSqft" value={minLotSqft || ""} />
-<input type="hidden" name="minYear" value={minYear || ""} />
-<input type="hidden" name="primaryOnMain" value={primaryOnMain ? "true" : ""} />
-<input type="hidden" name="threeSameFloor" value={threeSameFloor ? "true" : ""} />
-<input type="hidden" name="fourSameFloor" value={fourSameFloor ? "true" : ""} />
-<input type="hidden" name="oceanViews" value="" />
-<input type="hidden" name="viewType" value={viewType} />
-<input type="hidden" name="waterfrontType" value={waterfrontType} />
-<input type="hidden" name="age55" value={age55 ? "true" : ""} />
-<input type="hidden" name="petsAllowed" value={petsAllowed ? "true" : ""} />
-<select name="sort" class="filter-select" aria-label="Sort">
-  <option value="newest" selected={sort === "newest"}>Newest first</option>
-  <option value="price-low" selected={sort === "price-low"}>Price low to high</option>
-  <option value="price-high" selected={sort === "price-high"}>Price high to low</option>
-</select>
-
-  <a href="?" class="filter-clear mobile-clear-button">Clear</a>
-</form>
-
-          </div>
-
-       <div
-         class="results-heading"
-         id={isNewMatchesView ? "new-matches" : undefined}
-       >
-  <p id="results-update-note">
-    <span id="results-count">{homepageListingCount}</span>
-    {
-      isNewMatchesView
-        ? homepageListingCount === 1
-          ? " New Match"
-          : " New Matches"
-        : " Active Listings"
-    }
-  </p>
-</div>
-
-        {errorMessage && <div class="empty">{errorMessage}</div>}
-
-               {!errorMessage && homepageListingCount === 0 && (
-          <div class="empty">
-            {
-              isNewMatchesView
-                ? "These new matches are no longer active."
-                : "No matching homes found yet."
-            }
-          </div>
-        )}
-
-      {!errorMessage && homepageListingCount > 0 && (
-  <>
-    <div id="intent-map" class="intent-map" hidden></div>
-
-<section id="home-listings-grid" class="grid" aria-label={`${homepageListingCount} listings${city ? ` in ${city}` : ""}`}> {listings.slice(0, 24).map((listing: any) => {              const image = getListingImage(listing);
-              const address = getListingAddress(listing);
-              const price = getListingPrice(listing);
-              const beds = getListingBeds(listing);
-              const baths = getListingBaths(listing);
-              const sqft = getListingSqft(listing);
-              const mls = getListingMls(listing);
-              const propertyType = getListingPropertyType(listing);
-              const description = getListingDescription(listing);
-              const ownershipText = [
-                description,
-                listing?.description,
-                listing?.raw?.description,
-                listing?.raw?.details?.description,
-              ].filter(Boolean).join(" | ");
-
-              const ownershipBadge =
-                /\bfractional\b|\b1\s*\/\s*(?:4|8)\s*(?:ownership|interest|share)\b|\b(?:quarter|one[-\s]?quarter|half|one[-\s]?half|eighth|one[-\s]?eighth)[-\s]+(?:ownership|interest|share)\b/i.test(ownershipText)
-                  ? "Fractional Ownership"
-                  : /\btime[-\s]?share\b|\bweek\s+\d+\b/i.test(ownershipText)
-                    ? "Timeshare"
-                    : /\bphase\s*(?:ii|2)\b/i.test(ownershipText)
-                      ? "Hotel Phase II"
-                      : /\bhotel\b/i.test(ownershipText)
-                        ? "Hotel Suite"
-                        : "";
-
-              const isFractionalOwnership =
-                /\bfractional\b|\b1\s*\/\s*(?:4|8)\s*(?:ownership|interest|share)\b|\b(?:quarter|one[-\s]?quarter|half|one[-\s]?half|eighth|one[-\s]?eighth)[-\s]+(?:ownership|interest|share)\b/i.test(
-                  [
-                    description,
-                    listing?.ownership_type,
-                    listing?.ownershipType,
-                    listing?.raw?.ownership_type,
-                    listing?.raw?.ownershipType,
-                  ]
-                    .filter(Boolean)
-                    .join(" ")
-                );
-              const images = getListingImages(listing);
-              const brokerage = String(
-                listing?.listing_brokerage || listing?.brokerage || ""
-              ).trim();
-
-          return (
-                                  <article
-                    class="card original-card"
-                    data-item-id={String(listing?.id || listing?.mls_number || "")}
-                    data-card-id={String(listing?.id || listing?.mls_number || "")}
-                    data-listing-id={String(listing?.id || listing?.mls_number || "")}
-                    data-price={price}
-                    data-raw-price={String(listing?.price || 0)}
-                    data-listed-at={String(listing?.listed_at || listing?.created_at || "")}
-                    data-address={address}
-                    data-meta={`${beds || "-"} bed | ${baths || "-"} bath`}
-                    data-image={image}
-                    data-images={JSON.stringify(images)}
-                    data-beds={String(beds)}
-                    data-baths={String(baths)}
-                    data-sqft={String(sqft)}
-                    data-description={description}
-
-                    data-fractional={String(isFractionalOwnership)}
-                    data-property-type={propertyType}
-                    data-type={getInventoryType(listing)}
-                    data-year={String(getListingYearBuilt(listing))}
-                    data-lot-size={String(getListingLotSize(listing))}
-                   data-area={String(getListingArea(listing))}
-data-ocean-view={String(listing?.ocean_view || "")}
-data-view-type={String(listing?.view_type || "")}
-data-waterfront={String(listing?.waterfront || "")}
-data-waterfront-type={String(listing?.waterfront_type || "")}
-data-liked-tags="[]"
-                    data-is-favourite="false"
-                    data-decision=""
-                    data-lat={listing?.lat || ""}
-                    data-lng={listing?.lng || ""}
-                    data-city={String(listing?.normalized_city || listing?.city || city || "")}
-                    data-mls={mls}
-                    data-listing-brokerage={brokerage}
-                    aria-label={`${price}   ${address}`}
-                  >
-               <div class="card-image-wrap" style="position: relative; overflow: hidden;">
-  <img src={image || "https://placehold.co/800x600?text=Photos+coming+soon"} alt={address || "Listing"} loading="lazy" decoding="async" />
-
-  {ownershipBadge && (<span class="fractional-ownership-badge" style="position:absolute;z-index:2;left:8px;bottom:8px;display:block;padding:3px 6px;background:rgba(23,35,44,.42);color:rgba(255,255,255,.9);border:0;border-radius:4px;font-size:10px;font-weight:600;line-height:1.1;text-transform:none;letter-spacing:0;box-shadow:none;">{ownershipBadge}</span>)}
-</div>
-
-                    <div class="card-body">
-                      <div class="price">{price}</div>
-                      <div class="address">{address}</div>
-<div class="card-city">{(city || "Nanaimo").replace(/\b\w/g, (char) => char.toUpperCase())}, BC</div>
-                      <div class="meta">
-                        <span>{beds || "-"} bd</span>
-                        <span>{baths || "-"} ba</span>
-                        {sqft && <span>{Number(sqft).toLocaleString()} sq ft</span>}
-                        {getListingLotSize(listing) && <span>Lot {getListingLotSize(listing)}</span>}
-                      </div>
-
-                      {brokerage && (
-                        <div class="card-brokerage">
-                          Courtesy of {brokerage}
-                        </div>
-                      )}
-
-                      <div class="card-decision-badge" hidden></div>
-                    </div>
-                                    </article>
-              );
-            })}
-                 </section>
-<button type="button" id="home-load-more" class="home-load-more-btn">Load more listings</button>
-
-<div
-  id="home-search-complete"
-  class="homepage-save-nudge home-search-complete-card"
-  hidden
-  aria-live="polite"
-  style="margin: 32px auto;"
->
-  <div class="homepage-save-nudge__copy">
-    <span
-      id="home-search-complete-eyebrow"
-      style="display:block;margin-bottom:4px;font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.66;"
-    >
-      Search complete
-    </span>
-
-    <strong>You've seen every match</strong>
-
-    <span id="home-search-complete-copy">
-      Want to keep your search moving?
-    </span>
-  </div>
-
-  <div style="display:flex;gap:10px;flex-wrap:wrap;">
-    <button
-      type="button"
-      class="interrupt-btn interrupt-primary"
-      id="home-more-budget-btn"
-      hidden
-    >
-      See more homes
-    </button>
-
-    <button
-      type="button"
-      class="interrupt-btn"
-      id="home-change-neighbourhood-btn"
-      hidden
-    >
-      Search nearby
-    </button>
-  </div>
-</div><div class="homepage-save-nudge-slot" style="margin-top: 32px;" data-save-search-prompt hidden={!hasActiveSearch}>
-  <div class="homepage-save-nudge">
-    <div class="homepage-save-nudge__copy">
-      <strong>Like these results?</strong>
-      <span>Save this search and get matching new listings sent to you.</span>
-    </div>
-
-    <button
-      type="button"
-      class="interrupt-btn interrupt-primary"
-      id="save-search-btn"
-    >
-      Save This Search
-    </button>
-  </div>
-  <div class="homepage-refine-panel" id="homepage-refine-panel" hidden>
-<p>
-  Refine the listings above:
- <div id="refine-update-note" class="refine-update-note" hidden>
-  Showing updated matches above
-</div>
-</p>  <div class="homepage-refine-chips">
-    <button type="button" data-refine="views">Views</button>
-    <button type="button" data-refine="garage">Garage</button>
-    <button type="button" data-refine="yard">Yard</button>
-    <button type="button" data-refine="suite">Suite</button>
-    <button type="button" data-refine="updated">Updated</button>
-    <button type="button" data-refine="walkability">Walkable</button>
-  </div>
-</div>
-</div>
-
-  </>
-)}
-
-</div>
 
         <section
   class="homepage-agent-nudge"
