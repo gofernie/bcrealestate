@@ -1,0 +1,186 @@
+---
+import { createClient } from "@supabase/supabase-js";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const TAGS = ["Housing", "Development", "Infrastructure", "Amenities", "Community"];
+const AREAS = [["fernie", "Fernie"], ["sparwood", "Sparwood"], ["elk-valley", "Elk Valley"]];
+const STATUSES = [["pending", "Pending"], ["approved", "Live"], ["skipped", "Skipped"]];
+const MESSAGES = { save: "Saved", approve: "Published", skip: "Skipped", unpublish: "Moved back to pending" };
+
+// ---- Handle button clicks (POST back to this page, then redirect) ----
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const id = Number(f.get("id"));
+  const action = String(f.get("action") || "");
+  let msg = "";
+
+  if (id && action in MESSAGES) {
+    const patch = {};
+    if (f.has("title")) {
+      patch.title = String(f.get("title") || "").trim();
+      patch.blurb = String(f.get("blurb") || "").trim();
+      patch.tag = String(f.get("tag") || "") || null;
+      patch.city = String(f.get("city") || "none");
+    }
+    if (action === "approve") patch.status = "approved";
+    if (action === "skip") patch.status = "skipped";
+    if (action === "unpublish") patch.status = "pending";
+
+    if (action === "approve" && (!patch.title || !patch.blurb || patch.city === "none")) {
+      msg = "Add a headline, blurb and town before publishing.";
+    } else {
+      const { error } = await supabase.from("local_news").update(patch).eq("id", id);
+      msg = error ? `Error: ${error.message}` : MESSAGES[action];
+    }
+  }
+
+  const back = new URL(Astro.url);
+  back.searchParams.set("msg", msg);
+  return Astro.redirect(back.pathname + back.search, 303);
+}
+
+// ---- Load the list ----
+const status = Astro.url.searchParams.get("status") || "pending";
+const city = Astro.url.searchParams.get("city") || "";
+const msg = Astro.url.searchParams.get("msg") || "";
+
+let q = supabase
+  .from("local_news")
+  .select("*")
+  .eq("status", status)
+  .order("published_at", { ascending: false })
+  .limit(100);
+if (city) q = q.eq("city", city);
+const { data } = await q;
+const items = data ?? [];
+
+const { data: statusRows } = await supabase.from("local_news").select("status");
+const counts = {};
+for (const r of statusRows ?? []) counts[r.status] = (counts[r.status] || 0) + 1;
+
+const fmt = (d) => d ? new Date(d).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" }) : "";
+const link = (s, c) => {
+  const p = new URLSearchParams();
+  p.set("status", s);
+  if (c) p.set("city", c);
+  return `/admin/news?${p.toString()}`;
+};
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Local news · Admin</title>
+  <meta name="robots" content="noindex" />
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <div>
+        <a class="back" href="/admin">&larr; Admin</a>
+        <h1>Local news</h1>
+        <p class="sub">Approve, edit or skip stories for the city pages. Add new ones by texting a link to your news number.</p>
+      </div>
+    </header>
+
+    {msg && <div class="flash">{msg}</div>}
+
+    <nav class="tabs">
+      {STATUSES.map(([s, label]) => (
+        <a href={link(s, city)} class={s === status ? "on" : ""}>{label} <span>{counts[s] || 0}</span></a>
+      ))}
+    </nav>
+    <nav class="towns">
+      <a href={link(status, "")} class={!city ? "on" : ""}>All towns</a>
+      {AREAS.map(([v, label]) => (
+        <a href={link(status, v)} class={city === v ? "on" : ""}>{label}</a>
+      ))}
+    </nav>
+
+    {items.length === 0 && <p class="empty">Nothing here.</p>}
+
+    <div class="list">
+      {items.map((n) => (
+        <form method="post" class="card">
+          <input type="hidden" name="id" value={n.id} />
+          <div class="meta">
+            <a href={n.url} target="_blank" rel="noopener">{n.source} &rarr;</a>
+            <span>{fmt(n.published_at)}</span>
+            {n.via === "sms" && <span class="badge">texted</span>}
+          </div>
+          {n.source_title && <p class="orig">Original: {n.source_title}</p>}
+
+          <label>Headline
+            <input name="title" value={n.title || ""} maxlength="90" />
+          </label>
+          <label>Blurb
+            <textarea name="blurb" rows="3">{n.blurb || ""}</textarea>
+          </label>
+          <div class="row">
+            <label>Town
+              <select name="city">
+                <option value="none" selected={!AREAS.some(([v]) => v === n.city)}>— choose —</option>
+                {AREAS.map(([v, label]) => <option value={v} selected={n.city === v}>{label}</option>)}
+              </select>
+            </label>
+            <label>Tag
+              <select name="tag">
+                <option value="" selected={!n.tag}>— none —</option>
+                {TAGS.map((t) => <option value={t} selected={n.tag === t}>{t}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <div class="actions">
+            {status !== "approved" && <button name="action" value="approve" class="primary">Publish</button>}
+            <button name="action" value="save">Save</button>
+            {status === "approved" && <button name="action" value="unpublish">Unpublish</button>}
+            {status !== "skipped" && <button name="action" value="skip" class="quiet">Skip</button>}
+          </div>
+        </form>
+      ))}
+    </div>
+  </main>
+
+  <style>
+    :root { --ink: #1d2b24; --muted: #6b7a72; --line: #dfe6e1; --bg: #f6f7f5; --accent: #2f7d57; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 32px 16px 80px; }
+    .back { color: var(--muted); text-decoration: none; font-size: 13px; }
+    h1 { margin: 6px 0 4px; font-size: 28px; }
+    .sub { margin: 0; color: var(--muted); }
+    .flash { margin: 18px 0 0; padding: 10px 14px; border-radius: 8px; background: #e7f3ec; color: var(--accent); font-weight: 600; }
+    .tabs, .towns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .towns { margin-top: 10px; }
+    .tabs a, .towns a { padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--ink); text-decoration: none; font-size: 14px; }
+    .towns a { padding: 5px 12px; font-size: 13px; }
+    .tabs a span { color: var(--muted); margin-left: 4px; }
+    .tabs a.on, .towns a.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .tabs a.on span { color: #cfd8d3; }
+    .empty { color: var(--muted); margin-top: 32px; }
+    .list { display: grid; gap: 14px; margin-top: 22px; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: grid; gap: 10px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 13px; color: var(--muted); }
+    .meta a { color: var(--accent); font-weight: 600; text-decoration: none; }
+    .badge { background: #eef2ff; color: #4451a3; border-radius: 999px; padding: 1px 8px; font-size: 12px; }
+    .orig { margin: 0; font-size: 13px; color: var(--muted); }
+    label { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    input, textarea, select { font: inherit; text-transform: none; letter-spacing: 0; color: var(--ink); font-weight: 400; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; width: 100%; }
+    textarea { resize: vertical; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    button { font: inherit; font-size: 14px; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    button.quiet { color: var(--muted); margin-left: auto; }
+    @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+  </style>
+</body>
+</html>
