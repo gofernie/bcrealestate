@@ -1,4 +1,4 @@
-function initIntentReviewModal() {
+﻿function initIntentReviewModal() {
         const sheet = document.getElementById("preview-sheet");
         const overlay = document.getElementById("sheet-overlay");
 
@@ -5858,18 +5858,7 @@ maybeBtn?.addEventListener("click", () => {
 passBtn?.addEventListener("click", () => {
   popDecisionEmojisFromButton(passBtn, ["\u00D7"], 1);
   saveIntentDecision("pass");
-
-
-  const nextBtn = document.getElementById("sheet-next-btn");
-  if (nextBtn) {
-    setTimeout(() => {
-      nextBtn.classList.add("is-pulsing");
-      setTimeout(() => {
-        nextBtn.classList.remove("is-pulsing");
-        goNext();
-      }, 1800);
-    }, 1200);
-  }
+  cancelIdleAdvance();
 });
 
 askQuestionBtn?.addEventListener("click", () => {
