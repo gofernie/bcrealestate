@@ -199,6 +199,27 @@ const pageIdeas = [
   },
 ];
 
+if (Astro.request.method === "POST") {
+  const rankForm = await Astro.request.formData();
+  if (String(rankForm.get("action") || "") === "save_ranks") {
+    const rankUpdates: any[] = [];
+    for (const [key, value] of rankForm.entries()) {
+      const match = /^rank_(.+)$/.exec(String(key));
+      if (!match) continue;
+      const raw = String(value || "").trim();
+      const rank = raw ? Math.max(1, Math.round(Number(raw))) : null;
+      rankUpdates.push(
+        supabase
+          .from("intent_pages")
+          .update({ featured_rank: Number.isFinite(rank as number) ? rank : null })
+          .eq("id", match[1])
+          .eq("site_id", siteId)
+      );
+    }
+    await Promise.all(rankUpdates);
+    return Astro.redirect(`${Astro.url.pathname}${Astro.url.search}#my-pages`, 303);
+  }
+}
 const { data: customPages = [], error: pagesError } = await supabase
   .from("intent_pages")
   .select(`
@@ -210,6 +231,7 @@ const { data: customPages = [], error: pagesError } = await supabase
     lifestyle_angle,
     property_type,
     is_published,
+    featured_rank,
     show_in_nav,
     sort_order,
     created_at
@@ -264,6 +286,83 @@ function ideaHref(template: string) {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
     <style is:global>
+  /* my-pages: compact drag list v2 */
+  #my-pages .custom-pages { display: flex !important; flex-direction: column !important; gap: 6px !important; counter-reset: pagerow; }
+  #my-pages .custom-page-row {
+    counter-increment: pagerow;
+    position: relative; display: flex !important; align-items: center !important; gap: 14px !important;
+    margin: 0 !important; padding: 10px 14px 10px 62px !important; min-height: 0 !important;
+    border-radius: 10px !important; cursor: grab; transition: box-shadow .15s ease, opacity .15s ease;
+  }
+  #my-pages .custom-page-row::before {
+    content: "\2807\2807  " counter(pagerow);
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    font-size: .8rem; font-weight: 800; color: #9a958d; letter-spacing: -1px; white-space: pre;
+  }
+  #my-pages .custom-page-row:nth-child(-n+6)::before { color: #1f6f73; }
+  #my-pages .custom-page-row:nth-child(-n+6) { border-left: 3px solid #1f6f73 !important; }
+  #my-pages .custom-page-row:nth-child(6) { margin-bottom: 30px !important; }
+  #my-pages .custom-page-row:nth-child(6)::after {
+    content: "Home page shows the top 6 \2014 drag a page above this line to feature it";
+    position: absolute; left: 0; right: 0; bottom: -24px;
+    font-size: .72rem; font-weight: 700; letter-spacing: .04em; color: #1f6f73;
+    border-top: 1px dashed rgba(31, 111, 115, .5); padding-top: 4px; text-align: center; pointer-events: none;
+  }
+  #my-pages .custom-page-row.is-dragging { opacity: .45; }
+  #my-pages .custom-page-row.is-over { box-shadow: 0 0 0 2px #1f6f73 inset; }
+  #my-pages .custom-page-row > div:first-child { display: flex !important; align-items: center !important; gap: 14px !important; flex: 1 1 auto; min-width: 0; flex-wrap: nowrap !important; }
+  #my-pages .custom-page-row > div:first-child > *:not(.page-title-row) { margin: 0 !important; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .76rem; }
+  #my-pages .custom-page-row .page-title-row { display: flex; align-items: center; gap: 8px; margin: 0 !important; flex-shrink: 0; }
+  #my-pages .custom-page-row h3 { margin: 0 !important; font-size: .98rem !important; white-space: nowrap; }
+  #my-pages .custom-page-row > div:last-child { flex-shrink: 0; margin: 0 !important; }
+  #my-pages .custom-page-row a, #my-pages .custom-page-row button { cursor: pointer; }
+  #my-pages .rank-chip { display: none !important; }
+  #my-pages .rank-form { display: inline-flex; margin: 0; }
+  #my-pages .rank-form .is-saved { border-color: #1f6f73; color: #1f6f73; }
+  @media (max-width: 900px) {
+    #my-pages .custom-page-row > div:first-child > *:not(.page-title-row) { display: none; }
+  }
+</style>
+<script is:inline>
+const initMyPagesDrag = () => {
+  const list = document.querySelector("#my-pages .custom-pages");
+  const form = document.getElementById("rank-form");
+  if (!list || !form || list.__dragReady) return;
+  list.__dragReady = true;
+  const btn = form.querySelector('button[type="submit"]');
+  const rows = () => [...list.querySelectorAll(".custom-page-row")];
+  const renumber = () => rows().forEach((row, i) => { const input = row.querySelector('input[name^="rank_"]'); if (input) input.value = String(i + 1); });
+  const save = async () => {
+    renumber();
+    if (btn) { btn.textContent = "Saving\u2026"; btn.classList.remove("is-saved"); }
+    try {
+      const res = await fetch(location.pathname + location.search, { method: "POST", body: new FormData(form), redirect: "follow" });
+      if (btn) { btn.textContent = res.ok ? "Saved \u2713" : "Save failed"; if (res.ok) btn.classList.add("is-saved"); }
+    } catch { if (btn) btn.textContent = "Save failed"; }
+  };
+  let dragged = null;
+  rows().forEach((row) => {
+    row.draggable = true;
+    row.addEventListener("dragstart", (e) => { dragged = row; row.classList.add("is-dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", ""); });
+    row.addEventListener("dragend", () => { row.classList.remove("is-dragging"); rows().forEach((r) => r.classList.remove("is-over")); if (dragged) { dragged = null; save(); } });
+    row.addEventListener("dragover", (e) => {
+      if (!dragged || dragged === row) return;
+      e.preventDefault();
+      const rect = row.getBoundingClientRect();
+      const after = e.clientY > rect.top + rect.height / 2;
+      rows().forEach((r) => r.classList.remove("is-over"));
+      row.classList.add("is-over");
+      list.insertBefore(dragged, after ? row.nextSibling : row);
+    });
+    row.addEventListener("drop", (e) => e.preventDefault());
+  });
+  form.addEventListener("submit", (e) => { e.preventDefault(); save(); });
+};
+initMyPagesDrag();
+document.addEventListener("DOMContentLoaded", initMyPagesDrag);
+document.addEventListener("astro:page-load", initMyPagesDrag);
+</script>
+<style is:global>
       .mobile-topbar,
       .drawer-overlay {
         display: none;
@@ -670,6 +769,11 @@ function ideaHref(template: string) {
             >
               + Create custom page
             </a>
+
+            <form id="rank-form" method="post" class="rank-form">
+              <input type="hidden" name="action" value="save_ranks" />
+              <button type="submit" class="button">Save order</button>
+            </form>
           </div>
 
           {pagesError && (
@@ -688,7 +792,7 @@ function ideaHref(template: string) {
             </div>
           ) : (
             <div class="custom-pages">
-              {customPages.map((customPage) => (
+              {[...customPages].sort((a: any, b: any) => (Number(a.featured_rank) || 999) - (Number(b.featured_rank) || 999)).map((customPage: any) => (
                 <article class="custom-page-row">
                   <div>
                     <div class="page-title-row">
@@ -697,6 +801,7 @@ function ideaHref(template: string) {
                           customPage.nav_label ||
                           titleCase(customPage.slug)}
                       </h3>
+                      <label class="rank-chip" title="Home page rank: 1 shows first, blank = not pinned">Home #<input form="rank-form" type="number" min="1" max="99" inputmode="numeric" name={`rank_${customPage.id}`} value={customPage.featured_rank ?? ""} /></label>
 
                       <span
                         class:list={[

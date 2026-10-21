@@ -4,6 +4,8 @@ import Layout from "../../layouts/Layout.astro";
 import SiteNav from "../../components/SiteNav.astro";
 import { getSite } from "../../lib/getSite";
 import { getNavIntentPages } from "../../lib/getNavIntentPages";
+import { loadGreaterVictoriaData } from "../../lib/greaterVictoria";
+import { countIntentListings } from "../../lib/intentCounts";
 
 export const prerender = false;
 
@@ -12,8 +14,10 @@ const supabase = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const city = String(Astro.params.city || "nanaimo").toLowerCase().trim();
-const site = await getSite(Astro.url.hostname, city);
+const city = String(Astro.params.city || Astro.url.pathname.split("/").filter(Boolean)[0] || "nanaimo").toLowerCase().trim().replace(/-intent$/, "");
+const siteRow: any = await getSite(Astro.url.hostname, city);
+const siteCityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+const site: any = { ...(siteRow || {}), city, site_name: `${siteCityLabel} Homes`, accent_color: siteRow?.accent_color || "#2f6f73" };
 const navIntentPages = await getNavIntentPages(supabase, site?.id);
 
 const titleCase = (value: unknown) =>
@@ -23,8 +27,26 @@ const cityLabel = titleCase(city);
 const accent = (site as any)?.accent_color || (site as any)?.accent || "#2a6f73";
 
 let query = supabase.from("intent_pages").select("*");
-query = site?.id ? query.eq("site_id", site.id) : query.is("site_id", null);
+query = query.eq("city", city);
 const { data: rows } = await query;
+
+let inventory: any[] = [];
+if (city === "greater-victoria") {
+  const gv: any = await loadGreaterVictoriaData();
+  inventory = gv?.listings || [];
+} else {
+  const keys = Array.from(new Set(
+    ["saanich-east", "saanich-west"].includes(city) ? [city, city.replace(/-/g, " "), "saanich"]
+      : city === "comox" ? ["comox", "courtenay", "cumberland", "black creek", "merville", "union bay", "fanny bay", "royston", "denman island"]
+      : [city, city.replace(/-/g, " ")]
+  ));
+  const { data: inv } = await supabase
+    .from("listing_rows")
+    .select("normalized_type, property_type, normalized_area, price, waterfront, waterfront_type, view_type, beds, baths, sqft, lot_size_sqft, lot_size_acres")
+    .in("normalized_city", keys)
+    .range(0, 9999);
+  inventory = inv || [];
+}
 
 const typeLabels: Record<string, string> = {
   house: "Homes",
@@ -37,8 +59,9 @@ const typeOrder = ["Homes", "Condos", "Townhomes", "Mobile Homes", "Land", "More
 const cityPrefix = new RegExp(`^${cityLabel}\\s+(?=\\S)`, "i");
 
 const pages = (rows || [])
-  .filter((row: any) => row.slug)
+  .filter((row: any) => row.slug && String(row.city || "").toLowerCase() === city)
   .map((row: any) => ({
+    count: countIntentListings(row, inventory),
     href: `/${row.city || city}/${String(row.slug).replace(/^\/+/, "")}`,
     title: String(row.hero_heading || row.seo_heading || titleCase(row.slug)).replace(cityPrefix, ""),
     type: String(row.property_type || "").toLowerCase(),
@@ -97,11 +120,11 @@ const short = (text: string) => (text.length > 140 ? `${text.slice(0, 137).trim(
       <div class="searches-hub__groups">
         {typeGroups.map(([label, items]) => (
           <div class="searches-hub__group">
-            <h3>{label}</h3>
+            <h3>{label} <small>{items.length}</small></h3>
             <ul>
               {items.map((p: any) => (
                 <li>
-                  <a href={p.href}>{p.title}</a>
+                  <a href={p.href}>{p.title}</a>{p.count > 0 && <em class="searches-hub__count">{`${p.count.toLocaleString()} for sale`}</em>}
                   {p.copy && <span>{short(p.copy)}</span>}
                 </li>
               ))}
@@ -117,10 +140,10 @@ const short = (text: string) => (text.length > 140 ? `${text.slice(0, 137).trim(
         <div class="searches-hub__groups">
           {areaGroups.map(([label, items]) => (
             <div class="searches-hub__group">
-              <h3>{label}</h3>
+              <h3>{label} <small>{items.length}</small></h3>
               <ul>
                 {items.map((p: any) => (
-                  <li><a href={p.href}>{p.title}</a></li>
+                  <li><a href={p.href}>{p.title}</a>{p.count > 0 && <em class="searches-hub__count">{`${p.count.toLocaleString()} for sale`}</em>}</li>
                 ))}
               </ul>
             </div>
@@ -131,18 +154,24 @@ const short = (text: string) => (text.length > 140 ? `${text.slice(0, 137).trim(
   </main>
 </Layout>
 
-<style>
-  .searches-hub { max-width: 1120px; margin: 0 auto; padding: 48px 20px 80px; }
-  .searches-hub__kicker { margin: 0 0 6px; font-size: .72rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; opacity: .65; }
-  .searches-hub__head h1 { margin: 0 0 10px; font-family: "Instrument Serif", Georgia, serif; font-weight: 400; font-size: clamp(2rem, 4vw, 2.8rem); }
-  .searches-hub__lede { margin: 0; max-width: 620px; opacity: .8; }
-  .searches-hub__lede a { margin-left: 6px; font-weight: 700; color: var(--accent, #2a6f73); }
-  .searches-hub__section { margin-top: 48px; }
-  .searches-hub__section > h2 { margin: 0 0 18px; padding-bottom: 10px; border-bottom: 1px solid rgba(15, 30, 45, .1); font-size: 1.1rem; }
-  .searches-hub__groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 28px 32px; }
-  .searches-hub__group h3 { margin: 0 0 10px; font-size: .78rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
-  .searches-hub__group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-  .searches-hub__group li a { font-weight: 700; color: var(--accent, #2a6f73); text-decoration: none; }
-  .searches-hub__group li a:hover { text-decoration: underline; text-underline-offset: 3px; }
-  .searches-hub__group li span { display: block; margin-top: 2px; font-size: .85rem; line-height: 1.45; opacity: .72; }
+<style is:global>
+html body main.searches-hub { max-width: 1120px !important; margin: 0 auto !important; padding: 48px 20px 88px !important; }
+html body main.searches-hub .searches-hub__kicker { margin: 0 0 6px !important; font-size: .72rem !important; font-weight: 800 !important; letter-spacing: .1em !important; text-transform: uppercase !important; opacity: .65 !important; }
+html body main.searches-hub .searches-hub__head h1 { margin: 0 0 12px !important; font-family: "Instrument Serif", Georgia, serif !important; font-weight: 400 !important; font-size: clamp(2.1rem, 4vw, 3rem) !important; line-height: 1.05 !important; }
+html body main.searches-hub .searches-hub__lede { margin: 0 !important; max-width: 680px !important; font-size: 1.02rem !important; opacity: .82 !important; }
+html body main.searches-hub .searches-hub__lede a { display: inline-block !important; white-space: nowrap !important; margin-left: 6px !important; font-weight: 700 !important; color: var(--accent, #2a6f73) !important; text-decoration: none !important; }
+html body main.searches-hub .searches-hub__section { margin-top: 52px !important; }
+html body main.searches-hub .searches-hub__section > h2 { margin: 0 0 6px !important; font-family: "Instrument Serif", Georgia, serif !important; font-weight: 400 !important; font-size: 1.75rem !important; }
+html body main.searches-hub .searches-hub__groups { display: block !important; }
+html body main.searches-hub .searches-hub__group { display: grid !important; grid-template-columns: 200px 1fr !important; gap: 24px !important; padding: 22px 0 !important; border-top: 1px solid rgba(15, 30, 45, .1) !important; background: transparent !important; box-shadow: none !important; border-radius: 0 !important; }
+html body main.searches-hub .searches-hub__group h3 { display: flex !important; align-items: center !important; gap: 10px !important; align-self: start !important; margin: 6px 0 0 !important; padding: 0 !important; border: 0 !important; font-size: .78rem !important; font-weight: 800 !important; letter-spacing: .09em !important; text-transform: uppercase !important; }
+html body main.searches-hub .searches-hub__group h3 small { padding: 2px 8px !important; border-radius: 999px !important; background: color-mix(in srgb, var(--accent, #2a6f73) 12%, #fff) !important; color: var(--accent, #2a6f73) !important; font-size: .72rem !important; letter-spacing: 0 !important; }
+html body main.searches-hub .searches-hub__group ul { list-style: none !important; margin: 0 !important; padding: 0 !important; display: grid !important; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)) !important; gap: 12px !important; }
+html body main.searches-hub .searches-hub__group li { position: relative !important; padding: 14px 16px !important; margin: 0 !important; background: #fff !important; border: 1px solid rgba(15, 30, 45, .1) !important; border-radius: 12px !important; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease !important; }
+html body main.searches-hub .searches-hub__group li:hover { border-color: color-mix(in srgb, var(--accent, #2a6f73) 40%, #d8dde2) !important; box-shadow: 0 8px 20px rgba(15, 30, 45, .07) !important; transform: translateY(-1px) !important; }
+html body main.searches-hub .searches-hub__group li a { display: block !important; font-family: "Instrument Serif", Georgia, serif !important; font-size: 1.15rem !important; font-weight: 400 !important; line-height: 1.25 !important; color: #142330 !important; text-decoration: none !important; }
+html body main.searches-hub .searches-hub__group li a::after { content: "" !important; position: absolute !important; inset: 0 !important; border-radius: 12px !important; }
+html body main.searches-hub .searches-hub__group li span { display: -webkit-box !important; -webkit-line-clamp: 2 !important; -webkit-box-orient: vertical !important; overflow: hidden !important; margin-top: 4px !important; font-size: .84rem !important; line-height: 1.45 !important; opacity: .68 !important; }
+@media (max-width: 720px) { html body main.searches-hub .searches-hub__group { grid-template-columns: 1fr !important; gap: 12px !important; } }
+html body main.searches-hub .searches-hub__count { display: inline-block !important; margin-top: 6px !important; font-style: normal !important; font-size: .72rem !important; font-weight: 800 !important; letter-spacing: .06em !important; text-transform: uppercase !important; color: var(--accent, #2a6f73) !important; }
 </style>
