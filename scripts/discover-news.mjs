@@ -111,6 +111,19 @@ Reply with JSON only:
   return JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
 }
 
+// Skip stories that repeat one already published/pending for the same town in the last 30 days
+const words = (s = '') => new Set(String(s).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w.length > 3));
+const similar = (a, b) => {
+  const A = words(a), B = words(b);
+  if (!A.size || !B.size) return false;
+  let n = 0;
+  for (const w of A) if (B.has(w)) n++;
+  return n / Math.min(A.size, B.size) >= 0.6;
+};
+const { data: recentRows } = await sb.from('local_news').select('city,title')
+  .in('status', ['approved', 'pending']).gte('published_at', new Date(Date.now() - 30 * 864e5).toISOString());
+const recent = (recentRows ?? []).filter((r) => r.title);
+
 const newPending = [];
 
 for (const src of SOURCES) {
@@ -140,13 +153,15 @@ for (const src of SOURCES) {
       try {
         const ai = await summarize(src, it.title, it.body);
         if (ai.relevant && REGIONS[src.region].areas.includes(ai.area)) {
-          row = { ...row, city: ai.area, title: ai.title, blurb: ai.blurb, tag: ai.tag, status: AUTO ? 'approved' : 'pending' };
+          row = { ...row, city: ai.area, title: ai.title, blurb: ai.blurb, tag: ai.tag, status: (AUTO || !src.review) ? 'approved' : 'pending' };
+          if (recent.some((r) => r.city === ai.area && similar(r.title, ai.title))) row = { ...row, status: 'skipped' };
+          else recent.push({ city: ai.area, title: ai.title });
         }
       } catch (e) { console.warn(`  AI failed, retry next run: ${it.title} (${e.message})`); continue; }
     }
 
     const { error } = await sb.from('local_news').insert(row);
-    if (!error && row.status === 'pending') newPending.push(row.title);
+    if (!error && row.status !== 'skipped') newPending.push(row.title);
     console.log(error ? `  ERR      ${it.title}: ${error.message}` : `  ${row.status.padEnd(8)} [${row.city}] ${row.title || it.title}`);
   }
 }
@@ -159,7 +174,7 @@ if (newPending.length && process.env.TWILIO_ACCOUNT_SID && process.env.NEWS_SMS_
   const sid = process.env.TWILIO_ACCOUNT_SID, token = process.env.TWILIO_AUTH_TOKEN;
   const list = newPending.slice(0, 3).map(t => `- ${t}`).join('\n');
   const more = newPending.length > 3 ? `\n...and ${newPending.length - 3} more` : '';
-  const body = `News: ${newPending.length} new local ${newPending.length === 1 ? 'story' : 'stories'} to review:\n${list}${more}\n\nbc.realestate/admin/news`;
+  const body = `News: ${newPending.length} new local ${newPending.length === 1 ? 'story' : 'stories'} published:\n${list}${more}\n\nUnpublish any: bc.realestate/admin/news`;
   const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
     method: 'POST',
     headers: { authorization: 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64'), 'content-type': 'application/x-www-form-urlencoded' },
