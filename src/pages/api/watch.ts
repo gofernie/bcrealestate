@@ -23,6 +23,9 @@ export const POST: APIRoute = async ({ request, url }) => {
   const address = String(body.address || "").trim().slice(0, 200) || null;
   const price = Number(String(body.price ?? "").replace(/[^0-9.]/g, "")) || null;
   const status = String(body.status || "").trim().slice(0, 40) || null;
+  const rawPath = String(body.page_path || "/");
+  const pagePath = /^\/[A-Za-z0-9\/_-]*$/.test(rawPath) ? rawPath : "/";
+  const listingUrl = `${url.origin}${pagePath}?listing_id=${encodeURIComponent(listingId)}`;
 
   if (!phone) return json({ ok: false, error: "Enter a 10-digit mobile number." }, 400);
   if (!listingId) return json({ ok: false, error: "Missing listing." }, 400);
@@ -44,6 +47,7 @@ export const POST: APIRoute = async ({ request, url }) => {
       address,
       last_price: price,
       last_status: status,
+      listing_url: listingUrl,
       active: true,
     },
     { onConflict: "phone,listing_id" }
@@ -59,7 +63,7 @@ export const POST: APIRoute = async ({ request, url }) => {
       await twilio(import.meta.env.TWILIO_ACCOUNT_SID, import.meta.env.TWILIO_AUTH_TOKEN).messages.create({
         from: import.meta.env.TWILIO_FROM_NUMBER,
         to: phone,
-        body: `You're watching ${address || "this home"} on ${url.hostname}. We'll text you if the price drops or the status changes. Reply STOP to cancel.`,
+        body: `You're watching ${address || "this home"} on ${url.hostname}. We'll text you if the price drops or the status changes.\n${listingUrl}\nReply STOP to cancel.`,
       });
     } catch (e) {
       console.error("[watch] confirmation SMS failed", e);

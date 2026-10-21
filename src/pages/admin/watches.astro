@@ -1,0 +1,209 @@
+﻿---
+import { createClient } from "@supabase/supabase-js";
+import AdminTopNav from "../../components/AdminTopNav.astro";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const requestHost = (
+  Astro.request.headers.get("x-forwarded-host") ||
+  Astro.request.headers.get("host") ||
+  Astro.url.hostname ||
+  ""
+)
+  .split(",")[0]
+  .trim()
+  .toLowerCase()
+  .replace(/^www\./, "")
+  .split(":")[0];
+
+const globalAdminHosts = new Set(["localhost", "127.0.0.1", "bc.realestate"]);
+const scopeDomain = globalAdminHosts.has(requestHost) ? "" : requestHost;
+const showAll = Astro.url.searchParams.get("show") === "all";
+
+let query = supabase
+  .from("listing_watches")
+  .select("*")
+  .order("created_at", { ascending: false })
+  .limit(1000);
+if (scopeDomain) query = query.eq("site_domain", scopeDomain);
+
+const { data, error } = await query;
+const all: any[] = data || [];
+
+const watchIds = [...new Set(all.map((w) => String(w.listing_id)).filter((s) => /^[A-Za-z0-9_-]+$/.test(s)))];
+const cityById = new Map<string, string>();
+if (watchIds.length) {
+  const list = watchIds.join(",");
+  const { data: lr } = await supabase
+    .from("listing_rows")
+    .select("id, mls_number, city, market_city")
+    .or(`mls_number.in.(${list}),id.in.(${list})`);
+  for (const r of lr || []) {
+    const name = String(r.city || r.market_city || "").trim();
+    if (!name) continue;
+    if (r.mls_number) cityById.set(String(r.mls_number), name);
+    if (r.id) cityById.set(String(r.id), name);
+  }
+}
+const cityFromUrl = (u: string) => {
+  try { return new URL(u).pathname.split("/").filter(Boolean)[0] || ""; } catch { return ""; }
+};
+const titleCase = (s: string) => s.replace(/[-_]+/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+const cityOf = (w: any) => titleCase(cityById.get(String(w.listing_id)) || cityFromUrl(w.listing_url) || "") || "—";
+const active = all.filter((w) => w.active);
+const rows = showAll ? all : active;
+
+const fmtPhone = (p: string) => {
+  const d = String(p || "").replace(/\D/g, "");
+  const t = d.length === 11 && d.startsWith("1") ? d.slice(1) : d;
+  return t.length === 10 ? `(${t.slice(0, 3)}) ${t.slice(3, 6)}-${t.slice(6)}` : p;
+};
+const money = (n: unknown) => (Number(n) ? "$" + Math.round(Number(n)).toLocaleString("en-CA") : "—");
+const when = (s: string) =>
+  s
+    ? new Date(s).toLocaleString("en-CA", {
+        timeZone: "America/Edmonton",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "—";
+const statusOf = (w: any) =>
+  !w.active
+    ? { label: "Stopped", cls: "stopped" }
+    : w.last_status === "off_market"
+      ? { label: "Off market", cls: "off" }
+      : Number(w.missing_checks) > 0
+        ? { label: "Checking", cls: "checking" }
+        : { label: "Active", cls: "active" };
+
+const homes = new Map<string, any>();
+for (const w of active) {
+  const h = homes.get(w.listing_id) || {
+    listing_id: w.listing_id,
+    address: w.address,
+    url: w.listing_url,
+    price: w.last_price,
+    w,
+    count: 0,
+  };
+  h.count++;
+  if (!h.url && w.listing_url) h.url = w.listing_url;
+  homes.set(w.listing_id, h);
+}
+const topHomes = [...homes.values()].sort((a, b) => b.count - a.count).slice(0, 10);
+
+const stats = [
+  { label: "Active watches", value: active.length },
+  { label: "Homes watched", value: homes.size },
+  { label: "People", value: new Set(active.map((w) => w.phone)).size },
+  { label: "Alerts sent", value: all.filter((w) => w.last_notified_at).length },
+];
+---
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Watched homes · Admin</title>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #f7f6f2; color: #1c2424; }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 16px 64px; }
+    h1 { font-size: 28px; margin: 8px 0 4px; }
+    .sub { color: #5d6868; margin: 0 0 20px; font-size: 14px; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 28px; }
+    .stat { background: #fff; border: 1px solid #e6e2d8; border-radius: 12px; padding: 14px 16px; }
+    .stat b { display: block; font-size: 26px; }
+    .stat span { font-size: 13px; color: #5d6868; }
+    h2 { font-size: 18px; margin: 28px 0 10px; }
+    .box { background: #fff; border: 1px solid #e6e2d8; border-radius: 12px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #efece4; white-space: nowrap; }
+    th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #5d6868; background: #fbfaf7; }
+    tr:last-child td { border-bottom: 0; }
+    a { color: #1f5f5b; }
+    .count { font-weight: 700; }
+    .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .pill.active { background: #e3f3ec; color: #1d6b48; }
+    .pill.checking { background: #fdf3dc; color: #7a5a0c; }
+    .pill.off { background: #eceff3; color: #3d4756; }
+    .pill.stopped { background: #f6e3e3; color: #8a2b2b; }
+    .toggle { font-size: 14px; }
+    .empty { padding: 24px; color: #5d6868; }
+    .err { background: #f6e3e3; color: #8a2b2b; padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <AdminTopNav active="watches" />
+  <main class="wrap">
+    <h1>Watched homes</h1>
+    <p class="sub">
+      People who asked for a text when a home's price drops or it sells.
+      {scopeDomain ? ` Showing ${scopeDomain} only.` : " Showing all sites."}
+    </p>
+
+    {error && <div class="err">Couldn't load watches: {error.message}</div>}
+
+    <div class="stats">
+      {stats.map((s) => (
+        <div class="stat"><b>{s.value}</b><span>{s.label}</span></div>
+      ))}
+    </div>
+
+    <h2>Most watched</h2>
+    <div class="box">
+      {topHomes.length === 0 ? (
+        <div class="empty">No active watches yet.</div>
+      ) : (
+        <table>
+          <thead><tr><th>Watchers</th><th>Home</th><th>City</th><th>MLS®</th><th>Last known price</th><th>Status</th></tr></thead>
+          <tbody>
+            {topHomes.map((h) => (
+              <tr>
+                <td class="count">{h.count}</td>
+                <td>{h.url ? <a href={h.url} target="_blank" rel="noopener">{h.address || h.listing_id}</a> : (h.address || h.listing_id)}</td>
+                <td>{cityOf(h.w)}</td><td>{h.listing_id}</td>
+                <td>{money(h.price)}</td>
+                <td><span class={`pill ${statusOf(h.w).cls}`}>{statusOf(h.w).label}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+
+    <h2>
+      {showAll ? "All watches" : "Active watches"}
+      <span class="toggle"> · <a href={showAll ? "?" : "?show=all"}>{showAll ? "Hide stopped" : "Include stopped"}</a></span>
+    </h2>
+    <div class="box">
+      {rows.length === 0 ? (
+        <div class="empty">Nothing here yet.</div>
+      ) : (
+        <table>
+          <thead><tr><th>Signed up</th><th>Phone</th><th>Home</th><th>City</th><th>Last known price</th><th>Status</th><th>Last alert</th><th>Site</th></tr></thead>
+          <tbody>
+            {rows.map((w) => (
+              <tr>
+                <td>{when(w.created_at)}</td>
+                <td><a href={`tel:${w.phone}`}>{fmtPhone(w.phone)}</a></td>
+                <td>{w.listing_url ? <a href={w.listing_url} target="_blank" rel="noopener">{w.address || w.listing_id}</a> : (w.address || w.listing_id)}</td>
+                <td>{cityOf(w)}</td><td>{money(w.last_price)}</td>
+                <td><span class={`pill ${statusOf(w).cls}`}>{statusOf(w).label}</span></td>
+                <td>{when(w.last_notified_at)}</td>
+                <td>{w.site_domain || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  </main>
+</body>
+</html>

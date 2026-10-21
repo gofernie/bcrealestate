@@ -88,7 +88,7 @@ export default async () => {
     const domain = w.site_domain && !/localhost|127\.0\.0\.1/.test(w.site_domain) ? w.site_domain : "";
     const citySlug = slug(r?.market_city || r?.city);
     const cityLink = domain && citySlug ? `https://${domain}/${citySlug}` : "";
-    const link = cityLink ? `${cityLink}?listing_id=${encodeURIComponent(w.listing_id)}` : "";
+    const link = domain && w.listing_url ? String(w.listing_url) : cityLink ? `${cityLink}?listing_id=${encodeURIComponent(w.listing_id)}` : "";
 
     const update: Record<string, unknown> = { last_checked_at: now };
     let body = "";
