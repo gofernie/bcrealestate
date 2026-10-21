@@ -1,4 +1,4 @@
----
+﻿---
 const { listings = [] } = Astro.props;
 const jawgAccessToken = import.meta.env.PUBLIC_JAWG_ACCESS_TOKEN || "";
 ---
@@ -658,6 +658,27 @@ html {
 
 <div class="panel__engage" id="sheet-engage">
         <div class="panel__engage-copy">Want to know more?</div>
+        <div class="watch-home" id="watch-home">
+          <button type="button" id="watch-home-btn" class="watch-home__btn" aria-expanded="false" aria-controls="watch-home-card">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+            <span class="watch-home__label">Watch this home</span>
+          </button>
+          <div class="watch-home__card" id="watch-home-card" hidden>
+            <div class="watch-home__head">
+              <span class="watch-home__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+              <div>
+                <div class="watch-home__title">Watch this home?</div>
+                <div class="watch-home__sub">Get a text if the price drops or it sells.</div>
+              </div>
+            </div>
+            <form class="watch-home__form" id="watch-home-form" novalidate>
+              <label for="watch-home-phone" class="watch-home__sr">Mobile number</label>
+              <input id="watch-home-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Mobile number" />
+              <button type="submit" id="watch-home-submit">Watch</button>
+            </form>
+            <div class="watch-home__fine" id="watch-home-msg">No calls. Reply STOP anytime.</div>
+          </div>
+        </div>
         <div class="panel__engage-actions">
           <button type="button" id="ask-question-btn">Ask a Question</button>
           <button type="button" id="book-showing-btn">Book a Showing</button>
@@ -3076,3 +3097,169 @@ html[data-theme="dark"] #preview-sheet #sheet-highlight-chips .panel__highlight-
   }
 }
 </style>
+
+<!-- watch-this-home -->
+<style is:global>
+  #watch-home { margin: 0 0 12px; }
+  #watch-home-btn {
+    width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 8px;
+    border: 1.5px solid var(--accent, #1f5f5b); border-radius: 10px; background: transparent;
+    color: var(--accent, #1f5f5b); font: inherit; font-weight: 700; cursor: pointer;
+  }
+  #watch-home-btn.is-watching { background: var(--accent, #1f5f5b); color: #fff; }
+  .watch-home__card {
+    margin: 12px 0; padding: 16px; border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--accent, #1f5f5b) 25%, transparent);
+    background: color-mix(in srgb, var(--accent, #1f5f5b) 7%, #fff);
+    display: flex; flex-direction: column; gap: 12px; text-align: left;
+  }
+  .watch-home__card[hidden] { display: none; }
+  .watch-home__head { display: flex; gap: 12px; align-items: flex-start; }
+  .watch-home__icon {
+    width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%;
+    background: var(--accent, #1f5f5b); display: flex; align-items: center; justify-content: center;
+  }
+  .watch-home__title { font-weight: 700; font-size: 16px; }
+  .watch-home__sub { font-size: 14px; line-height: 1.4; opacity: .85; margin-top: 2px; }
+  .watch-home__form { display: flex; gap: 8px; }
+  .watch-home__form input {
+    flex: 1; min-width: 0; height: 46px; padding: 0 12px; font: inherit; font-size: 16px;
+    border: 1px solid #c9d2d2; border-radius: 10px; background: #fff; color: #1c2424;
+  }
+  .watch-home__form button {
+    height: 46px; padding: 0 18px; border: 0; border-radius: 10px; cursor: pointer;
+    background: var(--accent, #1f5f5b); color: #fff; font: inherit; font-weight: 700;
+  }
+  .watch-home__form button:disabled { opacity: .6; }
+  .watch-home__card.is-done .watch-home__form { display: none; }
+  .watch-home__fine { font-size: 12px; opacity: .75; }
+  .watch-home__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  html[data-theme="dark"] .watch-home__card { background: color-mix(in srgb, var(--accent, #1f5f5b) 18%, #151918); }
+  html[data-theme="dark"] .watch-home__form input { background: #0f1312; color: #e8eeee; border-color: #3a4645; }
+</style>
+<script is:inline>
+(() => {
+  if (window.__watchHomeInit) return;
+  window.__watchHomeInit = true;
+  const KEY = "watchedListings";
+  const $ = (id) => document.getElementById(id);
+  const readMap = () => { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { return {}; } };
+  const writeMap = (m) => { try { localStorage.setItem(KEY, JSON.stringify(m)); } catch {} };
+  const txt = (id) => ($(id)?.textContent || "").trim();
+  let lastClickedCard = null;
+  document.addEventListener("click", (e) => {
+    const c = e.target instanceof Element ? e.target.closest("[data-listing-id]") : null;
+    if (c && !c.closest("#preview-sheet")) lastClickedCard = c;
+  }, true);
+  const idOf = (el) => (el ? String(el.dataset.listingId || el.dataset.itemId || el.dataset.mls || "").trim() : "");
+  const listingId = () => {
+    const a = idOf(window.__activeIntentCard);
+    if (a) return a;
+    const p = new URLSearchParams(location.search).get("listing_id");
+    if (p) return p.trim();
+    const addr = txt("sheet-address").toLowerCase();
+    if (addr && addr !== "address") {
+      const cards = [...document.querySelectorAll("[data-listing-id]")];
+      for (const c of cards) {
+        const ca = String(c.dataset.address || "").trim().toLowerCase();
+        if (ca && (ca === addr || ca.startsWith(addr) || addr.startsWith(ca))) return idOf(c);
+      }
+      for (const c of cards) {
+        if ((c.textContent || "").toLowerCase().includes(addr)) return idOf(c);
+      }
+    }
+    return idOf(lastClickedCard);
+  };
+
+  function setWatching(on, last4) {
+    const btn = $("watch-home-btn"), card = $("watch-home-card");
+    if (!btn || !card) return;
+    btn.classList.toggle("is-watching", on);
+    btn.querySelector(".watch-home__label").textContent = on ? "Watching" : "Watch this home";
+    card.classList.toggle("is-done", on);
+    card.querySelector(".watch-home__title").textContent = on ? "You're watching this home" : "Watch this home?";
+    card.querySelector(".watch-home__sub").textContent = on
+      ? "We'll text \u2022\u2022\u2022" + (last4 || "") + " if the price drops or it sells."
+      : "Get a text if the price drops or it sells.";
+    $("watch-home-msg").textContent = "No calls. Reply STOP anytime.";
+  }
+
+  function reset() {
+    const card = $("watch-home-card"), home = $("watch-home");
+    if (!card || !home) return;
+    if (card.parentElement !== home) home.appendChild(card);
+    card.hidden = true;
+    $("watch-home-btn")?.setAttribute("aria-expanded", "false");
+    const w = readMap()[listingId()];
+    setWatching(!!w, w);
+  }
+
+  function openCard(anchor, focus) {
+    const card = $("watch-home-card");
+    if (!card) return;
+    if (anchor && anchor.isConnected) anchor.insertAdjacentElement("afterend", card);
+    else $("watch-home").appendChild(card);
+    card.hidden = false;
+    $("watch-home-btn")?.setAttribute("aria-expanded", "true");
+    if (focus && !card.classList.contains("is-done")) setTimeout(() => $("watch-home-phone")?.focus(), 50);
+  }
+
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    if (!(t instanceof Element)) return;
+    if (t.closest("#watch-home-btn")) {
+      const card = $("watch-home-card");
+      if (card.hidden || card.parentElement !== $("watch-home")) openCard(null, true);
+      else { card.hidden = true; $("watch-home-btn").setAttribute("aria-expanded", "false"); }
+      return;
+    }
+    const dec = t.closest("#preview-sheet .listing-reaction-actions button, #preview-sheet .decision-btn");
+    if (!dec) return;
+    if (!/\b(love|like)\b/i.test(dec.textContent || "")) return;
+    if (readMap()[listingId()]) return;
+    const row = dec.closest(".listing-reaction-actions") || dec.parentElement;
+    setTimeout(() => {
+      const anchor = row && row.isConnected ? row : document.querySelector("#preview-sheet .listing-reaction-actions");
+      openCard(anchor, false);
+    }, 150);
+  });
+
+  document.addEventListener("submit", async (e) => {
+    if (!(e.target instanceof Element) || e.target.id !== "watch-home-form") return;
+    e.preventDefault();
+    const msg = $("watch-home-msg"), sub = $("watch-home-submit");
+    const id = listingId();
+    if (!id) { msg.textContent = "Couldn't find this listing. Refresh and try again."; return; }
+    sub.disabled = true; sub.textContent = "\u2026";
+    try {
+      const res = await fetch("/api/watch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: $("watch-home-phone").value,
+          listing_id: id,
+          address: txt("sheet-address"),
+          price: txt("sheet-price"),
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.ok) { msg.textContent = j.error || "Couldn't save that. Try again."; return; }
+      const m = readMap(); m[id] = j.last4; writeMap(m);
+      setWatching(true, j.last4);
+    } catch {
+      msg.textContent = "Network error. Try again.";
+    } finally {
+      sub.disabled = false; sub.textContent = "Watch";
+    }
+  });
+
+  function init() {
+    reset();
+    const addr = $("sheet-address");
+    if (addr) new MutationObserver(reset).observe(addr, { childList: true, characterData: true, subtree: true });
+    window.addEventListener("popstate", reset);
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
+})();
+</script>
