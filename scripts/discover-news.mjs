@@ -91,6 +91,8 @@ Reply with JSON only:
   return JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
 }
 
+const newPending = [];
+
 for (const src of SOURCES) {
   let items;
   try { items = await LIST[src.type](src); }
@@ -124,9 +126,24 @@ for (const src of SOURCES) {
     }
 
     const { error } = await sb.from('local_news').insert(row);
+    if (!error && row.status === 'pending') newPending.push(row.title);
     console.log(error ? `  ERR      ${it.title}: ${error.message}` : `  ${row.status.padEnd(8)} [${row.city}] ${row.title || it.title}`);
   }
 }
 
 
 
+
+// Text a heads-up when new stories are waiting for review
+if (newPending.length && process.env.TWILIO_ACCOUNT_SID && process.env.NEWS_SMS_FROM && process.env.NEWS_ADMIN_PHONE) {
+  const sid = process.env.TWILIO_ACCOUNT_SID, token = process.env.TWILIO_AUTH_TOKEN;
+  const list = newPending.slice(0, 3).map(t => `- ${t}`).join('\n');
+  const more = newPending.length > 3 ? `\n...and ${newPending.length - 3} more` : '';
+  const body = `News: ${newPending.length} new local ${newPending.length === 1 ? 'story' : 'stories'} to review:\n${list}${more}\n\nbc.realestate/admin/news`;
+  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+    method: 'POST',
+    headers: { authorization: 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64'), 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ To: process.env.NEWS_ADMIN_PHONE, From: process.env.NEWS_SMS_FROM, Body: body }),
+  });
+  console.log(r.ok ? `\nTexted heads-up (${newPending.length} pending)` : `\nText failed: ${r.status} ${await r.text()}`);
+}
