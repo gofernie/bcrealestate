@@ -8,13 +8,32 @@ const sb = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+const REGIONS = {
+  'elk-valley': {
+    place: 'Fernie and Sparwood, BC (Elk Valley)',
+    who: 'Fernie or Sparwood',
+    areas: ['fernie', 'sparwood', 'elk-valley'],
+    rules: '"fernie", "sparwood", "elk-valley" (affects both or the whole valley), or "none" (elsewhere, e.g. Cranbrook, Kimberley, Columbia Valley, Invermere). RDEK electoral areas: Area A is the rural Elk Valley around Fernie, Sparwood and Elkford (use "elk-valley"); Areas B, C, E, F and G are outside the Elk Valley (use "none"). Area F is the Columbia Valley, NOT Fernie.',
+  },
+  nanaimo: {
+    place: 'Nanaimo, BC and the surrounding Regional District of Nanaimo (RDN) on Vancouver Island',
+    who: 'Nanaimo or the surrounding RDN',
+    areas: ['nanaimo', 'rdn'],
+    rules: '"nanaimo" (the City of Nanaimo itself), "rdn" (region-wide, or affects nearby RDN communities: Lantzville, Parksville, Qualicum Beach, Nanoose Bay, Cedar, Gabriola or RDN electoral areas), or "none" (elsewhere, e.g. Ladysmith, Duncan, Port Alberni, Comox Valley, Victoria, or provincial/national stories with no specific Nanaimo-area impact).',
+  },
+};
+
 // prefilter:false = government sources, every item goes to the AI (low volume, high value)
 const SOURCES = [
-  { name: 'City of Fernie', type: 'rss', url: 'https://www.fernie.ca/EN/meta/whats-new/rss/latest-news.rss', base: 'https://www.fernie.ca', prefilter: false },
-  { name: 'RDEK', type: 'html', url: 'https://www.rdek.bc.ca/news', base: 'https://www.rdek.bc.ca', match: /\/news\/entry\//, prefilter: false },
-  { name: 'District of Sparwood', type: 'html', url: 'https://www.sparwood.ca/municipal-hall/news-updates', base: 'https://www.sparwood.ca', match: /\/news-updates\/post\//, prefilter: false },
-  // { name: 'Fernie.com', type: 'rss', url: 'https://fernie.com/feed/', base: 'https://fernie.com', prefilter: true },
-  { name: 'e-KNOW', type: 'wp', url: 'https://www.e-know.ca/wp-json/wp/v2/posts?categories=61&per_page=30&_fields=date_gmt,link,title,content', prefilter: true },
+  { region: 'elk-valley', name: 'City of Fernie', type: 'rss', url: 'https://www.fernie.ca/EN/meta/whats-new/rss/latest-news.rss', base: 'https://www.fernie.ca', prefilter: false },
+  { region: 'elk-valley', name: 'RDEK', type: 'html', url: 'https://www.rdek.bc.ca/news', base: 'https://www.rdek.bc.ca', match: /\/news\/entry\//, prefilter: false },
+  { region: 'elk-valley', name: 'District of Sparwood', type: 'html', url: 'https://www.sparwood.ca/municipal-hall/news-updates', base: 'https://www.sparwood.ca', match: /\/news-updates\/post\//, prefilter: false },
+  // { region: 'elk-valley', name: 'Fernie.com', type: 'rss', url: 'https://fernie.com/feed/', base: 'https://fernie.com', prefilter: true },
+  { region: 'elk-valley', name: 'e-KNOW', type: 'wp', url: 'https://www.e-know.ca/wp-json/wp/v2/posts?categories=61&per_page=30&_fields=date_gmt,link,title,content', prefilter: true },
+
+  { region: 'nanaimo', name: 'City of Nanaimo', type: 'html', url: 'https://www.nanaimo.ca/your-government/news-events/news', base: 'https://www.nanaimo.ca', match: /\/NewsReleases\/NR\d+/i, prefilter: false },
+  { region: 'nanaimo', name: 'RDN', type: 'html', url: 'https://www.rdn.bc.ca/news-releases', base: 'https://www.rdn.bc.ca', match: /\/notice-\d{4}-\d{2}-\d{2}/, prefilter: false },
+  { region: 'nanaimo', name: 'NanaimoNewsNOW', type: 'wp', url: 'https://nanaimonewsnow.com/wp-json/wp/v2/posts?categories=5&per_page=30&_fields=date_gmt,link,title,content', prefilter: true },
 ];
 
 const KEYWORDS = /\b(housing|homes?|rezon\w*|zoning|develop\w*|subdivi\w*|land|ocp|infrastructure|water|sewer|roads?|street|highway|bridge|crossing|closure|recreation|arena|pool|school|council|budget|tax\w*|construction|rental|short[- ]term|strata|park|trail|hospital|transit|airport|resort|annex\w*|bylaw|grant)\b/i;
@@ -66,18 +85,19 @@ const LIST = {
   },
 };
 
-async function summarize(source, title, body) {
-  const prompt = `You write short local-news notes for a real estate website covering Fernie and Sparwood, BC (Elk Valley). Readers are home buyers and owners.
+async function summarize(src, title, body) {
+  const R = REGIONS[src.region];
+  const prompt = `You write short local-news notes for a real estate website covering ${R.place}. Readers are home buyers and owners.
 
-Source: ${source}
+Source: ${src.name}
 Title: ${title}
 Text: ${body.slice(0, 5000)}
 
-1. Decide if this matters to people buying or owning property in Fernie or Sparwood: housing, development, land, zoning, rentals/short-term rentals, infrastructure, roads, utilities, amenities, taxes, major local projects. Elections, sports, events, job postings, holiday closures and opinion columns are NOT relevant unless they directly change housing or land use. Routine notices are also NOT relevant: seasonal parking rules, water main flushing, small donations, minor park amenities, fire bans.
-2. Decide where it applies: "fernie", "sparwood", "elk-valley" (affects both or the whole valley), or "none" (elsewhere, e.g. Cranbrook, Kimberley, Columbia Valley, Invermere). RDEK electoral areas: Area A is the rural Elk Valley around Fernie, Sparwood and Elkford (use "elk-valley"); Areas B, C, E, F and G are outside the Elk Valley (use "none"). Area F is the Columbia Valley, NOT Fernie.
+1. Decide if this matters to people buying or owning property in ${R.who}: housing, development, land, zoning, rentals/short-term rentals, infrastructure, roads, utilities, amenities, taxes, major local projects. Elections, sports, events, job postings, holiday closures, crime and court stories, and opinion columns are NOT relevant unless they directly change housing or land use. Routine notices are also NOT relevant: seasonal parking rules, water main flushing, small donations, minor park amenities, fire bans.
+2. Decide where it applies: ${R.rules}
 
 Reply with JSON only:
-{"relevant": true|false, "area": "fernie|sparwood|elk-valley|none", "title": "new headline in your own words, max 70 chars", "blurb": "2 sentences in your own words: what happened, and why it matters for buyers/owners. Do not quote the source.", "tag": "Housing|Development|Infrastructure|Amenities|Community"}`;
+{"relevant": true|false, "area": "${[...R.areas, 'none'].join('|')}", "title": "new headline in your own words, max 70 chars", "blurb": "2 sentences in your own words: what happened, and why it matters for buyers/owners. Do not quote the source.", "tag": "Housing|Development|Infrastructure|Amenities|Community"}`;
 
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -118,8 +138,8 @@ for (const src of SOURCES) {
 
     if (!src.prefilter || KEYWORDS.test(it.title + ' ' + it.body.slice(0, 1500))) {
       try {
-        const ai = await summarize(src.name, it.title, it.body);
-        if (ai.relevant && ai.area !== 'none') {
+        const ai = await summarize(src, it.title, it.body);
+        if (ai.relevant && REGIONS[src.region].areas.includes(ai.area)) {
           row = { ...row, city: ai.area, title: ai.title, blurb: ai.blurb, tag: ai.tag, status: AUTO ? 'approved' : 'pending' };
         }
       } catch (e) { console.warn(`  AI failed, retry next run: ${it.title} (${e.message})`); continue; }

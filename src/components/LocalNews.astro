@@ -1,10 +1,13 @@
 ﻿---
 import { createClient } from '@supabase/supabase-js';
 const { city, limit = 6, heading = "What's happening in town" } = Astro.props;
+const REGIONS = { 'elk-valley': ['fernie', 'sparwood', 'elkford'], rdn: ['nanaimo', 'lantzville', 'parksville', 'qualicum-beach'] };
+const slug = String(city || '').toLowerCase();
+const cities = [city, ...Object.entries(REGIONS).filter(([, towns]) => towns.includes(slug)).map(([region]) => region)];
 const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.PUBLIC_SUPABASE_ANON_KEY);
 const { data } = await sb.from('local_news')
   .select('title,blurb,tag,url,source,published_at')
-  .in('city', [city, 'elk-valley']).eq('status', 'approved').gte('published_at', new Date(Date.now() - 60 * 864e5).toISOString())
+  .in('city', cities).eq('status', 'approved').gte('published_at', new Date(Date.now() - 60 * 864e5).toISOString())
   .order('published_at', { ascending: false }).limit(limit);
 const items = data ?? [];
 const fmt = (d) => new Date(d).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
