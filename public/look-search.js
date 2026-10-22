@@ -1,4 +1,4 @@
-// Search this look: drag a box over anything in a listing photo, get "similar" product searches.
+﻿// Search this look: drag a box over anything in a listing photo, get "similar" product searches.
 (() => {
   if (window.__lookSearch) return;
   window.__lookSearch = true;
@@ -218,7 +218,7 @@
   function homesHtml(d) {
     const seg = location.pathname.split('/').filter(Boolean)[0] || '';
     const city = seg ? seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ') : '';
-    const href = (seg ? '/' + seg : '') + '/homes?style=' + encodeURIComponent(d.home_style);
+    const href = (seg ? '/' + seg : '') + '/' + ({ 'Manufactured / mobile': 'mobile-homes', 'Condo / apartment': 'condos', 'Townhouse': 'townhomes' }[d.home_style] || 'homes') + '?style=' + encodeURIComponent(d.home_style);
     return `<div class="ls-head"><div><div class="ls-kicker">Home style</div><h3>${esc(d.home_style)}</h3></div><button class="ls-x" aria-label="Close">&times;</button></div>
       <p class="ls-desc">${esc(d.description || d.item || '')}</p>
       <div class="ls-links"><a class="ls-guess" href="${esc(href)}">See ${esc(d.home_style)} homes${city ? ' in ' + esc(city) : ''} &rarr;</a></div>`;

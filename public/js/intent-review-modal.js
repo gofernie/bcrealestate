@@ -7432,7 +7432,7 @@ window.__lsStyleChip = (() => {
     const seg = location.pathname.split('/').filter(Boolean)[0] || '';
     const a = document.createElement('a');
     a.className = 'panel__highlight-chip ls-home-style-chip';
-    a.href = (seg ? '/' + seg : '') + '/homes?style=' + encodeURIComponent(style);
+    a.href = (seg ? '/' + seg : '') + '/' + ({ 'Manufactured / mobile': 'mobile-homes', 'Condo / apartment': 'condos', 'Townhouse': 'townhomes' }[style] || 'homes') + '?style=' + encodeURIComponent(style);
     a.textContent = style + ' \u00b7 more like this \u2192';
     a.style.textDecoration = 'none';
     a.style.color = 'inherit';
