@@ -9,15 +9,16 @@ const env = (k: string): string | undefined =>
 // Partners: add/remove here. Tags come from env so nothing is hard-coded.
 const PARTNERS: { name: string; url: (q: string) => string }[] = [
   {
-    name: 'Amazon.ca',
+    // Article only (Canadian, design-led). Set AWIN_AFFILIATE_ID in Netlify once approved on Awin.
+    name: 'Article',
     url: (q) => {
-      const tag = env('AMAZON_ASSOCIATE_TAG');
-      return `https://www.amazon.ca/s?k=${encodeURIComponent(q)}${tag ? `&tag=${encodeURIComponent(tag)}` : ''}`;
+      const target = `https://www.article.com/search?q=${encodeURIComponent(q)}`;
+      const affId = env('AWIN_AFFILIATE_ID');
+      return affId
+        ? `https://www.awin1.com/cread.php?awinmid=55215&awinaffid=${encodeURIComponent(affId)}&ued=${encodeURIComponent(target)}`
+        : target;
     },
   },
-  { name: 'Wayfair', url: (q) => `https://www.wayfair.ca/keyword.php?keyword=${encodeURIComponent(q)}` },
-  { name: 'IKEA', url: (q) => `https://www.ikea.com/ca/en/search/?q=${encodeURIComponent(q)}` },
-  { name: 'Article', url: (q) => `https://www.article.com/search?q=${encodeURIComponent(q)}` },
 ];
 
 const MODEL = env('LOOK_SEARCH_MODEL') ?? 'claude-haiku-5-5';
@@ -120,7 +121,7 @@ Also give your best guess at the exact original brand and model (guess) if the d
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 700, tools: [{ name: 'report', description: 'Report the item inside the box', input_schema: { type: 'object', properties: { shoppable: { type: 'boolean' }, item: { type: 'string' }, description: { type: 'string' }, style: { type: 'string' }, phrases: { type: 'array', items: { type: 'string' } }, guess: { type: 'string', description: 'Best guess at the exact original brand and model, e.g. Herman Miller Eames Lounge Chair. Empty string if no real idea.' }, confidence: { type: 'string', enum: ['low', 'medium', 'high'] }, home_style: { type: 'string', enum: [...STYLES, 'None'], description: 'Only if the box mostly shows a whole house or building exterior: its closest architectural style. Use None otherwise.' } }, required: ['shoppable', 'item', 'description', 'style', 'phrases', 'home_style'] } }], tool_choice: { type: 'tool', name: 'report' },
+      max_tokens: 700, tools: [{ name: 'report', description: 'Report the item inside the box', input_schema: { type: 'object', properties: { shoppable: { type: 'boolean' }, item: { type: 'string' }, description: { type: 'string' }, style: { type: 'string' }, phrases: { type: 'array', items: { type: 'string' } }, furnishing: { type: 'boolean', description: 'true if this is furniture, lighting, a rug, decor, bedding or outdoor furniture (things a furniture store sells); false for appliances, fixtures, plumbing, finishes, cabinetry, kitchenware' }, guess: { type: 'string', description: 'Best guess at the exact original brand and model, e.g. Herman Miller Eames Lounge Chair. Empty string if no real idea.' }, confidence: { type: 'string', enum: ['low', 'medium', 'high'] }, home_style: { type: 'string', enum: [...STYLES, 'None'], description: 'Only if the box mostly shows a whole house or building exterior: its closest architectural style. Use None otherwise.' } }, required: ['shoppable', 'item', 'description', 'style', 'phrases', 'home_style'] } }], tool_choice: { type: 'tool', name: 'report' },
       messages: [{ role: 'user', content: [
         ...(crop ? [{ type: 'image', source: { type: 'base64', media_type: crop.type, data: crop.data } }] : []),
         { type: 'image', source: { type: 'base64', media_type: mediaType, data } },
@@ -141,7 +142,7 @@ Also give your best guess at the exact original brand and model (guess) if the d
     shoppable: !!parsed.shoppable && phrases.length > 0,
     item: String(parsed.item ?? '').slice(0, 80),
     description: String(parsed.description ?? '').slice(0, 240),
-    style: String(parsed.style ?? '').slice(0, 40), home_style: STYLES.find((s) => s.toLowerCase() === String(parsed.home_style ?? '').trim().toLowerCase()) ?? '', guess: String(parsed.guess ?? '').trim().slice(0, 100), confidence: ['low', 'medium', 'high'].includes(parsed.confidence) ? parsed.confidence : 'low',
+    style: String(parsed.style ?? '').slice(0, 40), furnishing: parsed.furnishing !== false, home_style: STYLES.find((s) => s.toLowerCase() === String(parsed.home_style ?? '').trim().toLowerCase()) ?? '', guess: String(parsed.guess ?? '').trim().slice(0, 100), confidence: ['low', 'medium', 'high'].includes(parsed.confidence) ? parsed.confidence : 'low',
     results: phrases.map((phrase) => ({ phrase, links: PARTNERS.map((p) => ({ name: p.name, url: p.url(phrase) })) })),
   };
 
