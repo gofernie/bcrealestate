@@ -112,7 +112,7 @@ const handle = async (request: Request): Promise<Response> => {
   const prompt = `A home buyer drew a box on this listing photo. The box covers: left ${pct(box.x)}%, top ${pct(box.y)}%, width ${pct(box.w)}%, height ${pct(box.h)}% of the image.
 Identify the single main item or design element inside that box (furniture, lighting, decor, rug, fixture, finish).
 Call the report tool with these fields:
-{"shoppable": true|false, "item": "short name, e.g. Live-edge dining table", "description": "one sentence on materials, colour and shape a shopper would care about", "style": "2-3 word design style, e.g. West Coast modern", "phrases": ["3 short retail search phrases, most specific first"]}
+{"shoppable": true|false, "item": "short name, e.g. Live-edge dining table", "description": "one sentence on materials, colour and shape a shopper would care about", "style": "2-3 word design style, e.g. West Coast modern", "phrases": ["3 retail search phrases of 2-4 words each, most specific first"]}
 Set shoppable false if the box holds nothing a person could buy (sky, view, bare wall, people).
 Also give your best guess at the exact original brand and model (guess) if the design is recognisable, with an honest confidence. Leave guess empty if you have no real idea.`;
 
@@ -137,7 +137,7 @@ Also give your best guess at the exact original brand and model (guess) if the d
   if (!parsed) try { parsed = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? ''); } catch { console.error('look-search parse error', text); return json({ error: 'Search failed (parse), try again.' }, 502); }
 
   const phrases: string[] = Array.isArray(parsed.phrases)
-    ? parsed.phrases.map((p: unknown) => String(p).trim()).filter(Boolean).slice(0, 3) : [];
+    ? parsed.phrases.map((p: unknown) => String(p).trim().split(/\s+/).slice(0, 5).join(' ')).filter(Boolean).slice(0, 3) : [];
   const result = {
     shoppable: !!parsed.shoppable && phrases.length > 0,
     item: String(parsed.item ?? '').slice(0, 80),

@@ -33,7 +33,7 @@
   .ls-links{display:flex;flex-wrap:wrap;gap:6px}
   .ls-links a{padding:6px 11px;border-radius:999px;border:1px solid #d8d0c1;color:#1f1f1f;text-decoration:none;font-size:13px;background:#fff}
   .ls-links a:hover{border-color:var(--accent,#2f5d50);color:var(--accent,#2f5d50)}
-  .ls-conf{font-weight:500;font-size:12px;color:#857d70;margin-left:6px}.ls-links a.ls-guess{background:#1f1f1f;color:#fff;border-color:#1f1f1f}.ls-note{margin:12px 0 0;font-size:12px;color:#857d70}.ls-thumb{width:72px;height:72px;border-radius:10px;flex:none;background-repeat:no-repeat;background-color:#ece6da;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}.ls-head-main{display:flex;gap:12px;align-items:flex-start;min-width:0}.ls-shop{margin:12px 0 0;padding:12px 0 0;border-top:1px solid #e6dfd2}.ls-shop-t{font-size:14px;color:#4a453e;margin:0 0 8px}.ls-shop-t a{color:#1f1f1f;font-weight:600;text-decoration:underline;text-underline-offset:3px}.ls-alts{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px;color:#857d70}.ls-alts a{padding:5px 10px;border-radius:999px;border:1px solid #d8d0c1;color:#1f1f1f;text-decoration:none;background:#fff}.ls-alts a:hover{border-color:#1f1f1f}
+  .ls-conf{font-weight:500;font-size:12px;color:#857d70;margin-left:6px}.ls-links a.ls-guess{background:#1f1f1f;color:#fff;border-color:#1f1f1f}.ls-note{margin:12px 0 0;font-size:12px;color:#857d70}.ls-thumb{width:72px;height:72px;border-radius:10px;flex:none;background-repeat:no-repeat;background-color:#ece6da;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}.ls-head-main{display:flex;gap:12px;align-items:flex-start;min-width:0}.ls-shop{margin:12px 0 0;padding:12px 0 0;border-top:1px solid #e6dfd2}.ls-shop-t{font-size:14px;color:#4a453e;margin:0 0 8px}.ls-leaf{width:13px;height:11px;margin-left:5px;vertical-align:-1px;fill:#d52b1e;opacity:.85}.ls-shop-t a{color:#1f1f1f;font-weight:600;text-decoration:underline;text-underline-offset:3px}.ls-alts{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px;color:#857d70}.ls-alts a{padding:5px 10px;border-radius:999px;border:1px solid #d8d0c1;color:#1f1f1f;text-decoration:none;background:#fff}.ls-alts a:hover{border-color:#1f1f1f}
   .ls-load{display:flex;align-items:center;gap:10px;color:#4a453e}
   .ls-spin{width:18px;height:18px;border-radius:50%;border:2px solid #d8d0c1;border-top-color:var(--accent,#2f5d50);animation:lsspin .8s linear infinite}
   @keyframes lsspin{to{transform:rotate(360deg)}}
@@ -260,12 +260,12 @@
       .join('');
     const shop = showShop ? `
       <div class="ls-shop">
-        <p class="ls-shop-t">Like this look? Browse similar pieces at <a href="${esc(articleLink(d.results[0]))}" target="_blank" rel="sponsored noopener">Article</a></p>
+        <p class="ls-shop-t">Like this look? Browse similar pieces at <a href="${esc(articleLink(d.results[0]))}" target="_blank" rel="sponsored noopener">Article</a><svg class="ls-leaf" viewBox="0 0 24 20" role="img" aria-label="Canadian"><polygon points="12,2 13.4,4.9 15,4.1 14.4,7.7 16.7,5.2 17.2,6.6 19.8,6.1 18.9,9 20.1,9.6 16.3,12.8 16.9,14.2 12.6,13.5 12.7,18 11.3,18 11.4,13.5 7.1,14.2 7.7,12.8 3.9,9.6 5.1,9 4.2,6.1 6.8,6.6 7.3,5.2 9.6,7.7 9,4.1 10.6,4.9"/></svg></p>
         <div class="ls-alts">${pills}</div>
       </div>
       <p class="ls-note">Article is a Canadian furniture company. Similar pieces, not the exact item in this home. We may earn a commission.</p>` : '';
     openPanel(`<div class="ls-head"><div class="ls-head-main">${thumbHtml(d)}<div><div class="ls-kicker">Looks like</div><h3>${esc(d.item)}</h3></div></div><button class="ls-x" aria-label="Close">&times;</button></div>
-      <p class="ls-desc">${esc(d.description)}</p>${d.style ? `<span class="ls-chip">${esc(d.style)}</span>` : ''}${shop}${guessHtml(d)}`);
+      <p class="ls-desc">${esc(d.description)}</p>${shop}${guessHtml(d)}`);
   }
 
   // Thumbnail of the boxed area, cropped from the listing photo with CSS (no extra download).
