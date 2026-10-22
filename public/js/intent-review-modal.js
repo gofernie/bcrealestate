@@ -7410,34 +7410,100 @@ sheetImage?.addEventListener("touchend", (event) => {
 
 
 
-// Style chip ("Rancher · more like this") in the listing modal highlight row.
+// Listing modal pills: tappable feature pills, style pill, and "More like this".
 window.__lsStyleChip = (() => {
+  const VIEW_OK = true;
   const cache = new Map();
+  const PAGE = { 'Manufactured / mobile': 'mobile-homes', 'Condo / apartment': 'condos', 'Townhouse': 'townhomes' };
+  const FEATURES = { 'waterfront': { waterfrontType: 'any' } };
+  if (VIEW_OK) FEATURES['ocean views'] = { viewType: 'ocean' };
+
+  const seg = () => location.pathname.split('/').filter(Boolean)[0] || '';
+  const link = (page, params) =>
+    (seg() ? '/' + seg() : '') + '/' + page + '?' + new URLSearchParams(params).toString();
+
+  // How many active listings match (null if the check fails).
+  async function total(params) {
+    const p = new URLSearchParams(params);
+    p.set('city', seg() || 'nanaimo');
+    p.set('offset', '0');
+    p.set('limit', '1');
+    try {
+      const r = await fetch('/api/home-listings?' + p.toString());
+      if (!r.ok) return null;
+      const d = await r.json();
+      return Number(d.total || 0);
+    } catch (e) { return null; }
+  }
+
+  function pill(text, href, cls, strong) {
+    const a = document.createElement('a');
+    a.className = 'panel__highlight-chip ' + cls;
+    a.href = href;
+    a.textContent = text;
+    a.style.textDecoration = 'none';
+    a.style.color = 'inherit';
+    a.style.cursor = 'pointer';
+    if (strong) { a.style.fontWeight = '600'; a.style.borderColor = 'currentColor'; }
+    return a;
+  }
+
   return async (el, id) => {
     if (!el) return;
     id = String(id || '').trim();
     el.dataset.lsStyleFor = id;
-    el.querySelector('.ls-home-style-chip')?.remove();
+    el.querySelectorAll('.ls-home-style-chip').forEach((n) => n.remove());
     if (!id) return;
-    let style = cache.get(id);
-    if (style === undefined) {
+
+    let info = cache.get(id);
+    if (info === undefined) {
       try {
         const r = await fetch('/api/listing-style?id=' + encodeURIComponent(id));
-        style = r.ok ? String((await r.json()).style || '') : '';
-      } catch (e) { style = ''; }
-      cache.set(id, style);
+        info = r.ok ? await r.json() : {};
+      } catch (e) { info = {}; }
+      cache.set(id, info);
     }
     if (el.dataset.lsStyleFor !== id) return; // user moved to another listing meanwhile
-    if (!style || style === 'Other') return;
-    const seg = location.pathname.split('/').filter(Boolean)[0] || '';
-    const a = document.createElement('a');
-    a.className = 'panel__highlight-chip ls-home-style-chip';
-    a.href = (seg ? '/' + seg : '') + '/' + ({ 'Manufactured / mobile': 'mobile-homes', 'Condo / apartment': 'condos', 'Townhouse': 'townhomes' }[style] || 'homes') + '?style=' + encodeURIComponent(style);
-    a.textContent = style + ' \u00b7 more like this \u2192';
-    a.style.textDecoration = 'none';
-    a.style.color = 'inherit';
-    a.style.cursor = 'pointer';
-    el.appendChild(a);
-    el.hidden = false;
+
+    // 1. Feature pills already shown (from the description) become filter links.
+    const shown = new Set();
+    el.querySelectorAll('span.panel__highlight-chip').forEach((span) => {
+      const label = span.textContent.trim();
+      const f = FEATURES[label.toLowerCase()];
+      if (!f) return;
+      shown.add(label.toLowerCase());
+      span.replaceWith(pill(label, link('homes', f), 'ls-feature-link', false));
+    });
+
+    const style = String(info.style || '');
+    const useStyle = !!style && style !== 'Other';
+    const water = shown.has('waterfront') || !!info.waterfront;
+    const page = (useStyle && PAGE[style]) || 'homes';
+
+    // MLS says waterfront but the description pills didn't: add the pill.
+    if (water && !shown.has('waterfront')) {
+      el.appendChild(pill('Waterfront', link('homes', FEATURES.waterfront), 'ls-home-style-chip', false));
+    }
+
+    if (useStyle && water) {
+      // 2. Style pill + combined "More like this" (falls back to waterfront-only if < 3 matches).
+      el.appendChild(pill(style, link(page, { style }), 'ls-home-style-chip', false));
+      const combo = { style, waterfrontType: 'any' };
+      const more = pill('More like this \u2192', link(page, combo), 'ls-home-style-chip', true);
+      more.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const label = more.textContent;
+        more.textContent = 'Finding\u2026';
+        const n = await total(combo);
+        location.href = n !== null && n < 3 ? link('homes', FEATURES.waterfront) : more.href;
+        setTimeout(() => { more.textContent = label; }, 4000);
+      });
+      el.appendChild(more);
+    } else if (useStyle) {
+      // 3. Style only: one pill does both jobs.
+      el.appendChild(pill(style + ' \u00b7 more like this \u2192', link(page, { style }), 'ls-home-style-chip', false));
+    }
+
+    el.hidden = el.children.length === 0;
   };
 })();
