@@ -1,9 +1,28 @@
 ﻿---
 import { createClient } from '@supabase/supabase-js';
 const { city, limit = 6, heading = "What's happening in town" } = Astro.props;
-const REGIONS = { 'elk-valley': ['fernie', 'sparwood', 'elkford'], rdn: ['nanaimo', 'lantzville', 'parksville', 'qualicum-beach'] };
-const slug = String(city || '').toLowerCase();
-const cities = [city, ...Object.entries(REGIONS).filter(([, towns]) => towns.includes(slug)).map(([region]) => region)];
+// Region key -> towns it covers (keys/towns must match the city keys used by scripts/discover-news.mjs).
+const REGIONS = {
+  'elk-valley': ['fernie', 'sparwood', 'elkford'],
+  rdn: ['nanaimo', 'lantzville', 'parksville', 'qualicum-beach', 'french-creek', 'errington', 'coombs', 'hilliers', 'nanoose-bay'],
+  crd: ['victoria', 'victoria-west', 'saanich', 'saanich-east', 'saanich-west', 'langford', 'colwood', 'oak-bay', 'esquimalt', 'view-royal', 'sidney', 'north-saanich', 'central-saanich', 'highlands', 'metchosin', 'sooke'],
+  cvrd: ['duncan', 'ladysmith', 'chemainus', 'crofton', 'mill-bay', 'cowichan-bay', 'lake-cowichan'],
+  'comox-valley': ['courtenay', 'comox', 'cumberland', 'royston', 'union-bay', 'fanny-bay', 'black-creek', 'merville', 'denman-island'],
+  srd: ['campbell-river'],
+  alberni: ['port-alberni', 'tofino', 'ucluelet'],
+};
+// Hub pages that should show news from every town in a region.
+const HUBS = { 'greater-victoria': 'crd' };
+// Sub-areas that should also show their parent town's news.
+const ALSO = { 'saanich-east': ['saanich'], 'saanich-west': ['saanich'], 'victoria-west': ['victoria'] };
+const slug = String(city || '').toLowerCase().trim().replace(/\s+/g, '-');
+const hub = HUBS[slug];
+const cities = [...new Set([
+  city, slug,
+  ...(ALSO[slug] || []),
+  ...(hub ? [hub, ...REGIONS[hub]] : []),
+  ...Object.entries(REGIONS).filter(([, towns]) => towns.includes(slug)).map(([region]) => region),
+].filter(Boolean))];
 const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.PUBLIC_SUPABASE_ANON_KEY);
 const { data } = await sb.from('local_news')
   .select('title,blurb,tag,url,source,published_at')
