@@ -43,24 +43,29 @@ export const GET: APIRoute = async ({ url, request }) => {
 
   // Published intent pages for this listing's city, matched by topic (not by slug).
   const cityKey = String(data?.normalized_city || '').trim().toLowerCase().replace(/\s+/g, '-');
-  let waterPage = '';
-  let viewPage = '';
-  // Intent pages belong to a site: resolve it the same way the pages do (getSite with hostname + city).
+  // Intent pages belong to a site. Look in the page the visitor is browsing first (e.g. saanich-east),
+  // then the listing's own city (e.g. saanich); resolve the site the same way the pages do.
   const rawHost = String(url.searchParams.get('site') || new URL(request.url).hostname || '').trim().toLowerCase().replace(/^www\./, '');
   // Same rule as the pages: local dev is bc.realestate.
   const host = rawHost === 'localhost' || rawHost === '127.0.0.1' ? 'bc.realestate' : rawHost;
-  let siteId = '';
-  try {
-    const site: any = host && cityKey ? await getSite(host, cityKey) : null;
-    siteId = site?.id ? String(site.id) : '';
-  } catch (e) {
-    console.error('listing-style getSite failed', e);
-  }
-  if (cityKey && siteId) {
+  const pageCity = String(url.searchParams.get('pageCity') || '').trim().toLowerCase().replace(/\s+/g, '-');
+  const lookIn = [...new Set([pageCity, cityKey].filter(Boolean))];
+  let waterPage = '';
+  let viewPage = '';
+  for (const c of lookIn) {
+    if (waterPage && viewPage) break;
+    let siteId = '';
+    try {
+      const site: any = host ? await getSite(host, c) : null;
+      siteId = site?.id ? String(site.id) : '';
+    } catch (e) {
+      console.error('listing-style getSite failed', e);
+    }
+    if (!siteId) continue;
     const { data: pages } = await db
       .from('intent_pages')
       .select('slug, city, waterfront_type, requires_ocean_view')
-      .eq('city', cityKey)
+      .eq('city', c)
       .eq('is_published', true)
       .eq('site_id', siteId)
       .or('requires_ocean_view.eq.true,waterfront_type.not.is.null')

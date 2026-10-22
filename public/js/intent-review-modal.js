@@ -7420,6 +7420,14 @@ window.__lsStyleChip = (() => {
   const TYPE_LABEL = { mobile: 'Mobile homes', condo: 'Condos', townhouse: 'Townhomes' };
   const WATER_LABEL = { oceanfront: 'Oceanfront', lakefront: 'Lakefront', riverfront: 'Riverfront' };
 
+  // Link pills look like links: accent colour + soft border, tinted on hover. Plain label pills stay grey.
+  if (!document.getElementById('ls-pill-css')) {
+    const st = document.createElement('style');
+    st.id = 'ls-pill-css';
+    st.textContent = 'a.ls-link:not(#ls-a):not(#ls-b){color:var(--accent,#2f6f73)!important;border-color:color-mix(in srgb,var(--accent,#2f6f73) 45%,transparent)!important;transition:background-color .15s,border-color .15s}a.ls-link:not(#ls-a):not(#ls-b):hover{background:color-mix(in srgb,var(--accent,#2f6f73) 12%,#fff)!important;border-color:var(--accent,#2f6f73)!important}a.ls-link:not(#ls-a):not(#ls-b):focus-visible{outline:2px solid var(--accent,#2f6f73);outline-offset:2px}';
+    document.head.appendChild(st);
+  }
+
   const seg = () => location.pathname.split('/').filter(Boolean)[0] || '';
   // Page paths come from the site's own nav links (works on agent sites with other URL shapes).
   const pagePath = (page) => {
@@ -7469,7 +7477,7 @@ window.__lsStyleChip = (() => {
     a.href = href;
     a.textContent = text;
     a.style.textDecoration = 'none';
-    a.style.color = 'inherit';
+    a.classList.add('ls-link');
     a.style.cursor = 'pointer';
     if (strong) { a.style.fontWeight = '600'; a.style.borderColor = 'currentColor'; }
     return a;
@@ -7488,7 +7496,7 @@ window.__lsStyleChip = (() => {
     let info = cache.get(id);
     if (info === undefined) {
       try {
-        const r = await fetch('/api/listing-style?id=' + encodeURIComponent(id) + '&site=' + encodeURIComponent(siteHost));
+        const r = await fetch('/api/listing-style?id=' + encodeURIComponent(id) + '&site=' + encodeURIComponent(siteHost) + '&pageCity=' + encodeURIComponent(cityKey()));
         info = r.ok ? await r.json() : {};
       } catch (e) { info = {}; }
       cache.set(id, info);
@@ -7507,7 +7515,7 @@ window.__lsStyleChip = (() => {
 
     // No page matched in the database: try the usual intent address (/nanaimo/nanaimo-oceanfront-homes),
     // check on click that it really opens on this site, else use the filtered page.
-    const citySlug = String(info.city || cityKey()).toLowerCase().replace(/\s+/g, '-');
+    const citySlug = String(cityKey() || info.city).toLowerCase().replace(/\s+/g, '-');
     const smart = (a, known, topic) => {
       if (known || !topic) return a;
       const candidate = withSite('/' + citySlug + '/' + citySlug + '-' + topic + '-homes');
@@ -7574,6 +7582,9 @@ window.__lsStyleChip = (() => {
     } else if (showStyle) {
       el.appendChild(pill(styleLabel + ' \u00b7 more like this \u2192', link(page, styleParams), 'ls-home-style-chip', false));
     }
+
+    // Plain label pills first, links after.
+    [...el.querySelectorAll(':scope > span.panel__highlight-chip')].reverse().forEach((s) => el.prepend(s));
 
     el.hidden = el.children.length === 0;
   };
