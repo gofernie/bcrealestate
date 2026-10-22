@@ -520,6 +520,82 @@ const assignedAgent = selectedSession
       .eq("session_id", selectedSession)
       .maybeSingle()).data?.assigned_agent_id
   : null;
+
+// ---- listing activity (intent_listing_events) ----
+const activeSessionId = selectedSession || sessions[0]?.session_id || null;
+
+const { data: activityRows } = activeSessionId
+  ? await supabase
+      .from("intent_listing_events")
+      .select("listing_id, event, value, meta, created_at")
+      .eq("session_id", activeSessionId)
+      .order("created_at", { ascending: true })
+      .limit(5000)
+  : { data: [] };
+
+const activityByListing = new Map();
+const activityTotals = { dwell: 0, photos: 0, floorplans: 0, brochures: 0, partner: 0 };
+
+for (const e of activityRows || []) {
+  const v = Number(e.value) || 0;
+  if (e.event === "partner_invite" || e.event === "partner_join") activityTotals.partner++;
+  if (!e.listing_id) continue;
+  const id = String(e.listing_id);
+  let a = activityByListing.get(id);
+  if (!a) {
+    a = { id, opens: 0, dwell: 0, photosSeen: 0, photosTotal: 0, floorplan: 0, brochure: 0 };
+    activityByListing.set(id, a);
+  }
+  if (e.event === "listing_open") a.opens++;
+  else if (e.event === "dwell") { a.dwell += v; activityTotals.dwell += v; }
+  else if (e.event === "photos") {
+    a.photosSeen = Math.max(a.photosSeen, v);
+    a.photosTotal = Math.max(a.photosTotal, Number(e.meta?.total) || 0);
+  }
+  else if (e.event === "floorplan_open" || e.event === "floorplan_download") { a.floorplan++; activityTotals.floorplans++; }
+  else if (e.event === "brochure_download") { a.brochure++; activityTotals.brochures++; }
+}
+activityTotals.photos = [...activityByListing.values()].reduce((s, a) => s + a.photosSeen, 0);
+
+function fmtDur(sec) {
+  sec = Math.round(Number(sec) || 0);
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  if (m < 60) return sec % 60 && m < 10 ? `${m}m ${sec % 60}s` : `${m}m`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+function activityLine(r) {
+  const a = activityByListing.get(String(r.listing_id || r.mls_number || ""));
+  if (!a) return "";
+  const parts = [];
+  if (a.dwell) parts.push(fmtDur(a.dwell));
+  if (a.opens > 1) parts.push(`${a.opens} visits`);
+  if (a.photosSeen) parts.push(a.photosTotal ? `${a.photosSeen}/${a.photosTotal} photos` : `${a.photosSeen} photos`);
+  if (a.floorplan) parts.push("floorplan ✓");
+  if (a.brochure) parts.push("brochure ✓");
+  return parts.join(" · ");
+}
+
+const activeSessionObj = sessions.find((s) => s.session_id === activeSessionId);
+const reactedIds = new Set(
+  (activeSessionObj?.reactions || []).map((r) => String(r.listing_id || r.mls_number || ""))
+);
+const interestScore = (a) => a.dwell + a.floorplan * 120 + a.brochure * 180 + a.opens * 30;
+const hiddenInterest = [...activityByListing.values()]
+  .filter((a) =>
+    !reactedIds.has(a.id) &&
+    (a.dwell >= 60 || a.floorplan || a.brochure || a.opens >= 2 ||
+      (a.photosTotal && a.photosSeen / a.photosTotal >= 0.6))
+  )
+  .sort((x, y) => interestScore(y) - interestScore(x))
+  .slice(0, 8);
+
+const hiddenIds = hiddenInterest.map((a) => a.id);
+const { data: hiddenRows } = hiddenIds.length
+  ? await supabase.from("listing_rows").select("*").in("mls_number", hiddenIds)
+  : { data: [] };
+const hiddenInfo = new Map((hiddenRows || []).map((row) => [String(row.mls_number), row]));
 ---
 
 <html lang="en">
@@ -1441,7 +1517,7 @@ const pageSlug =
                 {/* Stats bar */}
                 <div class="stats-bar">
                   <div class="stat-cell">
-                    <div class="stat-num">{session.reactions.length}</div>
+                    <div class="stat-num">{Math.max(activityByListing.size, session.reactions.length)}</div>
                     <div class="stat-label">Homes Viewed</div>
                   </div>
                   <div class="stat-cell">
@@ -1461,6 +1537,30 @@ const pageSlug =
                     <div class="stat-label">Showing Requests</div>
                   </div>
                 </div>
+                {activityRows?.length > 0 && (
+                  <div class="stats-bar">
+                    <div class="stat-cell">
+                      <div class="stat-num"><span class="stat-icon">⏱</span>{fmtDur(activityTotals.dwell)}</div>
+                      <div class="stat-label">Time on listings</div>
+                    </div>
+                    <div class="stat-cell">
+                      <div class="stat-num"><span class="stat-icon">🖼</span>{activityTotals.photos}</div>
+                      <div class="stat-label">Photos viewed</div>
+                    </div>
+                    <div class="stat-cell">
+                      <div class="stat-num"><span class="stat-icon">📐</span>{activityTotals.floorplans}</div>
+                      <div class="stat-label">Floorplans</div>
+                    </div>
+                    <div class="stat-cell">
+                      <div class="stat-num"><span class="stat-icon">📄</span>{activityTotals.brochures}</div>
+                      <div class="stat-label">Brochures</div>
+                    </div>
+                    <div class="stat-cell">
+                      <div class="stat-num"><span class="stat-icon">👥</span>{activityTotals.partner}</div>
+                      <div class="stat-label">Partner invites</div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Body */}
                 <div class="detail-body">
@@ -1621,6 +1721,25 @@ const pageSlug =
                       </div>
                     </div>
 
+                    {hiddenInterest.length > 0 && (
+                      <div class="card">
+                        <h3>Looked hard, didn't react</h3>
+                        <p>Listings they spent real time on without a Love, Like or Nope</p>
+                        {hiddenInterest.map((a) => {
+                          const info = hiddenInfo.get(a.id) || {};
+                          const price = parsePrice(info.price || info.list_price);
+                          return (
+                            <div class="listing-item">
+                              <strong>{info.address || `Listing ${a.id}`}</strong>
+                              {price > 0 && <span>{formatMoney(price)}</span>}
+                              <span style="color:var(--ink);font-weight:600;">{activityLine({ listing_id: a.id })}</span>
+                              <a class="listing-open" href={`/${city}/${pageSlug}?listing_id=${encodeURIComponent(a.id)}`} target="_blank">Open →</a>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     {/* Activity timeline */}
                     <div class="card">
                       <h3>Activity timeline</h3>
@@ -1657,6 +1776,7 @@ const pageSlug =
           <strong>{r.address}</strong>
           <span>{r.price} · {r.beds}bd · {r.baths}ba</span>
           <span style="text-transform:capitalize;">{r.area}</span>
+          {activityLine(r) && <span style="color:var(--ink);font-weight:600;">{activityLine(r)}</span>}
           <a class="listing-open" href={`/${city}/${pageSlug}?listing_id=${encodeURIComponent(r.listing_id || r.mls_number || r.address || "")}`} target="_blank">Open →</a>
         </div>
       )) : <div style="font-size:0.8rem;color:var(--muted);padding:8px 0;">None yet</div>}
@@ -1669,6 +1789,7 @@ const pageSlug =
           <strong>{r.address}</strong>
           <span>{r.price} · {r.beds}bd · {r.baths}ba</span>
           <span style="text-transform:capitalize;">{r.area}</span>
+          {activityLine(r) && <span style="color:var(--ink);font-weight:600;">{activityLine(r)}</span>}
           <a class="listing-open" href={`/${city}/${pageSlug}?listing_id=${encodeURIComponent(r.listing_id || r.mls_number || r.address || "")}`} target="_blank">Open →</a>
         </div>
       )) : <div style="font-size:0.8rem;color:var(--muted);padding:8px 0;">None yet</div>}
@@ -1681,6 +1802,7 @@ const pageSlug =
           <strong>{r.address}</strong>
           <span>{r.price} · {r.beds}bd · {r.baths}ba</span>
           <span style="text-transform:capitalize;">{r.area}</span>
+          {activityLine(r) && <span style="color:var(--ink);font-weight:600;">{activityLine(r)}</span>}
           <a class="listing-open" href={`/${city}/${pageSlug}?listing_id=${encodeURIComponent(r.listing_id || r.mls_number || r.address || "")}`} target="_blank">Open →</a>
         </div>
       )) : <div style="font-size:0.8rem;color:var(--muted);padding:8px 0;">None yet</div>}
