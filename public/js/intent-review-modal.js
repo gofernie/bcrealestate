@@ -7522,16 +7522,16 @@ window.__lsStyleChip = (() => {
     const style = String(info.style || '');
     const useStyle = !!style && style !== 'Other';
     const water = shown.has('waterfront') || !!info.waterfront;
-    const page = (useStyle && PAGE[style]) || 'homes'; const styleParams = PAGE[style] ? {} : { style };
+    const TYPE_PAGE = { mobile: 'mobile-homes', condo: 'condos', townhouse: 'townhomes' }; const TYPE_LABEL = { mobile: 'Mobile homes', condo: 'Condos', townhouse: 'Townhomes' }; const mlsType = String(info.type || '').toLowerCase(); const page = TYPE_PAGE[mlsType] || (useStyle && PAGE[style]) || 'homes'; const styleParams = page === 'homes' && useStyle ? { style } : {}; const showStyle = !!TYPE_PAGE[mlsType] || (useStyle && (!PAGE[style] || !mlsType)); const styleLabel = TYPE_PAGE[mlsType] ? TYPE_LABEL[mlsType] : style;
 
     // MLS says waterfront but the description pills didn't: add the pill.
     if (water && !shown.has('waterfront')) {
       el.appendChild(waterPill('ls-home-style-chip'));
     }
 
-    if (useStyle && water) {
+    if (showStyle && water) {
       // 2. Style pill + combined "More like this" (falls back to waterfront-only if < 3 matches).
-      el.appendChild(pill(style, link(page, styleParams), 'ls-home-style-chip', false));
+      el.appendChild(pill(styleLabel, link(page, styleParams), 'ls-home-style-chip', false));
       const combo = { ...styleParams, waterfrontType: waterParam };
       const more = pill('More like this \u2192', link(page, combo), 'ls-home-style-chip', true);
       more.addEventListener('click', async (e) => {
@@ -7543,9 +7543,9 @@ window.__lsStyleChip = (() => {
         setTimeout(() => { more.textContent = label; }, 4000);
       });
       el.appendChild(more);
-    } else if (useStyle) {
+    } else if (showStyle) {
       // 3. Style only: one pill does both jobs.
-      el.appendChild(pill(style + ' \u00b7 more like this \u2192', link(page, styleParams), 'ls-home-style-chip', false));
+      el.appendChild(pill(styleLabel + ' \u00b7 more like this \u2192', link(page, styleParams), 'ls-home-style-chip', false));
     }
 
     el.hidden = el.children.length === 0;

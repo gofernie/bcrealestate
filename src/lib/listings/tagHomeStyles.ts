@@ -63,7 +63,21 @@ const PROMPT =
   "For townhouses, condos and duplexes, use that building type. " +
   "If the photo is not the building exterior, set is_exterior false and give your best style guess from what you can see.";
 
-async function tagPhoto(raw: string, env: Env, model: string) {
+// Tell the model what the MLS says the building is, so a mobile isn't called a "Rancher".
+function typeHint(mlsType: string) {
+  const t = String(mlsType || "").toLowerCase();
+  const map: Record<string, string> = {
+    mobile: "Manufactured / mobile",
+    condo: "Condo / apartment",
+    townhouse: "Townhouse",
+    "multi-family": "Duplex / multi-family",
+  };
+  if (map[t]) return ` The MLS lists this property as ${t}; answer "${map[t]}".`;
+  if (t === "house") return " The MLS lists this property as a detached house; pick its architectural style (not a condo/townhouse/mobile type).";
+  return "";
+}
+
+async function tagPhoto(raw: string, env: Env, model: string, mlsType = "") {
   const img = await fetch(photoUrl(raw, env.REPLIERS_CDN || "https://cdn.repliers.io/"));
   if (!img.ok) throw new Error("photo " + img.status);
   const type = (img.headers.get("content-type") || "image/jpeg").split(";")[0].trim();
@@ -85,7 +99,7 @@ async function tagPhoto(raw: string, env: Env, model: string) {
         tool_choice: { type: "tool", name: "tag" },
         messages: [{ role: "user", content: [
           { type: "image", source: { type: "base64", media_type: type, data } },
-          { type: "text", text: PROMPT },
+          { type: "text", text: PROMPT + typeHint(mlsType) },
         ] }],
       }),
     });
@@ -122,7 +136,7 @@ export async function tagUntaggedListings(
 
   const { data: rows, error } = await db
     .from("listing_rows")
-    .select("id, image_url")
+    .select("id, image_url, normalized_type")
     .eq("status", "A")
     .is("home_style", null)
     .not("image_url", "is", null)
@@ -137,7 +151,7 @@ export async function tagUntaggedListings(
     while (queue.length) {
       const row: any = queue.shift();
       try {
-        const t = await tagPhoto(row.image_url, env, model);
+        const t = await tagPhoto(row.image_url, env, model, row.normalized_type);
         if (!t) throw new Error("no answer");
         const { error: upErr } = await db.from("listing_rows").update({
           home_style: normalizeHomeStyle(t.style),

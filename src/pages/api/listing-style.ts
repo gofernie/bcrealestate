@@ -27,7 +27,7 @@ export const GET: APIRoute = async ({ url }) => {
   const db = createClient(sbUrl, sbKey, { auth: { persistSession: false } });
   const { data, error } = await db
     .from('listing_rows')
-    .select('home_style, waterfront, waterfront_type')
+    .select('home_style, waterfront, waterfront_type, normalized_type')
     .or(`id.eq.${id},mls_number.eq.${id}`)
     .limit(1)
     .maybeSingle();
@@ -40,5 +40,5 @@ export const GET: APIRoute = async ({ url }) => {
   const wType = String(data?.waterfront_type || '').trim().toLowerCase();
   const waterfront = data?.waterfront === true || (!!wType && !['none', 'no', 'false', 'n/a'].includes(wType));
 
-  return json({ style: data?.home_style || '', waterfront, waterfrontType: waterfront ? (wType || 'waterfront') : '' });
+  return json({ style: data?.home_style || '', waterfront, waterfrontType: waterfront ? (wType || 'waterfront') : '', type: String(data?.normalized_type || '').toLowerCase() });
 };
