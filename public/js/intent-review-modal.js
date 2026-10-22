@@ -7522,7 +7522,7 @@ window.__lsStyleChip = (() => {
     const style = String(info.style || '');
     const useStyle = !!style && style !== 'Other';
     const water = shown.has('waterfront') || !!info.waterfront;
-    const page = (useStyle && PAGE[style]) || 'homes';
+    const page = (useStyle && PAGE[style]) || 'homes'; const styleParams = PAGE[style] ? {} : { style };
 
     // MLS says waterfront but the description pills didn't: add the pill.
     if (water && !shown.has('waterfront')) {
@@ -7531,8 +7531,8 @@ window.__lsStyleChip = (() => {
 
     if (useStyle && water) {
       // 2. Style pill + combined "More like this" (falls back to waterfront-only if < 3 matches).
-      el.appendChild(pill(style, link(page, { style }), 'ls-home-style-chip', false));
-      const combo = { style, waterfrontType: waterParam };
+      el.appendChild(pill(style, link(page, styleParams), 'ls-home-style-chip', false));
+      const combo = { ...styleParams, waterfrontType: waterParam };
       const more = pill('More like this \u2192', link(page, combo), 'ls-home-style-chip', true);
       more.addEventListener('click', async (e) => {
         e.preventDefault();
@@ -7545,7 +7545,7 @@ window.__lsStyleChip = (() => {
       el.appendChild(more);
     } else if (useStyle) {
       // 3. Style only: one pill does both jobs.
-      el.appendChild(pill(style + ' \u00b7 more like this \u2192', link(page, { style }), 'ls-home-style-chip', false));
+      el.appendChild(pill(style + ' \u00b7 more like this \u2192', link(page, styleParams), 'ls-home-style-chip', false));
     }
 
     el.hidden = el.children.length === 0;

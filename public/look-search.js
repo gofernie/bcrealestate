@@ -1,4 +1,4 @@
-// Search this look: drag a box over anything in a listing photo, get "similar" product searches.
+﻿// Search this look: drag a box over anything in a listing photo, get "similar" product searches.
 (() => {
   if (window.__lookSearch) return;
   window.__lookSearch = true;
@@ -236,7 +236,7 @@
     const path = pagePath(STYLE_PAGE[d.home_style] || 'homes');
     const citySeg = path.split('/').filter(Boolean).slice(-2, -1)[0] || '';
     const city = citySeg ? citySeg.charAt(0).toUpperCase() + citySeg.slice(1).replace(/-/g, ' ') : '';
-    const href = path + '?style=' + encodeURIComponent(d.home_style);
+    const href = STYLE_PAGE[d.home_style] ? path : path + '?style=' + encodeURIComponent(d.home_style);
     return `<div class="ls-head"><div><div class="ls-kicker">Home style</div><h3>${esc(d.home_style)}</h3></div><button class="ls-x" aria-label="Close">&times;</button></div>
       <p class="ls-desc">${esc(d.description || d.item || '')}</p>
       <div class="ls-links"><a class="ls-guess" href="${esc(href)}">See ${esc(d.home_style)} homes${city ? ' in ' + esc(city) : ''} &rarr;</a></div>`;
