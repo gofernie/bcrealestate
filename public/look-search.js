@@ -384,26 +384,60 @@
 })();
 
 
-// Style filter chip on the homes page ("Style: Rancher x")
+// Homes page filters from a pill or panel (?style= / ?waterfrontType= / ?viewType=):
+// retitle the heading ("Nanaimo Ocean View Homes.") and show a clearable chip.
 (() => {
-  const styles = (window.__pageStyles && window.__pageStyles.length) ? window.__pageStyles : new URLSearchParams(location.search).getAll('style');
-  if (!styles.length) return;
-  const mount = () => {
+  const qs = new URLSearchParams(location.search);
+  const styles = (window.__pageStyles && window.__pageStyles.length) ? window.__pageStyles : qs.getAll('style');
+  const water = String(qs.get('waterfrontType') || '').toLowerCase();
+  const view = String(qs.get('viewType') || '').toLowerCase();
+  const WATER = { lakefront: 'Lakefront', oceanfront: 'Oceanfront', riverfront: 'Riverfront', any: 'Waterfront', waterfront: 'Waterfront' };
+  const VIEW = { ocean: 'Ocean View', mountain: 'Mountain View', lake: 'Lake View', water: 'Water View', city: 'City View' };
+  const titleCase = (t) => t.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+
+  const parts = [];
+  if (water && WATER[water]) parts.push({ title: WATER[water], chip: WATER[water] });
+  if (view && VIEW[view]) parts.push({ title: VIEW[view], chip: VIEW[view] + 's' });
+  if (styles.length) parts.push({ title: titleCase(styles.join(' / ')), chip: styles.join(', ') });
+  if (!parts.length) return;
+  const label = parts.map((p) => p.title).join(' ');
+
+  // 1. Heading: "Nanaimo Homes." -> "Nanaimo Ocean View Homes."
+  const retitle = () => {
+    const h1 = document.querySelector('h1');
+    if (!h1) return false;
+    if (h1.dataset.lsTitled) return true;
+    const walker = document.createTreeWalker(h1, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (/\bHomes\b/.test(n.textContent)) {
+        n.textContent = n.textContent.replace(/\bHomes\b/, label + ' Homes');
+        document.title = document.title.replace(/\bHomes\b/, label + ' Homes');
+        break;
+      }
+    }
+    h1.dataset.lsTitled = '1';
+    return true;
+  };
+
+  // 2. Chip under the filters: "Ocean Views x" (clears these filters).
+  const mountChip = () => {
     if (document.querySelector('.ls-style-chip')) return true;
     const anchor = document.getElementById('listing-results-anchor');
     if (!anchor) return false;
     const bar = document.createElement('div');
     bar.className = 'ls-style-chip';
     bar.style.cssText = 'display:flex;justify-content:flex-start;margin:12px 0';
-    bar.innerHTML = '<span style="display:inline-flex;align-items:center;gap:10px;padding:7px 8px 7px 14px;border-radius:999px;background:color-mix(in srgb,var(--accent,#2f5d50) 14%,#fff);color:var(--accent,#2f5d50);font:500 14px/1 \'DM Sans\',system-ui,sans-serif">Style: <strong></strong><button type="button" aria-label="Clear style filter" style="border:0;background:var(--accent,#2f5d50);color:#fff;width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:15px;line-height:1">&times;</button></span>';
-    bar.querySelector('strong').textContent = styles.join(', ');
+    bar.innerHTML = '<span style="display:inline-flex;align-items:center;gap:10px;padding:7px 8px 7px 14px;border-radius:999px;background:color-mix(in srgb,var(--accent,#2f5d50) 14%,#fff);color:var(--accent,#2f5d50);font:500 14px/1 \'DM Sans\',system-ui,sans-serif"><strong></strong><button type="button" aria-label="Clear filter" style="border:0;background:var(--accent,#2f5d50);color:#fff;width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:15px;line-height:1">&times;</button></span>';
+    bar.querySelector('strong').textContent = parts.map((p) => p.chip).join(' \u00b7 ');
     bar.querySelector('button').addEventListener('click', () => {
       const u = new URL(location.href);
-      u.searchParams.delete('style');
+      ['style', 'waterfrontType', 'viewType'].forEach((k) => u.searchParams.delete(k));
       location.href = u.pathname + u.search;
     });
     anchor.after(bar);
     return true;
   };
-  if (!mount()) { let n = 0; const t = setInterval(() => { if (mount() || ++n > 20) clearInterval(t); }, 500); }
+
+  const run = () => { const a = retitle(); const b = mountChip(); return a && b; };
+  if (!run()) { let n = 0; const t = setInterval(() => { if (run() || ++n > 20) clearInterval(t); }, 500); }
 })();

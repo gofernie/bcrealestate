@@ -7410,15 +7410,18 @@ sheetImage?.addEventListener("touchend", (event) => {
 
 
 
-// Listing modal pills: tappable feature pills, style pill, and "More like this".
+// Listing modal pills: tappable feature pills, style/type pill, and "More like this".
+// Data comes from /api/listing-style (AI style, MLS type, waterfront, matching intent pages).
 window.__lsStyleChip = (() => {
   const VIEW_OK = true;
   const cache = new Map();
-  const PAGE = { 'Manufactured / mobile': 'mobile-homes', 'Condo / apartment': 'condos', 'Townhouse': 'townhomes' };
-  const FEATURES = { 'waterfront': { waterfrontType: 'any' } };
-  if (VIEW_OK) FEATURES['ocean views'] = { viewType: 'ocean' };
+  const STYLE_PAGE = { 'Manufactured / mobile': 'mobile-homes', 'Condo / apartment': 'condos', 'Townhouse': 'townhomes' };
+  const TYPE_PAGE = { mobile: 'mobile-homes', condo: 'condos', townhouse: 'townhomes' };
+  const TYPE_LABEL = { mobile: 'Mobile homes', condo: 'Condos', townhouse: 'Townhomes' };
+  const WATER_LABEL = { oceanfront: 'Oceanfront', lakefront: 'Lakefront', riverfront: 'Riverfront' };
 
   const seg = () => location.pathname.split('/').filter(Boolean)[0] || '';
+  // Page paths come from the site's own nav links (works on agent sites with other URL shapes).
   const pagePath = (page) => {
     if (window.__lsPagePath) return window.__lsPagePath(page);
     for (const a of document.querySelectorAll('a[href]')) {
@@ -7430,7 +7433,17 @@ window.__lsStyleChip = (() => {
     }
     return (seg() ? '/' + seg() : '') + '/' + page;
   };
-  const link = (page, params) => pagePath(page) + '?' + new URLSearchParams(params).toString();
+  // Local dev picks the site from ?siteDomain=; carry it into every link so dev behaves like production.
+  const devSite = new URLSearchParams(location.search).get('siteDomain') || '';
+  const siteHost = devSite || location.hostname;
+  const withSite = (href) => {
+    if (!devSite || !href) return href;
+    return href + (href.includes('?') ? '&' : '?') + 'siteDomain=' + encodeURIComponent(devSite);
+  };
+  const link = (page, params) => {
+    const q = new URLSearchParams(params).toString();
+    return withSite(pagePath(page) + (q ? '?' + q : ''));
+  };
   const cityKey = () =>
     document.querySelector('[data-city]')?.dataset.city ||
     pagePath('homes').split('/').filter(Boolean).slice(-2, -1)[0] ||
@@ -7465,14 +7478,17 @@ window.__lsStyleChip = (() => {
   return async (el, id) => {
     if (!el) return;
     id = String(id || '').trim();
-    el.dataset.lsStyleFor = id; window.__lsChipSeq = (window.__lsChipSeq || 0) + 1; const token = String(window.__lsChipSeq); el.dataset.lsToken = token;
+    el.dataset.lsStyleFor = id;
+    window.__lsChipSeq = (window.__lsChipSeq || 0) + 1;
+    const token = String(window.__lsChipSeq);
+    el.dataset.lsToken = token;
     el.querySelectorAll('.ls-home-style-chip').forEach((n) => n.remove());
     if (!id) return;
 
     let info = cache.get(id);
     if (info === undefined) {
       try {
-        const r = await fetch('/api/listing-style?id=' + encodeURIComponent(id));
+        const r = await fetch('/api/listing-style?id=' + encodeURIComponent(id) + '&site=' + encodeURIComponent(siteHost));
         info = r.ok ? await r.json() : {};
       } catch (e) { info = {}; }
       cache.set(id, info);
@@ -7480,58 +7496,69 @@ window.__lsStyleChip = (() => {
     if (el.dataset.lsStyleFor !== id || el.dataset.lsToken !== token) return; // only the latest call adds pills
     el.querySelectorAll('.ls-home-style-chip').forEach((n) => n.remove());
 
-    // Specific water type from MLS: lakefront / oceanfront / riverfront (else any waterfront).
+    // Water: specific type from MLS; link to the matching intent page if the city has one.
     const wType = String(info.waterfrontType || '').toLowerCase();
     const waterParam = wType && wType !== 'waterfront' ? wType : 'any';
-    const waterLabel = { oceanfront: 'Oceanfront', lakefront: 'Lakefront', riverfront: 'Riverfront' }[wType] || 'Waterfront';
-    const waterLink = { waterfrontType: waterParam };
+    const waterLabel = WATER_LABEL[wType] || 'Waterfront';
+    const waterFallback = link('homes', { waterfrontType: waterParam });
+    const viewFallback = link('homes', { viewType: 'ocean' });
+    const waterHref = info.waterPage ? withSite(info.waterPage) : waterFallback;
+    const viewHref = info.viewPage ? withSite(info.viewPage) : viewFallback;
 
-    // Water pill: prefer the city's intent page (e.g. /nanaimo/nanaimo-lakefront-homes, all types),
-    // fall back to the filtered homes page if that page doesn't exist.
-    const waterPill = (cls) => {
-      const a = pill(waterLabel, link('homes', waterLink), cls, false);
-      if (waterParam === 'any') return a;
-      const dir = pagePath('homes').replace(/\/[^/]*$/, '');
-      const intent = dir + '/' + String(cityKey()).toLowerCase().replace(/\s+/g, '-') + '-' + waterParam + '-homes';
+    // No page matched in the database: try the usual intent address (/nanaimo/nanaimo-oceanfront-homes),
+    // check on click that it really opens on this site, else use the filtered page.
+    const citySlug = String(info.city || cityKey()).toLowerCase().replace(/\s+/g, '-');
+    const smart = (a, known, topic) => {
+      if (known || !topic) return a;
+      const candidate = withSite('/' + citySlug + '/' + citySlug + '-' + topic + '-homes');
       a.addEventListener('click', async (e) => {
         e.preventDefault();
-        const label = a.textContent;
+        const t = a.textContent;
         a.textContent = 'Opening\u2026';
         let ok = false;
         try {
-          const r = await fetch(intent);
+          const r = await fetch(candidate);
           ok = r.ok && !(await r.text()).includes('This page has moved on');
         } catch (err) {}
-        location.href = ok ? intent : a.href;
-        setTimeout(() => { a.textContent = label; }, 4000);
+        location.href = ok ? candidate : a.href;
+        setTimeout(() => { a.textContent = t; }, 4000);
       });
       return a;
     };
+    const waterTopic = waterParam !== 'any' ? waterParam : '';
 
-    // 1. Feature pills already shown (from the description) become filter links.
+    // 1. Feature pills already shown (from the description) become links.
     const shown = new Set();
     el.querySelectorAll('span.panel__highlight-chip').forEach((span) => {
       const label = span.textContent.trim();
       const key = label.toLowerCase();
-      const f = FEATURES[key];
-      if (!f) return;
-      shown.add(key);
-      if (key === 'waterfront') span.replaceWith(waterPill('ls-feature-link'));
-      else span.replaceWith(pill(label, link('homes', f), 'ls-feature-link', false));
+      if (key === 'waterfront') {
+        shown.add(key);
+        span.replaceWith(smart(pill(waterLabel, waterHref, 'ls-feature-link', false), info.waterPage, waterTopic));
+      } else if (key === 'ocean views' && VIEW_OK) {
+        shown.add(key);
+        span.replaceWith(smart(pill(label, viewHref, 'ls-feature-link', false), info.viewPage, 'ocean-view'));
+      }
     });
 
     const style = String(info.style || '');
     const useStyle = !!style && style !== 'Other';
     const water = shown.has('waterfront') || !!info.waterfront;
-    const TYPE_PAGE = { mobile: 'mobile-homes', condo: 'condos', townhouse: 'townhomes' }; const TYPE_LABEL = { mobile: 'Mobile homes', condo: 'Condos', townhouse: 'Townhomes' }; const mlsType = String(info.type || '').toLowerCase(); const page = TYPE_PAGE[mlsType] || (useStyle && PAGE[style]) || 'homes'; const styleParams = page === 'homes' && useStyle ? { style } : {}; const showStyle = !!TYPE_PAGE[mlsType] || (useStyle && (!PAGE[style] || !mlsType)); const styleLabel = TYPE_PAGE[mlsType] ? TYPE_LABEL[mlsType] : style;
 
     // MLS says waterfront but the description pills didn't: add the pill.
     if (water && !shown.has('waterfront')) {
-      el.appendChild(waterPill('ls-home-style-chip'));
+      el.appendChild(smart(pill(waterLabel, waterHref, 'ls-home-style-chip', false), info.waterPage, waterTopic));
     }
 
+    // MLS type picks the page (mobile / condo / townhouse); style only refines houses.
+    const mlsType = String(info.type || '').toLowerCase();
+    const page = TYPE_PAGE[mlsType] || (useStyle && STYLE_PAGE[style]) || 'homes';
+    const styleParams = page === 'homes' && useStyle ? { style } : {};
+    const showStyle = !!TYPE_PAGE[mlsType] || (useStyle && (!STYLE_PAGE[style] || !mlsType));
+    const styleLabel = TYPE_PAGE[mlsType] ? TYPE_LABEL[mlsType] : style;
+
     if (showStyle && water) {
-      // 2. Style pill + combined "More like this" (falls back to waterfront-only if < 3 matches).
+      // Style pill + combined "More like this" (falls back to water-only if < 3 matches).
       el.appendChild(pill(styleLabel, link(page, styleParams), 'ls-home-style-chip', false));
       const combo = { ...styleParams, waterfrontType: waterParam };
       const more = pill('More like this \u2192', link(page, combo), 'ls-home-style-chip', true);
@@ -7540,12 +7567,11 @@ window.__lsStyleChip = (() => {
         const label = more.textContent;
         more.textContent = 'Finding\u2026';
         const n = await total(combo);
-        location.href = n !== null && n < 3 ? link('homes', waterLink) : more.href;
+        location.href = n !== null && n < 3 ? waterHref : more.href;
         setTimeout(() => { more.textContent = label; }, 4000);
       });
       el.appendChild(more);
     } else if (showStyle) {
-      // 3. Style only: one pill does both jobs.
       el.appendChild(pill(styleLabel + ' \u00b7 more like this \u2192', link(page, styleParams), 'ls-home-style-chip', false));
     }
 
