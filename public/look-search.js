@@ -33,7 +33,7 @@
   .ls-links{display:flex;flex-wrap:wrap;gap:6px}
   .ls-links a{padding:6px 11px;border-radius:999px;border:1px solid #d8d0c1;color:#1f1f1f;text-decoration:none;font-size:13px;background:#fff}
   .ls-links a:hover{border-color:var(--accent,#2f5d50);color:var(--accent,#2f5d50)}
-  .ls-conf{font-weight:500;font-size:12px;color:#857d70;margin-left:6px}.ls-links a.ls-guess{background:#1f1f1f;color:#fff;border-color:#1f1f1f}.ls-note{margin:12px 0 0;font-size:12px;color:#857d70}.ls-article{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 14px;margin:6px 0 4px;padding:14px 16px;border-radius:14px;background:#1f1f1f;color:#fff;text-decoration:none;transition:transform .15s ease,box-shadow .15s ease}.ls-article:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(0,0,0,.22)}.ls-article-k{grid-column:1;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#bdb5a8;font-weight:600}.ls-article-n{grid-column:1;font:400 30px/1.05 "Instrument Serif",Georgia,serif;color:#fff}.ls-article-q{grid-column:1;font-size:13px;color:#d9d2c6}.ls-article-go{grid-column:2;grid-row:1/span 3;padding:9px 16px;border-radius:999px;background:#faf7f0;color:#1f1f1f;font-weight:700;font-size:14px;white-space:nowrap}.ls-alts{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 0;font-size:13px;color:#857d70}.ls-alts a{padding:5px 10px;border-radius:999px;border:1px solid #d8d0c1;color:#1f1f1f;text-decoration:none;background:#fff}.ls-alts a:hover{border-color:#1f1f1f}
+  .ls-conf{font-weight:500;font-size:12px;color:#857d70;margin-left:6px}.ls-links a.ls-guess{background:#1f1f1f;color:#fff;border-color:#1f1f1f}.ls-note{margin:12px 0 0;font-size:12px;color:#857d70}.ls-thumb{width:72px;height:72px;border-radius:10px;flex:none;background-repeat:no-repeat;background-color:#ece6da;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}.ls-head-main{display:flex;gap:12px;align-items:flex-start;min-width:0}.ls-shop{margin:12px 0 0;padding:12px 0 0;border-top:1px solid #e6dfd2}.ls-shop-t{font-size:14px;color:#4a453e;margin:0 0 8px}.ls-shop-t a{color:#1f1f1f;font-weight:600;text-decoration:underline;text-underline-offset:3px}.ls-alts{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px;color:#857d70}.ls-alts a{padding:5px 10px;border-radius:999px;border:1px solid #d8d0c1;color:#1f1f1f;text-decoration:none;background:#fff}.ls-alts a:hover{border-color:#1f1f1f}
   .ls-load{display:flex;align-items:center;gap:10px;color:#4a453e}
   .ls-spin{width:18px;height:18px;border-radius:50%;border:2px solid #d8d0c1;border-top-color:var(--accent,#2f5d50);animation:lsspin .8s linear infinite}
   @keyframes lsspin{to{transform:rotate(360deg)}}
@@ -203,7 +203,7 @@
       const r = await fetch(ENDPOINT, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || 'Search failed (' + r.status + '), try again.');
-      render(d);
+      render(Object.assign(d, { _src: body.photoUrl, _box: box, _nw: img.naturalWidth, _nh: img.naturalHeight }));
     } catch (err) {
       openPanel(`<div class="ls-head"><p class="ls-desc">${esc(err.message)}</p><button class="ls-x" aria-label="Close">&times;</button></div>`);
     }
@@ -249,27 +249,36 @@
         <p class="ls-desc">Try drawing a tighter box around one piece, like a chair, light or rug.</p>`);
       return;
     }
-    // Article only: one prominent card for the best search, other searches as small links.
+    // Quiet Article suggestion: one line plus small search pills (no hard sell).
     const articleLink = (q) => {
       const l = (q.links || []).find((x) => x.name === 'Article') || (q.links || [])[0];
       return l ? l.url : 'https://www.article.com/search?q=' + encodeURIComponent(q.phrase);
     };
     const showShop = d.furnishing !== false;
-    const best = d.results[0];
-    const alts = d.results.slice(1)
+    const pills = d.results
       .map((q) => `<a href="${esc(articleLink(q))}" target="_blank" rel="sponsored noopener">${esc(q.phrase)}</a>`)
       .join('');
     const shop = showShop ? `
-      <a class="ls-article" href="${esc(articleLink(best))}" target="_blank" rel="sponsored noopener">
-        <span class="ls-article-k">Find something similar at</span>
-        <span class="ls-article-n">Article</span>
-        <span class="ls-article-q">${esc(best.phrase)}</span>
-        <span class="ls-article-go">Shop &rarr;</span>
-      </a>
-      ${alts ? `<div class="ls-alts"><span>Or try</span>${alts}</div>` : ''}
-      <p class="ls-note">Similar pieces from Article, a Canadian furniture company &mdash; not the exact item in this home. We may earn a commission.</p>` : '';
-    openPanel(`<div class="ls-head"><div><div class="ls-kicker">Looks like</div><h3>${esc(d.item)}</h3></div><button class="ls-x" aria-label="Close">&times;</button></div>
+      <div class="ls-shop">
+        <p class="ls-shop-t">Like this look? Browse similar pieces at <a href="${esc(articleLink(d.results[0]))}" target="_blank" rel="sponsored noopener">Article</a></p>
+        <div class="ls-alts">${pills}</div>
+      </div>
+      <p class="ls-note">Article is a Canadian furniture company. Similar pieces, not the exact item in this home. We may earn a commission.</p>` : '';
+    openPanel(`<div class="ls-head"><div class="ls-head-main">${thumbHtml(d)}<div><div class="ls-kicker">Looks like</div><h3>${esc(d.item)}</h3></div></div><button class="ls-x" aria-label="Close">&times;</button></div>
       <p class="ls-desc">${esc(d.description)}</p>${d.style ? `<span class="ls-chip">${esc(d.style)}</span>` : ''}${shop}${guessHtml(d)}`);
+  }
+
+  // Thumbnail of the boxed area, cropped from the listing photo with CSS (no extra download).
+  function thumbHtml(d) {
+    const b = d._box, W = d._nw, H = d._nh;
+    if (!d._src || !b || !W || !H) return '';
+    const S = 72, cw = b.w * W, ch = b.h * H;
+    if (cw < 4 || ch < 4) return '';
+    const k = Math.max(S / cw, S / ch);
+    const bx = -(b.x * W * k - (S - cw * k) / 2);
+    const by = -(b.y * H * k - (S - ch * k) / 2);
+    const url = String(d._src).replace(/["\\()]/g, (c) => encodeURIComponent(c));
+    return `<div class="ls-thumb" style="background-image:url('${esc(url)}');background-size:${Math.round(W * k)}px ${Math.round(H * k)}px;background-position:${Math.round(bx)}px ${Math.round(by)}px"></div>`;
   }
 
   setInterval(place, 600);
