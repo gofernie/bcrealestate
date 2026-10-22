@@ -11,7 +11,7 @@
     font:600 13px/1 "DM Sans",system-ui,sans-serif;background:rgba(20,20,20,.72);color:#fff;cursor:pointer;
     backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 2px 10px rgba(0,0,0,.25)}
   .ls-btn.on{background:var(--accent,#2f5d50)}
-  .ls-btn{white-space:nowrap}.ls-btn svg{width:15px;height:15px}
+  .ls-btn{white-space:nowrap}.ls-btn.ls-icon span{display:none}.ls-vh{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important}.ls-btn.ls-icon svg{width:18px;height:18px}.ls-btn svg{width:15px;height:15px}
   .ls-layer{position:fixed;z-index:${Z};display:none;cursor:crosshair;touch-action:none;overflow:hidden}
   .ls-layer.on{display:block}
   .ls-hint{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:rgba(0,0,0,.6);color:#fff;
@@ -104,6 +104,88 @@
     for (const p of P) btn.style[p] = cs && !(active && p === 'backgroundColor') ? cs[p] : '';
   }
 
+  // Make the modal's Share button an icon-only square to match ours (text kept for screen readers).
+  function compactShare(el) {
+    el.dataset.lsCompact = '1';
+    for (const n of Array.from(el.childNodes)) {
+      if (n.nodeType === 3 && n.textContent.trim()) {
+        const s = document.createElement('span');
+        s.className = 'ls-vh';
+        s.textContent = n.textContent;
+        n.replaceWith(s);
+      } else if (n.nodeType === 1 && !n.querySelector('svg') && n.tagName !== 'svg' && n.textContent.trim()) {
+        n.classList.add('ls-vh');
+      }
+    }
+    el.title = el.title || 'Share';
+    if (!el.getAttribute('aria-label')) el.setAttribute('aria-label', 'Share');
+    const h = getComputedStyle(el).height;
+    el.style.setProperty('padding', '0', 'important');
+    el.style.setProperty('height', h, 'important');
+    el.style.setProperty('width', h, 'important');
+    el.style.setProperty('min-width', h, 'important');
+    el.style.setProperty('justify-content', 'center', 'important');
+    // Fainter glass look so the photo shows through.
+    el.style.setProperty('background-color', 'rgba(17,17,17,.36)', 'important');
+    el.style.setProperty('border-color', 'rgba(255,255,255,.28)', 'important');
+    el.style.setProperty('box-shadow', 'none', 'important');
+    el.style.setProperty('backdrop-filter', 'blur(6px)', 'important');
+  }
+
+  // Photo counter ("1 / 57 photos"): move it to the bottom-right, lined up with the home info line.
+  let countEl = null;
+  function moveCount(r) {
+    if (!countEl || !countEl.isConnected) {
+      countEl = null;
+      for (const el of document.querySelectorAll('span,div,p,small,b,strong')) {
+        if (el.children.length > 2) continue;
+        if (!/^\d+\s*\/\s*\d+(\s*photos?)?$/i.test(el.textContent.trim())) continue;
+        const b = el.getBoundingClientRect();
+        if (!b.width || b.bottom < r.top - 20 || b.top > r.bottom || b.right < r.left || b.left > r.right) continue;
+        const cs = getComputedStyle(el);
+        if (cs.position !== 'absolute' && cs.position !== 'fixed') continue;
+        countEl = el;
+        break;
+      }
+      if (!countEl) return;
+    }
+    const el = countEl;
+    const parent = el.offsetParent || el.parentElement;
+    if (!parent) return;
+
+    // Home info line (beds / baths / sq ft) in the bottom-left of the photo: smallest element that matches.
+    let info = null;
+    for (const s of parent.querySelectorAll('div,p,span,li')) {
+      if (s === el || s.contains(el)) continue;
+      const t = s.textContent.trim();
+      if (!t || t.length > 90 || !/\b(bd|ba|beds?|baths?|sq\.? ?ft)\b/i.test(t)) continue;
+      const sb = s.getBoundingClientRect();
+      if (!sb.width || sb.bottom > r.bottom + 2 || sb.top < r.top + r.height / 2 || sb.left > r.left + r.width / 2) continue;
+      if (!info || sb.height < info.getBoundingClientRect().height) info = s;
+    }
+
+    // Line up the actual text (glyph boxes), not the boxes around it: pills and lines have different padding.
+    const textMid = (node) => {
+      const rg = document.createRange();
+      rg.selectNodeContents(node);
+      const b = rg.getBoundingClientRect();
+      return b.height ? b.top + b.height / 2 : null;
+    };
+    const pr = parent.getBoundingClientRect();
+    const eb = el.getBoundingClientRect();
+    const countMid = textMid(el);
+    const infoMid = info ? textMid(info) : null;
+    const ib = info ? info.getBoundingClientRect() : null;
+    const bottom = infoMid != null && countMid != null
+      ? Math.round(pr.bottom - infoMid - (eb.bottom - countMid))
+      : 14;
+    const right = ib ? Math.max(8, Math.round(ib.left - r.left) + Math.round(pr.right - r.right)) : 14;
+    el.style.setProperty('top', 'auto', 'important');
+    el.style.setProperty('left', 'auto', 'important');
+    el.style.setProperty('bottom', bottom + 'px', 'important');
+    el.style.setProperty('right', right + 'px', 'important');
+  }
+
   // Visible "Share" button near the top of this photo, if any.
   function shareBtn(r) {
     for (const el of document.querySelectorAll('button,a')) {
@@ -125,10 +207,25 @@
     const r = photo.getBoundingClientRect();
     btn.style.display = 'inline-flex';
     // Big lightbox: sit beside Share. Small modal: bottom-right of the photo.
-    const sh = r.width > innerWidth * 0.7 ? shareBtn(r) : null;
+    let sh = r.width > innerWidth * 0.7 ? shareBtn(r) : null;
+    if (sh && !sh.el.dataset.lsCompact) { compactShare(sh.el); sh = shareBtn(r); }
+    if (sh) moveCount(r);
     skin(sh && sh.el);
-    btn.style.left = (sh ? sh.left - btn.offsetWidth - 8 : r.right - btn.offsetWidth - 14) + 'px';
-    btn.style.top = (sh ? sh.top + (sh.height - btn.offsetHeight) / 2 : Math.max(8, r.bottom - btn.offsetHeight - 14)) + 'px';
+    // Beside Share: icon-only square (less busy, esp. on phones); label only while active.
+    const icon = !!sh && !active;
+    btn.classList.toggle('ls-icon', icon);
+    btn.title = icon ? 'Search this look' : '';
+    btn.setAttribute('aria-label', active ? 'Done' : 'Search this look');
+    if (icon) {
+      btn.style.padding = '0';
+      btn.style.width = btn.style.height || '40px';
+      btn.style.justifyContent = 'center';
+    } else {
+      btn.style.width = '';
+      btn.style.justifyContent = '';
+    }
+    btn.style.left = (sh ? sh.right - btn.offsetWidth : r.right - btn.offsetWidth - 14) + 'px';
+    btn.style.top = (sh ? sh.bottom + 8 : Math.max(8, r.bottom - btn.offsetHeight - 14)) + 'px';
     Object.assign(layer.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
     layer.classList.toggle('on', active);
   }
