@@ -78,7 +78,34 @@ const handle = async (request: Request): Promise<Response> => {
   if (!img.ok) return json({ error: 'Could not load photo' }, 502);
   const mediaType = (img.headers.get('content-type') ?? 'image/jpeg').split(';')[0].trim();
   if (!OK_TYPES.includes(mediaType)) return json({ error: 'Unsupported image' }, 415);
-  const data = Buffer.from(await img.arrayBuffer()).toString('base64');
+  const raw = Buffer.from(await img.arrayBuffer());
+  const data = raw.toString('base64');
+
+  // Crop to the buyer's box (plus a little margin) so Claude looks at what they selected.
+  let crop: { data: string; type: string } | null = null;
+  try {
+    const sharp = (await import('sharp')).default;
+    const meta = await sharp(raw).metadata();
+    const W = meta.width || 0;
+    const H = meta.height || 0;
+    if (W && H) {
+      const pad = 0.08;
+      const x0 = Math.max(0, Math.floor((box.x - box.w * pad) * W));
+      const y0 = Math.max(0, Math.floor((box.y - box.h * pad) * H));
+      const x1 = Math.min(W, Math.ceil((box.x + box.w * (1 + pad)) * W));
+      const y1 = Math.min(H, Math.ceil((box.y + box.h * (1 + pad)) * H));
+      if (x1 - x0 > 16 && y1 - y0 > 16) {
+        const buf = await sharp(raw)
+          .extract({ left: x0, top: y0, width: x1 - x0, height: y1 - y0 })
+          .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 85 })
+          .toBuffer();
+        crop = { data: buf.toString('base64'), type: 'image/jpeg' };
+      }
+    }
+  } catch (e) {
+    console.error('look-search crop failed, using full photo', e);
+  }
 
   const pct = (v: number) => Math.round(v * 100);
   const prompt = `A home buyer drew a box on this listing photo. The box covers: left ${pct(box.x)}%, top ${pct(box.y)}%, width ${pct(box.w)}%, height ${pct(box.h)}% of the image.
@@ -95,8 +122,9 @@ Also give your best guess at the exact original brand and model (guess) if the d
       model: MODEL,
       max_tokens: 700, tools: [{ name: 'report', description: 'Report the item inside the box', input_schema: { type: 'object', properties: { shoppable: { type: 'boolean' }, item: { type: 'string' }, description: { type: 'string' }, style: { type: 'string' }, phrases: { type: 'array', items: { type: 'string' } }, guess: { type: 'string', description: 'Best guess at the exact original brand and model, e.g. Herman Miller Eames Lounge Chair. Empty string if no real idea.' }, confidence: { type: 'string', enum: ['low', 'medium', 'high'] }, home_style: { type: 'string', enum: [...STYLES, 'None'], description: 'Only if the box mostly shows a whole house or building exterior: its closest architectural style. Use None otherwise.' } }, required: ['shoppable', 'item', 'description', 'style', 'phrases', 'home_style'] } }], tool_choice: { type: 'tool', name: 'report' },
       messages: [{ role: 'user', content: [
+        ...(crop ? [{ type: 'image', source: { type: 'base64', media_type: crop.type, data: crop.data } }] : []),
         { type: 'image', source: { type: 'base64', media_type: mediaType, data } },
-        { type: 'text', text: prompt },
+        { type: 'text', text: (crop ? 'Image 1 is a close crop of exactly what the buyer boxed; image 2 is the full photo, for context only. Identify the main item in image 1 (the box coordinates below refer to image 2). ' : '') + prompt },
       ] }],
     }),
   });
