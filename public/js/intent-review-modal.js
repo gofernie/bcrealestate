@@ -7485,6 +7485,28 @@ window.__lsStyleChip = (() => {
     const waterLabel = { oceanfront: 'Oceanfront', lakefront: 'Lakefront', riverfront: 'Riverfront' }[wType] || 'Waterfront';
     const waterLink = { waterfrontType: waterParam };
 
+    // Water pill: prefer the city's intent page (e.g. /nanaimo/nanaimo-lakefront-homes, all types),
+    // fall back to the filtered homes page if that page doesn't exist.
+    const waterPill = (cls) => {
+      const a = pill(waterLabel, link('homes', waterLink), cls, false);
+      if (waterParam === 'any') return a;
+      const dir = pagePath('homes').replace(/\/[^/]*$/, '');
+      const intent = dir + '/' + String(cityKey()).toLowerCase().replace(/\s+/g, '-') + '-' + waterParam + '-homes';
+      a.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const label = a.textContent;
+        a.textContent = 'Opening\u2026';
+        let ok = false;
+        try {
+          const r = await fetch(intent);
+          ok = r.ok && !(await r.text()).includes('This page has moved on');
+        } catch (err) {}
+        location.href = ok ? intent : a.href;
+        setTimeout(() => { a.textContent = label; }, 4000);
+      });
+      return a;
+    };
+
     // 1. Feature pills already shown (from the description) become filter links.
     const shown = new Set();
     el.querySelectorAll('span.panel__highlight-chip').forEach((span) => {
@@ -7493,7 +7515,7 @@ window.__lsStyleChip = (() => {
       const f = FEATURES[key];
       if (!f) return;
       shown.add(key);
-      if (key === 'waterfront') span.replaceWith(pill(waterLabel, link('homes', waterLink), 'ls-feature-link', false));
+      if (key === 'waterfront') span.replaceWith(waterPill('ls-feature-link'));
       else span.replaceWith(pill(label, link('homes', f), 'ls-feature-link', false));
     });
 
@@ -7504,7 +7526,7 @@ window.__lsStyleChip = (() => {
 
     // MLS says waterfront but the description pills didn't: add the pill.
     if (water && !shown.has('waterfront')) {
-      el.appendChild(pill(waterLabel, link('homes', waterLink), 'ls-home-style-chip', false));
+      el.appendChild(waterPill('ls-home-style-chip'));
     }
 
     if (useStyle && water) {
