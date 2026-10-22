@@ -33,7 +33,7 @@
   .ls-links{display:flex;flex-wrap:wrap;gap:6px}
   .ls-links a{padding:6px 11px;border-radius:999px;border:1px solid #d8d0c1;color:#1f1f1f;text-decoration:none;font-size:13px;background:#fff}
   .ls-links a:hover{border-color:var(--accent,#2f5d50);color:var(--accent,#2f5d50)}
-  .ls-conf{font-weight:500;font-size:12px;color:#857d70;margin-left:6px}.ls-links a.ls-guess{background:#1f1f1f;color:#fff;border-color:#1f1f1f}.ls-note{margin:12px 0 0;font-size:12px;color:#857d70}
+  .ls-conf{font-weight:500;font-size:12px;color:#857d70;margin-left:6px}.ls-links a.ls-guess{background:#1f1f1f;color:#fff;border-color:#1f1f1f}.ls-more summary{cursor:pointer;color:#857d70;font-size:13px;padding:10px 0 2px;list-style:none}.ls-more summary::after{content:' \\25B8'}.ls-more[open] summary::after{content:' \\25BE'}.ls-note{margin:12px 0 0;font-size:12px;color:#857d70}
   .ls-load{display:flex;align-items:center;gap:10px;color:#4a453e}
   .ls-spin{width:18px;height:18px;border-radius:50%;border:2px solid #d8d0c1;border-top-color:var(--accent,#2f5d50);animation:lsspin .8s linear infinite}
   @keyframes lsspin{to{transform:rotate(360deg)}}
@@ -249,8 +249,9 @@
         <p class="ls-desc">Try drawing a tighter box around one piece, like a chair, light or rug.</p>`);
       return;
     }
-    const rows = d.results.map((q) => `<div class="ls-q"><div class="ls-qt">${esc(q.phrase)}</div><div class="ls-links">${
-      q.links.map((l) => `<a href="${esc(l.url)}" target="_blank" rel="sponsored noopener">${esc(l.name)}</a>`).join('')}</div></div>`).join('');
+    const rowOf = (q) => `<div class="ls-q"><div class="ls-qt">${esc(q.phrase)}</div><div class="ls-links">${
+      q.links.map((l) => `<a href="${esc(l.url)}" target="_blank" rel="sponsored noopener">${esc(l.name)}</a>`).join('')}</div></div>`;
+    const rows = rowOf(d.results[0]) + (d.results.length > 1 ? `<details class="ls-more"><summary>Other searches</summary>${d.results.slice(1).map(rowOf).join('')}</details>` : '');
     openPanel(`<div class="ls-head"><div><div class="ls-kicker">Looks like</div><h3>${esc(d.item)}</h3></div><button class="ls-x" aria-label="Close">&times;</button></div>
       <p class="ls-desc">${esc(d.description)}</p>${d.style ? `<span class="ls-chip">${esc(d.style)}</span>` : ''}${rows}${guessHtml(d)}
       <p class="ls-note">Similar items, not the exact piece in this home. We may earn a commission on purchases.</p>`);
