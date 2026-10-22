@@ -7419,13 +7419,27 @@ window.__lsStyleChip = (() => {
   if (VIEW_OK) FEATURES['ocean views'] = { viewType: 'ocean' };
 
   const seg = () => location.pathname.split('/').filter(Boolean)[0] || '';
-  const link = (page, params) =>
-    (seg() ? '/' + seg() : '') + '/' + page + '?' + new URLSearchParams(params).toString();
+  const pagePath = (page) => {
+    if (window.__lsPagePath) return window.__lsPagePath(page);
+    for (const a of document.querySelectorAll('a[href]')) {
+      try {
+        const u = new URL(a.href, location.href);
+        const p = u.pathname.replace(/\/+$/, '');
+        if (u.origin === location.origin && p.endsWith('/' + page)) return p;
+      } catch (e) {}
+    }
+    return (seg() ? '/' + seg() : '') + '/' + page;
+  };
+  const link = (page, params) => pagePath(page) + '?' + new URLSearchParams(params).toString();
+  const cityKey = () =>
+    document.querySelector('[data-city]')?.dataset.city ||
+    pagePath('homes').split('/').filter(Boolean).slice(-2, -1)[0] ||
+    seg() || 'nanaimo';
 
   // How many active listings match (null if the check fails).
   async function total(params) {
     const p = new URLSearchParams(params);
-    p.set('city', seg() || 'nanaimo');
+    p.set('city', cityKey());
     p.set('offset', '0');
     p.set('limit', '1');
     try {

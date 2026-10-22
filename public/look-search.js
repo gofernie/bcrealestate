@@ -1,4 +1,4 @@
-﻿// Search this look: drag a box over anything in a listing photo, get "similar" product searches.
+// Search this look: drag a box over anything in a listing photo, get "similar" product searches.
 (() => {
   if (window.__lookSearch) return;
   window.__lookSearch = true;
@@ -215,10 +215,28 @@
     return `<div class="ls-q"><div class="ls-qt">Best guess at the original <span class="ls-conf">${esc(d.confidence || 'low')} confidence</span></div><div class="ls-links"><a class="ls-guess" href="${esc(u)}" target="_blank" rel="noopener">${esc(d.guess)} &rarr;</a></div></div>`;
   }
 
-  function homesHtml(d) {
+  // Path of a site page (homes, condos, ...), taken from the site's own nav links so it works
+  // on bc.realestate (/nanaimo/homes) and agent sites with other URL shapes alike.
+  function pagePath(page) {
+    for (const a of document.querySelectorAll('a[href]')) {
+      try {
+        const u = new URL(a.href, location.href);
+        const p = u.pathname.replace(/\/+$/, '');
+        if (u.origin === location.origin && p.endsWith('/' + page)) return p;
+      } catch (e) {}
+    }
     const seg = location.pathname.split('/').filter(Boolean)[0] || '';
-    const city = seg ? seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ') : '';
-    const href = (seg ? '/' + seg : '') + '/' + ({ 'Manufactured / mobile': 'mobile-homes', 'Condo / apartment': 'condos', 'Townhouse': 'townhomes' }[d.home_style] || 'homes') + '?style=' + encodeURIComponent(d.home_style);
+    return (seg ? '/' + seg : '') + '/' + page;
+  }
+  window.__lsPagePath = pagePath;
+
+  const STYLE_PAGE = { 'Manufactured / mobile': 'mobile-homes', 'Condo / apartment': 'condos', 'Townhouse': 'townhomes' };
+
+  function homesHtml(d) {
+    const path = pagePath(STYLE_PAGE[d.home_style] || 'homes');
+    const citySeg = path.split('/').filter(Boolean).slice(-2, -1)[0] || '';
+    const city = citySeg ? citySeg.charAt(0).toUpperCase() + citySeg.slice(1).replace(/-/g, ' ') : '';
+    const href = path + '?style=' + encodeURIComponent(d.home_style);
     return `<div class="ls-head"><div><div class="ls-kicker">Home style</div><h3>${esc(d.home_style)}</h3></div><button class="ls-x" aria-label="Close">&times;</button></div>
       <p class="ls-desc">${esc(d.description || d.item || '')}</p>
       <div class="ls-links"><a class="ls-guess" href="${esc(href)}">See ${esc(d.home_style)} homes${city ? ' in ' + esc(city) : ''} &rarr;</a></div>`;
