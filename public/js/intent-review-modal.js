@@ -7465,7 +7465,7 @@ window.__lsStyleChip = (() => {
   return async (el, id) => {
     if (!el) return;
     id = String(id || '').trim();
-    el.dataset.lsStyleFor = id;
+    el.dataset.lsStyleFor = id; window.__lsChipSeq = (window.__lsChipSeq || 0) + 1; const token = String(window.__lsChipSeq); el.dataset.lsToken = token;
     el.querySelectorAll('.ls-home-style-chip').forEach((n) => n.remove());
     if (!id) return;
 
@@ -7477,7 +7477,8 @@ window.__lsStyleChip = (() => {
       } catch (e) { info = {}; }
       cache.set(id, info);
     }
-    if (el.dataset.lsStyleFor !== id) return; // user moved to another listing meanwhile
+    if (el.dataset.lsStyleFor !== id || el.dataset.lsToken !== token) return; // only the latest call adds pills
+    el.querySelectorAll('.ls-home-style-chip').forEach((n) => n.remove());
 
     // Specific water type from MLS: lakefront / oceanfront / riverfront (else any waterfront).
     const wType = String(info.waterfrontType || '').toLowerCase();
