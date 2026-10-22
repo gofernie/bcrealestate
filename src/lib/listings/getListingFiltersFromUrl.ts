@@ -107,6 +107,10 @@ hasDetachedShop:
     )
   ),
 
+    styles: params
+      .getAll("style")
+      .filter(Boolean),
+
     sort:
       (
         params.get("sort") ||

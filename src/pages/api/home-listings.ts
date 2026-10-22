@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+﻿import type { APIRoute } from "astro";
 import { createClient } from "@supabase/supabase-js";
 import { mobileHomeParks } from "../../data/mobileHomeParks";
 import { GET as getGreaterVictoriaListings } from "./greater-victoria-listings";
@@ -413,6 +413,7 @@ export const GET: APIRoute = async ({ request }) => {
     .toLowerCase();  const planMode = String(url.searchParams.get("planMode") || "").trim().toLowerCase();
   const sort = String(url.searchParams.get("sort") || "newest");
   const oceanViews = url.searchParams.get("oceanViews") === "true";
+  const styles = url.searchParams.getAll("style").map((s) => s.trim()).filter(Boolean);
 
   const supabase = createClient(
     import.meta.env.PUBLIC_SUPABASE_URL,
@@ -437,6 +438,7 @@ export const GET: APIRoute = async ({ request }) => {
     .in("normalized_city", cityDatabaseKeys)
     .limit(1000);
 
+  if (styles.length) query = query.in("home_style", styles);
   const { data, error } = await query;
   if (error) {
     console.error("home-listings query failed:", error);

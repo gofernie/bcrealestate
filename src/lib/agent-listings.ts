@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+﻿import { createClient } from "@supabase/supabase-js";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -87,7 +87,7 @@ export const fallbackPage: AgentPage = {
   agentName: "Chris Crump",
   agentTitle: "Real Estate Advisor",
   phone: "250.619.0390",
-  email: "chris@example.com",
+  email: "chris@crump.ca",
   city: "Nanaimo",
   template: "brutal",
   heroEyebrow: "Curated by Chris Crump",

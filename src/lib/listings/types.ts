@@ -26,6 +26,7 @@ fourBedsTogether?: boolean;
 hasFloorplan?: boolean;
 hasUpdatedKitchen?: boolean;
 hasDetachedShop?: boolean;
+styles?: string[];
 
   sort?: ListingSort;
 

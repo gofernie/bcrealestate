@@ -30,6 +30,7 @@ hasFloorplan?: boolean;
 hasUpdatedKitchen?: boolean;
 hasDetachedShop?: boolean;
 oceanView?: boolean;
+styles?: string[];
 
   sort?: ListingSort | string;
 
@@ -238,6 +239,10 @@ const hasUpdatedKitchen =
 const hasDetachedShop =
   options.hasDetachedShop === true;
 
+const styles = Array.isArray(options.styles)
+  ? [...new Set(options.styles.map((s) => String(s || "").trim()).filter(Boolean))]
+  : [];
+
 const oceanView =
   options.oceanView === true;
 
@@ -387,6 +392,10 @@ if (hasDetachedShop) {
     true
   );
 }
+if (styles.length > 0) {
+  query = query.in("home_style", styles);
+}
+
 if (oceanView) {
   query = query.eq(
     "ocean_view",
@@ -600,6 +609,10 @@ if (hasDetachedShop) {
     true
   );
 }
+if (styles.length > 0) {
+  query = query.in("home_style", styles);
+}
+
 if (oceanView) {
   query = query.eq(
     "ocean_view",

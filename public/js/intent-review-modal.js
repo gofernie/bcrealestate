@@ -3813,7 +3813,7 @@ if (!chipsEl) {
 chipsEl.innerHTML = chips.map(label =>
   `<span class="panel__highlight-chip">${label}</span>`
 ).join("");
-chipsEl.hidden = chips.length === 0;
+chipsEl.hidden = chips.length === 0; window.__lsStyleChip?.(chipsEl, card.dataset.listingId || card.dataset.id || card.dataset.mls || "");
 
 const descToggle = document.getElementById("sheet-desc-toggle");
 
@@ -7405,3 +7405,39 @@ sheetImage?.addEventListener("touchend", (event) => {
 }
  document.addEventListener("astro:page-load", initIntentReviewModal);
 
+
+;(()=>{if(window.__lookSearch||document.querySelector('script[src="/look-search.js"]'))return;const s=document.createElement('script');s.src='/look-search.js';s.defer=true;document.head.appendChild(s);})();
+
+
+
+// Style chip ("Rancher · more like this") in the listing modal highlight row.
+window.__lsStyleChip = (() => {
+  const cache = new Map();
+  return async (el, id) => {
+    if (!el) return;
+    id = String(id || '').trim();
+    el.dataset.lsStyleFor = id;
+    el.querySelector('.ls-home-style-chip')?.remove();
+    if (!id) return;
+    let style = cache.get(id);
+    if (style === undefined) {
+      try {
+        const r = await fetch('/api/listing-style?id=' + encodeURIComponent(id));
+        style = r.ok ? String((await r.json()).style || '') : '';
+      } catch (e) { style = ''; }
+      cache.set(id, style);
+    }
+    if (el.dataset.lsStyleFor !== id) return; // user moved to another listing meanwhile
+    if (!style || style === 'Other') return;
+    const seg = location.pathname.split('/').filter(Boolean)[0] || '';
+    const a = document.createElement('a');
+    a.className = 'panel__highlight-chip ls-home-style-chip';
+    a.href = (seg ? '/' + seg : '') + '/homes?style=' + encodeURIComponent(style);
+    a.textContent = style + ' \u00b7 more like this \u2192';
+    a.style.textDecoration = 'none';
+    a.style.color = 'inherit';
+    a.style.cursor = 'pointer';
+    el.appendChild(a);
+    el.hidden = false;
+  };
+})();
