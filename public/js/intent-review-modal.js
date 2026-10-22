@@ -7465,14 +7465,22 @@ window.__lsStyleChip = (() => {
     }
     if (el.dataset.lsStyleFor !== id) return; // user moved to another listing meanwhile
 
+    // Specific water type from MLS: lakefront / oceanfront / riverfront (else any waterfront).
+    const wType = String(info.waterfrontType || '').toLowerCase();
+    const waterParam = wType && wType !== 'waterfront' ? wType : 'any';
+    const waterLabel = { oceanfront: 'Oceanfront', lakefront: 'Lakefront', riverfront: 'Riverfront' }[wType] || 'Waterfront';
+    const waterLink = { waterfrontType: waterParam };
+
     // 1. Feature pills already shown (from the description) become filter links.
     const shown = new Set();
     el.querySelectorAll('span.panel__highlight-chip').forEach((span) => {
       const label = span.textContent.trim();
-      const f = FEATURES[label.toLowerCase()];
+      const key = label.toLowerCase();
+      const f = FEATURES[key];
       if (!f) return;
-      shown.add(label.toLowerCase());
-      span.replaceWith(pill(label, link('homes', f), 'ls-feature-link', false));
+      shown.add(key);
+      if (key === 'waterfront') span.replaceWith(pill(waterLabel, link('homes', waterLink), 'ls-feature-link', false));
+      else span.replaceWith(pill(label, link('homes', f), 'ls-feature-link', false));
     });
 
     const style = String(info.style || '');
@@ -7482,20 +7490,20 @@ window.__lsStyleChip = (() => {
 
     // MLS says waterfront but the description pills didn't: add the pill.
     if (water && !shown.has('waterfront')) {
-      el.appendChild(pill('Waterfront', link('homes', FEATURES.waterfront), 'ls-home-style-chip', false));
+      el.appendChild(pill(waterLabel, link('homes', waterLink), 'ls-home-style-chip', false));
     }
 
     if (useStyle && water) {
       // 2. Style pill + combined "More like this" (falls back to waterfront-only if < 3 matches).
       el.appendChild(pill(style, link(page, { style }), 'ls-home-style-chip', false));
-      const combo = { style, waterfrontType: 'any' };
+      const combo = { style, waterfrontType: waterParam };
       const more = pill('More like this \u2192', link(page, combo), 'ls-home-style-chip', true);
       more.addEventListener('click', async (e) => {
         e.preventDefault();
         const label = more.textContent;
         more.textContent = 'Finding\u2026';
         const n = await total(combo);
-        location.href = n !== null && n < 3 ? link('homes', FEATURES.waterfront) : more.href;
+        location.href = n !== null && n < 3 ? link('homes', waterLink) : more.href;
         setTimeout(() => { more.textContent = label; }, 4000);
       });
       el.appendChild(more);

@@ -40,5 +40,5 @@ export const GET: APIRoute = async ({ url }) => {
   const wType = String(data?.waterfront_type || '').trim().toLowerCase();
   const waterfront = data?.waterfront === true || (!!wType && !['none', 'no', 'false', 'n/a'].includes(wType));
 
-  return json({ style: data?.home_style || '', waterfront });
+  return json({ style: data?.home_style || '', waterfront, waterfrontType: waterfront ? (wType || 'waterfront') : '' });
 };
