@@ -1,4 +1,4 @@
-﻿function initIntentReviewModal() {
+function initIntentReviewModal() {
         const sheet = document.getElementById("preview-sheet");
         const overlay = document.getElementById("sheet-overlay");
 
@@ -7504,20 +7504,25 @@ window.__lsStyleChip = (() => {
     if (el.dataset.lsStyleFor !== id || el.dataset.lsToken !== token) return; // only the latest call adds pills
     el.querySelectorAll('.ls-home-style-chip').forEach((n) => n.remove());
 
+    // Land: a lot (or a buyer browsing the land page) stays on land: "Ocean views" means ocean-view lots.
+    const isLand = String(info.type || '').toLowerCase() === 'land' ||
+      /\/land\/?$/.test(location.pathname) ||
+      new URLSearchParams(location.search).get('type') === 'land';
+
     // Water: specific type from MLS; link to the matching intent page if the city has one.
     const wType = String(info.waterfrontType || '').toLowerCase();
     const waterParam = wType && wType !== 'waterfront' ? wType : 'any';
     const waterLabel = WATER_LABEL[wType] || 'Waterfront';
     const waterFallback = link('homes', { waterfrontType: waterParam });
     const viewFallback = link('homes', { viewType: 'ocean' });
-    const waterHref = info.waterPage ? withSite(info.waterPage) : waterFallback;
-    const viewHref = info.viewPage ? withSite(info.viewPage) : viewFallback;
+    const waterHref = isLand ? link('land', { waterfrontType: waterParam }) : info.waterPage ? withSite(info.waterPage) : waterFallback;
+    const viewHref = isLand ? link('land', { viewType: 'ocean' }) : info.viewPage ? withSite(info.viewPage) : viewFallback;
 
     // No page matched in the database: try the usual intent address (/nanaimo/nanaimo-oceanfront-homes),
     // check on click that it really opens on this site, else use the filtered page.
     const citySlug = String(cityKey() || info.city).toLowerCase().replace(/\s+/g, '-');
     const smart = (a, known, topic) => {
-      if (known || !topic) return a;
+      if (known || isLand || !topic) return a;
       const candidate = withSite('/' + citySlug + '/' + citySlug + '-' + topic + '-homes');
       a.addEventListener('click', async (e) => {
         e.preventDefault();
@@ -7562,7 +7567,7 @@ window.__lsStyleChip = (() => {
     const mlsType = String(info.type || '').toLowerCase();
     const page = TYPE_PAGE[mlsType] || (useStyle && STYLE_PAGE[style]) || 'homes';
     const styleParams = page === 'homes' && useStyle ? { style } : {};
-    const showStyle = !!TYPE_PAGE[mlsType] || (useStyle && (!STYLE_PAGE[style] || !mlsType));
+    const showStyle = !isLand && (!!TYPE_PAGE[mlsType] || (useStyle && (!STYLE_PAGE[style] || !mlsType)));
     const styleLabel = TYPE_PAGE[mlsType] ? TYPE_LABEL[mlsType] : style;
 
     if (showStyle && water) {

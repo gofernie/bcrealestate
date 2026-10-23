@@ -408,10 +408,13 @@
     if (!h1) return false;
     if (h1.dataset.lsTitled) return true;
     const walker = document.createTreeWalker(h1, NodeFilter.SHOW_TEXT);
+    // Any type page: Homes, Condos, Townhomes, Mobile Homes, Land, Lots.
+    const TYPE_WORD = /\b(Mobile Homes|Homes|Condos|Townhomes|Land|Lots)\b/;
     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-      if (/\bHomes\b/.test(n.textContent)) {
-        n.textContent = n.textContent.replace(/\bHomes\b/, label + ' Homes');
-        document.title = document.title.replace(/\bHomes\b/, label + ' Homes');
+      if (n.textContent.includes(label)) break;
+      if (TYPE_WORD.test(n.textContent)) {
+        n.textContent = n.textContent.replace(TYPE_WORD, label + ' $1');
+        if (!document.title.includes(label)) document.title = document.title.replace(TYPE_WORD, label + ' $1');
         break;
       }
     }
@@ -434,7 +437,9 @@
       ['style', 'waterfrontType', 'viewType'].forEach((k) => u.searchParams.delete(k));
       location.href = u.pathname + u.search;
     });
-    anchor.after(bar);
+    // Keep the filter bar and its "More filters" panel together: the chip goes below both.
+    const panel = document.querySelector('.type-more-filters-panel');
+    (panel && panel.parentElement === anchor.parentElement ? panel : anchor).after(bar);
     return true;
   };
 
