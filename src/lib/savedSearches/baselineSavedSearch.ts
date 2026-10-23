@@ -15,13 +15,22 @@ type SavedSearch = {
 
 export async function baselineSavedSearch(
   supabase: SupabaseClient,
-  savedSearch: SavedSearch
+  savedSearch: SavedSearch,
+  origin?: string
 ) {
   const matches =
     await findSavedSearchMatches(
       supabase,
-      savedSearch
+      savedSearch,
+      { origin }
     );
+
+  // Anything queued before the baseline (e.g. by older code) counts as already seen.
+  await supabase
+    .from("saved_search_notifications")
+    .update({ sent_at: new Date().toISOString() })
+    .eq("saved_search_id", savedSearch.id)
+    .is("sent_at", null);
 
   if (!matches.length) {
     return {

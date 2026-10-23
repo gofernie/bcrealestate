@@ -320,6 +320,7 @@ export async function sendSavedSearchNotifications(
         .emails
         .send({
           from:
+            process.env.SAVED_SEARCH_EMAIL_FROM ||
             "Locus <onboarding@resend.dev>",
 
           to: [

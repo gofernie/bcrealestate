@@ -15,12 +15,14 @@ type SavedSearch = {
 
 export async function discoverSavedSearchMatches(
   supabase: SupabaseClient,
-  savedSearch: SavedSearch
+  savedSearch: SavedSearch,
+  origin?: string
 ) {
   const matches =
     await findSavedSearchMatches(
       supabase,
-      savedSearch
+      savedSearch,
+      { origin, pages: 3 }
     );
 
   if (!matches.length) {

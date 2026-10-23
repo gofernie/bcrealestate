@@ -10,6 +10,15 @@ import {
   sendSavedSearchNotifications,
 } from "./sendSavedSearchNotifications";
 
+import {
+  baselineSavedSearch,
+} from "./baselineSavedSearch";
+
+import {
+  isRegionDistrict,
+  REGION_CITY,
+} from "./pageSearch";
+
 type Env = {
   RESEND_API_KEY: string;
   TWILIO_ACCOUNT_SID: string;
@@ -41,13 +50,16 @@ let searchesQuery =
     .eq("active", true);
 
 if (city) {
+  const refreshed =
+    city
+      .toLowerCase()
+      .trim();
+
+  // A Greater Victoria district refresh also checks the region-wide searches.
   searchesQuery =
-    searchesQuery.eq(
-      "city",
-      city
-        .toLowerCase()
-        .trim()
-    );
+    isRegionDistrict(refreshed)
+      ? searchesQuery.in("city", [refreshed, REGION_CITY])
+      : searchesQuery.eq("city", refreshed);
 }
 
 const {
@@ -63,10 +75,42 @@ const {
 
   for (const savedSearch of searches || []) {
     try {
+      // New searches first record what's already on the market, so the first
+      // alert is only genuinely new listings.
+      if (savedSearch.filters?.pending_baseline) {
+        const baseline =
+          await baselineSavedSearch(
+            supabase,
+            savedSearch,
+            env.PUBLIC_SITE_URL
+          );
+
+        const { pending_baseline: _done, ...filters } =
+          savedSearch.filters;
+
+        const { error: clearError } = await supabase
+          .from("saved_searches")
+          .update({ filters })
+          .eq("id", savedSearch.id);
+
+        if (clearError) throw clearError;
+
+        results.push({
+          id: savedSearch.id,
+          city: savedSearch.city,
+          frequency: savedSearch.frequency,
+          baselined: baseline.count,
+          sent: 0,
+        });
+
+        continue;
+      }
+
       const discovery =
         await discoverSavedSearchMatches(
           supabase,
-          savedSearch
+          savedSearch,
+          env.PUBLIC_SITE_URL
         );
 
       let sent = 0;

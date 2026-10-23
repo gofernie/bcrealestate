@@ -24,6 +24,47 @@ function cleanHost(request: Request) {
     .split(":")[0];
 }
 
+function alertPhone(raw: unknown) {
+  const d = String(raw || "").replace(/\D/g, "");
+  if (d.length === 10) return "+1" + d;
+  if (d.length === 11 && d.startsWith("1")) return "+" + d;
+  return null;
+}
+
+/** Criteria come from the save form, or (older saves) from the "Criteria: {...}" line of the message. */
+function criteriaFromLead(body: any, message: string) {
+  if (body?.criteria && typeof body.criteria === "object") return body.criteria;
+  const line = String(message || "").match(/(?:^|\n)Criteria:\s*(\{.*\})\s*$/m);
+  if (line) { try { return JSON.parse(line[1]); } catch {} }
+  return null;
+}
+
+async function createSavedSearchAlert(body: any, lead: any, leadId?: string) {
+  const criteria = criteriaFromLead(body, lead.message);
+  const url = String(criteria?.url || String(lead.message || "").match(/Search URL:\s*(\S+)/)?.[1] || "");
+  const city = String(lead.city || "").trim().toLowerCase();
+  if (!city || (!criteria && !url)) return;
+  const email = String(lead.email || "").trim() || null;
+  const phone = alertPhone(lead.phone);
+  if (!email && !phone) return;
+  const { error } = await supabase.from("saved_searches").insert({
+    city,
+    channel: email ? "email" : "sms",
+    frequency: "update",
+    email,
+    phone,
+    active: true,
+    filters: {
+      url,
+      criteria: criteria || {},
+      name: String(body.search_name || "").trim() || String(lead.message || "").split("\n")[0],
+      lead_id: leadId || null,
+      pending_baseline: true,
+    },
+  });
+  if (error) throw error;
+}
+
 export const POST: APIRoute = async ({ request }) => {
   try {
     const body = await request.json();
@@ -120,6 +161,15 @@ const message = [
       .single();
 
     if (error) throw error;
+
+    // A saved search also becomes a real alert (saved_searches), not just a lead.
+    if (lead.source === "saved_search") {
+      try {
+        await createSavedSearchAlert(body, lead, data?.id);
+      } catch (alertError) {
+        console.error("Saved search alert could not be created:", alertError);
+      }
+    }
 
     // upsert-intent-session-for-lead
     if (sessionId) {

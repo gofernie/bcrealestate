@@ -2,6 +2,11 @@ import type {
   SupabaseClient,
 } from "@supabase/supabase-js";
 
+import {
+  isPageSearch,
+  pageSearchMatches,
+} from "./pageSearch";
+
 type SavedSearch = {
   id: string;
   city: string;
@@ -10,10 +15,20 @@ type SavedSearch = {
 
 export async function findSavedSearchMatches(
   supabase: SupabaseClient,
-  savedSearch: SavedSearch
+  savedSearch: SavedSearch,
+  options: { origin?: string; pages?: number } = {}
 ) {
   const filters =
     savedSearch.filters || {};
+
+  // Searches saved from a search page: match with the page's own listing API.
+  if (isPageSearch(filters)) {
+    return pageSearchMatches(
+      savedSearch,
+      options.origin || process.env.PUBLIC_SITE_URL || "",
+      options.pages ?? Infinity
+    );
+  }
 
   let query =
     supabase

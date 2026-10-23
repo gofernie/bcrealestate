@@ -1,4 +1,4 @@
-﻿---
+---
 import { ClientRouter } from "astro:transitions";
 import { createClient } from "@supabase/supabase-js";
 import Layout from "../../layouts/Layout.astro";
@@ -4009,10 +4009,11 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
   const apply = () => {
     const footer = document.getElementById("home-search-complete");
     if (!footer || footer.offsetParent === null) return;
-    if (vis(document.getElementById("home-more-budget-btn")) || vis(document.getElementById("home-change-neighbourhood-btn"))) {
-      footer.querySelector("[data-seen-all-actions]")?.remove();
-      return;
-    }
+    // "See more" budget/neighbourhood mode keeps its own copy and buttons, plus an alert button.
+    const expandBtn = [document.getElementById("home-more-budget-btn"), document.getElementById("home-change-neighbourhood-btn")].find(vis);
+    const mode = expandBtn ? "expand" : "seen-all";
+    const existing = footer.querySelector("[data-seen-all-actions]");
+    if (existing && existing.dataset.mode !== mode) existing.remove();
     const form = document.getElementById("home-filter-form");
     const type = String(form?.elements?.type?.value || "").toLowerCase();
     const typeLabel = TYPE_LABELS[type] || "homes";
@@ -4030,11 +4031,14 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
     const c = parentName
       ? `New ${typeLabel} get sent the day they list, or widen your search to ${parentName}.`
       : `New ${typeLabel} get sent the day they list. Looking for something that isn't on the market? Ask about off-market ${typeLabel}.`;
-    if (title && title.textContent !== t) title.textContent = t;
-    if (copy && copy.textContent !== c) copy.textContent = c;
+    if (!expandBtn) {
+      if (title && title.textContent !== t) title.textContent = t;
+      if (copy && copy.textContent !== c) copy.textContent = c;
+    }
     if (footer.querySelector("[data-seen-all-actions]")) return;
     const wrap = document.createElement("div");
     wrap.setAttribute("data-seen-all-actions", "");
+    wrap.dataset.mode = mode;
     wrap.style.cssText = "display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;";
     const mk = (tag, label, primary) => {
       const el = document.createElement(tag);
@@ -4080,6 +4084,15 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
       });
       setTimeout(restore, 900);
     });
+    if (expandBtn) {
+      alertBtn.style.background = "transparent";
+      alertBtn.style.color = "inherit";
+      alertBtn.style.borderColor = "currentColor";
+      wrap.style.cssText = "display:contents;";
+      wrap.appendChild(alertBtn);
+      expandBtn.parentElement.appendChild(wrap);
+      return;
+    }
     wrap.appendChild(alertBtn);
     if (ret) {
       const u = new URL(ret.getAttribute("href") || "/", location.origin);
@@ -17190,7 +17203,7 @@ intro h2,
 }/* homepage-market-to-listings-handoff-v1 */
 .homepage-save-search-form:has(
   .slug-save-search__panel[hidden]
-) {
+):not(:has(.slug-save-search__status:not([hidden]))) {
   display: none;
 }
 

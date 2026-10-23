@@ -99,6 +99,9 @@ export const SOURCES = [
   // Alberni / west coast
   { region: 'alberni', name: 'City of Port Alberni', type: 'html', url: 'https://www.portalberni.ca/news', base: 'https://www.portalberni.ca', match: /\/news\/[a-z]{3}-\d{8}-\d{4}\//, prefilter: false },
   { region: 'alberni', name: 'District of Tofino', type: 'wp', url: 'https://tofino.ca/wp-json/wp/v2/posts?per_page=20&_fields=date_gmt,link,title,content', prefilter: false },
+  // Black Press feeds mix in Island-wide stories: keyword prefilter + the AI's area check drop those.
+  { region: 'alberni', name: 'Alberni Valley News', type: 'rss', url: 'https://albernivalleynews.com/feed', base: 'https://albernivalleynews.com', prefilter: true },
+  { region: 'alberni', name: 'Westerly News', type: 'rss', url: 'https://westerlynews.ca/feed', base: 'https://westerlynews.ca', prefilter: true },
 
   // Whistler
   { region: 'whistler', name: 'Resort Municipality of Whistler', type: 'html', url: 'https://www.whistler.ca/news/', base: 'https://www.whistler.ca', match: /\/news\/[a-z0-9-]{8,}\/?$/, prefilter: false },
