@@ -400,29 +400,8 @@
   let parts = [];
   let navTo = null;     // address a client-side navigation was heading to (page scripts may rewrite it)
 
-  // Listing requests and address updates keep the style (installed once, reads `active`).
-  const withStyle = (u) => {
-    const str = String(u);
-    if (!active.length || !str.includes('/api/home-listings') || /[?&]style=/.test(str)) return u;
-    return str + (str.includes('?') ? '&' : '?') + active.map((s) => 'style=' + encodeURIComponent(s)).join('&');
-  };
-  const origFetch = window.fetch;
-  window.fetch = (input, init) => origFetch.call(window, typeof input === 'string' || input instanceof URL ? withStyle(input) : input, init);
-  for (const k of ['pushState', 'replaceState']) {
-    const orig = history[k];
-    history[k] = function (state, title, url) {
-      if (url != null && active.length) {
-        try {
-          const u = new URL(url, location.href);
-          if (u.pathname === location.pathname && !u.searchParams.has('style')) {
-            active.forEach((s) => u.searchParams.append('style', s));
-            url = u.pathname + u.search + u.hash;
-          }
-        } catch (e) {}
-      }
-      return orig.call(this, state, title, url);
-    };
-  }
+  // Listing requests and address updates keep the style: done by the early script in Layout.astro
+  // (window.__lsActiveStyles), so requests sent while the page loads carry it too.
   // A new client-side navigation: its own address decides the style from here on.
   document.addEventListener('astro:before-preparation', (e) => {
     try { navTo = new URL(e.to); } catch (err) { navTo = null; }
@@ -467,6 +446,7 @@
     bar.querySelector('strong').textContent = parts.map((p) => p.chip).join(' · ');
     bar.querySelector('button').addEventListener('click', () => {
       active = [];
+      window.__lsActiveStyles = [];
       const u = new URL(location.href);
       ['style', 'waterfrontType', 'viewType'].forEach((k) => u.searchParams.delete(k));
       location.href = u.pathname + u.search;
@@ -516,6 +496,7 @@
     parts = [];
     if (water && WATER[water]) parts.push({ title: WATER[water], chip: WATER[water] });
     if (view && VIEW[view]) parts.push({ title: VIEW[view], chip: VIEW[view] + 's' });
+    window.__lsActiveStyles = active;
     if (active.length) parts.push({ title: titleCase(active.join(' / ')), chip: active.join(', ') });
     if (active.length && !qs.has('style')) {
       const u = new URL(location.href);

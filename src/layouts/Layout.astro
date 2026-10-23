@@ -14,6 +14,41 @@ const { title, accentColor = "#2f6f73", city = "nanaimo", site = null } = Astro.
 <html lang="en" style={`--accent: ${accentColor};`} data-theme="light">
   <head>
     <meta charset="UTF-8" />
+    <script is:inline>
+      // ?style= (house style from a listing's "more like this" pill) must reach every listing request,
+      // including the ones page scripts send while the page is still loading, so this runs first.
+      (() => {
+        if (window.__lsStyleCarry) return;
+        window.__lsStyleCarry = true;
+        window.__lsActiveStyles = new URLSearchParams(location.search).getAll("style").filter(Boolean);
+        const active = () => window.__lsActiveStyles || [];
+        const withStyle = (u) => {
+          const str = String(u);
+          if (!active().length || !str.includes("/api/home-listings") || /[?&]style=/.test(str)) return u;
+          return str + (str.includes("?") ? "&" : "?") + active().map((s) => "style=" + encodeURIComponent(s)).join("&");
+        };
+        const origFetch = window.fetch;
+        window.fetch = (input, init) => origFetch.call(window, typeof input === "string" || input instanceof URL ? withStyle(input) : input, init);
+        for (const k of ["pushState", "replaceState"]) {
+          const orig = history[k];
+          history[k] = function (state, title, url) {
+            if (url != null && active().length) {
+              try {
+                const u = new URL(url, location.href);
+                if (u.pathname === location.pathname && !u.searchParams.has("style")) {
+                  active().forEach((s) => u.searchParams.append("style", s));
+                  url = u.pathname + u.search + u.hash;
+                }
+              } catch (e) {}
+            }
+            return orig.call(this, state, title, url);
+          };
+        }
+        document.addEventListener("astro:before-preparation", (e) => {
+          try { window.__lsActiveStyles = new URL(e.to).searchParams.getAll("style").filter(Boolean); } catch (err) { window.__lsActiveStyles = []; }
+        });
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#ffffff" />
     <script is:inline>
@@ -1134,7 +1169,7 @@ html[data-theme="dark"] #home-load-more.home-load-more-btn:hover {
     }
   }
 </style>
-  <script src="/look-search.js?v=20261023c" defer is:inline></script>
+  <script src="/look-search.js?v=20261023d" defer is:inline></script>
 </body>
 </html>
 
