@@ -387,62 +387,151 @@
 // Homes page filters from a pill or panel (?style= / ?waterfrontType= / ?viewType=):
 // retitle the heading ("Nanaimo Ocean View Homes.") and show a clearable chip.
 (() => {
-  const qs = new URLSearchParams(location.search);
-  const styles = (window.__pageStyles && window.__pageStyles.length) ? window.__pageStyles : qs.getAll('style');
-  const water = String(qs.get('waterfrontType') || '').toLowerCase();
-  const view = String(qs.get('viewType') || '').toLowerCase();
+  // Filters from a link (?style=, ?viewType=, ?waterfrontType=) shown in the page title and as a "x" chip,
+  // and kept on pages that don't handle them themselves (the city / Greater Victoria homepages).
+  // Homepages swap pages without reloading (Astro ClientRouter), so this runs again on every astro:page-load.
   const WATER = { lakefront: 'Lakefront', oceanfront: 'Oceanfront', riverfront: 'Riverfront', any: 'Waterfront', waterfront: 'Waterfront' };
   const VIEW = { ocean: 'Ocean View', mountain: 'Mountain View', lake: 'Lake View', water: 'Water View', city: 'City View' };
   const titleCase = (t) => t.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+  const TYPE_WORD = /\b(Mobile Homes|Homes|Condos|Townhomes|Land|Lots)\b/;
+  const HOME_WORD = /\bhome(s?)\b/;
 
-  const parts = [];
-  if (water && WATER[water]) parts.push({ title: WATER[water], chip: WATER[water] });
-  if (view && VIEW[view]) parts.push({ title: VIEW[view], chip: VIEW[view] + 's' });
-  if (styles.length) parts.push({ title: titleCase(styles.join(' / ')), chip: styles.join(', ') });
-  if (!parts.length) return;
-  const label = parts.map((p) => p.title).join(' ');
+  let active = [];      // styles in force on this page
+  let parts = [];
+  let navTo = null;     // address a client-side navigation was heading to (page scripts may rewrite it)
 
-  // 1. Heading: "Nanaimo Homes." -> "Nanaimo Ocean View Homes."
+  // Listing requests and address updates keep the style (installed once, reads `active`).
+  const withStyle = (u) => {
+    const str = String(u);
+    if (!active.length || !str.includes('/api/home-listings') || /[?&]style=/.test(str)) return u;
+    return str + (str.includes('?') ? '&' : '?') + active.map((s) => 'style=' + encodeURIComponent(s)).join('&');
+  };
+  const origFetch = window.fetch;
+  window.fetch = (input, init) => origFetch.call(window, typeof input === 'string' || input instanceof URL ? withStyle(input) : input, init);
+  for (const k of ['pushState', 'replaceState']) {
+    const orig = history[k];
+    history[k] = function (state, title, url) {
+      if (url != null && active.length) {
+        try {
+          const u = new URL(url, location.href);
+          if (u.pathname === location.pathname && !u.searchParams.has('style')) {
+            active.forEach((s) => u.searchParams.append('style', s));
+            url = u.pathname + u.search + u.hash;
+          }
+        } catch (e) {}
+      }
+      return orig.call(this, state, title, url);
+    };
+  }
+  // A new client-side navigation: its own address decides the style from here on.
+  document.addEventListener('astro:before-preparation', (e) => {
+    try { navTo = new URL(e.to); } catch (err) { navTo = null; }
+    active = navTo ? navTo.searchParams.getAll('style').filter(Boolean) : [];
+  });
+
   const retitle = () => {
+    const label = parts.map((p) => p.title).join(' ');
+    const lower = label.toLowerCase();
     const h1 = document.querySelector('h1');
     if (!h1) return false;
-    if (h1.dataset.lsTitled) return true;
-    const walker = document.createTreeWalker(h1, NodeFilter.SHOW_TEXT);
-    // Any type page: Homes, Condos, Townhomes, Mobile Homes, Land, Lots.
-    const TYPE_WORD = /\b(Mobile Homes|Homes|Condos|Townhomes|Land|Lots)\b/;
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-      if (n.textContent.includes(label)) break;
-      if (TYPE_WORD.test(n.textContent)) {
-        n.textContent = n.textContent.replace(TYPE_WORD, label + ' $1');
-        if (!document.title.includes(label)) document.title = document.title.replace(TYPE_WORD, label + ' $1');
-        break;
+    // Type pages: "Nanaimo Land." -> "Nanaimo Ocean View Land."; homepages: "Find a Greater Victoria home." ->
+    // "Find a Greater Victoria mid-century home."
+    if (!h1.textContent.toLowerCase().includes(lower)) {
+      const walker = document.createTreeWalker(h1, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const t = n.textContent;
+        if (TYPE_WORD.test(t)) { n.textContent = t.replace(TYPE_WORD, label + ' $1'); break; }
+        if (HOME_WORD.test(t)) { n.textContent = t.replace(HOME_WORD, lower + ' home$1'); h1.dataset.lsFit = '1'; break; }
       }
     }
-    h1.dataset.lsTitled = '1';
+    if (!document.title.toLowerCase().includes(lower)) document.title = document.title.replace(TYPE_WORD, label + ' $1');
+    // Homepage results heading: "All Greater Victoria Listings" / "All Greater Victoria homes for sale".
+    const h2 = document.getElementById('home-listings-title');
+    if (h2 && !h2.textContent.toLowerCase().includes(lower)) {
+      const m = h2.textContent.trim().match(/^All (.+?) (Listings|homes for sale)$/i);
+      if (m) h2.textContent = 'All ' + m[1] + ' ' + lower + ' homes';
+    }
     return true;
   };
 
-  // 2. Chip under the filters: "Ocean Views x" (clears these filters).
+  // Chip under the filters: "Ocean Views x" (clears these filters).
   const mountChip = () => {
     if (document.querySelector('.ls-style-chip')) return true;
     const anchor = document.getElementById('listing-results-anchor');
-    if (!anchor) return false;
+    const grid = !anchor && document.getElementById('home-listings-grid'); // city homepages
+    if (!anchor && !grid) return false;
     const bar = document.createElement('div');
     bar.className = 'ls-style-chip';
     bar.style.cssText = 'display:flex;justify-content:flex-start;margin:12px 0';
     bar.innerHTML = '<span style="display:inline-flex;align-items:center;gap:10px;padding:7px 8px 7px 14px;border-radius:999px;background:color-mix(in srgb,var(--accent,#2f5d50) 14%,#fff);color:var(--accent,#2f5d50);font:500 14px/1 \'DM Sans\',system-ui,sans-serif"><strong></strong><button type="button" aria-label="Clear filter" style="border:0;background:var(--accent,#2f5d50);color:#fff;width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:15px;line-height:1">&times;</button></span>';
-    bar.querySelector('strong').textContent = parts.map((p) => p.chip).join(' \u00b7 ');
+    bar.querySelector('strong').textContent = parts.map((p) => p.chip).join(' · ');
     bar.querySelector('button').addEventListener('click', () => {
+      active = [];
       const u = new URL(location.href);
       ['style', 'waterfrontType', 'viewType'].forEach((k) => u.searchParams.delete(k));
       location.href = u.pathname + u.search;
     });
     // Keep the filter bar and its "More filters" panel together: the chip goes below both.
     const panel = document.querySelector('.type-more-filters-panel');
-    (panel && panel.parentElement === anchor.parentElement ? panel : anchor).after(bar);
+    if (grid) grid.before(bar);
+    else (panel && panel.parentElement === anchor.parentElement ? panel : anchor).after(bar);
     return true;
   };
 
-  const run = () => { const a = retitle(); const b = mountChip(); return a && b; };
-  if (!run()) { let n = 0; const t = setInterval(() => { if (run() || ++n > 20) clearInterval(t); }, 500); }
+  // Homepage hero lines don't wrap: if the longer title runs under the featured-home card, shrink it to fit.
+  const fitHero = (force) => {
+    const h1 = document.querySelector('h1[data-ls-fit]');
+    const card = document.querySelector('.locus-home-featured');
+    if (!h1 || !card || (force !== true && h1.dataset.lsFitFor === h1.textContent)) return;
+    h1.dataset.lsFitFor = h1.textContent;
+    h1.style.removeProperty('font-size');
+    const c = card.getBoundingClientRect();
+    const sideBySide = () => { const h = h1.getBoundingClientRect(); return c.width && c.top < h.bottom && c.bottom > h.top && c.left > h.left; };
+    if (!sideBySide()) return;
+    let size = parseFloat(getComputedStyle(h1).fontSize);
+    for (let i = 0; i < 40 && size > 24 && h1.getBoundingClientRect().right > c.left - 24; i++) {
+      size -= 2;
+      h1.style.setProperty('font-size', size + 'px', 'important');
+    }
+  };
+  addEventListener('resize', () => requestAnimationFrame(() => fitHero(true)));
+
+  const run = () => { if (parts.length) { retitle(); mountChip(); fitHero(); } };
+
+  const apply = () => {
+    const qs = new URLSearchParams(location.search);
+    // The address the page was opened or navigated to, in case a page script already rewrote it.
+    // (A client-side navigation may have gone through a redirect, e.g. /greater-victoria/homes -> /greater-victoria/.)
+    let from = navTo ? navTo.searchParams : null;
+    if (!from) {
+      try {
+        const opened = new URL(performance.getEntriesByType('navigation')[0]?.name || location.href);
+        from = opened.pathname.replace(/\/+$/, '') === location.pathname.replace(/\/+$/, '') ? opened.searchParams : qs;
+      } catch (e) { from = qs; }
+    }
+    const pick = (k) => qs.getAll(k).length ? qs.getAll(k) : from.getAll(k);
+    active = (window.__pageStyles && window.__pageStyles.length) ? window.__pageStyles : pick('style').filter(Boolean);
+    const water = String(pick('waterfrontType')[0] || '').toLowerCase();
+    const view = String(pick('viewType')[0] || '').toLowerCase();
+    parts = [];
+    if (water && WATER[water]) parts.push({ title: WATER[water], chip: WATER[water] });
+    if (view && VIEW[view]) parts.push({ title: VIEW[view], chip: VIEW[view] + 's' });
+    if (active.length) parts.push({ title: titleCase(active.join(' / ')), chip: active.join(', ') });
+    if (active.length && !qs.has('style')) {
+      const u = new URL(location.href);
+      active.forEach((s) => u.searchParams.append('style', s));
+      history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+    }
+    run();
+  };
+
+  apply();
+  document.addEventListener('astro:page-load', () => { apply(); navTo = null; });
+  // Page scripts re-render headings and results after load: put the title and chip back when they do.
+  let queued = false;
+  new MutationObserver(() => {
+    if (queued || !parts.length) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; run(); });
+  }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
 })();

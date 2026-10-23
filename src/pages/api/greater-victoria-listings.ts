@@ -380,7 +380,12 @@ export const GET: APIRoute = async ({ request }) => {
   const sort = String(url.searchParams.get("sort") || "newest");
   const oceanViews = url.searchParams.get("oceanViews") === "true";
 
-  const data = regionalData.listings.filter((row: any) => !district || row.__gvDistrict === district);
+  // ?style= (from the listing modal's "Split level · more like this" pill), same as /api/home-listings.
+  const styles = url.searchParams.getAll("style").map((s) => s.trim()).filter(Boolean);
+  const data = regionalData.listings.filter((row: any) =>
+    (!district || row.__gvDistrict === district) &&
+    (!styles.length || styles.includes(String(row.home_style || "").trim()))
+  );
   const requestedAreaSlugs = Array.from(
     new Set(
       [...areas, ...(area ? [area] : [])]

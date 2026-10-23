@@ -7478,6 +7478,8 @@ window.__lsStyleChip = (() => {
     a.textContent = text;
     a.style.textDecoration = 'none';
     a.classList.add('ls-link');
+    // Full page load: pages opened in place by the router skip their Map / Sort setup.
+    a.setAttribute('data-astro-reload', '');
     a.style.cursor = 'pointer';
     if (strong) { a.style.fontWeight = '600'; a.style.borderColor = 'currentColor'; }
     return a;
