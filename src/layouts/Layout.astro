@@ -1170,6 +1170,61 @@ html[data-theme="dark"] #home-load-more.home-load-more-btn:hover {
   }
 </style>
   <script src="/look-search.js?v=20261023d" defer is:inline></script>
+<!-- site-square: business-class corners sitewide (opt out with data-keep-round) -->
+<script is:inline>
+(() => {
+  if (window.__siteSquare) return; window.__siteSquare = true;
+  const SKIP = ".leaflet-container, .leaflet-container *, svg, svg *, [data-keep-round], [data-keep-round] *";
+  const C = ["border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius"];
+  const fix = (el) => {
+    if (!(el instanceof HTMLElement) || el.matches(SKIP)) return;
+    if (/toggle|switch|avatar/i.test(el.className)) return;
+    const cs = getComputedStyle(el);
+    const vals = C.map((p) => cs.getPropertyValue(p));
+    if (vals.some((v) => v.includes("%"))) return;
+    const px = vals.map((v) => parseFloat(v) || 0);
+    const max = Math.max(...px);
+    if (max <= 3) return;
+    const b = el.getBoundingClientRect();
+    if (b.width && b.height && Math.abs(b.width - b.height) < 4 && max >= b.width / 2 - 2) return;
+    const target = b.height ? (b.height <= 60 ? 3 : 6) : (max >= 100 ? 3 : 6);
+    if (max <= target) return;
+    C.forEach((p, i) => { if (px[i] > 0) el.style.setProperty(p, Math.min(px[i], target) + "px", "important"); });
+  };
+  const sweep = (root) => { fix(root); root.querySelectorAll?.("*").forEach(fix); };
+  const start = () => sweep(document.body);
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true }); else start();
+  document.addEventListener("astro:page-load", start);
+  const queue = new Set(); let raf = 0;
+  new MutationObserver((ms) => {
+    ms.forEach((m) => m.addedNodes.forEach((n) => n.nodeType === 1 && queue.add(n)));
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; const q = [...queue]; queue.clear(); q.forEach(sweep); });
+  }).observe(document.body, { childList: true, subtree: true });
+})();
+</script>
+<!-- hero-search: balance inner top/bottom space -->
+<script is:inline>
+(() => {
+  const T = 26;
+  const run = () => {
+    const f = document.getElementById("home-hero-search"); if (!f) return;
+    let tag = document.getElementById("hero-search-pad-css");
+    if (!tag) { tag = document.createElement("style"); tag.id = "hero-search-pad-css"; document.head.appendChild(tag); }
+    tag.textContent = "";
+    const fr = f.getBoundingClientRect(), cs = getComputedStyle(f);
+    const kids = [...f.querySelectorAll("*")].filter((e) => { const r = e.getBoundingClientRect(), p = getComputedStyle(e).position; return r.width > 0 && r.height > 0 && p !== "absolute" && p !== "fixed"; });
+    if (!kids.length) return;
+    const top = Math.min(...kids.map((e) => e.getBoundingClientRect().top)) - fr.top;
+    const bot = fr.bottom - Math.max(...kids.map((e) => e.getBoundingClientRect().bottom));
+    const pt = Math.max(0, parseFloat(cs.paddingTop) + T - top), pb = Math.max(0, parseFloat(cs.paddingBottom) + T - bot);
+    tag.textContent = `html body form#home-hero-search.locus-home-search { padding-top: ${pt}px !important; padding-bottom: ${pb}px !important; }`;
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run, { once: true }); else run();
+  addEventListener("load", run);
+  addEventListener("resize", () => requestAnimationFrame(run));
+  document.addEventListener("astro:page-load", run);
+})();
+</script>
 </body>
 </html>
 
