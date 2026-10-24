@@ -3624,3 +3624,59 @@ html[data-theme="dark"] #preview-sheet #sheet-highlight-chips .panel__highlight-
   log("debugblur ready");
 })();
 </script>
+<!-- watch-sheet: mobile watch form outside the modal (avoids keyboard dismissal) -->
+<script is:inline>
+(() => {
+  const coarse = matchMedia("(pointer: coarse)");
+  if (!document.getElementById("watch-sheet-css")) document.head.insertAdjacentHTML("beforeend", `<style id="watch-sheet-css">
+    #watch-sheet { position: fixed; inset: 0; z-index: 2147483000; display: none; }
+    #watch-sheet.is-open { display: block; }
+    #watch-sheet .ws-back { position: absolute; inset: 0; background: rgba(10, 14, 16, 0.45); }
+    #watch-sheet .ws-panel { position: absolute; top: 12px; left: 12px; right: 12px; background: #fff; padding: 20px 18px 18px; border-radius: 6px; display: grid; gap: 10px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.25); }
+    #watch-sheet .ws-title { font-weight: 700; font-size: 18px; color: #10202c; padding-right: 28px; }
+    #watch-sheet .ws-sub, #watch-sheet .ws-msg { font-size: 13px; color: #5b6670; }
+    #watch-sheet #ws-phone { font-size: 16px; padding: 14px; border: 1px solid rgba(16, 32, 44, 0.22); border-radius: 3px; width: 100%; box-sizing: border-box; }
+    #watch-sheet .ws-go { padding: 14px; border: 0; border-radius: 3px; background: var(--accent, #1e88d0); color: #fff; font-weight: 700; font-size: 15px; }
+    #watch-sheet .ws-close { position: absolute; top: 10px; right: 12px; background: none; border: 0; font-size: 26px; line-height: 1; color: #5b6670; padding: 4px; }
+  </style>`);
+  let sheet;
+  const close = () => sheet && sheet.classList.remove("is-open");
+  const build = () => {
+    sheet = document.createElement("div");
+    sheet.id = "watch-sheet";
+    sheet.innerHTML = '<div class="ws-back"></div><form class="ws-panel" novalidate><div class="ws-title">Watch this home</div><div class="ws-sub">Get a text if the price drops or it sells.</div><input id="ws-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Mobile number"><button type="submit" class="ws-go">Watch</button><div class="ws-msg">No calls. Reply STOP anytime.</div><button type="button" class="ws-close" aria-label="Close">&times;</button></form>';
+    document.body.appendChild(sheet);
+    sheet.querySelector(".ws-back").addEventListener("click", close);
+    sheet.querySelector(".ws-close").addEventListener("click", close);
+    sheet.querySelector("form").addEventListener("submit", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const inp = document.getElementById("watch-home-phone"), form = document.getElementById("watch-home-form");
+      const msg = sheet.querySelector(".ws-msg");
+      if (!inp || !form) { msg.textContent = "Couldn't find this listing. Refresh and try again."; return; }
+      inp.value = sheet.querySelector("#ws-phone").value;
+      msg.textContent = "Saving...";
+      form.requestSubmit();
+      let n = 0;
+      const iv = setInterval(() => {
+        const card = document.getElementById("watch-home-card");
+        if (card && card.classList.contains("is-done")) { clearInterval(iv); msg.textContent = "You're watching this home. We'll text you if anything changes."; setTimeout(close, 1600); }
+        else if (++n > 40) { clearInterval(iv); msg.textContent = document.getElementById("watch-home-msg")?.textContent || "Couldn't save that. Try again."; }
+      }, 150);
+    });
+  };
+  document.addEventListener("click", (e) => {
+    if (!coarse.matches) return;
+    const b = e.target instanceof Element && e.target.closest("#watch-home-btn");
+    if (!b) return;
+    const card = document.getElementById("watch-home-card");
+    if (card && card.classList.contains("is-done")) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    const gc = document.getElementById("together-card");
+    if (gc && !gc.hidden) { gc.hidden = true; document.getElementById("together-btn")?.setAttribute("aria-expanded", "false"); }
+    if (!sheet) build();
+    sheet.querySelector(".ws-msg").textContent = "No calls. Reply STOP anytime.";
+    sheet.classList.add("is-open");
+    sheet.querySelector("#ws-phone").focus();
+  }, true);
+})();
+</script>
