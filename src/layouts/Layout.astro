@@ -1212,7 +1212,7 @@ html[data-theme="dark"] #home-load-more.home-load-more-btn:hover {
     if (!tag) { tag = document.createElement("style"); tag.id = "hero-search-pad-css"; document.head.appendChild(tag); }
     tag.textContent = "";
     const fr = f.getBoundingClientRect(), cs = getComputedStyle(f);
-    const kids = [...f.querySelectorAll("*")].filter((e) => { const r = e.getBoundingClientRect(), p = getComputedStyle(e).position; return r.width > 0 && r.height > 0 && p !== "absolute" && p !== "fixed"; });
+    const kids = [...f.querySelectorAll("*")].filter((e) => { const r = e.getBoundingClientRect(), p = getComputedStyle(e).position; return r.width > 0 && r.height > 0 && p !== "absolute" && p !== "fixed" && !e.closest(".hero-collections-strip"); });
     if (!kids.length) return;
     const top = Math.min(...kids.map((e) => e.getBoundingClientRect().top)) - fr.top;
     const bot = fr.bottom - Math.max(...kids.map((e) => e.getBoundingClientRect().bottom));
@@ -1222,6 +1222,42 @@ html[data-theme="dark"] #home-load-more.home-load-more-btn:hover {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run, { once: true }); else run();
   addEventListener("load", run);
   addEventListener("resize", () => requestAnimationFrame(run));
+  document.addEventListener("astro:page-load", run);
+})();
+</script>
+<!-- hero-collections: glass strip of popular/featured searches above the search bar -->
+<script is:inline>
+(() => {
+  if (!document.getElementById("hero-collections-css")) document.head.insertAdjacentHTML("beforeend", `<style id="hero-collections-css">
+    .hero-collections-strip { position: absolute; left: 0; right: 0; bottom: calc(100% + 12px); z-index: 2; display: flex; align-items: center; gap: 10px; padding: 9px 14px;
+      background: rgba(14, 20, 24, 0.26); backdrop-filter: blur(8px) saturate(1.15); -webkit-backdrop-filter: blur(8px) saturate(1.15);
+      border: 1px solid rgba(255, 255, 255, 0.25); border-top-color: rgba(255, 255, 255, 0.48); border-radius: 6px;
+      color: #fff; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+    .hero-collections-strip::-webkit-scrollbar { display: none; }
+    .hero-collections-strip .locus-home-search__popular { display: flex !important; align-items: center; gap: 8px; margin: 0 !important; padding: 0 !important; flex-wrap: nowrap !important; border: 0 !important; }
+    .hero-collections-strip .locus-home-search__popular > span:first-child { color: rgba(255, 255, 255, 0.82) !important; font-size: 12px; letter-spacing: .02em; }
+    .hero-collections-strip a, .hero-collections-strip button { flex: none; background: rgba(255, 255, 255, 0.12) !important; color: #fff !important;
+      border: 1px solid rgba(255, 255, 255, 0.28) !important; border-radius: 3px !important; box-shadow: none !important; white-space: nowrap; transition: background .15s ease; }
+    .hero-collections-strip a:hover, .hero-collections-strip button:hover { background: rgba(255, 255, 255, 0.24) !important; }
+    .hero-collections-strip.is-below { position: static !important; bottom: auto !important; margin: 18px 0 0 !important; padding: 14px 2px !important; gap: 10px;
+      background: transparent !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; border: 0 !important; border-radius: 0 !important; color: inherit !important; }
+    .hero-collections-strip.is-below .locus-home-search__popular > span:first-child { color: #5b6670 !important; text-transform: uppercase; font-size: 11px !important; font-weight: 700; letter-spacing: .12em !important; margin-right: 6px; }
+    .hero-collections-strip.is-below a, .hero-collections-strip.is-below button { background: #fff !important; color: #1b2a33 !important; border: 1px solid rgba(16, 32, 44, 0.14) !important; padding: 10px 16px !important; font-size: 13px !important; }
+    .hero-collections-strip.is-below a:hover, .hero-collections-strip.is-below button:hover { background: #fff !important; border-color: var(--accent, #1f5f5b) !important; color: var(--accent, #1f5f5b) !important; }
+  </style>`);
+  const run = () => {
+    const form = document.getElementById("home-hero-search");
+    const pop = form?.querySelector(".locus-home-search__popular");
+    if (!form || !pop) return;
+    if (document.querySelector(".hero-collections-strip")) return;
+    if (getComputedStyle(form).position === "static") document.getElementById("hero-collections-css").textContent += " html body form#home-hero-search { position: relative; }";
+    const strip = document.createElement("div");
+    strip.className = "hero-collections-strip";
+    strip.appendChild(pop);
+    strip.classList.add("is-below"); (form.closest("section") || form.parentElement).after(strip); const align = () => { const fr = form.getBoundingClientRect(), pr = strip.parentElement.getBoundingClientRect(); strip.style.setProperty("width", fr.width + "px", "important"); strip.style.setProperty("margin-left", (fr.left - pr.left) + "px", "important"); }; align(); addEventListener("resize", () => requestAnimationFrame(align)); const areasHref = [...document.querySelectorAll("header a, nav a")].find((a) => a.textContent.trim() === "Areas")?.href; const nb = [...strip.querySelectorAll("a, button")].find((e) => e.textContent.trim() === "Neighbourhoods"); if (nb && areasHref) { if (nb.tagName === "A") nb.href = areasHref; else { const a = document.createElement("a"); a.href = areasHref; a.className = nb.className; a.textContent = nb.textContent; nb.replaceWith(a); } }
+    dispatchEvent(new Event("resize"));
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run, { once: true }); else run();
   document.addEventListener("astro:page-load", run);
 })();
 </script>
