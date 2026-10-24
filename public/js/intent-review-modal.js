@@ -3793,7 +3793,7 @@ if (videoContainer) {
       link.textContent = embedUrl
         ? "Open full screen ↗"
         : "Open virtual tour ↗";
-      videoContainer.appendChild(link);
+      link.className = "panel__tour-open"; link.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg><span>${embedUrl ? "Full screen" : "Open virtual tour"}</span>`; const tourFrame = videoContainer.querySelector("iframe"); if (embedUrl && tourFrame) { const wrap = document.createElement("div"); wrap.className = "panel__tour-wrap"; tourFrame.before(wrap); wrap.append(tourFrame, link); link.classList.add("is-overlay"); } else { videoContainer.appendChild(link); }
       videoContainer.hidden = false;
     }
   } catch {
