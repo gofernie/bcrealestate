@@ -1,4 +1,4 @@
-﻿import type { APIRoute } from "astro";
+import type { APIRoute } from "astro";
 import { createClient } from "@supabase/supabase-js";
 import { mobileHomeParks } from "../../data/mobileHomeParks";
 import { GET as getGreaterVictoriaListings } from "./greater-victoria-listings";
@@ -38,7 +38,9 @@ const normalizeImageUrl = (value: any) => {
   return raw;
 };
 
-const formatAddress = (value: any): string => {
+const __tcAddr3 = (s) => String(s || "").replace(/\b[A-Z][A-Z'-]+\b/g, (w) => /^(NE|NW|SE|SW)$/.test(w) ? w : w.toLowerCase().replace(/(^|[-'])([a-z])/g, (m, p, c) => p + c.toUpperCase()));
+const formatAddress = (value: any): string => __tcAddr3(__rawAddr3(value));
+const __rawAddr3 = (value: any): string => {
   if (!value) return "";
   let address = value;
   if (typeof value === "string") {

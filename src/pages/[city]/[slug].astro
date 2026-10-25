@@ -2522,7 +2522,9 @@ function formatLotSize(listing: any): string {
     : `${lotSqft.toLocaleString("en-CA")} sq ft`;
 }
 
-function formatAddress(value: any): string {
+function __tcAddr4(s) { return String(s || "").replace(/\b[A-Z][A-Z'-]+\b/g, (w) => /^(NE|NW|SE|SW)$/.test(w) ? w : w.toLowerCase().replace(/(^|[-'])([a-z])/g, (m, p, c) => p + c.toUpperCase())); }
+function formatAddress(value: any): string { return __tcAddr4(__rawAddr4(value)); }
+function __rawAddr4(value: any): string {
   if (!value) return "";
   let obj = value;
   if (typeof value === "string") {
@@ -12377,7 +12379,9 @@ lot_size_acres: listing.lot_size_acres,
       return "this area";
     };
 
-    function fmtAddr(v) {
+    function __tcAddr5(s) { return String(s || "").replace(/\b[A-Z][A-Z'-]+\b/g, (w) => /^(NE|NW|SE|SW)$/.test(w) ? w : w.toLowerCase().replace(/(^|[-'])([a-z])/g, (m, p, c) => p + c.toUpperCase())); }
+function fmtAddr(v) { return __tcAddr5(__rawAddr5(v)); }
+function __rawAddr5(v) {
       if (!v) return "";
       let o = v;
       if (typeof v === "string") {
@@ -14477,12 +14481,33 @@ const openFeaturedListing = () => {
       mk("hero-step-details__address", d.address || "");
       mk("hero-step-details__facts", facts);
     }
-    if (label) label.textContent = `Home ${idx + 1} of ${n}`;
+    if (label) label.hidden = true;
     if (badges) badges.hidden = idx !== wrap(featuredIndex);
     preload(optimizeCollageImage(firstImg(idx + 1), 960, 68));
     preload(optimizeCollageImage(imgsOf(featuredCards[wrap(idx + 1)])[1] || "", 400, 64));
   };
-  const go = (i) => { idx = wrap(i); render(true); };
+  let atEnd = false;
+  const lastIdx = wrap(featuredIndex - 1);
+  const total = String(statValue(0, "") || "").trim();
+  const endEl = document.createElement("div");
+  endEl.className = "hero-step-end";
+  endEl.hidden = true;
+  endEl.innerHTML = `<div class="hero-step-end__inner"><div class="hero-step-end__title">You've seen the highlights</div><button type="button" class="hero-step-end__btn">See all ${/^\d[\d,]*$/.test(total) ? total + " " : ""}homes &darr;</button><button type="button" class="hero-step-end__again">Start over</button></div>`;
+  endEl.addEventListener("click", (e) => e.stopPropagation());
+  endEl.addEventListener("keydown", (e) => e.stopPropagation());
+  featuredHero.appendChild(endEl);
+  const go = (i) => {
+    const dir = i > idx ? 1 : -1;
+    if (atEnd) { atEnd = false; endEl.hidden = true; if (dir > 0) idx = wrap(featuredIndex); render(true); return; }
+    if (dir > 0 && idx === lastIdx) { atEnd = true; endEl.hidden = false; return; }
+    idx = wrap(idx + dir);
+    render(true);
+  };
+  endEl.querySelector(".hero-step-end__btn").addEventListener("click", () => {
+    const g = featuredCards[0]?.parentElement;
+    if (g) window.scrollTo({ top: g.getBoundingClientRect().top + window.scrollY - 160, behavior: "smooth" });
+  });
+  endEl.querySelector(".hero-step-end__again").addEventListener("click", () => go(idx + 1));
 
   const makeBtn = (dir) => {
     const b = document.createElement("button");
@@ -17221,7 +17246,9 @@ document.addEventListener("click", (event) => {
       }
 
 function createRefinedListingCard(listing, index = 0) {
-function fmtAddr(v) {
+function __tcAddr6(s) { return String(s || "").replace(/\b[A-Z][A-Z'-]+\b/g, (w) => /^(NE|NW|SE|SW)$/.test(w) ? w : w.toLowerCase().replace(/(^|[-'])([a-z])/g, (m, p, c) => p + c.toUpperCase())); }
+function fmtAddr(v) { return __tcAddr6(__rawAddr6(v)); }
+function __rawAddr6(v) {
   if (!v) return "";
   let o = v;
   if (typeof v === "string") {
@@ -18842,6 +18869,81 @@ html body .area-hero-visual .area-hero-visual__label { max-width: calc(100% - 35
   html body .area-hero-visual .area-hero-visual__label { max-width: calc(100% - 24px); }
 }
 
+/* hero-mobile-v1: no thumbs on phones, arrows clear of the card */
+@media (max-width: 640px) {
+  html body .area-hero-visual .area-hero-collage__secondary { display: none !important; }
+  html body .area-hero-visual > button[aria-label$=" home"] { top: 14px !important; transform: none !important; }
+}
+
+/* hero-mobile-v2: two-column details on phones */
+@media (max-width: 640px) {
+  html body .area-hero-visual .area-hero-visual__label {
+    left: 14px !important; right: 14px !important; width: auto !important; max-width: none !important;
+    display: grid !important; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; row-gap: 2px; align-items: baseline;
+    padding: 12px 14px !important;
+  }
+  html body .area-hero-visual .area-hero-visual__label > span { grid-column: 1 / -1; grid-row: 1; margin-bottom: 4px; }
+  html body .area-hero-visual .area-hero-feature-badges { display: none !important; }
+  html body .area-hero-visual .hero-step-details { display: contents; }
+  html body .area-hero-visual .hero-step-details__price { grid-column: 1; grid-row: 2; font-size: 1.25rem; }
+  html body .area-hero-visual .hero-step-details__address { grid-column: 1; grid-row: 3; margin: 0; }
+  html body .area-hero-visual .hero-step-details__facts { grid-column: 2; grid-row: 2; text-align: right; white-space: nowrap; margin: 0; }
+  html body .area-hero-visual .area-hero-visual__label > strong { grid-column: 2; grid-row: 3; text-align: right; white-space: nowrap; font-size: .85rem !important; }
+}
+/* hero-end-v1: end-of-highlights card */
+html body .area-hero-visual .hero-step-end { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; background: rgba(14, 20, 24, .55); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); cursor: default; }
+html body .area-hero-visual .hero-step-end[hidden] { display: none; }
+html body .area-hero-visual .hero-step-end__inner { display: grid; gap: 12px; justify-items: center; text-align: center; color: #fff; padding: 20px; }
+html body .area-hero-visual .hero-step-end__title { font-size: 1.15rem; font-weight: 700; }
+html body .area-hero-visual .hero-step-end__btn { padding: 11px 18px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, .48); background: var(--accent, #0e9fd6); color: #fff; font-weight: 700; cursor: pointer; }
+html body .area-hero-visual .hero-step-end__again { background: none; border: 0; color: rgba(255, 255, 255, .85); text-decoration: underline; font-size: .9rem; cursor: pointer; }
+
+/* hero-no-eyebrow-v1 */
+html body .area-hero-visual .area-hero-visual__label > span { display: none !important; }
+
+/* hero-no-thumbs-v1: main photo only, all sizes */
+html body .area-hero-visual .area-hero-collage__secondary { display: none !important; }
+html body .area-hero-visual .area-hero-visual__label { max-width: min(460px, calc(100% - 120px)) !important; }
+
+/* hero-desktop-2col-v1 */
+@media (min-width: 641px) {
+  html body .area-hero-visual .area-hero-visual__label {
+    display: grid !important; grid-template-columns: minmax(0, 1fr) auto; column-gap: 28px; row-gap: 2px; align-items: baseline;
+    width: auto !important; max-width: min(560px, calc(100% - 120px)) !important;
+  }
+  html body .area-hero-visual .area-hero-feature-badges { grid-column: 1 / -1; grid-row: 1; margin-bottom: 6px; }
+  html body .area-hero-visual .hero-step-details { display: contents; }
+  html body .area-hero-visual .hero-step-details__price { grid-column: 1; grid-row: 2; }
+  html body .area-hero-visual .hero-step-details__address { grid-column: 1; grid-row: 3; margin: 0; }
+  html body .area-hero-visual .hero-step-details__facts { grid-column: 2; grid-row: 2; text-align: right; white-space: nowrap; margin: 0; }
+  html body .area-hero-visual .area-hero-visual__label > strong { grid-column: 2; grid-row: 3; text-align: right; white-space: nowrap; }
+}
+/* hero-desktop-2row-v1: badge inline with price */
+@media (min-width: 641px) {
+  html body .area-hero-visual .area-hero-visual__label { grid-template-columns: auto minmax(0, 1fr) auto !important; column-gap: 0 !important; }
+  html body .area-hero-visual .area-hero-feature-badges { grid-column: 1 !important; grid-row: 1 !important; margin: 0 12px 0 0 !important; align-self: center; }
+  html body .area-hero-visual .area-hero-feature-badges:empty { display: none !important; }
+  html body .area-hero-visual .hero-step-details__price { grid-column: 2 !important; grid-row: 1 !important; }
+  html body .area-hero-visual .hero-step-details__address { grid-column: 1 / 3 !important; grid-row: 2 !important; }
+  html body .area-hero-visual .hero-step-details__facts { grid-column: 3 !important; grid-row: 1 !important; margin-left: 28px !important; }
+  html body .area-hero-visual .area-hero-visual__label > strong { grid-column: 3 !important; grid-row: 2 !important; margin-left: 28px !important; }
+}
+/* hero-badge-tab-v1: badge overhangs the glass card */
+html body .area-hero-visual .area-hero-visual__label { overflow: visible !important; }
+html body .area-hero-visual .area-hero-feature-badges {
+  display: flex !important; gap: 6px; position: absolute !important; top: -12px; left: 14px; z-index: 2;
+  margin: 0 !important; grid-column: auto !important; grid-row: auto !important;
+}
+html body .area-hero-visual .area-hero-feature-badges:empty { display: none !important; }
+html body .area-hero-visual .area-hero-feature-badges > * { box-shadow: 0 4px 12px rgba(0, 0, 0, .35); border: 1px solid rgba(255, 255, 255, .35); }
+html body .area-hero-visual .area-hero-visual__label:has(.area-hero-feature-badges:not(:empty)) { padding-top: 20px !important; }
+@media (min-width: 641px) {
+  html body .area-hero-visual .area-hero-visual__label { grid-template-columns: minmax(0, 1fr) auto !important; column-gap: 28px !important; }
+  html body .area-hero-visual .hero-step-details__price { grid-column: 1 !important; grid-row: 1 !important; }
+  html body .area-hero-visual .hero-step-details__address { grid-column: 1 !important; grid-row: 2 !important; }
+  html body .area-hero-visual .hero-step-details__facts { grid-column: 2 !important; grid-row: 1 !important; margin-left: 0 !important; }
+  html body .area-hero-visual .area-hero-visual__label > strong { grid-column: 2 !important; grid-row: 2 !important; margin-left: 0 !important; }
+}
 /* FEATURED HOME CONTEXT BADGES */
 .area-hero-feature-badges {
   display: flex;

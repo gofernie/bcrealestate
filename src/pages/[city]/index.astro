@@ -1,4 +1,5 @@
 ---
+function __tcAddrIdx(s) { return String(s || "").replace(/\b[A-Z][A-Z'-]+\b/g, (w) => /^(NE|NW|SE|SW)$/.test(w) ? w : w.toLowerCase().replace(/(^|[-'])([a-z])/g, (m, p, c) => p + c.toUpperCase())); }
 import { ClientRouter } from "astro:transitions";
 import { createClient } from "@supabase/supabase-js";
 import Layout from "../../layouts/Layout.astro";
@@ -1064,17 +1065,17 @@ const formatAddressValue = (value: any): string => {
     try { obj = JSON.parse(trimmed); } catch { return ""; }
   }
   if (typeof obj !== "object" || Array.isArray(obj)) return "";
-  return [obj.streetNumber, obj.streetName || obj.streetAddress, obj.streetSuffix, obj.unitNumber ? `#${obj.unitNumber}` : ""]
-    .filter(Boolean).join(" ").trim();
+  return __tcAddrIdx([obj.streetNumber, obj.streetName || obj.streetAddress, obj.streetSuffix, obj.unitNumber ? `#${obj.unitNumber}` : ""]
+    .filter(Boolean).join(" ")).trim();
 };
 const getListingAddress = (listing: any) =>
   formatAddressValue(listing.address) ||
   formatAddressValue(listing.full_address) ||
   listing.addressText ||
   listing.addressObj?.streetAddress ||
-  [listing.addressObj?.streetNumber, listing.addressObj?.streetName, listing.addressObj?.streetSuffix]
+  __tcAddrIdx([listing.addressObj?.streetNumber, listing.addressObj?.streetName, listing.addressObj?.streetSuffix]
     .filter(Boolean)
-    .join(" ") ||
+    .join(" ")) ||
   "Address available";
 
 const normalizeListingImageUrl = (value: any) => {

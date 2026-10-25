@@ -1232,6 +1232,25 @@ html[data-theme="dark"] #home-load-more.home-load-more-btn:hover {
 <script is:inline>
 (() => { const go = () => requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.add("hero-ready"))); if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go, { once: true }); else go(); document.addEventListener("astro:page-load", go); })();
 </script>
+<!-- address-titlecase-v1: fix ALL-CAPS street names on every card -->
+<script is:inline>
+(() => {
+  const tc = (s) => String(s || "").replace(/\b[A-Z][A-Z'-]+\b/g, (w) => /^(NE|NW|SE|SW|BC)$/.test(w) ? w : w.toLowerCase().replace(/(^|[-'])([a-z])/g, (m, p, c) => p + c.toUpperCase()));
+  const fix = (card) => {
+    const raw = card.getAttribute("data-address");
+    if (!raw || !/[A-Z]{3,}/.test(raw)) return;
+    const nice = tc(raw);
+    if (nice === raw) return;
+    card.setAttribute("data-address", nice);
+    const w = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = w.nextNode())) { if (n.nodeValue.includes(raw)) n.nodeValue = n.nodeValue.split(raw).join(nice); }
+  };
+  const run = (el) => { if (el.nodeType !== 1) return; if (el.hasAttribute("data-address")) fix(el); el.querySelectorAll("[data-address]").forEach(fix); };
+  run(document.body);
+  new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach(run))).observe(document.body, { childList: true, subtree: true });
+})();
+</script>
 </body>
 </html>
 
