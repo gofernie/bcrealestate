@@ -1251,6 +1251,45 @@ html[data-theme="dark"] #home-load-more.home-load-more-btn:hover {
   new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach(run))).observe(document.body, { childList: true, subtree: true });
 })();
 </script>
+<!-- card-badges-v1: same badges as the hero, on every listing card -->
+<style is:inline>
+.card-badges { position: absolute; top: 10px; right: 10px; z-index: 3; display: flex; gap: 6px; flex-wrap: nowrap; pointer-events: none; }
+.card-badges span { display: inline-block; padding: 4px 9px; border-radius: 4px; font-family: inherit; font-size: .64rem; font-weight: 800; line-height: 1.3; letter-spacing: .08em; text-transform: uppercase; color: #fff; white-space: nowrap; box-shadow: 0 3px 10px rgba(0, 0, 0, .3); border: 1px solid rgba(255, 255, 255, .35); }
+.card-badges .b-reduced { background: #b4462f; } .card-badges .b-new { background: #1f6b4a; } .card-badges .b-back { background: #a86a12; }
+.card-badges .b-view { background: #1f5f8b; } .card-badges .b-build { background: #5a3f8a; } .card-badges .b-land { background: #4f6b2a; }
+</style>
+<script is:inline>
+(() => {
+  const num = (v) => Number(String(v || "").replace(/[^\d.]/g, ""));
+  const badgesFor = (d) => {
+    const list = [];
+    const op = num(d.originalPrice), rp = num(d.rawPrice);
+    if (op > 0 && rp > 0 && rp < op) list.push(["Price reduced", "reduced"]);
+    let age = String(d.dom || "").trim() !== "" && Number.isFinite(Number(d.dom)) ? Number(d.dom) : NaN;
+    if (!Number.isFinite(age) && d.listedAt) { const t0 = new Date(d.listedAt).getTime(); if (Number.isFinite(t0)) age = (Date.now() - t0) / 86400000; }
+    if (Number.isFinite(age) && age >= 0 && age <= 7) list.push(["New this week", "new"]);
+    const bom = d.backOnMarket ? new Date(d.backOnMarket).getTime() : NaN;
+    if (Number.isFinite(bom) && (Date.now() - bom) / 86400000 <= 14) list.push(["Back on market", "back"]);
+    if (d.waterfront === "true") list.push(["Waterfront", "view"]); else if (d.oceanView === "true") list.push(["Ocean view", "view"]);
+    const yb = num(d.yearBuilt); if (yb && yb >= new Date().getFullYear() - 1) list.push(["New build", "build"]);
+    { let ac = num(d.lotAcres); if (!ac && d.lotSize) { const ls = String(d.lotSize).toLowerCase(); ac = /acre/.test(ls) ? num(ls) : (/ft/.test(ls) ? num(ls) / 43560 : 0); } if (ac >= 1) list.push(["Acreage", "land"]); }
+    return list.slice(0, 2);
+  };
+  const fix = (card) => {
+    if (!card.classList.contains("card") || card.dataset.badged) return;
+    const img = card.querySelector("img"); const box = img && img.parentElement; if (!box) return;
+    card.dataset.badged = "1";
+    const list = badgesFor(card.dataset); if (!list.length) return;
+    if (getComputedStyle(box).position === "static") box.style.position = "relative";
+    const el = document.createElement("div"); el.className = "card-badges";
+    el.innerHTML = list.map(([txt, k]) => `<span class="b-${k}">${txt}</span>`).join("");
+    box.appendChild(el);
+  };
+  const run = (el) => { if (el.nodeType !== 1) return; const c = el.closest(".card[data-address]"); if (c) fix(c); el.querySelectorAll(".card[data-address]").forEach(fix); };
+  run(document.body);
+  new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach(run))).observe(document.body, { childList: true, subtree: true });
+})();
+</script>
 </body>
 </html>
 

@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   SupabaseClient,
 } from "@supabase/supabase-js";
 
@@ -68,6 +68,7 @@ const listingSelect = `
   area,
   normalized_area,
   price,
+  original_price, waterfront, ocean_view, year_built, lot_size_acres, back_on_market_at,
   beds,
   baths,
   sqft,

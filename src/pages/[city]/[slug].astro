@@ -1452,7 +1452,7 @@ const listingCardFields = `
   property_type,
   normalized_type,
   type,
-  price,
+  price, original_price, back_on_market_at,
   beds,
   baths,
   sqft,
@@ -11959,7 +11959,7 @@ data-images={JSON.stringify(
   [...new Set([image, ...listingImageUrls(listing)].filter(Boolean))]
 )}                data-price={formatPrice(listing.price)}
                 data-sort-index={index}
-data-raw-price={String(listing?.price || 0)}
+data-raw-price={String(listing?.price || 0)} data-original-price={String(listing?.original_price || "")} data-waterfront={String(listing?.waterfront === true || listing?.waterfront === "true")} data-ocean-view={String(listing?.ocean_view === true || listing?.ocean_view === "true")} data-year-built={String(listing?.year_built || "")} data-lot-acres={String(listing?.lot_size_acres || "")} data-back-on-market={String(listing?.back_on_market_at || "")}
 data-listed-at={String(listing?.listed_at || listing?.created_at || "")}
                 data-address={formatAddress(listing.address)}
                 data-meta={`${listing.beds || "-"} bed | ${listing.baths || "-"} bath`}
@@ -14482,7 +14482,28 @@ const openFeaturedListing = () => {
       mk("hero-step-details__facts", facts);
     }
     if (label) label.hidden = true;
-    if (badges) badges.hidden = idx !== wrap(featuredIndex);
+    const bd = c ? c.dataset : {};
+    let ageDays = String(bd.dom || "").trim() !== "" && Number.isFinite(Number(bd.dom)) ? Number(bd.dom) : NaN;
+    if (!Number.isFinite(ageDays) && bd.listedAt) { const t0 = new Date(bd.listedAt).getTime(); if (Number.isFinite(t0)) ageDays = (Date.now() - t0) / 86400000; }
+    const num = (v) => Number(String(v || "").replace(/[^\d.]/g, ""));
+    const op = num(bd.originalPrice), rp = num(bd.rawPrice);
+    const list = [];
+    if (op > 0 && rp > 0 && rp < op) list.push(["Price reduced", "reduced"]);
+    if (Number.isFinite(ageDays) && ageDays >= 0 && ageDays <= 7) list.push(["New this week", "new"]);
+    const bom = bd.backOnMarket ? new Date(bd.backOnMarket).getTime() : NaN;
+    if (Number.isFinite(bom) && (Date.now() - bom) / 86400000 <= 14) list.push(["Back on market", "back"]);
+    if (bd.waterfront === "true") list.push(["Waterfront", "view"]);
+    else if (bd.oceanView === "true") list.push(["Ocean view", "view"]);
+    const yb = num(bd.yearBuilt);
+    if (yb && yb >= new Date().getFullYear() - 1) list.push(["New build", "build"]);
+    { let ac = num(bd.lotAcres); if (!ac && bd.lotSize) { const ls = String(bd.lotSize).toLowerCase(); ac = /acre/.test(ls) ? num(ls) : (/ft/.test(ls) ? num(ls) / 43560 : 0); } if (ac >= 1) list.push(["Acreage", "land"]); }
+    if (bd.hasFloorplan === "true") list.push(["Floorplan", "info"]);
+    if (bd.primaryOnMain === "true") list.push(["Primary on main", "info"]);
+    if (bd.hasUpdatedKitchen === "true") list.push(["Updated kitchen", "info"]);
+    if (bd.hasDetachedShop === "true") list.push(["Detached shop", "info"]);
+    let bx = labelBox ? labelBox.querySelector(".area-hero-feature-badges") : null;
+    if (!bx && labelBox) { bx = document.createElement("div"); bx.className = "area-hero-feature-badges"; labelBox.prepend(bx); }
+    if (bx) bx.innerHTML = list.slice(0, 2).map(([txt, k]) => `<span class="hero-badge hero-badge--${k}">${txt}</span>`).join("");
     preload(optimizeCollageImage(firstImg(idx + 1), 960, 68));
     preload(optimizeCollageImage(imgsOf(featuredCards[wrap(idx + 1)])[1] || "", 400, 64));
   };
@@ -17357,7 +17378,7 @@ data-listing-url="/${String(listing.normalized_city || listing.city || 'nanaimo'
             data-image="${image}"
             data-images='${JSON.stringify([...new Set(images)])}'
             data-price="${refinedPrice}"
-            data-raw-price="${String(listing.price || listing.raw_price || listing.price_text || "").replace(/[^0-9]/g, "")}"
+            data-original-price="${listing.original_price || ""}" data-waterfront="${listing.waterfront === true || listing.waterfront === "true"}" data-ocean-view="${listing.ocean_view === true || listing.ocean_view === "true"}" data-year-built="${listing.year_built || ""}" data-lot-acres="${listing.lot_size_acres || ""}" data-back-on-market="${listing.back_on_market_at || ""}" data-raw-price="${String(listing.price || listing.raw_price || listing.price_text || "").replace(/[^0-9]/g, "")}"
 data-sort-index="${index}"
 data-listed-at="${listing.listed_at || listing.created_at || listing.updated_at || ""}"
 data-address="${fmtAddr(listing.address)}"            data-meta="${listing.beds || "-"} bed | ${listing.baths || "-"} bath"
@@ -18956,6 +18977,34 @@ html body .area-hero-visual .area-hero-visual__label:has(.area-hero-feature-badg
   html body .area-hero-visual .hero-step-details__address { grid-column: 1 !important; grid-row: 2 !important; }
   html body .area-hero-visual .hero-step-details__facts { grid-column: 2 !important; grid-row: 1 !important; margin-left: 0 !important; }
   html body .area-hero-visual .area-hero-visual__label > strong { grid-column: 2 !important; grid-row: 2 !important; margin-left: 0 !important; }
+}
+/* hero-badges-v2: per-slide badges */
+html body .area-hero-visual .hero-badge { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #fff; line-height: 1.3; }
+html body .area-hero-visual .hero-badge--new { background: #1f6b4a; }
+html body .area-hero-visual .hero-badge--reduced { background: #b4462f; }
+html body .area-hero-visual .hero-badge--info { background: rgba(14, 20, 24, .78); }
+
+/* hero-badges-v3 */
+html body .area-hero-visual .hero-badge--back { background: #a86a12; }
+html body .area-hero-visual .hero-badge--view { background: #1f5f8b; }
+html body .area-hero-visual .hero-badge--build { background: #5a3f8a; }
+html body .area-hero-visual .hero-badge--land { background: #4f6b2a; }
+
+/* hero-container-v1: size the card by the hero's width, not the screen */
+html body .area-hero-visual { container-type: inline-size; }
+html body .area-hero-visual .hero-step-details__price { white-space: nowrap; }
+@container (max-width: 620px) {
+  html body .area-hero-visual .area-hero-visual__label {
+    left: 14px !important; right: 14px !important; width: auto !important; max-width: none !important;
+    grid-template-columns: minmax(0, 1fr) auto !important; column-gap: 14px !important;
+  }
+}
+@container (max-width: 420px) {
+  html body .area-hero-visual .area-hero-visual__label { grid-template-columns: minmax(0, 1fr) !important; }
+  html body .area-hero-visual .hero-step-details__price { grid-column: 1 !important; grid-row: 1 !important; }
+  html body .area-hero-visual .hero-step-details__address { grid-column: 1 !important; grid-row: 2 !important; }
+  html body .area-hero-visual .hero-step-details__facts { grid-column: 1 !important; grid-row: 3 !important; text-align: left !important; }
+  html body .area-hero-visual .area-hero-visual__label > strong { grid-column: 1 !important; grid-row: 4 !important; text-align: left !important; margin-top: 6px; }
 }
 /* FEATURED HOME CONTEXT BADGES */
 .area-hero-feature-badges {
