@@ -14411,15 +14411,107 @@ function prepareTypeHeroMap() {
         "[data-featured-hero-listing]"
       );
 
-    const openFeaturedListing = () => {
-      if (!(featuredCard instanceof HTMLElement)) return;
-
-      if (typeof window.openSheet === "function") {
-        window.openSheet(featuredCard);
-      } else {
-        featuredCard.click();
+    let heroCurrentCard = featuredCard;
+const openFeaturedListing = () => {
+  const card = heroCurrentCard || featuredCard;
+  if (!(card instanceof HTMLElement)) return;
+  if (typeof window.openSheet === "function") {
+    window.openSheet(card);
+  } else {
+    card.click();
+  }
+};
+// hero-stepper-v1: step through listings in the hero
+(() => {
+  if (!(featuredHero instanceof HTMLElement) || featuredCards.length < 2) return;
+  const n = featuredCards.length;
+  const wrap = (i) => ((i % n) + n) % n;
+  let idx = wrap(featuredIndex);
+  const imgsOf = (card) => {
+    try {
+      const a = JSON.parse(card?.dataset?.images || "[]");
+      return Array.isArray(a) ? a.map((s) => String(s || "").trim()).filter(Boolean) : [];
+    } catch { return []; }
+  };
+  const firstImg = (i) => imgsOf(featuredCards[wrap(i)])[0] || "";
+  const mainImg = featuredHero.querySelector(".area-hero-collage__main");
+  const thumbs = Array.from(featuredHero.querySelectorAll(".area-hero-collage__secondary"));
+  const label = featuredHero.querySelector(".area-hero-visual__label > span");
+  const badges = featuredHero.querySelector(".area-hero-feature-badges");
+  const labelBox = featuredHero.querySelector(".area-hero-visual__label");
+  let details = featuredHero.querySelector(".hero-step-details");
+  if (!details && labelBox) { details = document.createElement("div"); details.className = "hero-step-details"; labelBox.insertBefore(details, labelBox.querySelector("strong")); }
+  const preload = (src) => { if (!src) return; const im = new Image(); im.decoding = "async"; im.src = src; };
+  if (getComputedStyle(featuredHero).position === "static") featuredHero.style.position = "relative";
+  if (mainImg) mainImg.style.transition = "opacity .2s ease";
+  const render = (animate) => {
+    heroCurrentCard = featuredCards[idx];
+    const src = firstImg(idx);
+    if (mainImg && src) {
+      const next = optimizeCollageImage(src, 960, 68);
+      if (animate && mainImg.getAttribute("src") !== next) {
+        mainImg.style.opacity = "0.35";
+        mainImg.onload = () => { mainImg.style.opacity = "1"; };
       }
-    };
+      mainImg.src = next;
+    }
+    const own = imgsOf(featuredCards[idx]);
+    thumbs.forEach((t, k) => {
+      const ts = own[k + 1] || "";
+      t.hidden = !ts;
+      if (ts) t.src = optimizeCollageImage(ts, 400, 64);
+      t.loading = "eager";
+    });
+    const c = featuredCards[idx];
+    if (details && c) {
+      const d = c.dataset;
+      const sq = Number(String(d.sqft || "").replace(/[^\d.]/g, ""));
+      const facts = [
+        d.beds && d.beds !== "-" ? `${d.beds} bd` : "",
+        d.baths && d.baths !== "-" ? `${d.baths} ba` : "",
+        sq ? `${sq.toLocaleString("en-CA")} sq ft` : "",
+      ].filter(Boolean).join(" · ");
+      details.innerHTML = "";
+      const mk = (cls, txt) => { if (!txt) return; const el = document.createElement("div"); el.className = cls; el.textContent = txt; details.appendChild(el); };
+      mk("hero-step-details__price", d.price || "");
+      mk("hero-step-details__address", d.address || "");
+      mk("hero-step-details__facts", facts);
+    }
+    if (label) label.textContent = `Home ${idx + 1} of ${n}`;
+    if (badges) badges.hidden = idx !== wrap(featuredIndex);
+    preload(optimizeCollageImage(firstImg(idx + 1), 960, 68));
+    preload(optimizeCollageImage(imgsOf(featuredCards[wrap(idx + 1)])[1] || "", 400, 64));
+  };
+  const go = (i) => { idx = wrap(i); render(true); };
+
+  const makeBtn = (dir) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("aria-label", dir < 0 ? "Previous home" : "Next home");
+    b.innerHTML = dir < 0 ? "&lsaquo;" : "&rsaquo;";
+    b.style.cssText = `position:absolute;top:50%;${dir < 0 ? "left" : "right"}:12px;transform:translateY(-50%);z-index:4;width:40px;height:40px;border-radius:999px;border:1px solid rgba(255,255,255,.5);background:rgba(14,20,24,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);color:#fff;font-size:26px;line-height:1;display:grid;place-items:center;cursor:pointer;padding:0 0 3px;`;
+    b.addEventListener("click", (e) => { e.stopPropagation(); go(idx + dir); });
+    b.addEventListener("keydown", (e) => e.stopPropagation());
+    featuredHero.appendChild(b);
+  };
+  makeBtn(-1);
+  makeBtn(1);
+  featuredHero.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") { e.preventDefault(); go(idx - 1); }
+    if (e.key === "ArrowRight") { e.preventDefault(); go(idx + 1); }
+  });
+  let sx = 0, sy = 0, swiped = false;
+  featuredHero.addEventListener("touchstart", (e) => { const p = e.touches[0]; sx = p.clientX; sy = p.clientY; swiped = false; }, { passive: true });
+  featuredHero.addEventListener("touchend", (e) => {
+    const p = e.changedTouches[0];
+    const dx = p.clientX - sx, dy = p.clientY - sy;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) { swiped = true; go(idx + (dx < 0 ? 1 : -1)); }
+  }, { passive: true });
+  featuredHero.addEventListener("click", (e) => {
+    if (swiped) { swiped = false; e.stopImmediatePropagation(); e.preventDefault(); }
+  }, true);
+  render(false);
+})();
 
     featuredHero?.addEventListener(
       "click",
@@ -18677,6 +18769,79 @@ const filteredPrices = prices.filter(p => p <= max * 1.1);
     }
   }
 
+/* hero-glass-v1 */
+html body .area-hero-visual .area-hero-visual__shade { opacity: .55; }
+html body .area-hero-visual .area-hero-visual__label {
+  width: fit-content;
+  max-width: min(440px, 58%);
+  padding: 14px 18px 16px;
+  border-radius: 8px;
+  background: rgba(14, 20, 24, .30);
+  -webkit-backdrop-filter: blur(10px) saturate(1.15);
+  backdrop-filter: blur(10px) saturate(1.15);
+  border: 1px solid rgba(255, 255, 255, .25);
+  border-top-color: rgba(255, 255, 255, .48);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .28);
+}
+html body .area-hero-visual .area-hero-collage__secondary {
+  border: 3px solid rgba(255, 255, 255, .38) !important;
+  border-top-color: rgba(255, 255, 255, .7) !important;
+  border-radius: 8px !important;
+  background: rgba(255, 255, 255, .12);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .3) !important;
+  transition: filter .15s ease, border-color .15s ease;
+}
+html body .area-hero-visual .area-hero-collage__secondary:hover {
+  filter: brightness(1.08);
+  border-color: rgba(255, 255, 255, .65) !important;
+}
+html body .area-hero-visual > button[aria-label$=" home"] {
+  border-radius: 8px !important;
+  background: rgba(14, 20, 24, .26) !important;
+  -webkit-backdrop-filter: blur(8px) saturate(1.15) !important;
+  backdrop-filter: blur(8px) saturate(1.15) !important;
+  border: 1px solid rgba(255, 255, 255, .25) !important;
+  border-top-color: rgba(255, 255, 255, .48) !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .25);
+  transition: background .15s ease;
+}
+html body .area-hero-visual > button[aria-label$=" home"]:hover {
+  background: rgba(14, 20, 24, .45) !important;
+}
+/* hero-glass-v2: square level thumbs + listing details */
+html body .area-hero-visual .area-hero-collage__secondary {
+  position: absolute !important;
+  top: auto !important; left: auto !important; bottom: 20px !important;
+  width: 104px !important; height: 104px !important;
+  aspect-ratio: 1 / 1 !important; object-fit: cover !important;
+  transform: none !important; rotate: none !important; margin: 0 !important;
+}
+html body .area-hero-visual .area-hero-collage__secondary:nth-of-type(2) { right: 136px !important; }
+html body .area-hero-visual .area-hero-collage__secondary:nth-of-type(3) { right: 20px !important; }
+html body .area-hero-visual .area-hero-visual__label { max-width: calc(100% - 290px); }
+html body .area-hero-visual .hero-step-details { margin: 6px 0 10px; color: #fff; min-width: 0; }
+html body .area-hero-visual .hero-step-details__price { font-size: 1.55rem; font-weight: 700; line-height: 1.15; }
+html body .area-hero-visual .hero-step-details__address { font-size: .95rem; font-weight: 600; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html body .area-hero-visual .hero-step-details__facts { font-size: .82rem; opacity: .85; margin-top: 3px; }
+html body .area-hero-visual .area-hero-visual__label > strong { font-size: .95rem !important; }
+@media (max-width: 640px) {
+  html body .area-hero-visual .area-hero-collage__secondary { top: 12px !important; bottom: auto !important; width: 68px !important; height: 68px !important; }
+  html body .area-hero-visual .area-hero-collage__secondary:nth-of-type(2) { right: 88px !important; }
+  html body .area-hero-visual .area-hero-collage__secondary:nth-of-type(3) { right: 12px !important; }
+  html body .area-hero-visual .area-hero-visual__label { max-width: calc(100% - 24px); }
+  html body .area-hero-visual .hero-step-details__price { font-size: 1.3rem; }
+}
+
+/* hero-thumbs-v3: bigger thumbs */
+html body .area-hero-visual .area-hero-collage__secondary { width: 140px !important; height: 140px !important; }
+html body .area-hero-visual .area-hero-collage__secondary:nth-of-type(2) { right: 172px !important; }
+html body .area-hero-visual .area-hero-visual__label { max-width: calc(100% - 350px); }
+@media (max-width: 640px) {
+  html body .area-hero-visual .area-hero-collage__secondary { width: 84px !important; height: 84px !important; }
+  html body .area-hero-visual .area-hero-collage__secondary:nth-of-type(2) { right: 104px !important; }
+  html body .area-hero-visual .area-hero-visual__label { max-width: calc(100% - 24px); }
+}
+
 /* FEATURED HOME CONTEXT BADGES */
 .area-hero-feature-badges {
   display: flex;
@@ -22476,7 +22641,7 @@ document.addEventListener("click", (event) => {
   #type-more-filters.type-more-filters-panel:not([hidden]) {
     margin-top: -20px !important;
     border-top-color: transparent !important;
-    border-radius: 0 0 14px 14px !important;
+    border-radius: 0 0 6px 6px !important;
     box-shadow: 0 10px 24px rgb(15 38 57 / 8%) !important;
   }
 </style>
@@ -22780,14 +22945,14 @@ document.addEventListener("click", (event) => {
   /* type-area-docked-more-panel-controller-v4 */
   .listing-filter-rail > #type-more-filters {
     box-sizing: border-box;
-    border-radius: 0 0 14px 14px;
+    border-radius: 0 0 6px 6px;
   }
 </style>
 <style is:global>
   /* type-area-docked-more-panel-controller-v5 */
   .listing-filter-rail > #type-more-filters {
     box-sizing: border-box;
-    border-radius: 0 0 14px 14px;
+    border-radius: 0 0 6px 6px;
   }
 
 /* type-area-card-meta-dots — match the homepage ListingCard treatment */
