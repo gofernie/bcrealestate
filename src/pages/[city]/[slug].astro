@@ -14504,8 +14504,21 @@ const openFeaturedListing = () => {
     render(true);
   };
   endEl.querySelector(".hero-step-end__btn").addEventListener("click", () => {
-    const g = featuredCards[0]?.parentElement;
-    if (g) window.scrollTo({ top: g.getBoundingClientRect().top + window.scrollY - 160, behavior: "smooth" });
+    const heroBottom = featuredHero.getBoundingClientRect().bottom;
+    const target = Array.from(document.querySelectorAll(".card")).find((c) => { const r = c.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.top > heroBottom; });
+    if (!target) return;
+    const navH = document.querySelector(".site-nav")?.offsetHeight || 60;
+    const barH = document.querySelector(".shared-listing-filter-bar")?.offsetHeight || 78;
+    const want = () => target.getBoundingClientRect().top + window.scrollY - (navH + barH + 40); let goal = want(); window.scrollTo({ top: goal, behavior: "smooth" }); const onScroll = () => { const g = want(); if (Math.abs(g - goal) > 4) { goal = g; window.scrollTo({ top: goal, behavior: "smooth" }); } }; addEventListener("scroll", onScroll, { passive: true });
+    const land = () => {
+      const tops = Array.from(document.querySelectorAll("body *")).filter((el) => { const p = getComputedStyle(el).position; if (p !== "fixed" && p !== "sticky") return false; const r = el.getBoundingClientRect(); return r.height > 0 && r.width > innerWidth * 0.5 && r.top < 120 && r.bottom < innerHeight / 2; }).map((el) => el.getBoundingClientRect().bottom);
+      const delta = target.getBoundingClientRect().top - (Math.max(0, ...tops) + 40);
+      if (Math.abs(delta) > 4) window.scrollBy({ top: delta, behavior: "smooth" });
+    };
+    let landed = false;
+    const once = () => { if (landed) return; landed = true; removeEventListener("scroll", onScroll); land(); };
+    addEventListener("scrollend", once, { once: true });
+    setTimeout(once, 1400);
   });
   endEl.querySelector(".hero-step-end__again").addEventListener("click", () => go(idx + 1));
 
