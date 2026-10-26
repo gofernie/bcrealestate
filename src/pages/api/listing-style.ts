@@ -1,4 +1,4 @@
-﻿import type { APIRoute } from 'astro';
+import type { APIRoute } from 'astro';
 import { createClient } from '@supabase/supabase-js';
 import { getSite } from '../../lib/getSite';
 
@@ -28,7 +28,7 @@ export const GET: APIRoute = async ({ url, request }) => {
   const db = createClient(sbUrl, sbKey, { auth: { persistSession: false } });
   const { data, error } = await db
     .from('listing_rows')
-    .select('home_style, waterfront, waterfront_type, normalized_type, normalized_city')
+    .select('home_style, waterfront, waterfront_type, normalized_type, normalized_city, lot_size_sqft, lot_size_acres, year_built')
     .or(`id.eq.${id},mls_number.eq.${id}`)
     .limit(1)
     .maybeSingle();
@@ -52,8 +52,14 @@ export const GET: APIRoute = async ({ url, request }) => {
   const lookIn = [...new Set([pageCity, cityKey].filter(Boolean))];
   let waterPage = '';
   let viewPage = '';
+  let acreagePage = '';
+  let newBuildPage = '';
+  const lType = String(data?.normalized_type || '').toLowerCase();
+  const lotSqft = Number(data?.lot_size_sqft) || (Number(data?.lot_size_acres) || 0) * 43560;
+  const yearBuilt = Number(data?.year_built) || 0;
+  const thisYear = new Date().getFullYear();
   for (const c of lookIn) {
-    if (waterPage && viewPage) break;
+    if (waterPage && viewPage && acreagePage && newBuildPage) break;
     let siteId = '';
     try {
       const site: any = host ? await getSite(host, c) : null;
@@ -64,16 +70,19 @@ export const GET: APIRoute = async ({ url, request }) => {
     if (!siteId) continue;
     const { data: pages } = await db
       .from('intent_pages')
-      .select('slug, city, waterfront_type, requires_ocean_view')
+      .select('slug, city, waterfront_type, requires_ocean_view, requires_waterfront, min_lot_sqft, min_year, area, property_type, price_min, price_max, beds_min, baths_min, min_sqft, view_type, primary_on_main')
       .eq('city', c)
       .eq('is_published', true)
       .eq('site_id', siteId)
-      .or('requires_ocean_view.eq.true,waterfront_type.not.is.null')
-      .limit(30);
+      .or('requires_ocean_view.eq.true,waterfront_type.not.is.null,min_lot_sqft.not.is.null,min_year.not.is.null')
+      .limit(60);
     for (const p of pages || []) {
       const pType = String(p.waterfront_type || '').toLowerCase();
       if (!waterPage && waterfront && wType && pType === wType) waterPage = `/${p.city}/${p.slug}`;
       if (!viewPage && p.requires_ocean_view === true) viewPage = `/${p.city}/${p.slug}`;
+      const pure = !p.area && !p.price_min && !p.price_max && !p.beds_min && !p.baths_min && !p.min_sqft && !p.view_type && !p.requires_waterfront && !p.requires_ocean_view && !p.waterfront_type && !p.primary_on_main && (!p.property_type || String(p.property_type).toLowerCase() === lType);
+      if (!acreagePage && pure && !p.min_year && Number(p.min_lot_sqft) >= 43560 && lotSqft >= Number(p.min_lot_sqft)) acreagePage = `/${p.city}/${p.slug}`;
+      if (!newBuildPage && pure && !p.min_lot_sqft && Number(p.min_year) >= thisYear - 1 && yearBuilt >= Number(p.min_year)) newBuildPage = `/${p.city}/${p.slug}`;
     }
   }
 
@@ -84,6 +93,10 @@ export const GET: APIRoute = async ({ url, request }) => {
     type: String(data?.normalized_type || '').toLowerCase(),
     waterPage,
     viewPage,
+    acreagePage,
+    newBuildPage,
+    lotSqft,
+    yearBuilt,
     city: cityKey,
   });
 };

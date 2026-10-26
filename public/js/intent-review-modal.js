@@ -7556,6 +7556,20 @@ window.__lsStyleChip = (() => {
       }
     });
 
+    // Measurable pills only (lot size, year built). Copy-based pills stay plain labels.
+    const thisYear = new Date().getFullYear();
+    const chipRow = el.querySelector('span.panel__highlight-chip, a.ls-feature-link')?.parentElement;
+    [
+      { key: 'acreage', label: 'Acreage', ok: Number(info.lotSqft) >= 43560, page: info.acreagePage, href: link(isLand ? 'land' : 'homes', { minLotSqft: 43560 }), params: isLand ? { type: 'land', minLotSqft: 43560 } : { minLotSqft: 43560 } },
+      { key: 'new build', label: 'New build', ok: Number(info.yearBuilt) >= thisYear - 1, page: info.newBuildPage, href: link('homes', { minYear: thisYear - 1 }), params: { minYear: thisYear - 1 } },
+    ].forEach((mp) => {
+      if (!mp.ok) return;
+      const span = [...el.querySelectorAll('span.panel__highlight-chip')].find((s) => s.textContent.trim().toLowerCase() === mp.key);
+      shown.add(mp.key);
+      const put = (href) => { const a = pill(mp.label, href, 'ls-feature-link', false); if (span) span.replaceWith(a); else if (chipRow) chipRow.appendChild(a); };
+      if (mp.page) { put(withSite(mp.page)); return; }
+      total(mp.params).then((n) => { if (n !== null && n >= 3) put(mp.href); });
+    });
     const style = String(info.style || '');
     const useStyle = !!style && style !== 'Other';
     const water = shown.has('waterfront') || !!info.waterfront;
