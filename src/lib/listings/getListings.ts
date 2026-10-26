@@ -68,7 +68,7 @@ const listingSelect = `
   area,
   normalized_area,
   price,
-  original_price, waterfront, ocean_view, year_built, lot_size_acres, back_on_market_at,
+  original_price, lot_size_sqft, waterfront, ocean_view, year_built, lot_size_acres, back_on_market_at,
   beds,
   baths,
   sqft,
@@ -404,6 +404,7 @@ if (oceanView) {
   );
 }
 
+    query = query.order("has_photo", { ascending: false });
     if (sort === "price-low") {
       query = query
         .order("price", {
@@ -621,6 +622,7 @@ if (oceanView) {
   );
 }
 
+query = query.order("has_photo", { ascending: false });
 if (
   sort === "price-low"
 ) {
