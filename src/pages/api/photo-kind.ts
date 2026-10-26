@@ -14,7 +14,7 @@ const json = (body: unknown, status = 200, cache = false) =>
   });
 
 export const GET: APIRoute = async ({ url }) => {
-  const photo = String(url.searchParams.get("url") || "").trim();
+  const photo = String(url.searchParams.get("url") || "").trim().split("?")[0];
   let host = "";
   try { host = new URL(photo).hostname; } catch {}
   if (host !== "cdn.repliers.io") return json({ error: "Image not allowed" }, 400);

@@ -6,7 +6,7 @@
   const ENDPOINT = '/api/look-search';
   // photo-kind-v1: only offer "Search this look" on interior photos with furniture/decor
   const KIND = new Map();
-  function rawSrc(img) { const s = img.currentSrc || img.src || ''; try { const u = new URL(s, location.href); if (u.pathname === '/.netlify/images') return u.searchParams.get('url') || s; } catch (e) {} return s; }
+  function rawSrc(img) { let s = img.currentSrc || img.src || ''; try { const u = new URL(s, location.href); if (u.pathname === '/.netlify/images') s = u.searchParams.get('url') || s; } catch (e) {} return s.split('?')[0]; }
   function photoKind(img) {
     const src = rawSrc(img);
     if (!/^https:\/\/cdn\.repliers\.io\//.test(src)) return false;
@@ -34,7 +34,7 @@
   function prefetchSiblings(src) {
     for (const el of document.querySelectorAll('[data-images]')) {
       let arr; try { arr = JSON.parse(el.dataset.images || '[]'); } catch (e) { continue; }
-      if (!Array.isArray(arr) || !arr.includes(src)) continue;
+      if (!Array.isArray(arr)) continue; arr = arr.map((x) => String(x || '').split('?')[0]); if (!arr.includes(src)) continue;
       arr.slice(0, 12).forEach((s) => { if (/^https:\/\/cdn\.repliers\.io\//.test(s) && !KIND.has(s)) { KIND.set(s, null); QUEUE.push(s); } });
       pump();
       break;
