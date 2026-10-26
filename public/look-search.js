@@ -34,18 +34,25 @@
   function lookAhead(src) {
     if (src === lastAhead) return;
     lastAhead = src;
-    for (const el of document.querySelectorAll('[data-images]')) {
-      let arr; try { arr = JSON.parse(el.dataset.images || '[]'); } catch (e) { continue; }
-      if (!Array.isArray(arr)) continue;
-      arr = arr.map((x) => String(x || '').split('?')[0]);
-      const i = arr.indexOf(src);
-      if (i < 0) continue;
-      [1, 2, 3, 4, 5, 6, -1].map((d) => arr[i + d]).forEach((s) => {
-        if (s && /^https:\/\/cdn\.repliers\.io\//.test(s) && !KIND.has(s)) { KIND.set(s, null); QUEUE.push(s); }
-      });
-      pump();
-      break;
+    let next = [];
+    // Repliers photos are numbered (..._14.jpg), so the next ones are _15, _16, ... wherever the modal was opened from.
+    const m = src.match(/^(.*_)(\d+)(\.[a-z]+)$/i);
+    if (m) {
+      const n = Number(m[2]);
+      next = [1, 2, 3, 4, 5, 6, -1].map((d) => n + d).filter((k) => k >= 1).map((k) => m[1] + k + m[3]);
+    } else {
+      for (const el of document.querySelectorAll('[data-images]')) {
+        let arr; try { arr = JSON.parse(el.dataset.images || '[]'); } catch (e) { continue; }
+        if (!Array.isArray(arr)) continue;
+        arr = arr.map((x) => String(x || '').split('?')[0]);
+        const i = arr.indexOf(src);
+        if (i < 0) continue;
+        next = [1, 2, 3, 4, 5, 6, -1].map((d) => arr[i + d]).filter(Boolean);
+        break;
+      }
     }
+    next.forEach((s) => { if (/^https:\/\/cdn\.repliers\.io\//.test(s) && !KIND.has(s)) { KIND.set(s, null); QUEUE.push(s); } });
+    pump();
   }
   const Z = 2147483647;
 
