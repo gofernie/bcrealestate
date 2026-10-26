@@ -685,7 +685,7 @@ export const GET: APIRoute = async ({ request }) => {
   else if (sort === "price-high") listings.sort((a, b) => b.rawPrice - a.rawPrice);
   else if (sort === "beds-high") listings.sort((a, b) => Number(b.beds || 0) - Number(a.beds || 0));
   else if (sort === "sqft-high") listings.sort((a, b) => Number(b.sqft || 0) - Number(a.sqft || 0));
-  else listings.sort((a, b) => new Date(b.listedAt || 0).getTime() - new Date(a.listedAt || 0).getTime());
+  else listings.sort((a, b) => new Date(b.listedAt || 0).getTime() - new Date(a.listedAt || 0).getTime()); listings.sort((a: any, b: any) => { const has = (l: any) => { const im = String(l?.image || "").trim(); return !!im && !/placehold\.co/i.test(im); }; return Number(has(b)) - Number(has(a)); }); // photo-first-api-v1
 
   const typeCounts = listingsForTypeCounts.reduce(
     (counts: Record<string, number>, listing: any) => {
