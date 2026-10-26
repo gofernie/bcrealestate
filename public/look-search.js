@@ -4,6 +4,42 @@
   window.__lookSearch = true;
 
   const ENDPOINT = '/api/look-search';
+  // photo-kind-v1: only offer "Search this look" on interior photos with furniture/decor
+  const KIND = new Map();
+  function rawSrc(img) { const s = img.currentSrc || img.src || ''; try { const u = new URL(s, location.href); if (u.pathname === '/.netlify/images') return u.searchParams.get('url') || s; } catch (e) {} return s; }
+  function photoKind(img) {
+    const src = rawSrc(img);
+    if (!/^https:\/\/cdn\.repliers\.io\//.test(src)) return false;
+    if (KIND.has(src)) return KIND.get(src);
+    KIND.set(src, null);
+    classify(src);
+    prefetchSiblings(src);
+    return null;
+  }
+  // Ask about one photo; when the answer is for the photo on screen, re-place the button.
+  function classify(src) {
+    return fetch('/api/photo-kind?url=' + encodeURIComponent(src))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { KIND.set(src, !!(d && d.interior)); if (photo && rawSrc(photo) === src) place(); })
+      .catch(() => KIND.set(src, false));
+  }
+  // Check the rest of this listing's photos in the background (2 at a time, max 12) so swiping feels instant.
+  const QUEUE = []; let running = 0;
+  function pump() {
+    while (running < 2 && QUEUE.length) {
+      const s = QUEUE.shift(); running++;
+      classify(s).finally(() => { running--; pump(); });
+    }
+  }
+  function prefetchSiblings(src) {
+    for (const el of document.querySelectorAll('[data-images]')) {
+      let arr; try { arr = JSON.parse(el.dataset.images || '[]'); } catch (e) { continue; }
+      if (!Array.isArray(arr) || !arr.includes(src)) continue;
+      arr.slice(0, 12).forEach((s) => { if (/^https:\/\/cdn\.repliers\.io\//.test(s) && !KIND.has(s)) { KIND.set(s, null); QUEUE.push(s); } });
+      pump();
+      break;
+    }
+  }
   const Z = 2147483647;
 
   const css = `
@@ -203,7 +239,7 @@
     const img = findPhoto();
     if (img !== photo) { photo = img; closePanel(); if (!img) setActive(false); }
     if (photo) mount(photo);
-    if (!photo) { btn.style.display = 'none'; layer.classList.remove('on'); return; }
+    if (!photo) { btn.style.display = 'none'; layer.classList.remove('on'); return; } if (photoKind(photo) !== true) { btn.style.display = 'none'; layer.classList.remove('on'); return; }
     const r = photo.getBoundingClientRect();
     btn.style.display = 'inline-flex';
     // Big lightbox: sit beside Share. Small modal: bottom-right of the photo.
