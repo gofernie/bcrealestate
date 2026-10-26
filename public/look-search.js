@@ -10,10 +10,10 @@
   function photoKind(img) {
     const src = rawSrc(img);
     if (!/^https:\/\/cdn\.repliers\.io\//.test(src)) return false;
+    lookAhead(src);
     if (KIND.has(src)) return KIND.get(src);
     KIND.set(src, null);
     classify(src);
-    prefetchSiblings(src);
     return null;
   }
   // Ask about one photo; when the answer is for the photo on screen, re-place the button.
@@ -23,19 +23,26 @@
       .then((d) => { KIND.set(src, !!(d && d.interior)); if (photo && rawSrc(photo) === src) place(); })
       .catch(() => KIND.set(src, false));
   }
-  // Check the rest of this listing's photos in the background (2 at a time, max 12) so swiping feels instant.
-  const QUEUE = []; let running = 0;
+  // Check the next few photos (and the previous one) wherever the buyer is in the gallery, 3 at a time.
+  const QUEUE = []; let running = 0; let lastAhead = '';
   function pump() {
-    while (running < 2 && QUEUE.length) {
+    while (running < 3 && QUEUE.length) {
       const s = QUEUE.shift(); running++;
       classify(s).finally(() => { running--; pump(); });
     }
   }
-  function prefetchSiblings(src) {
+  function lookAhead(src) {
+    if (src === lastAhead) return;
+    lastAhead = src;
     for (const el of document.querySelectorAll('[data-images]')) {
       let arr; try { arr = JSON.parse(el.dataset.images || '[]'); } catch (e) { continue; }
-      if (!Array.isArray(arr)) continue; arr = arr.map((x) => String(x || '').split('?')[0]); if (!arr.includes(src)) continue;
-      arr.slice(0, 12).forEach((s) => { if (/^https:\/\/cdn\.repliers\.io\//.test(s) && !KIND.has(s)) { KIND.set(s, null); QUEUE.push(s); } });
+      if (!Array.isArray(arr)) continue;
+      arr = arr.map((x) => String(x || '').split('?')[0]);
+      const i = arr.indexOf(src);
+      if (i < 0) continue;
+      [1, 2, 3, 4, 5, 6, -1].map((d) => arr[i + d]).forEach((s) => {
+        if (s && /^https:\/\/cdn\.repliers\.io\//.test(s) && !KIND.has(s)) { KIND.set(s, null); QUEUE.push(s); }
+      });
       pump();
       break;
     }
