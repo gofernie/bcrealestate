@@ -324,7 +324,11 @@ async function refreshMarket(city: string, forceFull = false) {
       1
     ));
 
-  console.log("Refreshing market history", {
+  // protect-imported-months-v1: never overwrite months loaded from Matrix or other sources
+const { data: protectedRows } = await supabase.from("market_monthly_stats").select("month_start").eq("city", marketKey).neq("source", "repliers");
+const protectedMonths = new Set((protectedRows || []).map((row: any) => String(row.month_start).slice(0, 10)));
+
+console.log("Refreshing market history", {
     marketKey,
     apiCity,
     monthsToRefresh,
@@ -345,6 +349,7 @@ async function refreshMarket(city: string, forceFull = false) {
       ));
 
     const startDate = isoDate(monthStart);
+    if (protectedMonths.has(startDate)) { console.log("Skipping imported month", { city: marketKey, month: startDate }); continue; }
     const endDate = isoDate(
       monthEnd(monthStart)
     );
