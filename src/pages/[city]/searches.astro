@@ -15,7 +15,16 @@ const supabase = createClient(
 );
 
 const city = String(Astro.params.city || Astro.url.pathname.split("/").filter(Boolean)[0] || "nanaimo").toLowerCase().trim().replace(/-intent$/, "");
-const siteRow: any = await getSite(Astro.url.hostname, city);
+const requestHostname = Astro.url.hostname
+  .toLowerCase()
+  .replace(/^www\./, "");
+
+const siteHostname =
+  requestHostname === "localhost" ||
+  requestHostname === "127.0.0.1"
+   ? "bc.realestate"
+    : requestHostname;
+const siteRow: any = await getSite(siteHostname, city);
 const siteCityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 const site: any = { ...(siteRow || {}), city, site_name: `${siteCityLabel} Homes`, accent_color: siteRow?.accent_color || "#2f6f73" };
 const navIntentPages = await getNavIntentPages(supabase, site?.id);
@@ -28,6 +37,7 @@ const accent = (site as any)?.accent_color || (site as any)?.accent || "#2a6f73"
 
 let query = supabase.from("intent_pages").select("*");
 query = query.eq("city", city);
+if (site?.id) query = query.eq("site_id", site.id);
 const { data: rows } = await query;
 
 let inventory: any[] = [];
@@ -45,6 +55,7 @@ if (city === "greater-victoria") {
     .select("normalized_type, property_type, normalized_area, price, waterfront, waterfront_type, view_type, beds, baths, sqft, lot_size_sqft, lot_size_acres")
     .in("normalized_city", keys)
     .eq("status", "A")
+    .neq("property_type", "Lease")
     .range(0, 9999);
   inventory = inv || [];
 }
