@@ -590,12 +590,14 @@ const islandMarketComparisons =
         .sort((a, b) =>
           a.month.localeCompare(b.month)
         )
-        .slice(-4);
-
-      if (history.length < 4) return null;
-
-      const baseline = history[0];
-      const latest = history.at(-1);
+        .slice(-15);
+      if (history.length < 15) return null;
+      // momentum-yoy-v1: last 3 months vs the same 3 months a year earlier
+      const avgOf = (rows: any[], key: string) => { const v = rows.map((r: any) => Number(r[key] || 0)).filter((x: number) => x > 0); return v.length ? v.reduce((a: number, b: number) => a + b, 0) / v.length : 0; };
+      const sumOf = (rows: any[], key: string) => rows.reduce((t: number, r: any) => t + Number(r[key] || 0), 0);
+      const rollup = (rows: any[]) => ({ ...rows.at(-1), medianSoldPrice: avgOf(rows, "medianSoldPrice"), medianDaysOnMarket: Math.round(avgOf(rows, "medianDaysOnMarket")), saleToList: avgOf(rows, "saleToList"), sales: sumOf(rows, "sales"), newListings: sumOf(rows, "newListings") });
+      const baseline = rollup(history.slice(0, 3));
+      const latest = rollup(history.slice(-3));
 
       if (!latest) return null;
 
@@ -1213,7 +1215,7 @@ const priceHistory =
               );
 
               return (
-                soldAt >= windowStart &&
+                (sale.is_single_family ?? true) && soldAt >= windowStart &&
                 soldAt <= windowEnd
               );
             })
@@ -1361,10 +1363,10 @@ const priceTicks = Array.from(
 );
 
 const firstMedianPrice =
-  priceHistory[0]?.medianSoldPrice || 0;
+  ((v) => v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0)(priceHistory.slice(0, 6).map((r) => r.medianSoldPrice).filter((p) => p > 0)); /* smoothed-change-v1 */
 
 const latestMedianPrice =
-  priceHistory.at(-1)?.medianSoldPrice || 0;
+  ((v) => v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0)(priceHistory.slice(-6).map((r) => r.medianSoldPrice).filter((p) => p > 0));
 
 const medianPriceChange =
   firstMedianPrice > 0
@@ -2344,8 +2346,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
           </div>
 
           <p>
-            The latest complete month is compared with three months
-            earlier using prices, days on market, sale-to-list ratios,
+            The last three months are compared with the same three months a year earlier, using prices, days on market, sale-to-list ratios,
             and sales relative to new listings.
           </p>
         </div>
@@ -2589,8 +2590,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
           </div>
 
           <p>
-            The latest complete month is compared with three months
-            earlier using prices, days on market, sale-to-list ratios,
+            The last three months are compared with the same three months a year earlier, using prices, days on market, sale-to-list ratios,
             and sales relative to new listings.
           </p>
         </div>
