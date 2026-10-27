@@ -115,21 +115,29 @@ async function getNewListingCount(
   startDate: string,
   endDate: string
 ) {
-  const params = new URLSearchParams();
-
-  params.append("status", "A");
-  params.append("status", "U");
-  params.set("minListDate", startDate);
-  params.set("maxListDate", endDate);
-  params.set("resultsPerPage", "1");
-  params.set("listings", "false");
-
-  const body = await requestListings(
-    params,
-    apiCity
-  );
-
-  return Number(body.count || 0);
+  // unique-new-listings-v1: the feed returns the same listing from more than one board, so count distinct MLS numbers
+  const seen = new Set<string>();
+  let pageNumber = 1;
+  let numberOfPages = 1;
+  do {
+    const params = new URLSearchParams();
+    params.append("status", "A");
+    params.append("status", "U");
+    params.set("minListDate", startDate);
+    params.set("maxListDate", endDate);
+    params.set("resultsPerPage", "100");
+    params.set("pageNum", String(pageNumber));
+    params.set("fields", "mlsNumber");
+    const body = await requestListings(params, apiCity);
+    for (const listing of body.listings || []) {
+      const id = String(listing?.mlsNumber || "").trim();
+      if (id) seen.add(id);
+    }
+    numberOfPages = Number(body.numPages || 1);
+    pageNumber += 1;
+    if (pageNumber <= numberOfPages) await wait(175);
+  } while (pageNumber <= numberOfPages);
+  return seen.size;
 }
 
 async function getMonthlySales(
