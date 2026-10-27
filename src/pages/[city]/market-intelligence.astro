@@ -68,7 +68,7 @@ const effectiveSiteDomain =
 
 const comparisonMarketScope =
   effectiveSiteDomain === "fernie.homes"
-    ? ["fernie", "sparwood", "elkford"]
+    ? ["fernie", "nanaimo", "victoria", "campbell river", "parksville", "comox", "tofino", "kelowna"]
     : null;
 
 const site = await getSite(effectiveSiteDomain, city);
@@ -470,15 +470,9 @@ const comparisonMarketKeys = comparisonMarketScope || (
     ? greaterVictoriaMarketKeys
     : islandMarketKeys
 );
-const comparisonRegionLabel = isGreaterVictoriaPage
-  ? "Greater Victoria"
-  : "Vancouver Island";
-const comparisonReadLabel = isGreaterVictoriaPage
-  ? "Greater Victoria read"
-  : "Island read";
-const comparisonReadHeading = isGreaterVictoriaPage
-  ? "Greater Victoria is not moving as one market."
-  : "The Island is not moving as one market.";
+const comparisonRegionLabel = comparisonMarketScope != null ? "BC Markets" : isGreaterVictoriaPage ? "Greater Victoria" : "Vancouver Island";
+const comparisonReadLabel = comparisonMarketScope != null ? "BC market read" : isGreaterVictoriaPage ? "Greater Victoria read" : "Island read";
+const comparisonReadHeading = comparisonMarketScope != null ? "BC markets are not all moving together." : isGreaterVictoriaPage ? "Greater Victoria is not moving as one market." : "The Island is not moving as one market.";
 
 const {
   data: islandMonthlyRows = [],
@@ -747,10 +741,9 @@ if (usesRollingSmallMarketTrend) {
     error: importedSaleError,
   } = await supabase
     .from("market_sale_records")
-    .select("sold_date, sold_price")
+    .select("sold_date, sold_price, property_sub_type, is_single_family, is_fractional")
     .in("city", cityDatabaseKeys)
     .eq("eligible_for_market_stats", true)
-    .eq("is_single_family", true)
     .order("sold_date", {
       ascending: true,
     });
@@ -764,6 +757,66 @@ if (usesRollingSmallMarketTrend) {
 
   rawSaleRows = importedSaleRows || [];
 }
+
+let rawFractionalRows: any[] = [];
+if (usesRollingSmallMarketTrend) {
+  const {
+    data: importedFractionalRows,
+    error: importedFractionalError,
+  } = await supabase
+    .from("market_sale_records")
+    .select("sold_date, sold_price, property_sub_type, is_single_family, is_fractional")
+    .in("city", cityDatabaseKeys)
+    .eq("is_fractional", true)
+    .order("sold_date", { ascending: true });
+  if (importedFractionalError) {
+    console.error("Fractional sale lookup failed:", importedFractionalError);
+  }
+  rawFractionalRows = importedFractionalRows || [];
+}
+
+const typeSegmentDefs = [
+  { key: "homes", label: "Homes", filter: (r: any) => !r.is_fractional && (r.is_single_family || ["Half Duplex","Fourplex"].includes(r.property_sub_type)) },
+  { key: "condos", label: "Condos", filter: (r: any) => !r.is_fractional && !r.is_single_family && ["Apartment","Townhouse"].includes(r.property_sub_type) },
+  { key: "mobile", label: "Mobile Homes", filter: (r: any) => !r.is_fractional && r.property_sub_type === "Manufactured Home in Park" },
+  { key: "land", label: "Land", filter: (r: any) => !r.is_fractional && ["Residential Lot","Residential Acreage","Commercial Lot","Commercial Acreage","Residential Development"].includes(r.property_sub_type) },
+  { key: "fractional", label: "Fractional", filter: (r: any) => r.is_fractional },
+];
+const allTypeRows = [
+  ...rawSaleRows.map((r: any) => ({ ...r, is_fractional: false })),
+  ...rawFractionalRows,
+];
+const typeSegments = usesRollingSmallMarketTrend
+  ? typeSegmentDefs.map((seg) => {
+      const segRows = allTypeRows.filter(seg.filter);
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      const twoYearsAgo = new Date();
+      twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+      const recentRows = segRows.filter(
+        (r: any) => new Date(r.sold_date) >= oneYearAgo
+      );
+      const priorRows = segRows.filter(
+        (r: any) => new Date(r.sold_date) >= twoYearsAgo && new Date(r.sold_date) < oneYearAgo
+      );
+      const prices = recentRows
+        .map((r: any) => Number(r.sold_price || 0))
+        .filter((p: number) => p > 0);
+      const medianSeg = median(prices);
+      const olderMedian = median(priorRows.map((r: any) => Number(r.sold_price || 0)).filter((p: number) => p > 0));
+      const newerMedian = medianSeg;
+      const trendPct = (olderMedian > 0 && newerMedian > 0) ? ((newerMedian - olderMedian) / olderMedian) * 100 : null;
+
+      return {
+        key: seg.key,
+        label: seg.label,
+        count: recentRows.length,
+        medianPrice: prices.length >= 8 ? medianSeg : null,
+        trendPct,
+        thinSample: prices.length < 8,
+      };
+    })
+  : [];
 
 const listingOnlyMarket = [
   "sparwood",
@@ -2165,68 +2218,43 @@ const marketSeoSchema = {
       </div>
     </section>
 
-    <section class="market-section">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">Neighbourhood activity</p>
-          <h2>Where buyers have the most choice</h2>
+    {typeSegments.length > 0 && (
+      <section class="market-section type-breakdown">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Fernie by property type</p>
+            <h2>How each segment is priced</h2>
+          </div>
         </div>
-
-        <a href={`/${city}/areas`}>Explore all areas →</a>
-      </div>
-
-      <aside class="market-section__read">
-        <p class="market-section__read-label">What this means</p>
-
-        <h3>
-          The broadest selection is in{" "}
-          {[...areaStats]
-            .sort((a, b) => b.count - a.count)[0]
-            ?.name || "the leading neighbourhood"}.
-        </h3>
-
-        <p>
-          It currently has{" "}
-          <strong>
-            {([...areaStats]
-              .sort((a, b) => b.count - a.count)[0]
-              ?.count || 0).toLocaleString()} active listings
-          </strong>.
-          {" "}More listings means more homes to compare; it does not, on its
-          own, tell us which neighbourhood has the strongest demand.
-        </p>
-      </aside>
-      <div class="area-table">
-        <div class="area-table__head">
-          <span>Neighbourhood</span>
-          <span>Active listings</span>
-          <span>Median asking price</span>
-          <span></span>
+        <p class="type-breakdown__note">Median sold prices over the past 12 months, by property type. Based on MLS records.</p>
+        <div class="type-breakdown__grid">
+          {typeSegments.map((seg) => (
+            <div class="type-breakdown__card">
+              <p class="type-breakdown__label">{seg.label}</p>
+              <div class="type-breakdown__main">
+                <strong class="type-breakdown__price">
+                  {seg.medianPrice ? formatPrice(seg.medianPrice) : "--"}
+                </strong>
+                {seg.trendPct != null && !seg.thinSample && (
+                  <span class:list={["type-breakdown__badge", { "is-up": seg.trendPct > 0, "is-down": seg.trendPct < 0 }]}>
+                    {seg.trendPct > 0 ? "+" : ""}{Math.abs(seg.trendPct).toFixed(0)}%
+                  </span>
+                )}
+              </div>
+              <div class="type-breakdown__bar-wrap">
+                <div
+                  class:list={["type-breakdown__bar", { "is-up": seg.trendPct != null && seg.trendPct > 0, "is-down": seg.trendPct != null && seg.trendPct < 0 }]}
+                  style={`width:${seg.trendPct != null && !seg.thinSample ? Math.min(Math.abs(seg.trendPct) * 3, 100) : 0}%`}
+                />
+              </div>
+              <p class="type-breakdown__count">{seg.thinSample ? "Thin data" : `${seg.count} sales`} &middot; 12 mo</p>
+            </div>
+          ))}
         </div>
-
-        {areaStats.map((area) => (
-          <a
-            class="area-table__row"
-            href={`/${city}/${String(area.area)
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, "-")
-              .replace(/^-+|-+$/g, "")}`}
-          >
-            <strong>{area.name}</strong>
-            <span>{area.count.toLocaleString()} listings</span>
-            <span>
-              Median {area.medianPrice
-                ? formatPrice(area.medianPrice)
-                : "—"}
-            </span>
-            <span>View area →</span>
-          </a>
-        ))}
-      </div>
-    </section>
-
+      </section>
+    )}
     <!-- island-market-comparison-ui-v1 -->
-    {islandMarketComparisons.length > 0 && comparisonMarketScope == null && (
+    {islandMarketComparisons.length > 0 && (
       <section
         class="market-section island-comparison"
         aria-labelledby="island-comparison-title"
@@ -4697,5 +4725,19 @@ const marketSeoSchema = {
       margin-top: 24px !important;
     }
   }
+.type-breakdown__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; margin-top: 20px; }
+.type-breakdown__card { padding: 16px; border: 1px solid var(--market-line); border-radius: 8px; }
+.type-breakdown__label { margin: 0 0 8px; color: var(--market-muted); font-size: .68rem; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.type-breakdown__main { display: flex; align-items: baseline; gap: 8px; }
+.type-breakdown__price { color: var(--market-text); font-family: var(--f-display, Georgia, serif); font-size: 1.5rem; font-weight: 500; letter-spacing: -.03em; }
+.type-breakdown__badge { flex-shrink: 0; padding: 3px 8px; border-radius: 4px; font-size: .82rem; font-weight: 850; letter-spacing: .02em; }
+.type-breakdown__badge.is-up { color: #3a7d5a; background: rgba(58,125,90,.1); }
+.type-breakdown__badge.is-down { color: #a65353; background: rgba(166,83,83,.1); }
+.type-breakdown__bar-wrap { height: 3px; margin: 6px 0 2px; background: var(--market-line); border-radius: 2px; overflow: hidden; }
+.type-breakdown__bar { height: 100%; border-radius: 2px; background: var(--market-muted); }
+.type-breakdown__bar.is-up { background: #3a7d5a; }
+.type-breakdown__bar.is-down { background: #a65353; }
+.type-breakdown__count { margin: 4px 0 0; color: var(--market-muted); font-size: .7rem; }
+.type-breakdown__note { margin: 0 0 4px; color: var(--market-muted); font-size: .85rem; }
 </style>
 
