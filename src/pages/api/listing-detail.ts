@@ -43,6 +43,7 @@ export const GET: APIRoute = async ({ request }) => {
       .or(
         `id.eq.${listingId},mls_number.eq.${listingId}`
       )
+      .eq("status", "A")
       .limit(1)
       .maybeSingle();
 

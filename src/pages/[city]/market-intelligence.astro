@@ -399,7 +399,7 @@ const { data: monthlyRows = [], error: monthlyError } =
     .from("market_monthly_stats")
     .select(`
       month_start,
-      new_listings,
+      new_listings, active_listings,
       sales,
       median_sold_price,
       median_single_family_sold_price,
@@ -426,10 +426,10 @@ const allMonthlyHistory = [...monthlyRows]
       year: "2-digit",
       timeZone: "UTC",
     }).format(new Date(`${row.month_start}T00:00:00Z`)),
-    newListings: Number(row.new_listings || 0),
+    newListings: Number(row.new_listings || 0), activeListings: Number((row as any).active_listings || 0),
     sales: Number(row.sales || 0),
     medianSoldPrice: Number(row.median_single_family_sold_price || 0),
-    saleToList: Number(row.average_sale_to_list_ratio || 0),
+    saleToList: ((v: number) => (v > 0 && v <= 2 ? v * 100 : v))(Number(row.average_sale_to_list_ratio || 0)),
     medianDaysOnMarket: Number(row.median_days_on_market || 0),
   }));
 
@@ -574,9 +574,7 @@ for (const row of islandMonthlyRows || []) {
     medianDaysOnMarket:
       Number(row.median_days_on_market || 0),
     saleToList:
-      Number(
-        row.average_sale_to_list_ratio || 0
-      ),
+      ((v: number) => (v > 0 && v <= 2 ? v * 100 : v))(Number(row.average_sale_to_list_ratio || 0)),
   });
 
   islandRowsByMarket.set(marketKey, rows);
@@ -1055,27 +1053,27 @@ const saleToListContext =
 
 
 /* market-reads-v1: restrained interpretations tied to the available data. */
-const marketPulseRead =
+const marketPulseReadLegacy =
   activeListingsYoY != null && salesYoY != null
     ? activeListingsYoY >= 10 && salesYoY <= -10
       ? {
           headline: "Buyers have more leverage.",
           detail:
             "There is more supply to compare and fewer sales closing. Well-priced homes can still move, but sellers need to compete on price, condition, and presentation.",
-          evidence: `${Math.abs(activeListingsYoY).toFixed(0)}% more active listings · ${Math.abs(salesYoY).toFixed(0)}% fewer sales`,
+          evidence: `${Math.abs(activeListingsYoY).toFixed(0)}% more new listings · ${Math.abs(salesYoY).toFixed(0)}% fewer sales`,
         }
       : activeListingsYoY <= -10 && salesYoY >= 10
         ? {
             headline: "Demand is gaining the upper hand.",
             detail:
               "Choice has tightened while sales have strengthened. Buyers may need to move decisively when the right home appears.",
-            evidence: `${Math.abs(activeListingsYoY).toFixed(0)}% fewer active listings · ${Math.abs(salesYoY).toFixed(0)}% more sales`,
+            evidence: `${Math.abs(activeListingsYoY).toFixed(0)}% fewer new listings · ${Math.abs(salesYoY).toFixed(0)}% more sales`,
           }
         : {
             headline: "The market is finding its balance.",
             detail:
               "Supply and sales are moving without one clear advantage for either side. Property-specific pricing still matters most.",
-            evidence: `${activeListingsYoY >= 0 ? "+" : ""}${activeListingsYoY.toFixed(0)}% active listings · ${salesYoY >= 0 ? "+" : ""}${salesYoY.toFixed(0)}% sales`,
+            evidence: `${activeListingsYoY >= 0 ? "+" : ""}${activeListingsYoY.toFixed(0)}% new listings · ${salesYoY >= 0 ? "+" : ""}${salesYoY.toFixed(0)}% sales`,
           }
     : {
         headline: "The market is taking shape.",
@@ -1083,6 +1081,28 @@ const marketPulseRead =
           "There is not yet enough comparable history for a firm year-over-year call. Use the recent trend as context, not a verdict.",
         evidence: "Comparable year-over-year data is still building.",
       };
+/* market-pulse-inventory-v1: lead with sales-to-active (BCREA bands). */
+const activeInventoryAverage = marketPulseAverage(recentRollingMonths.map((row: any) => row.activeListings));
+const priorActiveInventoryAverage = marketPulseAverage(priorYearRollingMonths.map((row: any) => row.activeListings));
+const hasInventoryPulse = activeInventoryAverage != null && salesRollingAverage != null;
+const salesToActive = hasInventoryPulse ? ((salesRollingAverage as number) / (activeInventoryAverage as number)) * 100 : null;
+const monthsOfSupply = hasInventoryPulse && (salesRollingAverage as number) > 0 ? (activeInventoryAverage as number) / (salesRollingAverage as number) : null;
+const priorSalesToActive = priorActiveInventoryAverage != null && priorSalesRollingAverage != null ? (priorSalesRollingAverage / priorActiveInventoryAverage) * 100 : null;
+const inventoryYoY = activeInventoryAverage != null && priorActiveInventoryAverage != null ? percentChange(activeInventoryAverage, priorActiveInventoryAverage) : null;
+const pulseSupply = hasInventoryPulse ? activeInventoryAverage : activeListingsRollingAverage;
+const pulseSupplyYoY = hasInventoryPulse ? inventoryYoY : activeListingsYoY;
+const pulseSupplyLabel = hasInventoryPulse ? "Active listings" : "New listings / month";
+const pulseSupplyNoun = hasInventoryPulse ? "active listings" : "new listings";
+const ratioTrend = salesToActive != null && priorSalesToActive != null ? ` A year ago it was ${priorSalesToActive.toFixed(0)}%.` : "";
+const inventoryRead = salesToActive == null ? null
+  : salesToActive < 12
+    ? { headline: "Buyers have more leverage.", detail: `Sales are running at ${salesToActive.toFixed(0)}% of active inventory, below the 12% line that typically marks a buyer\u2019s market. Buyers have time to compare, and sellers need to compete on price and presentation.${ratioTrend}` }
+    : salesToActive > 20
+      ? { headline: "Sellers have the upper hand.", detail: `Sales are running at ${salesToActive.toFixed(0)}% of active inventory, above the 20% line that typically marks a seller\u2019s market. Well-priced homes are moving; buyers should be ready to act.${ratioTrend}` }
+      : { headline: "The market is balanced.", detail: `Sales are running at ${salesToActive.toFixed(0)}% of active inventory, inside the 12\u201320% range that typically marks a balanced market. Neither side has a clear edge, so pricing and condition decide outcomes.${ratioTrend}` };
+const marketPulseRead = inventoryRead
+  ? { ...inventoryRead, evidence: `${(salesToActive as number).toFixed(0)}% sales-to-active \u00b7 ${monthsOfSupply != null ? monthsOfSupply.toFixed(1) : "\u2014"} months of supply` }
+  : marketPulseReadLegacy;
 const latestSalesToNewListings =
   latestMonth?.newListings > 0
     ? (
@@ -1674,7 +1694,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
                     class="market-trend__point market-trend__point--listings"
                   >
                     <title>
-                      {`${row.label}: ${row.newListings} active listings`}
+                      {`${row.label}: ${row.newListings} new listings`}
                     </title>
                   </circle>
 
@@ -1719,38 +1739,34 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
                 <div style="min-width:0;">
                   <span
                     style="display:block;min-height:34px;margin-bottom:7px;color:var(--market-muted);font-size:.68rem;font-weight:850;letter-spacing:.08em;line-height:1.25;text-transform:uppercase;"
-                  >
-                    Average active listings
-                  </span>
+                  >{pulseSupplyLabel}</span>
 
                   <strong
                     style="display:block;color:var(--accent,#258fd0);font-family:var(--f-display,Georgia,serif);font-size:clamp(2.5rem,4vw,3.7rem);font-weight:500;letter-spacing:-.045em;line-height:.95;"
                   >
-                    {activeListingsRollingAverage != null
-                      ? Math.round(activeListingsRollingAverage).toLocaleString()
-                      : "—"}
+                    {pulseSupply != null ? Math.round(pulseSupply).toLocaleString() : "\u2014"}
                   </strong>
 
                   <p
-                    style="display:grid;grid-template-columns:24px minmax(0,1fr);column-gap:7px;align-items:start;margin:13px 0 0;color:var(--market-text);font-size:.76rem;font-weight:800;line-height:1.32;"
+                    style="display:grid;grid-template-columns:40px minmax(0,1fr);column-gap:12px;align-items:center;margin:18px 0 0;color:var(--market-text);font-size:1.4rem;font-weight:750;line-height:1.25;"
                   >
                     <b
                       aria-hidden="true"
-                      style={activeListingsYoY != null && activeListingsYoY < 0
-                        ? "grid-row:span 2;display:grid;width:24px;height:24px;place-items:center;border-radius:999px;color:#a65353;background:rgba(166,83,83,.12);font-size:.92rem;line-height:1;"
-                        : "grid-row:span 2;display:grid;width:24px;height:24px;place-items:center;border-radius:999px;color:var(--accent,#258fd0);background:rgba(37,143,208,.13);font-size:.92rem;line-height:1;"}
+                      style={pulseSupplyYoY != null && pulseSupplyYoY < 0
+                        ? "grid-row:span 2;display:grid;width:40px;height:40px;place-items:center;border-radius:999px;color:#a65353;background:rgba(166,83,83,.12);font-size:1.4rem;line-height:1;"
+                        : "grid-row:span 2;display:grid;width:40px;height:40px;place-items:center;border-radius:999px;color:var(--accent,#258fd0);background:rgba(37,143,208,.13);font-size:1.4rem;line-height:1;"}
                     >
-                      {activeListingsYoY != null && activeListingsYoY < 0 ? "↓" : "↑"}
+                      {pulseSupplyYoY != null && pulseSupplyYoY < 0 ? "↓" : "↑"}
                     </b>
 
-                    {activeListingsYoY != null
-                      ? `${Math.abs(activeListingsYoY).toFixed(0)}% ${
-                          activeListingsYoY >= 0 ? "more" : "fewer"
-                        } active listings`
+                    {pulseSupplyYoY != null
+                      ? `${Math.abs(pulseSupplyYoY).toFixed(0)}% ${
+                          pulseSupplyYoY >= 0 ? "more" : "fewer"
+                        } ${pulseSupplyNoun}`
                       : "Year-over-year comparison unavailable"}
 
                     <small
-                      style="display:block;margin-top:2px;color:var(--market-muted);font-size:.68rem;font-weight:400;line-height:1.3;"
+                      style="display:block;margin-top:3px;color:var(--market-muted);font-size:.72rem;font-weight:400;line-height:1.3;"
                     >
                       vs. the same 3-month period last year
                     </small>
@@ -1775,13 +1791,13 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
                   </strong>
 
                   <p
-                    style="display:grid;grid-template-columns:24px minmax(0,1fr);column-gap:7px;align-items:start;margin:13px 0 0;color:var(--market-text);font-size:.76rem;font-weight:800;line-height:1.32;"
+                    style="display:grid;grid-template-columns:40px minmax(0,1fr);column-gap:12px;align-items:center;margin:18px 0 0;color:var(--market-text);font-size:1.4rem;font-weight:750;line-height:1.25;"
                   >
                     <b
                       aria-hidden="true"
                       style={salesYoY != null && salesYoY < 0
-                        ? "grid-row:span 2;display:grid;width:24px;height:24px;place-items:center;border-radius:999px;color:#a65353;background:rgba(166,83,83,.12);font-size:.92rem;line-height:1;"
-                        : "grid-row:span 2;display:grid;width:24px;height:24px;place-items:center;border-radius:999px;color:var(--accent,#258fd0);background:rgba(37,143,208,.13);font-size:.92rem;line-height:1;"}
+                        ? "grid-row:span 2;display:grid;width:40px;height:40px;place-items:center;border-radius:999px;color:#a65353;background:rgba(166,83,83,.12);font-size:1.4rem;line-height:1;"
+                        : "grid-row:span 2;display:grid;width:40px;height:40px;place-items:center;border-radius:999px;color:var(--accent,#258fd0);background:rgba(37,143,208,.13);font-size:1.4rem;line-height:1;"}
                     >
                       {salesYoY != null && salesYoY < 0 ? "↓" : "↑"}
                     </b>
@@ -1793,20 +1809,27 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
                       : "Year-over-year comparison unavailable"}
 
                     <small
-                      style="display:block;margin-top:2px;color:var(--market-muted);font-size:.68rem;font-weight:400;line-height:1.3;"
+                      style="display:block;margin-top:3px;color:var(--market-muted);font-size:.72rem;font-weight:400;line-height:1.3;"
                     >
                       vs. the same 3-month period last year
                     </small>
                   </p>
                 </div>
               </div>
+              {salesToActive != null && (
+                <div class="market-balance">
+                  <div class="market-balance__head"><span>Sales-to-active ratio</span><strong>{salesToActive.toFixed(0)}%</strong><em>{monthsOfSupply != null ? `${monthsOfSupply.toFixed(1)} months of supply` : ""}</em></div>
+                  <div class="market-balance__track"><i class="mb-buyers"></i><i class="mb-balanced"></i><i class="mb-sellers"></i><b style={`left:${Math.min(Math.max((salesToActive / 30) * 100, 2), 98)}%`}></b></div>
+                  <div class="market-balance__scale"><span>Buyer's market</span><span>Balanced</span><span>Seller's market</span></div>
+                </div>
+              )}
               <h3 style="margin-top:24px;">The numbers behind it.</h3>
 
               <p>
-  Over the last three months, the market averaged
+  Over the last three months, the market averaged {hasInventoryPulse && activeInventoryAverage != null && <><strong>{Math.round(activeInventoryAverage).toLocaleString()} active listings</strong>,{" "}</>}
   <strong>{activeListingsRollingAverage != null
     ? Math.round(activeListingsRollingAverage).toLocaleString()
-    : "—"} active listings</strong>
+    : "—"} new listings</strong>
   and
   <strong>{salesRollingAverage != null
     ? Math.round(salesRollingAverage).toLocaleString()
@@ -1926,7 +1949,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
 
 <p class="market-trend__note">
             {usesRollingSmallMarketTrend
-              ? "Faint lines show monthly activity; the stronger lines are six-month averages. New listings come from Repliers. Qualifying sales exclude fractional ownership."
+              ? "Faint lines show monthly activity; the stronger lines are six-month averages. New listings and sales come from MLS® data. Qualifying sales exclude fractional ownership."
               : "Faint lines show monthly activity; the stronger lines are six-month averages. Residential and condominium records come from Repliers."}
           </p>
         </>
@@ -4976,13 +4999,13 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
 
   /* listings-chart-calm-v1 */
   .market-trend__line { stroke-width: 2.25 !important; }
-  .market-trend__line--listings { stroke: #64748b !important; }
-  .market-trend__line--sales { stroke: var(--accent, #633a98) !important; }
+  .market-trend__line--listings { stroke: var(--accent, #633a98) !important; }
+  .market-trend__line--sales { stroke: #c17f3a !important; }
   .market-trend__point { fill: #fff !important; stroke-width: 1.5 !important; r: 3; }
-  .market-trend__point--listings { stroke: #64748b !important; }
-  .market-trend__point--sales { stroke: var(--accent, #633a98) !important; }
-  .market-trend__legend .is-listings { color: #64748b !important; }
-  .market-trend__legend .is-sales { color: var(--accent, #633a98) !important; }
+  .market-trend__point--listings { stroke: var(--accent, #633a98) !important; }
+  .market-trend__point--sales { stroke: #c17f3a !important; }
+  .market-trend__legend .is-listings { color: var(--accent, #633a98) !important; }
+  .market-trend__legend .is-sales { color: #c17f3a !important; }
 
   /* type-donut-v1 */
   .type-donut { display: grid !important; grid-template-columns: 300px minmax(0, 1fr) !important; gap: 44px !important; align-items: center !important; }
@@ -5013,6 +5036,22 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
   .type-donut.is-focus .type-donut__legend a.is-on { opacity: 1 !important; }
   .type-donut__legend a.is-on .type-donut__name { color: var(--accent, #633a98) !important; }
   .type-donut__caption { font-size: 8px !important; letter-spacing: .1em !important; }
+
+  /* market-balance-v1 */
+  .market-balance { max-width: 560px; margin: 0 0 8px; }
+  .market-balance__head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .market-balance__head span { color: var(--market-muted); font-size: .68rem; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+  .market-balance__head strong { color: var(--market-text); font-size: 1.4rem; font-weight: 750; }
+  .market-balance__head em { color: var(--market-muted); font-size: .82rem; font-style: normal; }
+  .market-balance__track { position: relative; display: flex; height: 8px; }
+  .market-balance__track i { display: block; height: 100%; }
+  .market-balance__track .mb-buyers { width: 40%; border-radius: 4px 0 0 4px; background: #cfe0ea; }
+  .market-balance__track .mb-balanced { width: 26.67%; background: #e3e6ea; }
+  .market-balance__track .mb-sellers { width: 33.33%; border-radius: 0 4px 4px 0; background: #f1dccd; }
+  .market-balance__track b { position: absolute; top: 50%; width: 16px; height: 16px; margin-left: -8px; border: 3px solid #fff; border-radius: 50%; background: var(--market-text); box-shadow: 0 1px 4px rgba(0,0,0,.25); transform: translateY(-50%); }
+  .market-balance__scale { display: grid; grid-template-columns: 40% 26.67% 33.33%; margin-top: 7px; color: var(--market-muted); font-size: .68rem; }
+  .market-balance__scale span:nth-child(2) { text-align: center; }
+  .market-balance__scale span:nth-child(3) { text-align: right; }
 </style>
 <!-- market-pulse-mobile-clean-v1 -->
 <style is:global>

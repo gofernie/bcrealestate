@@ -1917,6 +1917,17 @@ if (normalized_city === "parksville") {
     .trim();
 }
 
+const NELSON_AREA_MAP: Record<string, string> = {
+  "unknown": "nelson city", "nelson": "nelson city",
+  "north nelson to kokanee creek": "north shore",
+  "kokanee creek to balfour": "balfour kokanee creek",
+  "nelson west/south slocan": "west arm south slocan", "nelson west south slocan": "west arm south slocan",
+  "nelson south/salmo rural": "salmo road south", "nelson south salmo rural": "salmo road south",
+  "harrop/procter": "harrop procter", "harrop procter": "harrop procter",
+};
+if (normalized_city === "nelson") {
+  normalized_area = NELSON_AREA_MAP[normalized_area] || normalized_area;
+}
 if (normalized_city === "duncan" && normalized_area === "unknown") {
   const sourceCityArea = AREA_ALIASES.duncan?.[clean(listing?.source_city)];
 

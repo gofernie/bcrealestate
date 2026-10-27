@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 
 // Which Matrix "Minor Area" values count as each town. Edit here to widen a town.
 const CITY_AREAS: Record<string, string[]> = {
-  nelson: ["NE - Nelson"],
+  nelson: ["NE - Nelson", "NERU - North Nelson to Kokanee Creek", "NERU - Kokanee Creek to Balfour", "NERU - Nelson West/South Slocan", "NERU - Nelson South/Salmo Rural", "NERU - Harrop/Procter"],
 };
 const RESIDENTIAL = new Set([
   "Single Family - Detached", "Single Family - Detached w/Acreage", "Residential Acreage", "Residential Lot",
@@ -83,22 +83,34 @@ async function main() {
   for (const s of uniq.filter((s) => s.eligible_for_market_stats)) {
     const b = bucket(s.sold_date.slice(0, 7) + "-01");
     b.sales.push(s.sold_price); if (s.is_single_family) b.sfd.push(s.sold_price);
-    if (s.sale_to_list_ratio != null) b.ratios.push(s.sale_to_list_ratio / 100);
+    if (s.sale_to_list_ratio != null) b.ratios.push(s.sale_to_list_ratio);
     if (s.days_on_market != null) b.dom.push(s.days_on_market);
   }
   const first = [...months.keys()].sort()[0];
   for (const r of inTown) { const d = date(r["Date Entered"]); if (d && first && d.slice(0, 7) + "-01" >= first) bucket(d.slice(0, 7) + "-01").newListings++; }
+  // Month-end active inventory, rebuilt from each listing's on-market span.
+  const DAY = 86400000;
+  const spans = inTown.map((r) => {
+    const s = date(r["Date Entered"]); if (!s) return null;
+    const start = Date.parse(s);
+    if (/^(active|preactive)$/i.test(r.Status)) return [start, Infinity];
+    const sold = /^sold$/i.test(r.Status) ? date(r["Sold Date"]) : null;
+    const dom = num(r.DOM);
+    const end = sold ? Date.parse(sold) : dom != null ? start + dom * DAY : null;
+    return end == null ? null : [start, end];
+  }).filter(Boolean) as [number, number][];
+  const activeAt = (monthStart: string) => { const d = new Date(monthStart + "T00:00:00Z"); const eom = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0); return spans.filter(([a, b]) => a <= eom && b > eom).length; };
   const now = new Date().toISOString();
-  const stats = [...months].sort(([a], [b]) => a.localeCompare(b)).map(([month_start, b]) => ({
-    city, month_start, new_listings: b.newListings, sales: b.sales.length,
+  const stats = [...months].filter(([m]) => m < new Date().toISOString().slice(0, 7) + "-01").sort(([a], [b]) => a.localeCompare(b)).map(([month_start, b]) => ({
+    city, month_start, new_listings: b.newListings, active_listings: activeAt(month_start), sales: b.sales.length,
     median_sold_price: median(b.sales),
     average_sold_price: b.sales.length ? Math.round(b.sales.reduce((x: number, y: number) => x + y, 0) / b.sales.length) : null,
-    average_sale_to_list_ratio: b.ratios.length ? Math.round((b.ratios.reduce((x: number, y: number) => x + y, 0) / b.ratios.length) * 10000) / 10000 : null,
+    average_sale_to_list_ratio: b.ratios.length ? Math.round((b.ratios.reduce((x: number, y: number) => x + y, 0) / b.ratios.length) * 100) / 100 : null,
     median_single_family_sold_price: median(b.sfd), median_days_on_market: median(b.dom),
     source: SOURCE, refreshed_at: now,
   }));
-  console.table(stats.map(({ month_start, sales, new_listings, median_sold_price, median_single_family_sold_price, median_days_on_market, average_sale_to_list_ratio }) =>
-    ({ month: month_start.slice(0, 7), sales, new_listings, median: median_sold_price, sfd_median: median_single_family_sold_price, dom: median_days_on_market, ratio: average_sale_to_list_ratio })));
+  console.table(stats.map(({ month_start, sales, new_listings, active_listings, median_sold_price, median_single_family_sold_price, median_days_on_market, average_sale_to_list_ratio }) =>
+    ({ month: month_start.slice(0, 7), sales, new_listings, active: active_listings, median: median_sold_price, sfd_median: median_single_family_sold_price, dom: median_days_on_market, ratio: average_sale_to_list_ratio })));
   console.log(`sale records: ${uniq.length} (${uniq.filter((s) => s.eligible_for_market_stats).length} eligible), months: ${stats.length}`);
   if (dry) { console.log("--dry: nothing written."); return; }
 

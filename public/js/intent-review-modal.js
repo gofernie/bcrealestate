@@ -3062,10 +3062,9 @@ async function openListingDeepLink() {
       `/api/listing-detail?id=${encodeURIComponent(requestedId)}&mls=${encodeURIComponent(requestedId)}`
     );
 
-    if (!response.ok) return;
-
-    const data = await response.json();
+    const data = response.ok ? await response.json().catch(() => ({})) : {};
     const listing = data?.listing;
+    if (!listing) { const c = location.pathname.split("/").filter(Boolean)[0]; if (c) location.replace("/" + c + "/listing/" + encodeURIComponent(requestedId)); return; }
 
     if (!listing) return;
 
