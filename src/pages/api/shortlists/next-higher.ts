@@ -69,6 +69,7 @@ export const GET: APIRoute = async ({ url }) => {
  let query = supabase
   .from("listing_rows")
   .select("*")
+  .eq("status", "A")
   .eq("normalized_city", shortlist.search_city || "nanaimo")
   .gt("price", highestExistingPrice)
   .order("price", { ascending: true })

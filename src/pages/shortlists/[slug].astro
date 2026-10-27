@@ -1,4 +1,4 @@
-﻿---
+---
 import { createClient } from "@supabase/supabase-js";
 import {
   getListingAddress,
@@ -259,11 +259,17 @@ const normalizeAddressKey = (value: any) =>
     .replace(/\s+/g, " ")
     .trim();
 
-const rowsRes = await supabase
-  .from("listing_rows")
-  .select("*")
-  .eq("normalized_city", "nanaimo")
-  .limit(5000);
+// shortlist-targeted-rows-v1: fetch only this shortlist's listings, any city, any status
+const shortlistItemIds = [...new Set([...items].flatMap((item: any) => [item.repliers_listing_id, item.listing_id, item.mls_number]).map((v: any) => String(v || "").replace(/"/g, "").trim()).filter(Boolean))];
+const shortlistAddresses = [...new Set([...items].map((item: any) => String(item.address || "").replace(/"/g, "").trim()).filter(Boolean))];
+const shortlistRowFilters = [
+  shortlistItemIds.length ? `id.in.(${shortlistItemIds.map((v) => `"${v}"`).join(",")})` : "",
+  shortlistItemIds.length ? `mls_number.in.(${shortlistItemIds.map((v) => `"${v}"`).join(",")})` : "",
+  shortlistAddresses.length ? `address.in.(${shortlistAddresses.map((v) => `"${v}"`).join(",")})` : "",
+].filter(Boolean).join(",");
+const rowsRes = shortlistRowFilters
+  ? await supabase.from("listing_rows").select("*").or(shortlistRowFilters).limit(1000)
+  : { data: [], error: null };
 
 if (rowsRes.error) {
   console.error("LISTING_ROWS LOAD ERROR", rowsRes.error);
@@ -293,6 +299,7 @@ function getListingSortScore(listing: any) {
   if (listing.is_favourite) score += 100;
 if (listing.decision === "maybe") score += 20;
 if (listing.decision === "pass") score -= 500;
+if (listing.status && listing.status !== "A") score -= 1000;
 
   if (price && sqft) score += Math.round((price / sqft) * -1);
   if (sqft) score += sqft * 0.02;
@@ -2822,6 +2829,7 @@ const isNew =
   !listing?.is_favourite &&
   !listing?.decision;
 const num = String(i + 1).padStart(2, "0");
+const offMarket = Boolean(listing?.status) && String(listing.status) !== "A";
 
             return (
             <article
@@ -2864,6 +2872,8 @@ data-description={String(description).replace(/"/g, "&quot;")}
                data-decision={decision}
 data-is-new={isNew ? "true" : "false"}
 data-sort-order={String(listing?.sort_order ?? i)}
+data-off-market={offMarket ? "true" : "false"}
+style={offMarket ? "opacity:.72" : undefined}
 data-featured={i === 0 ? "true" : "false"}>
                 {isAgentView && (
                   <button
@@ -2878,6 +2888,7 @@ data-featured={i === 0 ? "true" : "false"}>
                 )}
 
                 <div class="card__image-wrap">
+                  {offMarket && (<span class="card__off-market" style="position:absolute;right:12px;bottom:12px;z-index:3;padding:5px 10px;border-radius:4px;background:rgba(20,24,28,.85);color:#fff;font-size:.72rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;">No longer available</span>)}
                   {isFavourite && (
   <div class="card__love-badge">
     <span class="card__love-badge-heart">♥</span>
