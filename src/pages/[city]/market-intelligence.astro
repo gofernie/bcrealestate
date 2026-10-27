@@ -1085,8 +1085,16 @@ const marketPulseReadLegacy =
 const activeInventoryAverage = marketPulseAverage(recentRollingMonths.map((row: any) => row.activeListings));
 const priorActiveInventoryAverage = marketPulseAverage(priorYearRollingMonths.map((row: any) => row.activeListings));
 const hasInventoryPulse = activeInventoryAverage != null && salesRollingAverage != null;
-const salesToActive = hasInventoryPulse ? ((salesRollingAverage as number) / (activeInventoryAverage as number)) * 100 : null;
-const monthsOfSupply = hasInventoryPulse && (salesRollingAverage as number) > 0 ? (activeInventoryAverage as number) / (salesRollingAverage as number) : null;
+/* live-inventory-ratio-v1: towns without Matrix inventory use the live active count */
+const liveActiveCount = await (async () => { if (hasInventoryPulse) return null; const { count } = await supabase.from("listing_rows").select("id", { count: "exact", head: true }).eq("status", "A").in("normalized_city", cityDatabaseKeys).neq("property_type", "Lease"); return count && count > 0 ? count : null; })();
+const ratioInventory = hasInventoryPulse ? (activeInventoryAverage as number) : liveActiveCount;
+/* latest-month-ratio-v1: busy markets use the latest month (BCREA-style); small towns keep the 3-month average */
+const latestSalesCount = Number(latestMonth?.sales || 0);
+const useLatestMonth = latestSalesCount >= 40;
+const ratioSales = useLatestMonth ? latestSalesCount : (salesRollingAverage as number | null);
+const ratioActive = useLatestMonth && hasInventoryPulse && Number(latestMonth?.activeListings || 0) > 0 ? Number(latestMonth.activeListings) : ratioInventory;
+const salesToActive = ratioActive != null && ratioActive > 0 && ratioSales != null && ratioSales > 0 ? (ratioSales / ratioActive) * 100 : null;
+const monthsOfSupply = salesToActive != null ? (ratioActive as number) / (ratioSales as number) : null;
 const priorSalesToActive = priorActiveInventoryAverage != null && priorSalesRollingAverage != null ? (priorSalesRollingAverage / priorActiveInventoryAverage) * 100 : null;
 const inventoryYoY = activeInventoryAverage != null && priorActiveInventoryAverage != null ? percentChange(activeInventoryAverage, priorActiveInventoryAverage) : null;
 const pulseSupply = hasInventoryPulse ? activeInventoryAverage : activeListingsRollingAverage;
@@ -1094,12 +1102,14 @@ const pulseSupplyYoY = hasInventoryPulse ? inventoryYoY : activeListingsYoY;
 const pulseSupplyLabel = hasInventoryPulse ? "Active listings" : "New listings / month";
 const pulseSupplyNoun = hasInventoryPulse ? "active listings" : "new listings";
 const ratioTrend = salesToActive != null && priorSalesToActive != null ? ` A year ago it was ${priorSalesToActive.toFixed(0)}%.` : "";
+/* balanced-tilt-v1 */
+const balancedTilt = salesToActive == null ? null : (salesToActive < 14 || (pulseSupplyYoY != null && pulseSupplyYoY >= 10 && salesYoY != null && salesYoY <= -10)) ? "buyers" : (salesToActive > 18 || (pulseSupplyYoY != null && pulseSupplyYoY <= -10 && salesYoY != null && salesYoY >= 10)) ? "sellers" : null;
 const inventoryRead = salesToActive == null ? null
   : salesToActive < 12
     ? { headline: "Buyers have more leverage.", detail: `Sales are running at ${salesToActive.toFixed(0)}% of active inventory, below the 12% line that typically marks a buyer\u2019s market. Buyers have time to compare, and sellers need to compete on price and presentation.${ratioTrend}` }
     : salesToActive > 20
       ? { headline: "Sellers have the upper hand.", detail: `Sales are running at ${salesToActive.toFixed(0)}% of active inventory, above the 20% line that typically marks a seller\u2019s market. Well-priced homes are moving; buyers should be ready to act.${ratioTrend}` }
-      : { headline: "The market is balanced.", detail: `Sales are running at ${salesToActive.toFixed(0)}% of active inventory, inside the 12\u201320% range that typically marks a balanced market. Neither side has a clear edge, so pricing and condition decide outcomes.${ratioTrend}` };
+      : { headline: balancedTilt === "buyers" ? "Balanced, but tilting toward buyers." : balancedTilt === "sellers" ? "Balanced, but tilting toward sellers." : "The market is balanced.", detail: `Sales are running at ${salesToActive.toFixed(0)}% of active inventory, inside the 12\u201320% range that typically marks a balanced market. Neither side has a clear edge, so pricing and condition decide outcomes.${ratioTrend}` };
 const marketPulseRead = inventoryRead
   ? { ...inventoryRead, evidence: `${(salesToActive as number).toFixed(0)}% sales-to-active \u00b7 ${monthsOfSupply != null ? monthsOfSupply.toFixed(1) : "\u2014"} months of supply` }
   : marketPulseReadLegacy;
@@ -1566,7 +1576,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
 
     <section class="snapshot-grid" aria-label="Market snapshot">
       <article>
-        <span>Active listings</span>
+        <span>New listings</span>
         <strong>{activeListings.toLocaleString()}</strong>
         <small>Currently available</small>
       </article>
@@ -1605,13 +1615,13 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
           <p class="eyebrow">Two years in view</p>
           <h2>
             {hasReliableSalesHistory
-              ? "Active listings and sales over time"
-              : "Active listings and sales over time"}
+              ? "New listings and sales over time"
+              : "New listings and sales over time"}
           </h2>
         </div>
 
         <div class="market-trend__legend">
-          <span class="is-listings">Active listings</span>
+          <span class="is-listings">New listings</span>
           {hasReliableSalesHistory && (
             <span class="is-sales">Sales</span>
           )}
@@ -1818,8 +1828,8 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
               </div>
               {salesToActive != null && (
                 <div class="market-balance">
-                  <div class="market-balance__head"><span>Sales-to-active ratio</span><strong>{salesToActive.toFixed(0)}%</strong><em>{monthsOfSupply != null ? `${monthsOfSupply.toFixed(1)} months of supply` : ""}</em></div>
-                  <div class="market-balance__track"><i class="mb-buyers"></i><i class="mb-balanced"></i><i class="mb-sellers"></i><b style={`left:${Math.min(Math.max((salesToActive / 30) * 100, 2), 98)}%`}></b></div>
+                  <div class="market-balance__head"><span>Sales-to-active ratio</span><strong>{salesToActive.toFixed(0)}%</strong><em>{monthsOfSupply != null ? `${monthsOfSupply.toFixed(1)} months of supply` : ""}</em>{priorSalesToActive != null && <em class="market-balance__was"><span class="market-balance__was-dot"></span>{priorSalesToActive.toFixed(0)}% a year ago</em>}</div>
+                  <div class="market-balance__track"><i class="mb-buyers"></i><i class="mb-balanced"></i><i class="mb-sellers"></i>{priorSalesToActive != null && <span class="market-balance__prior" title={`A year ago: ${priorSalesToActive.toFixed(0)}%`} style={`left:${Math.min(Math.max((priorSalesToActive / 30) * 100, 2), 98)}%`}></span>}<b style={`left:${Math.min(Math.max((salesToActive / 30) * 100, 2), 98)}%`}></b></div>
                   <div class="market-balance__scale"><span>Buyer's market</span><span>Balanced</span><span>Seller's market</span></div>
                 </div>
               )}
@@ -5048,10 +5058,13 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
   .market-balance__track .mb-buyers { width: 40%; border-radius: 4px 0 0 4px; background: #cfe0ea; }
   .market-balance__track .mb-balanced { width: 26.67%; background: #e3e6ea; }
   .market-balance__track .mb-sellers { width: 33.33%; border-radius: 0 4px 4px 0; background: #f1dccd; }
-  .market-balance__track b { position: absolute; top: 50%; width: 16px; height: 16px; margin-left: -8px; border: 3px solid #fff; border-radius: 50%; background: var(--market-text); box-shadow: 0 1px 4px rgba(0,0,0,.25); transform: translateY(-50%); }
+  .market-balance__track b { position: absolute; top: 50%; width: 16px; height: 16px; margin-left: -8px; border: 3px solid #fff; border-radius: 50%; background: var(--accent, #2f3a45) !important; z-index: 2; box-shadow: 0 1px 4px rgba(0,0,0,.25); transform: translateY(-50%); }
   .market-balance__scale { display: grid; grid-template-columns: 40% 26.67% 33.33%; margin-top: 7px; color: var(--market-muted); font-size: .68rem; }
   .market-balance__scale span:nth-child(2) { text-align: center; }
   .market-balance__scale span:nth-child(3) { text-align: right; }
+  .market-balance__prior { position: absolute; top: 50%; width: 10px; height: 10px; margin-left: -5px; border: 2px solid #9aa3ad !important; border-radius: 50%; background: #fff !important; opacity: .9; z-index: 1; transform: translateY(-50%); }
+  .market-balance__head .market-balance__was { display: inline-flex; align-items: center; gap: 6px; }
+  .market-balance__was-dot { display: inline-block; width: 8px; height: 8px; border: 2px solid #9aa3ad; border-radius: 50%; opacity: .9; }
 </style>
 <!-- market-pulse-mobile-clean-v1 -->
 <style is:global>
