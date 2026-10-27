@@ -171,7 +171,7 @@ const COMOX_VALLEY_FETCH_CITIES = [
   "Denman Island",
 ];
 const COLUMBIA_VALLEY_FETCH_CITIES = ["Invermere", "Windermere", "Radium Hot Springs", "Panorama"];
-const CITY_FETCH_GROUPS: Record<string, string[]> = {
+export const CITY_FETCH_GROUPS: Record<string, string[]> = {
   "columbia valley": COLUMBIA_VALLEY_FETCH_CITIES,
   "columbia-valley": COLUMBIA_VALLEY_FETCH_CITIES,
   comox: COMOX_VALLEY_FETCH_CITIES,
@@ -507,10 +507,7 @@ export async function refreshListingMarket(
     );
 
     const rebuildResult =
-      await rebuildListingRows({
-        city: searchKey,
-        listings: allListings
-      });
+      await rebuildListingRows({ city: searchKey, listings: allListings, extraCleanupCities: citiesToFetch } as any);
 
     if (!rebuildResult?.ok) {
       throw new Error(

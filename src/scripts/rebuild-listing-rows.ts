@@ -530,6 +530,7 @@ const normalizeType = (listing: any) => {
 };
 
 const PARKSVILLE_MARKET_CITIES = new Set([
+  "errington", "coombs", "hilliers", "french creek", "fairwinds", "qualicum north", "little qualicum river village", "bowser/deep bay", "bowser", "deep bay",
   "parksville",
   "nanoose bay",
   "qualicum beach"
@@ -538,6 +539,7 @@ const PARKSVILLE_MARKET_CITIES = new Set([
 const COLUMBIA_VALLEY_MARKET_CITIES = new Set(["invermere", "windermere", "radium hot springs", "panorama"]);
 
 const DUNCAN_MARKET_CITIES = new Set([
+  "ladysmith", "cowichan station/glenora",
   "duncan",
   "chemainus",
   "cowichan bay",
@@ -2401,13 +2403,12 @@ console.log(
   `Upserting complete active inventory for ${cleanupCity} before deactivating missing listings...`
 );
 
+const runStartedAt = new Date().toISOString();
 for (let i = 0; i < uniqueRows.length; i += BATCH) {
   const batch = uniqueRows
   .slice(i, i + BATCH)
   .map((row) => ({
-    ...row,
-    status: "A",
-  }));
+    ...row, status: "A", last_seen_at: runStartedAt }));
 
  const { error: upsertError } = await supabase
   .from("listing_rows")
@@ -2426,21 +2427,18 @@ console.log(
 }
 
 console.log("Done.");
-const activeIds = uniqueRows.map((row) => row.id);
-
-const { error: cleanupError } = await supabase
+// last-seen-cleanup-v1: stamp-based, covers every town in the fetch group
+const cleanupCities = Array.from(new Set([cleanupCity, TARGET_CITY, ...uniqueRows.map((row) => clean(row.normalized_city)), ...(((directInput as any)?.extraCleanupCities) || []).map((c: any) => clean(c))].filter(Boolean)));
+const { count: deactivated, error: cleanupError } = await supabase
   .from("listing_rows")
-  .update({ status: "inactive" })
-  .eq("normalized_city", cleanupCity)
+  .update({ status: "inactive" }, { count: "exact" })
+  .in("normalized_city", cleanupCities)
   .eq("status", "A")
-  .not("id", "in", `(${activeIds.join(",")})`);
-
+  .or(`last_seen_at.is.null,last_seen_at.lt."${runStartedAt}"`);
 if (cleanupError) {
-  console.error(
-    "Post-cleanup failed:",
-    cleanupError
-  );
+  throw new Error(`Post-cleanup failed: ${cleanupError.message}`);
 }
+console.log(`Deactivated ${deactivated ?? 0} listings no longer in the feed across: ${cleanupCities.join(", ")}`);
 return {
   ok: true,
   city: cleanupCity,

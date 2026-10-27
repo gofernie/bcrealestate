@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { CITY_FETCH_GROUPS } from "../../src/lib/listings/refreshListingMarket";
 
 const supabase = createClient(
   process.env.PUBLIC_SUPABASE_URL!,
@@ -65,7 +66,8 @@ function applyCommonFilters(
   params: URLSearchParams,
   apiCity: string
 ) {
-  params.set("city", apiCity);
+  params.delete("city");
+  for (const c of CITY_FETCH_GROUPS[apiCity.toLowerCase()] || [apiCity]) params.append("city", c);
   params.set("type", "sale");
   params.append("class", "Residential");
   params.append("class", "Condo");
@@ -265,7 +267,7 @@ async function getMonthlySales(
   };
 }
 
-async function refreshMarket(city: string) {
+async function refreshMarket(city: string, forceFull = false) {
   const marketKey = city
     .trim()
     .toLowerCase();
@@ -295,9 +297,7 @@ async function refreshMarket(city: string) {
   }
 
   const monthsToRefresh =
-    Number(existingCount || 0) >= 20
-      ? 4
-      : 24;
+    !forceFull && Number(existingCount || 0) >= 20 ? 4 : 24;
 
   const now = new Date();
 
@@ -497,7 +497,7 @@ export default async function handler(
 
   try {
     const result =
-      await refreshMarket(city);
+      await refreshMarket(city, url.searchParams.get("full") === "1");
 
     console.log(
       "Market history refresh complete",
