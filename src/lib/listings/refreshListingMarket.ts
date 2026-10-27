@@ -170,7 +170,10 @@ const COMOX_VALLEY_FETCH_CITIES = [
   "Royston",
   "Denman Island",
 ];
+const COLUMBIA_VALLEY_FETCH_CITIES = ["Invermere", "Windermere", "Radium Hot Springs", "Panorama"];
 const CITY_FETCH_GROUPS: Record<string, string[]> = {
+  "columbia valley": COLUMBIA_VALLEY_FETCH_CITIES,
+  "columbia-valley": COLUMBIA_VALLEY_FETCH_CITIES,
   comox: COMOX_VALLEY_FETCH_CITIES,
   parksville: OCEANSIDE_FETCH_CITIES,
 

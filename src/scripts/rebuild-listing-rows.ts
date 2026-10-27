@@ -535,6 +535,8 @@ const PARKSVILLE_MARKET_CITIES = new Set([
   "qualicum beach"
 ]);
 
+const COLUMBIA_VALLEY_MARKET_CITIES = new Set(["invermere", "windermere", "radium hot springs", "panorama"]);
+
 const DUNCAN_MARKET_CITIES = new Set([
   "duncan",
   "chemainus",
@@ -1859,7 +1861,9 @@ const normalized_city =
     ? "parksville"
     : DUNCAN_MARKET_CITIES.has(rawCity)
       ? "duncan"
-      : clean(rawCity);
+      : COLUMBIA_VALLEY_MARKET_CITIES.has(rawCity)
+        ? "columbia valley"
+        : clean(rawCity);
       const normalized_type = normalizeType(listing);
 
 const rowAddressForType = clean(getNormalizedAddress(listing));

@@ -450,6 +450,9 @@ const islandMarketKeys = [
   "tofino",
 ];
 
+const mountainMarketKeys = ["fernie", "sparwood", "elkford", "nelson", "rossland", "kimberley", "columbia valley", "columbia-valley", "golden", "revelstoke", "sun peaks", "sun-peaks", "whistler"];
+const isMountainPage = cityDatabaseKeys.some((cityKey) => mountainMarketKeys.includes(cityKey));
+
 const greaterVictoriaMarketKeys = [
   "victoria",
   "saanich",
@@ -467,12 +470,13 @@ const isGreaterVictoriaPage = cityDatabaseKeys.some((cityKey) =>
 );
 const comparisonMarketKeys = comparisonMarketScope || (
   isGreaterVictoriaPage
-    ? greaterVictoriaMarketKeys
-    : islandMarketKeys
+    ? greaterVictoriaMarketKeys : isMountainPage ? mountainMarketKeys : islandMarketKeys
 );
-const comparisonRegionLabel = comparisonMarketScope != null ? "BC Markets" : isGreaterVictoriaPage ? "Greater Victoria" : "Vancouver Island";
-const comparisonReadLabel = comparisonMarketScope != null ? "BC market read" : isGreaterVictoriaPage ? "Greater Victoria read" : "Island read";
-const comparisonReadHeading = comparisonMarketScope != null ? "BC markets are not all moving together." : isGreaterVictoriaPage ? "Greater Victoria is not moving as one market." : "The Island is not moving as one market.";
+const comparisonRegionLabel = comparisonMarketScope != null ? "BC Markets" : isGreaterVictoriaPage ? "Greater Victoria" : isMountainPage ? "BC Mountain Markets" : "Vancouver Island";
+const comparisonReadLabel = comparisonMarketScope != null ? "BC market read" : isGreaterVictoriaPage ? "Greater Victoria read" : isMountainPage ? "Mountain market read" : "Island read";
+const comparisonReadHeading = comparisonMarketScope != null ? "BC markets are not all moving together." : isGreaterVictoriaPage ? "Greater Victoria is not moving as one market." : isMountainPage ? "Mountain markets are not moving as one market." : "The Island is not moving as one market.";
+const allComparisonKeys = [...new Set([...comparisonMarketKeys, ...islandMarketKeys, ...greaterVictoriaMarketKeys, ...mountainMarketKeys, "kelowna"])];
+const nearbyMarketKeySet = new Set(comparisonMarketKeys);
 
 const {
   data: islandMonthlyRows = [],
@@ -488,10 +492,10 @@ const {
     median_days_on_market,
     average_sale_to_list_ratio
   `)
-  .in("city", comparisonMarketKeys)
+  .in("city", allComparisonKeys)
   .not("median_days_on_market", "is", null)
   .order("month_start", { ascending: false })
-  .limit(96);
+  .limit(3000);
 
 if (islandMonthlyError) {
   console.error(
@@ -579,7 +583,7 @@ for (const row of islandMonthlyRows || []) {
 }
 
 const islandMarketComparisons =
-  comparisonMarketKeys
+  allComparisonKeys
     .map((marketKey) => {
       const history = [
         ...(islandRowsByMarket.get(marketKey) ||
@@ -728,6 +732,7 @@ const smallMarketCities = new Set([
   "fernie",
   "sparwood",
   "elkford",
+  "nelson", "revelstoke", "golden", "columbia-valley", "columbia valley", "kimberley", "rossland", "sun-peaks", "sun peaks",
 ]);
 
 const usesRollingSmallMarketTrend =
@@ -1115,7 +1120,7 @@ const marketBehaviourSummary = latestMonth
 const priceTrendMonths =
   usesRollingSmallMarketTrend
     ? Array.from(
-        { length: 36 },
+        { length: 24 },
         (_, index) => {
           const latestKnownMonth = new Date(
             `${monthlyHistory.at(-1)?.month || new Date().toISOString().slice(0, 10)}T00:00:00Z`
@@ -1125,7 +1130,7 @@ const priceTrendMonths =
             Date.UTC(
               latestKnownMonth.getUTCFullYear(),
               latestKnownMonth.getUTCMonth() -
-                (35 - index),
+                (23 - index),
               1
             )
           );
@@ -1372,7 +1377,7 @@ const canonicalUrl =
   ).href;
 
 const socialImage =
-  "https://images.unsplash.com/photo-1542903660-eedba2cda473?auto=format&fit=crop&w=1200&q=72";
+  site?.hero_image_url || (site as any)?.featured_listing_images?.hero || (site as any)?.featured_listing_images?.card || "https://images.unsplash.com/photo-1542903660-eedba2cda473?auto=format&fit=crop&w=1200&q=72";
 
 const marketSeoSchema = {
   "@context": "https://schema.org",
@@ -1438,7 +1443,20 @@ const marketSeoSchema = {
     },
   ],
 };
----
+const nearbyMarketComparisons = islandMarketComparisons.filter((m: any) => nearbyMarketKeySet.has(m.key));
+const otherMarketComparisons = islandMarketComparisons.filter((m: any) => !nearbyMarketKeySet.has(m.key));
+const TYPE_NAV_PAGE: Record<string, string> = { house: "homes", condo: "condos", townhouse: "townhomes", land: "land" };
+const marketHeroImage = site?.hero_image_url || (site as any)?.featured_listing_images?.hero || (site as any)?.featured_listing_images?.card || "https://images.unsplash.com/photo-1542903660-eedba2cda473?auto=format&fit=crop&w=1200&q=72";
+const donutTypes = [...typeStats].filter((t: any) => t.count > 0).sort((a: any, b: any) => b.count - a.count);
+const donutTotal = donutTypes.reduce((sum: number, t: any) => sum + t.count, 0);
+const donutCirc = 2 * Math.PI * 70;
+let donutAcc = 0;
+const donutSlices = donutTypes.map((t: any, i: number) => {
+  const len = donutTotal ? (t.count / donutTotal) * donutCirc : 0;
+  const slice = { ...t, len, offset: -donutAcc, share: donutTotal ? Math.round((t.count / donutTotal) * 100) : 0, tone: [100, 72, 52, 36, 24, 16][i] ?? 14 };
+  donutAcc += len;
+  return slice;
+});---
 
 <Layout
   title={seoTitle}
@@ -1507,7 +1525,7 @@ const marketSeoSchema = {
 
   <main
     class="market-page"
-    style={`--market-hero-image:url("https://images.unsplash.com/photo-1542903660-eedba2cda473?auto=format&fit=crop&w=1200&q=72")`}
+    style={`--market-hero-image:url("${marketHeroImage}")`}
   >
     <section class="market-hero">
       <div>
@@ -1925,7 +1943,7 @@ const marketSeoSchema = {
           <p class="eyebrow">What happened to prices</p>
           <h2>
   {usesRollingSmallMarketTrend
-    ? "Three-year single-family sold-price trend"
+    ? "Two-year single-family sold-price trend"
     : "Median single-family home sold price"}
 </h2>
         </div>
@@ -1963,7 +1981,7 @@ const marketSeoSchema = {
 
           <p>
             {usesRollingSmallMarketTrend
-              ? "Across this three-year view"
+              ? "Across this two-year view"
               : "Across this two-year view"}{" "}
             the median single-family sold price moved{" "}
             <strong>
@@ -2152,7 +2170,7 @@ const marketSeoSchema = {
       </aside>
       <div class="price-chart">
         {priceBands.map((band) => (
-          <a href={band.href} class="price-row">
+          <a href={band.href} class:list={["price-row", { "is-top": band.count > 0 && band.count === maxPriceBandCount }]}>
             <span>{band.label}</span>
 
             <div class="price-row__track">
@@ -2200,21 +2218,46 @@ const marketSeoSchema = {
           starting point.
         </p>
       </aside>
-      <div class="type-grid">
-        {typeStats.map((item) => (
-          <a
-            class="type-card"
-            href={`/${city}?type=${encodeURIComponent(item.type)}`}
-          >
-            <span>{item.label}</span>
-            <strong>{item.count.toLocaleString()}</strong>
-            <small>
-              {item.medianPrice
-                ? `${formatPrice(item.medianPrice)} median`
-                : "Price data unavailable"}
-            </small>
-          </a>
-        ))}
+      <div class="type-donut">
+        <svg class="type-donut__chart" width="300" height="300" viewBox="0 0 180 180" role="img" aria-label="Share of active listings by property type">
+          <g transform="rotate(-90 90 90)">
+            <circle cx="90" cy="90" r="70" fill="none" stroke-width="22" style="stroke:var(--market-line)" />
+            {donutSlices.map((s, i) => (<circle class="type-donut__slice" data-idx={i} cx="90" cy="90" r="70" fill="none" stroke-width="22"
+                stroke-dasharray={`${Math.max(s.len - 1.5, 0.5)} ${donutCirc}`}
+                stroke-dashoffset={s.offset}
+                style={`stroke:color-mix(in srgb, var(--accent, #633a98) ${s.tone}%, #eef1f4)`}>
+                <title>{`${s.label}: ${s.count} (${s.share}%)`}</title>
+              </circle>
+            ))}
+          </g>
+          <text x="90" y="88" text-anchor="middle" class="type-donut__total">{donutTotal.toLocaleString()}</text>
+          <text x="90" y="108" text-anchor="middle" class="type-donut__caption">ACTIVE</text>
+        </svg>
+        <ul class="type-donut__legend">
+          {donutSlices.map((s, i) => (<li><a data-idx={i} data-label={s.label} data-share={`${s.share}%`} href={TYPE_NAV_PAGE[s.type] ? `/${city}/${TYPE_NAV_PAGE[s.type]}` : `/${city}?type=${encodeURIComponent(s.type)}`}>
+                <i style={`background:color-mix(in srgb, var(--accent, #633a98) ${s.tone}%, #eef1f4)`}></i>
+                <span class="type-donut__name">{s.label}</span>
+                <strong>{s.count.toLocaleString()}</strong>
+                <span class="type-donut__share">{s.share}%</span>
+                <span class="type-donut__median">{s.medianPrice ? `${formatPrice(s.medianPrice)} median` : ""}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+        <script is:inline>
+          document.querySelectorAll('.type-donut').forEach((d) => {
+            const total = d.querySelector('.type-donut__total'), cap = d.querySelector('.type-donut__caption');
+            const t0 = total.textContent, c0 = cap.textContent;
+            const slices = [...d.querySelectorAll('.type-donut__slice')], rows = [...d.querySelectorAll('.type-donut__legend a')];
+            const on = (i) => { const r = rows[i]; if (!r) return; d.classList.add('is-focus');
+              slices.forEach((s, k) => s.classList.toggle('is-on', k === i)); rows.forEach((x, k) => x.classList.toggle('is-on', k === i));
+              total.textContent = r.dataset.share; cap.textContent = (r.dataset.label || '').toUpperCase(); };
+            const off = () => { d.classList.remove('is-focus'); slices.concat(rows).forEach((x) => x.classList.remove('is-on')); total.textContent = t0; cap.textContent = c0; };
+            slices.concat(rows).forEach((el) => { const i = Number(el.dataset.idx);
+              el.addEventListener('mouseenter', () => on(i)); el.addEventListener('mouseleave', off);
+              el.addEventListener('focus', () => on(i)); el.addEventListener('blur', off); });
+          });
+        </script>
       </div>
     </section>
 
@@ -2222,7 +2265,7 @@ const marketSeoSchema = {
       <section class="market-section type-breakdown">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">Fernie by property type</p>
+            <p class="eyebrow">{marketLabel(String(city).replace(/-/g, " "))} by property type</p>
             <h2>How each segment is priced</h2>
           </div>
         </div>
@@ -2254,7 +2297,7 @@ const marketSeoSchema = {
       </section>
     )}
     <!-- island-market-comparison-ui-v1 -->
-    {islandMarketComparisons.length > 0 && (
+    {nearbyMarketComparisons.length > 0 && (
       <section
         class="market-section island-comparison"
         aria-labelledby="island-comparison-title"
@@ -2283,13 +2326,13 @@ const marketSeoSchema = {
 
           <p>
             <strong>
-              {islandMarketComparisons.filter(
+              {nearbyMarketComparisons.filter(
                 (market: any) => market.classification === "Heating Up"
               ).length} markets are heating up
             </strong>
             {" "}and{" "}
             <strong>
-              {islandMarketComparisons.filter(
+              {nearbyMarketComparisons.filter(
                 (market: any) => market.classification === "Slowing Down"
               ).length} are slowing down
             </strong>.
@@ -2306,7 +2349,7 @@ const marketSeoSchema = {
                   .replace(/\s+/g, "-")}`}
               >
                 <strong>
-                  {islandMarketComparisons.filter(
+                  {nearbyMarketComparisons.filter(
                     (market: any) =>
                       market.classification === classification
                   ).length}
@@ -2400,7 +2443,7 @@ const marketSeoSchema = {
             <span aria-hidden="true"></span>
           </div>
 
-          {islandMarketComparisons.map((market: any) => {
+          {nearbyMarketComparisons.map((market: any) => {
             const statusClass =
               market.classification
                 .toLowerCase()
@@ -2495,6 +2538,254 @@ const marketSeoSchema = {
           expensive or inexpensive. Median prices can also move when the
           mix of homes sold changes.
         </p>
+      </section>
+    )}
+
+    <!-- other-bc-market-comparison -->
+    {otherMarketComparisons.length > 0 && (
+      <section
+        class="market-section island-comparison island-comparison--other"
+        aria-labelledby="other-comparison-title"
+      >
+        <div class="section-heading island-comparison__heading">
+          <div>
+            <p class="eyebrow">Elsewhere in BC</p>
+            <h2 id="other-comparison-title">
+              How other BC markets are moving
+            </h2>
+          </div>
+
+          <p>
+            The latest complete month is compared with three months
+            earlier using prices, days on market, sale-to-list ratios,
+            and sales relative to new listings.
+          </p>
+        </div>
+
+        <aside class="market-section__read island-comparison__read">
+          <p class="market-section__read-label">
+            BC market read
+          </p>
+
+          <h3>Markets elsewhere in BC.</h3>
+
+          <p>
+            <strong>
+              {otherMarketComparisons.filter(
+                (market: any) => market.classification === "Heating Up"
+              ).length} markets are heating up
+            </strong>
+            {" "}and{" "}
+            <strong>
+              {otherMarketComparisons.filter(
+                (market: any) => market.classification === "Slowing Down"
+              ).length} are slowing down
+            </strong>.
+            {" "}Use the table to compare direction, then look at each market's
+            sample size and local inventory before drawing a conclusion.
+          </p>
+        </aside>
+        <div class="island-comparison__summary">
+          {["Heating Up", "Steady", "Mixed", "Slowing Down"].map(
+            (classification) => (
+              <span
+                class={`island-status island-status--${classification
+                  .toLowerCase()
+                  .replace(/\s+/g, "-")}`}
+              >
+                <strong>
+                  {otherMarketComparisons.filter(
+                    (market: any) =>
+                      market.classification === classification
+                  ).length}
+                </strong>
+                {classification}
+              </span>
+            )
+          )}
+        </div>
+
+        <div class="island-comparison__mobile-sort">
+          <label for="other-market-sort">
+            Rank markets by
+          </label>
+
+          <select id="other-market-sort">
+            <option value="default">
+              Overall market view
+            </option>
+            <option value="momentum:desc">
+              Strongest momentum
+            </option>
+            <option value="price:desc">
+              Largest price increase
+            </option>
+            <option value="dom:asc">
+              Fastest-selling markets
+            </option>
+            <option value="sale-list:desc">
+              Highest sale-to-list ratio
+            </option>
+            <option value="sales-new:desc">
+              Strongest sales activity
+            </option>
+            <option value="market:asc">
+              Market name
+            </option>
+          </select>
+        </div>
+
+        <div class="island-market-table">
+          <div class="island-market-table__head">
+            <button
+              type="button"
+              data-island-sort="market"
+              data-default-direction="asc"
+            >
+              Market <i aria-hidden="true"></i>
+            </button>
+
+            <button
+              type="button"
+              data-island-sort="momentum"
+              data-default-direction="desc"
+            >
+              Momentum <i aria-hidden="true"></i>
+            </button>
+
+            <button
+              type="button"
+              data-island-sort="price"
+              data-default-direction="desc"
+            >
+              3-month price <i aria-hidden="true"></i>
+            </button>
+
+            <button
+              type="button"
+              data-island-sort="dom"
+              data-default-direction="asc"
+            >
+              3-month DOM <i aria-hidden="true"></i>
+            </button>
+
+            <button
+              type="button"
+              data-island-sort="sale-list"
+              data-default-direction="desc"
+            >
+              Sale to list <i aria-hidden="true"></i>
+            </button>
+
+            <button
+              type="button"
+              data-island-sort="sales-new"
+              data-default-direction="desc"
+            >
+              Sales / new <i aria-hidden="true"></i>
+            </button>
+
+            <span aria-hidden="true"></span>
+          </div>
+
+          {otherMarketComparisons.map((market: any) => {
+            const statusClass =
+              market.classification
+                .toLowerCase()
+                .replace(/\s+/g, "-");
+
+            const priceDisplay =
+              market.priceChange == null
+                ? "—"
+                : `${market.priceChange >= 0 ? "+" : ""}${market.priceChange.toFixed(1)}%`;
+
+            const domDisplay =
+              `${market.domChange > 0 ? "+" : ""}${market.domChange} days`;
+
+            return (
+              <a
+                href={market.href}
+                data-island-market-row
+                data-sort-market={market.label.toLowerCase()}
+                data-sort-momentum={market.score}
+                data-sort-price={market.priceChange ?? -9999}
+                data-sort-dom={market.domChange}
+                data-sort-sale-list={market.latestSaleToList}
+                data-sort-sales-new={market.latestAbsorption}
+                class:list={[
+                  "island-market-row",
+                  {
+                    "is-current": market.isCurrent,
+                    "is-thin-sample": market.thinSample,
+                  },
+                ]}
+              >
+                <span class="island-market-row__market">
+                  <strong>{market.label}</strong>
+
+                  <span class="island-market-row__badges">
+                    {market.isCurrent && (
+                      <em>Current market</em>
+                    )}
+
+                    {market.thinSample && (
+                      <small>Smaller sample</small>
+                    )}
+                  </span>
+                </span>
+
+                <span
+                  class={`island-status island-status--${statusClass}`}
+                >
+                  {market.classification}
+                </span>
+
+                <span data-label="3-month price">
+                  {priceDisplay}
+                </span>
+
+                <span data-label="3-month DOM">
+                  {domDisplay}
+                </span>
+
+                <span data-label="Sale to list">
+                  {market.latestSaleToList > 0
+                    ? `${market.latestSaleToList.toFixed(1)}%`
+                    : "—"}
+                </span>
+
+                <span data-label="Sales / new">
+                  {market.latestAbsorption > 0
+                    ? `${market.latestAbsorption.toFixed(0)}%`
+                    : "—"}
+                </span>
+
+                <span
+                  class="island-market-row__arrow"
+                  aria-hidden="true"
+                >
+                  →
+                </span>
+
+                <small class="island-market-row__summary">
+                  {market.interpretation}
+                  {market.thinSample
+                    ? " This market has a smaller sales sample, so month-to-month movement should be read cautiously."
+                    : ""}
+                </small>
+              </a>
+            );
+          })}
+        </div>
+
+        <p class="island-comparison__method">
+          Momentum describes recent direction, not whether a market is
+          expensive or inexpensive. Median prices can also move when the
+          mix of homes sold changes.
+        </p>
+        {otherMarketComparisons.length > 6 && (
+          <button type="button" class="island-comparison__more" onclick="const s=this.closest('section');s.classList.toggle('is-expanded');this.textContent=s.classList.contains('is-expanded')?'Show fewer markets':'Show all BC markets';">Show all BC markets</button>
+        )}
       </section>
     )}
     <section class="market-note">
@@ -3482,13 +3773,13 @@ const marketSeoSchema = {
 
   .type-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 10px;
   }
 
   .type-card {
-    min-height: 145px;
-    padding: 26px;
+    min-height: 0;
+    padding: 14px 16px;
     border: 1px solid var(--market-line);
     background: #fbf9fc;
     color: var(--market-ink);
@@ -3518,9 +3809,9 @@ const marketSeoSchema = {
 
   .type-card strong {
     display: block;
-    margin: 15px 0 5px;
+    margin: 6px 0 2px;
     font-family: var(--f-display, Georgia, serif);
-    font-size: 2.3rem;
+    font-size: 1.6rem;
     font-weight: 500;
   }
 
@@ -3976,23 +4267,24 @@ const marketSeoSchema = {
     }
   }
   :global(.sold-price-trend__area) {
-    fill: #633a98 !important;
-    fill-opacity: .11 !important;
+    fill: var(--market-text, #1f2328) !important;
+    fill-opacity: .04 !important;
     stroke: none !important;
   }
 
   :global(.sold-price-trend__line) {
     fill: none !important;
-    stroke: #633a98 !important;
-    stroke-width: 4 !important;
+    stroke: #64748b !important;
+    stroke-width: 2.25 !important;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
 
   :global(.sold-price-trend__point) {
-    fill: #633a98 !important;
-    stroke: #fff !important;
-    stroke-width: 2 !important;
+    fill: #fff !important;
+    stroke: var(--market-muted, #8a8f98) !important;
+    stroke-width: 1.5 !important;
+    r: 3;
   }
   .market-trend [hidden] {
     display: none !important;
@@ -4075,7 +4367,6 @@ const marketSeoSchema = {
   }
   /* Shared Market Intelligence hero image */
   .market-hero {
-    --market-hero-image: url("https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=2000&q=88") !important;
   }
   /* definitive-market-hero-image-v1 */
   .market-page .market-hero {
@@ -4087,7 +4378,7 @@ const marketSeoSchema = {
         rgba(7, 22, 34, .34) 68%,
         rgba(7, 22, 34, .12) 100%
       ),
-      url("https://images.unsplash.com/photo-1542903660-eedba2cda473?auto=format&fit=crop&w=1200&q=72")
+      var(--market-hero-image)
       !important;
 
     background-position: center !important;
@@ -4664,13 +4955,64 @@ const marketSeoSchema = {
 
   .market-pulse__read {
     border-left: 0;
-    border-top: 1px solid</style>
+    border-top: 1px solid var(--market-line);
+  }
+}
+</style>
 
 <style>
   /* market-section-read-spacing-v1 */
   .market-section__read {
     margin-bottom: 16px;
   }
+
+  /* price-distribution-light-v1 */
+  .price-chart { padding: 0 !important; background: none !important; color: inherit !important; border-top: 1px solid var(--market-line) !important; }   .price-row { grid-template-columns: 120px minmax(0, 1fr) 44px !important; gap: 18px !important; margin: 0 !important; padding: 10px 0 !important; border-radius: 0 !important; border-bottom: 1px solid var(--market-line) !important; color: var(--market-text) !important; }   .price-row:hover, .price-row:focus-visible { background: none !important; transform: none !important; }   .price-row > span { font-size: .8rem !important; font-weight: 600 !important; color: var(--market-muted) !important; }   .price-row:hover > span, .price-row:focus-visible > span { color: var(--accent, #633a98) !important; transform: none !important; }   .price-row__track { height: 6px !important; border-radius: 3px !important; background: color-mix(in srgb, var(--accent, #633a98) 8%, transparent) !important; }   .price-row__track i { border-radius: 3px !important; background: color-mix(in srgb, var(--accent, #633a98) 35%, white) !important; background-size: auto !important; filter: none !important; }   .price-row.is-top .price-row__track i, .price-row:hover .price-row__track i, .price-row:focus-visible .price-row__track i { background: var(--accent, #633a98) !important; filter: none !important; }   .price-row > strong { font-family: inherit !important; font-size: .85rem !important; font-weight: 700 !important; color: var(--market-text) !important; }   .price-row:hover > strong, .price-row:focus-visible > strong { color: var(--accent, #633a98) !important; transform: none !important; }   .price-row.is-top > span { color: var(--market-text) !important; }   @media (max-width: 700px) { .price-chart { margin: 0 !important; padding: 0 !important; } .price-row { grid-template-columns: 96px minmax(0, 1fr) 32px !important; gap: 10px !important; } }
+
+  /* other-bc-collapse-v1 */
+  .island-comparison--other:not(.is-expanded) .island-market-table > a:nth-of-type(n+7) { display: none !important; }
+  .island-comparison__more { display: block; margin: 18px auto 0; padding: 10px 20px; border: 1px solid var(--market-line); border-radius: 6px; background: none; color: var(--market-text); font: inherit; font-size: .82rem; font-weight: 700; cursor: pointer; }
+  .island-comparison__more:hover { border-color: var(--accent, #633a98); color: var(--accent, #633a98); }
+
+  /* listings-chart-calm-v1 */
+  .market-trend__line { stroke-width: 2.25 !important; }
+  .market-trend__line--listings { stroke: #64748b !important; }
+  .market-trend__line--sales { stroke: var(--accent, #633a98) !important; }
+  .market-trend__point { fill: #fff !important; stroke-width: 1.5 !important; r: 3; }
+  .market-trend__point--listings { stroke: #64748b !important; }
+  .market-trend__point--sales { stroke: var(--accent, #633a98) !important; }
+  .market-trend__legend .is-listings { color: #64748b !important; }
+  .market-trend__legend .is-sales { color: var(--accent, #633a98) !important; }
+
+  /* type-donut-v1 */
+  .type-donut { display: grid !important; grid-template-columns: 300px minmax(0, 1fr) !important; gap: 44px !important; align-items: center !important; }
+  .type-donut__chart { width: 300px !important; height: 300px !important; max-width: 300px !important; flex: none !important; }
+  .type-donut__total { fill: var(--market-text) !important; font-family: var(--f-display, Georgia, serif) !important; font-size: 30px !important; }
+  .type-donut__caption { fill: var(--market-muted) !important; font-size: 9px !important; font-weight: 700 !important; letter-spacing: .14em !important; }
+  .type-donut__legend { margin: 0 !important; padding: 0 !important; list-style: none !important; border-top: 1px solid var(--market-line) !important; }
+  .type-donut__legend a { display: grid !important; grid-template-columns: 10px minmax(0, 1fr) 56px 48px 120px !important; gap: 14px !important; align-items: center !important; padding: 11px 0 !important; border-bottom: 1px solid var(--market-line) !important; color: var(--market-text) !important; font-size: .86rem !important; text-decoration: none !important; }
+  .type-donut__legend i { width: 10px !important; height: 10px !important; border-radius: 2px !important; }
+  .type-donut__name { font-weight: 650 !important; }
+  .type-donut__legend strong { text-align: right !important; font-weight: 700 !important; }
+  .type-donut__share, .type-donut__median { color: var(--market-muted) !important; font-size: .78rem !important; text-align: right !important; }
+  .type-donut__legend a:hover .type-donut__name { color: var(--accent, #633a98) !important; }
+  @media (max-width: 700px) {
+    .type-donut { grid-template-columns: 1fr !important; gap: 20px !important; justify-items: center !important; }
+    .type-donut__chart { width: 230px !important; height: 230px !important; max-width: 230px !important; }
+    .type-donut__legend { width: 100% !important; }
+    .type-donut__legend a { grid-template-columns: 10px minmax(0, 1fr) 44px 40px !important; }
+    .type-donut__median { display: none !important; }
+  }
+
+  /* type-donut-interactive-v1 */
+  .type-donut__slice { cursor: pointer; transition: opacity .2s ease, stroke-width .2s ease; }
+  .type-donut.is-focus .type-donut__slice { opacity: .25 !important; }
+  .type-donut.is-focus .type-donut__slice.is-on { opacity: 1 !important; stroke-width: 27 !important; }
+  .type-donut__legend a { transition: opacity .2s ease; }
+  .type-donut.is-focus .type-donut__legend a { opacity: .45 !important; }
+  .type-donut.is-focus .type-donut__legend a.is-on { opacity: 1 !important; }
+  .type-donut__legend a.is-on .type-donut__name { color: var(--accent, #633a98) !important; }
+  .type-donut__caption { font-size: 8px !important; letter-spacing: .1em !important; }
 </style>
 <!-- market-pulse-mobile-clean-v1 -->
 <style is:global>
