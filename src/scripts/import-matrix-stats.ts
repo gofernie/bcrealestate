@@ -7,6 +7,7 @@ import { resolve } from "node:path";
 
 // Which Matrix "Minor Area" values count as each town. Edit here to widen a town.
 const CITY_AREAS: Record<string, string[]> = {
+  fernie: ["FE - Fernie", "FERU - Ski Hill Area", "FERU - West/East of Fernie", "FERU - Elk Valley Rural", "FERU - West Fernie"],
   nelson: ["NE - Nelson", "NERU - North Nelson to Kokanee Creek", "NERU - Kokanee Creek to Balfour", "NERU - Nelson West/South Slocan", "NERU - Nelson South/Salmo Rural", "NERU - Harrop/Procter"],
 };
 const RESIDENTIAL = new Set([
@@ -130,7 +131,7 @@ async function main() {
     const { error } = await db.from("market_sale_records").insert(uniq.slice(i, i + 500).map((s) => ({ ...s, imported_at: now })));
     if (error) throw new Error(`insert market_sale_records: ${error.message}`);
   }
-  const { error: se } = await db.from("market_monthly_stats").insert(stats);
+  const { error: se } = await db.from("market_monthly_stats").upsert(stats, { onConflict: "city,month_start" });
   if (se) throw new Error(`insert market_monthly_stats: ${se.message}`);
   console.log(`Wrote ${uniq.length} sale records and ${stats.length} monthly rows for ${city}.`);
 
