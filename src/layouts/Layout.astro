@@ -1617,10 +1617,31 @@ html body .together__card #together-submit { border-radius: 6px !important; }
   const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const copy = (el, ref, props) => { if (!el || !ref) return; const cs = getComputedStyle(ref); props.forEach((p) => el.style.setProperty(p, cs.getPropertyValue(p), "important")); };
   const close = () => { document.getElementById("lead-inline")?.remove(); };
+  /* card-icons-v1 */
+  const SVG = {
+    together: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M15.5 14.2c3 .2 5.5 2.6 5.5 5.8"/></svg>',
+    "book-showing-btn": '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M8.5 14.5l2.2 2.2 4.3-4.3"/></svg>',
+    "ask-question-btn": '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/><path d="M9.6 8.6a2.5 2.5 0 0 1 4.8.9c0 1.6-2.4 2-2.4 3.2"/><path d="M12 15h.01"/></svg>'
+  };
+  const addHead = (root, svg) => {
+    if (!root) return;
+    const t = root.querySelector(".together__title, .li-title"), s = root.querySelector(".together__sub, .li-sub");
+    if (!t || t.closest(".card-head")) return;
+    const head = document.createElement("div"); head.className = "card-head"; head.style.cssText = "display:flex;align-items:center;gap:12px;margin-bottom:4px;text-align:left;";
+    const ic = document.createElement("div"); ic.innerHTML = svg;
+    const ref = document.querySelector("#watch-home-card svg") && document.querySelector("#watch-home-card svg").parentElement;
+    if (ref) { const cs = getComputedStyle(ref); ["background-color", "color", "width", "height", "border-radius", "display", "align-items", "justify-content"].forEach((p) => ic.style.setProperty(p, cs.getPropertyValue(p), "important")); }
+    else { ic.style.cssText = "display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:var(--accent,#2f4a66);color:#fff;"; }
+    ic.style.setProperty("flex", "0 0 auto", "important"); /* card-icons-white */ ic.style.setProperty("color", "#fff", "important"); ic.querySelectorAll("svg, svg *").forEach((n) => { n.style.setProperty("stroke", "#fff", "important"); n.style.setProperty("color", "#fff", "important"); });
+    const txt = document.createElement("div"); txt.style.cssText = "min-width:0;";
+    t.before(head); head.append(ic, txt); txt.append(t); if (s) { txt.append(s); s.style.setProperty("margin-bottom", "0", "important"); }
+    t.style.setProperty("margin-bottom", "2px", "important");
+  };
+  document.addEventListener("click", (e) => { if (e.target.closest && e.target.closest("#together-btn")) setTimeout(() => addHead(document.getElementById("together-form"), SVG.together), 0); }, false);
   const style = (card) => {
     const tc = document.getElementById("together-card"), tn = document.getElementById("together-name"), ts = document.getElementById("together-submit");
     copy(card, tc, ["background-color", "border-top-width", "border-top-style", "border-top-color", "border-right-width", "border-right-style", "border-right-color", "border-bottom-width", "border-bottom-style", "border-bottom-color", "border-left-width", "border-left-style", "border-left-color", "padding-top", "padding-right", "padding-bottom", "padding-left", "color", "font-family"]);
-    card.style.setProperty("border-radius", "6px", "important"); card.style.setProperty("box-sizing", "border-box", "important"); card.style.setProperty("display", "block", "important");
+    card.style.setProperty("border-radius", "6px", "important"); card.style.setProperty("box-sizing", "border-box", "important"); card.style.setProperty("text-align", "left", "important"); /* lead-inline-left */ card.style.setProperty("display", "block", "important");
     copy(card.querySelector(".li-title"), document.querySelector("#together-card .together__title"), ["font-size", "font-weight", "color", "margin-bottom", "line-height"]);
     copy(card.querySelector(".li-sub"), document.querySelector("#together-card .together__sub"), ["font-size", "color", "line-height", "margin-bottom"]);
     card.querySelectorAll("label").forEach((lb) => { copy(lb, tn && tn.parentElement, ["font-size", "font-weight", "color"]); lb.style.setProperty("display", "grid", "important"); lb.style.setProperty("gap", "6px", "important"); });
@@ -1655,7 +1676,7 @@ html body .together__card #together-submit { border-radius: 6px !important; }
     anchor.after(card);
     const w = anchor.getBoundingClientRect().width; if (w > 0) card.style.setProperty("width", w + "px", "important");
     card.style.setProperty("max-width", "100%", "important"); card.style.setProperty("margin", "14px auto 0", "important");
-    style(card);
+    style(card); addHead(card, SVG[btnId]);
     card.addEventListener("click", (e) => { const q = e.target.closest && e.target.closest("[data-q]"); if (q) { const t = card.querySelector('textarea[name="question"]'); if (t) { t.value = q.dataset.q; t.focus(); } } });
     card.querySelector("form").addEventListener("submit", async (e) => {
       e.preventDefault(); const f = e.target; const v = (n) => (f.elements[n] ? f.elements[n].value.trim() : "");
@@ -1667,14 +1688,14 @@ html body .together__card #together-submit { border-radius: 6px !important; }
       try {
         const r = await fetch("/api/intent-lead", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, email, phone, source: cfg.kicker, question, message: [cfg.note, question ? `Question: ${question}` : "", d._address || d.address ? `Property: ${d._address || d.address}` : "", d.listing_url ? `Listing: ${d.listing_url}` : ""].filter(Boolean).join("\n"), ...d }) });
         if (!r.ok) throw new Error(String(r.status));
-        f.innerHTML = `<div class="li-title">${cfg.done}</div><div class="li-sub">${cfg.doneSub}</div>`; style(card);
+        f.innerHTML = `<div class="li-title">${cfg.done}</div><div class="li-sub">${cfg.doneSub}</div>`; style(card); addHead(card, SVG[btnId]);
       } catch (err) { go.disabled = false; go.textContent = cfg.button; msg.textContent = "That didn't send. Please try again."; msg.style.setProperty("color", "#b3261e", "important"); }
     });
     card.querySelector('input[name="name"]')?.focus({ preventScroll: true });
   };
   document.addEventListener("click", (e) => {
     const b = e.target.closest && e.target.closest("#book-showing-btn, #ask-question-btn");
-    if (b && b.closest("#sheet-engage") && typeof window.__leadData === "function") { e.stopPropagation(); e.preventDefault(); open(b.id); return; }
+    if (b && b.closest("#sheet-engage") && typeof window.__leadData === "function") { /* lead-inline-safe */ try { open(b.id); if (document.getElementById("lead-inline") || !document.getElementById("lead-inline-was")) { e.stopPropagation(); e.preventDefault(); } } catch (err) { console.error("[lead-inline] failed, using old form:", err); document.getElementById("lead-inline")?.remove(); } return; }
     if (e.target.closest && e.target.closest("#watch-home-btn, #together-btn")) close();
     setTimeout(() => { const c = document.getElementById("lead-inline"); if (!c || typeof window.__leadData !== "function") return; const d = window.__leadData() || {}; const id = d.listing_id || d.mls_number || ""; if (id && c.dataset.listing && id !== c.dataset.listing) close(); }, 120);
   }, true);
