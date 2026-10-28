@@ -2671,7 +2671,23 @@ const typePageNewThisWeek = listings.filter((listing) => {
   const listedTime = new Date(listing.listed_at || "").getTime();
   return Number.isFinite(listedTime) && listedTime >= sevenDaysAgo;
 }).length;
-/* EDUCATION_FIRST_DISCOVERY_FACTS_V1 */
+/* type-dom-freshness-v1 */
+const typePageDomValues = listings
+  .map((listing: any) => { const t = new Date(listing.listed_at || "").getTime(); return Number.isFinite(t) ? Math.max(0, Math.round((Date.now() - t) / 86400000)) : null; })
+  .filter((d: any) => d != null)
+  .sort((a: any, b: any) => a - b);
+const typePageMedianDom: number | null = typePageDomValues.length ? typePageDomValues[Math.floor(typePageDomValues.length / 2)] : null;
+const { data: lastRefreshRun } = await supabase
+  .from("listing_refresh_runs")
+  .select("completed_at")
+  .in("city", [...new Set([city, ...cityDatabaseKeys].map((k) => String(k).replace(/-/g, " ").toLowerCase()))])
+  .eq("status", "completed")
+  .order("completed_at", { ascending: false })
+  .limit(1)
+  .maybeSingle();
+const typePageUpdatedLabel = lastRefreshRun?.completed_at
+  ? "Updated " + new Date(lastRefreshRun.completed_at).toLocaleDateString("en-CA", { month: "short", day: "numeric", timeZone: "America/Vancouver" })
+  : "Updated daily";/* EDUCATION_FIRST_DISCOVERY_FACTS_V1 */
 type DiscoveryFact = {
   kicker: string;
   title: string;
@@ -9887,7 +9903,7 @@ grid-template-columns: 30px minmax(0, 1fr);
           <strong>
             {typePageMedianPrice
               ? formatPrice(typePageMedianPrice)
-              : "|"}
+              : "—"}
           </strong>
           <span>Median price</span>
           <small>Current area inventory</small>
@@ -10122,7 +10138,7 @@ grid-template-columns: 30px minmax(0, 1fr);
               <strong>
                 {typePageMedianPrice
                   ? formatPrice(typePageMedianPrice)
-                  : "|"}
+                  : "—"}
               </strong>
               <span>Median price</span>
               <small>Current listings</small>
@@ -10167,17 +10183,17 @@ grid-template-columns: 30px minmax(0, 1fr);
                   ? `${Number(marketMetric.price_change_yoy) > 0 ? "+" : ""}${Number(
                       marketMetric.price_change_yoy
                     ).toFixed(1)}%`
-                  : "Live"}
+                  : typePageMedianDom != null ? `${typePageMedianDom} day${typePageMedianDom === 1 ? "" : "s"}` : "Live"}
               </strong>
               <span>
                 {marketMetric?.price_change_yoy != null
                   ? "Price change"
-                  : "Market data"}
+                  : typePageMedianDom != null ? "Median days on market" : "Market data"}
               </span>
               <small>
                 {marketMetric?.price_change_yoy != null
                   ? "Year over year"
-                  : "Updated regularly"}
+                  : typePageUpdatedLabel}
               </small>
             </div>
           </article>
