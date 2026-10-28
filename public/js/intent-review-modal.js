@@ -4578,6 +4578,7 @@ function getActiveListingLeadData() {
         : window.location.href,
   };
 }
+window.__leadData = () => { try { return { ...getActiveListingLeadData(), _address: (typeof activeCard !== "undefined" && activeCard?.dataset?.address) || "" }; } catch (e) { return {}; } };
 function showLeadCaptureForm(options = {}) {
   if (!sheetContent || !sheetSummary) return;
 

@@ -298,7 +298,81 @@ html body *:has(> article > .type-stat-icon) { margin-bottom: 32px !important; }
     if (Math.abs(dv) < 20) av.style.transform = `translateY(${dv.toFixed(1)}px)`;
   };
   const tagMore = () => { /* more-filters-wrap-v3 */ const b = document.querySelector(".type-more-filters-toggle"); const box = b && b.closest(".intent-controls"); if (!b || !box) return; ["grid-column", "justify-self", "margin-left", "flex", "width"].forEach((k) => b.style.removeProperty(k)); const over = b.getBoundingClientRect().right > box.getBoundingClientRect().right + 1; if (over) { b.style.setProperty("grid-column", "1 / -1", "important"); b.style.setProperty("justify-self", "end", "important"); b.style.setProperty("width", "auto", "important"); } };
-  const run = () => { update(); updateAreas(); markArea(); matchTitles(); tagMore(); requestAnimationFrame(alignArea); };
+  /* hero-counts-v1 */
+  const heroTest = (dim, v, f) => {
+    if (!v) return true;
+    if (dim === "type") return f[3] === v;
+    if (dim === "maxPrice") { const b = heroBands()[v]; return !b || (f[0] > b[0] * 1000 && f[0] <= b[1] * 1000); }
+    if (dim === "beds") return f[1] >= +v;
+    if (dim === "baths") return f[2] >= +v;
+    return true;
+  };
+  const heroUpdate = () => {
+    const form = document.getElementById("home-hero-search"); const all = window.__heroFacts;
+    if (!form || !Array.isArray(all) || !all.length) return;
+    const picked = [...form.querySelectorAll('input[name="area"]:checked')].map((i) => nrm(i.value));
+    const facts = picked.length ? all.filter((f) => picked.includes(nrm(f[4]))) : all;
+    const dims = ["type", "maxPrice", "beds", "baths"]; const cur = {};
+    dims.forEach((d) => { const s = form.querySelector(`select[name="${d}"]`); cur[d] = s ? s.value : ""; });
+    dims.forEach((d) => {
+      const s = form.querySelector(`select[name="${d}"]`); const dd = s && s.parentElement.querySelector(".hero-single-dropdown"); if (!dd) return;
+      const base = facts.filter((f) => dims.every((k) => k === d || heroTest(k, cur[k], f)));
+      dd.querySelectorAll(".hero-single-dropdown__option").forEach((opt) => {
+        const n = base.filter((f) => heroTest(d, opt.dataset.value || "", f)).length;
+        let el = opt.querySelector(".hero-dd-count");
+        if (!el) { el = document.createElement("span"); el.className = "hero-dd-count"; opt.insertBefore(el, opt.querySelector(".hero-single-dropdown__check")); }
+        el.textContent = String(n); opt.classList.toggle("is-empty", n === 0); /* hero-old-counts-off */ [...opt.children].forEach((ch) => { if (ch !== el && !ch.classList.contains("hero-single-dropdown__check") && /^\s*[\d,]+\s*$/.test(ch.textContent || "")) ch.style.display = "none"; });
+      });
+    });
+  };
+  if (!document.getElementById("hero-count-css")) { const st = document.createElement("style"); st.id = "hero-count-css"; st.textContent = ".hero-single-dropdown__option{display:flex !important;align-items:center !important;}.hero-single-dropdown__option > span:first-child{flex:1 1 auto;text-align:left;}.hero-dd-count{margin-left:auto;min-width:3ch;padding:0 12px 0 14px;text-align:right;color:#8a9199;font-size:.82em;font-weight:600;font-variant-numeric:tabular-nums;}.hero-single-dropdown__check{flex:0 0 16px;width:16px;text-align:right;}.hero-single-dropdown__option.is-empty{opacity:.45;}"; document.head.appendChild(st); }
+  /* hero-price-bands-v1 */
+  const heroBands = () => {
+    const s = document.querySelector('#home-hero-search select[name="maxPrice"]'); const map = {};
+    if (!s) return map;
+    const nums = [...s.options].map((o) => o.value).filter((v) => /^\d+$/.test(v)).map(Number);
+    [...s.options].forEach((o) => { const v = o.value; if (/^\d+$/.test(v)) { const k = nums.indexOf(+v); map[v] = [k > 0 ? nums[k - 1] : 0, +v]; } else if (/^over-(\d+)$/.test(v)) { map[v] = [+v.replace("over-", ""), Infinity]; } });
+    return map;
+  };
+  const fmtK = (k) => (k >= 1000 ? (k / 1000).toFixed(2).replace(/\.?0+$/, "") + "M" : k + "k");
+  const relabelHeroPrice = () => {
+    const s = document.querySelector('#home-hero-search select[name="maxPrice"]'); if (!s) return;
+    const map = heroBands(); const dd = s.parentElement.querySelector(".hero-single-dropdown");
+    [...s.options].forEach((o) => {
+      const b = map[o.value]; if (!b) return;
+      const label = b[1] === Infinity ? `${fmtK(b[0])}+` : b[0] ? `${fmtK(b[0])}\u2013${fmtK(b[1])}` : `Under ${fmtK(b[1])}`;
+      o.textContent = label;
+      const co = dd && dd.querySelector(`.hero-single-dropdown__option[data-value="${o.value}"] > span:first-child`); if (co) co.textContent = label;
+      if (o.selected && dd) { const sum = dd.querySelector(".hero-single-dropdown__summary"); if (sum) sum.textContent = label; }
+    });
+  };
+  const setHeroMin = (v) => { const f = document.getElementById("home-hero-search"); const mi = f && f.querySelector('input[name="minPrice"]'); const b = heroBands()[v]; if (mi && b && b[1] !== Infinity) mi.value = b[0] ? String(b[0]) : ""; if (mi && !v) mi.value = ""; };
+  document.addEventListener("click", (e) => { const opt = e.target.closest && e.target.closest(".hero-single-dropdown__option"); if (!opt) return; const s = opt.closest(".hero-single-dropdown") && opt.closest(".hero-single-dropdown").parentElement.querySelector('select[name="maxPrice"]'); if (s) setHeroMin(opt.dataset.value || ""); }, true);
+  document.addEventListener("change", (e) => { if (e.target && e.target.name === "maxPrice") setHeroMin(e.target.value); }, true);
+  /* together-place-v1 */
+  const placeTogether = () => {
+    const t = document.getElementById("together"); const b = document.getElementById("together-btn");
+    const qa = b && b.closest(".panel__quick-actions"); if (!t || !qa) return;
+    if (qa.nextElementSibling !== t) qa.after(t);
+    const w = qa.getBoundingClientRect().width;
+    if (w > 0) { t.style.setProperty("width", w + "px", "important"); t.style.setProperty("max-width", "100%", "important"); }
+    t.style.setProperty("margin", "14px auto 0", "important"); t.style.setProperty("display", "block", "important");
+    const c = document.getElementById("together-card"); if (c) { c.style.setProperty("width", "100%", "important"); c.style.setProperty("box-sizing", "border-box", "important"); c.style.setProperty("margin", "0", "important"); }
+    /* watch-place-v1 */
+    const host = qa.parentElement; const head = [...host.querySelectorAll("*")].find((e) => !e.children.length && /^watch this home\??$/i.test(e.textContent.trim()));
+    if (head) {
+      let wrap = head; while (wrap.parentElement && wrap.parentElement !== host) wrap = wrap.parentElement;
+      if (wrap.parentElement === host && wrap !== qa && !wrap.contains(qa)) {
+        if (qa.nextElementSibling !== wrap) qa.after(wrap);
+        if (w > 0) { wrap.style.setProperty("width", w + "px", "important"); wrap.style.setProperty("max-width", "100%", "important"); }
+        wrap.style.setProperty("margin", "14px auto 0", "important"); wrap.style.setProperty("box-sizing", "border-box", "important");
+        [...wrap.children].forEach((ch) => { ch.style.setProperty("max-width", "100%", "important"); });
+        const card = wrap.querySelector("form, div"); if (card && wrap.children.length === 1) { card.style.setProperty("width", "100%", "important"); card.style.setProperty("box-sizing", "border-box", "important"); card.style.setProperty("margin", "0", "important"); }
+      }
+    }
+  };
+  document.addEventListener("click", (e) => { if (e.target.closest && e.target.closest(".panel__quick-actions")) { placeTogether(); setTimeout(placeTogether, 30); setTimeout(placeTogether, 150); } }, true);
+  const run = () => { update(); updateAreas(); markArea(); matchTitles(); tagMore(); relabelHeroPrice(); heroUpdate(); placeTogether(); requestAnimationFrame(alignArea); };
   window.addEventListener("resize", () => requestAnimationFrame(() => { tagMore(); alignArea(); }));
   const soon = () => { setTimeout(run, 80); setTimeout(run, 400); };
   document.addEventListener("change", soon);
@@ -308,7 +382,14 @@ html body *:has(> article > .type-stat-icon) { margin-bottom: 32px !important; }
 </script>
 <style>/* pill-square-v1 */ html body .filter-dd .filter-dd__value { border-radius: 6px !important; } html body .area-pill-on { border-radius: 6px !important; }</style>
 <style>/* more-filters-wrap-v1 */ html body .intent-controls { flex-wrap: wrap !important; row-gap: 12px !important; max-width: 100% !important; } html body .more-filters-btn { margin-left: auto !important; flex: 0 0 auto !important; white-space: nowrap !important; }</style>
-</head>
+<style>/* together-inline-v1 */
+
+
+html body .together__card { position: static !important; inset: auto !important; transform: none !important; grid-column: 1 / -1 !important; order: 99 !important; flex: 0 0 auto !important; align-self: stretch !important; width: 100% !important; max-width: none !important; box-sizing: border-box !important; margin: 14px 0 0 !important; border-radius: 6px !important; box-shadow: none !important; }
+html body .together__card[hidden] { display: none !important; }
+html body .together__card input { border-radius: 6px !important; }
+html body .together__card #together-submit { border-radius: 6px !important; }
+</style></head>
 
 <body data-google-maps-api-key={import.meta.env.PUBLIC_GOOGLE_MAPS_API_KEY || ""}>
     <slot />
@@ -1525,6 +1606,78 @@ html body *:has(> article > .type-stat-icon) { margin-bottom: 32px !important; }
   el.append(txt, x);
   const show = () => { document.body.appendChild(el); setTimeout(close, 10000); };
   if (document.body) show(); else document.addEventListener("DOMContentLoaded", show, { once: true });
+})();
+</script><script is:inline>
+(() => {
+  /* lead-inline-v1 */
+  const KIND = {
+    "book-showing-btn": { kicker: "Book a showing", title: "Want to see this home?", sub: "Leave your details and we'll be in touch to confirm a time.", button: "Request a showing", note: "I'd like to arrange a showing for this property.", ask: false, done: "Request sent", doneSub: "We'll be in touch shortly to confirm a time that works for you." },
+    "ask-question-btn": { kicker: "Ask a question", title: "Ask about this home", sub: "We'll follow up, usually within a few hours.", button: "Send question", note: "I'm interested in this property and have a question.", ask: true, done: "Question sent", doneSub: "Thanks. We'll get back to you as soon as possible, usually within a few hours." }
+  };
+  const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const copy = (el, ref, props) => { if (!el || !ref) return; const cs = getComputedStyle(ref); props.forEach((p) => el.style.setProperty(p, cs.getPropertyValue(p), "important")); };
+  const close = () => { document.getElementById("lead-inline")?.remove(); };
+  const style = (card) => {
+    const tc = document.getElementById("together-card"), tn = document.getElementById("together-name"), ts = document.getElementById("together-submit");
+    copy(card, tc, ["background-color", "border-top-width", "border-top-style", "border-top-color", "border-right-width", "border-right-style", "border-right-color", "border-bottom-width", "border-bottom-style", "border-bottom-color", "border-left-width", "border-left-style", "border-left-color", "padding-top", "padding-right", "padding-bottom", "padding-left", "color", "font-family"]);
+    card.style.setProperty("border-radius", "6px", "important"); card.style.setProperty("box-sizing", "border-box", "important"); card.style.setProperty("display", "block", "important");
+    copy(card.querySelector(".li-title"), document.querySelector("#together-card .together__title"), ["font-size", "font-weight", "color", "margin-bottom", "line-height"]);
+    copy(card.querySelector(".li-sub"), document.querySelector("#together-card .together__sub"), ["font-size", "color", "line-height", "margin-bottom"]);
+    card.querySelectorAll("label").forEach((lb) => { copy(lb, tn && tn.parentElement, ["font-size", "font-weight", "color"]); lb.style.setProperty("display", "grid", "important"); lb.style.setProperty("gap", "6px", "important"); });
+    card.querySelectorAll("input, textarea").forEach((i) => { copy(i, tn, ["background-color", "border-top-width", "border-top-style", "border-top-color", "border-right-width", "border-right-style", "border-right-color", "border-bottom-width", "border-bottom-style", "border-bottom-color", "border-left-width", "border-left-style", "border-left-color", "padding-left", "padding-right", "font-size", "color", "font-family"]); i.style.setProperty("border-radius", "6px", "important"); i.style.setProperty("width", "100%", "important"); i.style.setProperty("box-sizing", "border-box", "important"); if (i.tagName === "INPUT") copy(i, tn, ["height"]); else { i.style.setProperty("padding-top", "10px", "important"); i.style.setProperty("resize", "vertical", "important"); } });
+    const go = card.querySelector(".li-go"); copy(go, ts, ["background-color", "color", "height", "font-size", "font-weight", "font-family", "border-top-width", "border-top-style", "border-top-color"]); if (go) { go.style.setProperty("border-radius", "6px", "important"); go.style.setProperty("width", "100%", "important"); go.style.setProperty("cursor", "pointer", "important"); go.style.setProperty("margin-top", "12px", "important"); }
+    const grid = card.querySelector(".li-grid"); if (grid) { grid.style.cssText = "display:grid;gap:10px;margin-top:12px;grid-template-columns:" + (matchMedia("(max-width: 520px)").matches ? "1fr" : "1fr 1fr") + ";"; }
+    card.querySelectorAll(".li-chips button").forEach((b) => { b.style.cssText = "appearance:none;border:1px solid rgba(16,32,44,.18);border-radius:6px;background:#fff;color:inherit;padding:6px 10px;font:inherit;font-size:.8rem;cursor:pointer;"; });
+    const chips = card.querySelector(".li-chips"); if (chips) chips.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;";
+    card.querySelectorAll(".li-fine").forEach((f) => { f.style.cssText = "margin-top:10px;font-size:.78rem;opacity:.75;"; });
+  };
+  const open = (btnId) => {
+    const cfg = KIND[btnId]; const existing = document.getElementById("lead-inline");
+    if (existing && existing.dataset.kind === btnId) { close(); return; }
+    close();
+    const engage = document.getElementById("sheet-engage"); const anchor = engage && (engage.querySelector(".panel__quick-actions") || engage.querySelector(".panel__engage-actions")); if (!anchor) return;
+    ["watch-home-card", "together-card"].forEach((id) => { const c = document.getElementById(id); if (c) c.hidden = true; });
+    document.getElementById("watch-home-btn")?.setAttribute("aria-expanded", "false"); document.getElementById("together-btn")?.setAttribute("aria-expanded", "false");
+    const data = window.__leadData() || {};
+    const card = document.createElement("div"); card.id = "lead-inline"; card.dataset.kind = btnId; card.dataset.listing = data.listing_id || data.mls_number || "";
+    card.innerHTML = `<form novalidate>
+      <div class="li-title">${cfg.title}</div><div class="li-sub">${cfg.sub}</div>
+      <div class="li-grid">
+        <label>Your name<input name="name" autocomplete="name"></label>
+        <label>Mobile<input name="phone" type="tel" inputmode="tel" autocomplete="tel"></label>
+        <label style="grid-column:1/-1">Email<input name="email" type="email" autocomplete="email"></label>
+        ${cfg.ask ? `<label style="grid-column:1/-1">Your question<textarea name="question" rows="3"></textarea></label>` : ""}
+      </div>
+      ${cfg.ask ? `<div class="li-chips">${["Is this still available?", "What are the monthly costs?", "Any recent updates or work done?"].map((q) => `<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>` : ""}
+      <button type="submit" class="li-go">${cfg.button}</button>
+      <div class="li-fine li-msg">We'll only use this to reply about this home.</div>
+    </form>`;
+    anchor.after(card);
+    const w = anchor.getBoundingClientRect().width; if (w > 0) card.style.setProperty("width", w + "px", "important");
+    card.style.setProperty("max-width", "100%", "important"); card.style.setProperty("margin", "14px auto 0", "important");
+    style(card);
+    card.addEventListener("click", (e) => { const q = e.target.closest && e.target.closest("[data-q]"); if (q) { const t = card.querySelector('textarea[name="question"]'); if (t) { t.value = q.dataset.q; t.focus(); } } });
+    card.querySelector("form").addEventListener("submit", async (e) => {
+      e.preventDefault(); const f = e.target; const v = (n) => (f.elements[n] ? f.elements[n].value.trim() : "");
+      const name = v("name"), email = v("email"), phone = v("phone"), question = v("question"); const msg = card.querySelector(".li-msg");
+      if (!name || (!email && !phone)) { msg.textContent = "Please add your name and an email or mobile so we can reply."; msg.style.setProperty("color", "#b3261e", "important"); return; }
+      if (cfg.ask && !question) { msg.textContent = "Please type your question, or tap one above."; msg.style.setProperty("color", "#b3261e", "important"); return; }
+      const go = card.querySelector(".li-go"); go.disabled = true; go.textContent = "Sending...";
+      const d = window.__leadData() || {};
+      try {
+        const r = await fetch("/api/intent-lead", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, email, phone, source: cfg.kicker, question, message: [cfg.note, question ? `Question: ${question}` : "", d._address || d.address ? `Property: ${d._address || d.address}` : "", d.listing_url ? `Listing: ${d.listing_url}` : ""].filter(Boolean).join("\n"), ...d }) });
+        if (!r.ok) throw new Error(String(r.status));
+        f.innerHTML = `<div class="li-title">${cfg.done}</div><div class="li-sub">${cfg.doneSub}</div>`; style(card);
+      } catch (err) { go.disabled = false; go.textContent = cfg.button; msg.textContent = "That didn't send. Please try again."; msg.style.setProperty("color", "#b3261e", "important"); }
+    });
+    card.querySelector('input[name="name"]')?.focus({ preventScroll: true });
+  };
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest && e.target.closest("#book-showing-btn, #ask-question-btn");
+    if (b && b.closest("#sheet-engage") && typeof window.__leadData === "function") { e.stopPropagation(); e.preventDefault(); open(b.id); return; }
+    if (e.target.closest && e.target.closest("#watch-home-btn, #together-btn")) close();
+    setTimeout(() => { const c = document.getElementById("lead-inline"); if (!c || typeof window.__leadData !== "function") return; const d = window.__leadData() || {}; const id = d.listing_id || d.mls_number || ""; if (id && c.dataset.listing && id !== c.dataset.listing) close(); }, 120);
+  }, true);
 })();
 </script></body>
 </html>
