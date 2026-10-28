@@ -35,8 +35,8 @@ document.addEventListener("astro:before-swap", (e) => { const nd = e.newDocument
   const fix = (top) => { const el = ref(); if (!el) return; const d = el.getBoundingClientRect().top - top; if (Math.abs(d) > 4) origBy({ top: d, left: 0, behavior: "instant" }); };
   /* keep-scroll-dock-v1 */
   const toListings = () => { const a = (document.getElementById("listing-results-anchor") || document.getElementById("homepage-listings")), b = bar(); if (!a) return; const h = b && stuck(b) ? b.getBoundingClientRect().height : 0; const y = Math.max(0, a.getBoundingClientRect().top + window.scrollY - h - 16); if (Math.abs(window.scrollY - y) > 8) origTo({ top: y, left: 0, behavior: "instant" }); };
-  const isDocked = () => { if (document.getElementById("home-hero-search")) return true; /* home-always-listings */ const b = bar(), a = (document.getElementById("listing-results-anchor") || document.getElementById("homepage-listings")); return !!(b && a && stuck(b) && a.getBoundingClientRect().top < b.getBoundingClientRect().bottom + 4); };
-  const save = (pick) => { const el = ref(); if (!el) return; const docked = isDocked(); const top = el.getBoundingClientRect().top; if (pick) { try { sessionStorage.setItem(KEY, JSON.stringify({ p: location.pathname, t: Date.now(), top, docked })); } catch (e) {} } blockUntil = Date.now() + 1500; if (pick && docked) { /* keep-scroll-dock-v2 */ blockUntil = Date.now() + 1800; const tok = ++jumpTok; [60, 200, 500, 900, 1400].forEach((ms) => setTimeout(() => { if (tok === jumpTok) toListings(); }, ms)); } };
+  const isDocked = () => { if (document.getElementById("home-hero-search") && innerWidth > 700) return true; /* home-always-listings (desktop only) */ const b = bar(), a = (document.getElementById("listing-results-anchor") || document.getElementById("homepage-listings")); return !!(b && a && stuck(b) && a.getBoundingClientRect().top < b.getBoundingClientRect().bottom + 4); };
+  const save = (pick) => { const el = ref(); if (!el) return; const docked = isDocked(); const top = el.getBoundingClientRect().top; /* mobile-hold-v1 */ if (pick) { try { sessionStorage.setItem(KEY, JSON.stringify({ p: location.pathname, t: Date.now(), top, docked })); } catch (e) {} } blockUntil = Date.now() + (innerWidth <= 700 ? 3500 : 1500); if (pick && docked) { /* keep-scroll-dock-v2 */ blockUntil = Date.now() + 1800; const tok = ++jumpTok; [250, 900].forEach((ms) => setTimeout(() => { if (tok === jumpTok) toListings(); }, ms)); } };
   const isOpener = (t) => t && t.closest && t.closest('[aria-haspopup], .filter-dd__trigger, .hero-single-dropdown__trigger, .area-multiselect__trigger');
   const hit = (t) => t && t.closest && t.closest(".filter-dd__option, .hero-single-dropdown__option, .area-multiselect__option, [data-area-clear], .intent-controls button, #home-hero-search button");
   /* keep-scroll-v3 */
@@ -50,7 +50,9 @@ document.addEventListener("astro:before-swap", (e) => { const nd = e.newDocument
     ["position:absolute", "left:0", "top:0", "width:1px", "height:1px", "opacity:0", "margin:0", "pointer-events:none"].forEach((d) => { const [k, v] = d.split(":"); i.style.setProperty(k, v, "important"); });
   });
   document.addEventListener("click", () => requestAnimationFrame(tuck), true); document.addEventListener("DOMContentLoaded", tuck);
-  document.addEventListener("click", (e) => { const inBar = e.target && e.target.closest && e.target.closest(".intent-controls, #home-hero-search, .area-multiselect__menu, [data-area-menu]"); if (isOpener(e.target)) { if (inBar) save(false); return; } if (hit(e.target)) save(true); else if (inBar) save(false); }, true);
+  let pendingArea = false; /* home-area-jump-on-close-v1 */
+  new MutationObserver((list) => { if (!pendingArea) return; if (list.some((m) => m.target.matches && m.target.matches("[data-area-menu]") && m.target.hidden)) { pendingArea = false; blockUntil = Date.now() + 1800; const tok = ++jumpTok; [250, 900].forEach((ms2) => setTimeout(() => { if (tok === jumpTok) toListings(); }, ms2)); } }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["hidden"] });
+  document.addEventListener("click", (e) => { const inBar = e.target && e.target.closest && e.target.closest(".intent-controls, #home-hero-search, .area-multiselect__menu, [data-area-menu]"); if (e.target.closest && e.target.closest(".area-multiselect__option")) { save(false); pendingArea = pendingArea || isDocked(); return; } if (isOpener(e.target)) { if (inBar) save(false); return; } if (hit(e.target)) save(true); else if (inBar) save(false); }, true);
   document.addEventListener("change", (e) => { if (e.target && e.target.closest && e.target.closest(".intent-controls, #home-hero-search")) save(true); }, true);
   let saved = null; try { saved = JSON.parse(sessionStorage.getItem(KEY) || "null"); } catch (e) {}
   if (saved && saved.p === location.pathname && Date.now() - saved.t < 60000) {
@@ -1621,7 +1623,7 @@ html body .together__card #together-submit { border-radius: 6px !important; }
     if (form && !form.closest(".listing-filter-rail.is-visible") && getComputedStyle(form).position !== "fixed") {
       fs.style.setProperty("margin-top", "0px", "important");
       const gap = fs.getBoundingClientRect().top - form.getBoundingClientRect().bottom;
-      fs.style.setProperty("margin-top", (GAP - gap) + "px", "important");
+      fs.style.setProperty("margin-top", Math.max(-40, GAP - gap) + "px", "important");
     }
     fs.style.setProperty("margin-bottom", "0px", "important");
     const ref = document.getElementById("homepage-listings");
@@ -1629,7 +1631,7 @@ html body .together__card #together-submit { border-radius: 6px !important; }
     strips.forEach((s) => {
       s.style.setProperty("transform", "none", "important");
       s.style.setProperty("margin-top", (GAP + 20) + "px", "important");
-      s.style.setProperty("margin-bottom", "-20px", "important");
+      s.style.setProperty("margin-bottom", innerWidth <= 700 ? "20px" : "-20px", "important"); /* agent-strip-mobile-gap */
       if (w > 0) { s.style.setProperty("max-width", w + "px", "important"); s.style.setProperty("margin-left", "auto", "important"); s.style.setProperty("margin-right", "auto", "important"); }
       const inner = s.firstElementChild; if (inner) inner.style.setProperty("margin-top", "0px", "important");
     });
@@ -1638,7 +1640,7 @@ html body .together__card #together-submit { border-radius: 6px !important; }
     fs = document.querySelector(".hero-collections-strip");
     if (!fs) return false;
     const hero = document.querySelector(".locus-home-hero"), ft = document.querySelector("footer");
-    if (hero && ft && (ft.compareDocumentPosition(fs) & Node.DOCUMENT_POSITION_FOLLOWING)) hero.after(fs);
+    const fm = document.getElementById("home-hero-search"), slot = fm && fm.closest(".home-mobile-search-slot"); /* featured-after-search-v1 */ if (slot && slot.offsetParent !== null) { if (slot.nextElementSibling !== fs) { slot.after(fs); setTimeout(() => dispatchEvent(new Event("resize")), 0); } } else if (hero && ft && (ft.compareDocumentPosition(fs) & Node.DOCUMENT_POSITION_FOLLOWING)) hero.after(fs);
     strips = [...document.querySelectorAll(".locus-home-agent-strip-top--desktop, .locus-home-agent-strip-top--mobile")];
     let a = fs; strips.forEach((s) => { a.after(s); a = s; });
     layout(); setTimeout(layout, 300);
@@ -1771,6 +1773,64 @@ html body .together__card #together-submit { border-radius: 6px !important; }
     if (e.target.closest && e.target.closest("#watch-home-btn, #together-btn")) close();
     setTimeout(() => { const c = document.getElementById("lead-inline"); if (!c || typeof window.__leadData !== "function") return; const d = window.__leadData() || {}; const id = d.listing_id || d.mls_number || ""; if (id && c.dataset.listing && id !== c.dataset.listing) close(); }, 120);
   }, true);
+})();
+</script><script is:inline>
+/* gapdebug-v1: temporary on-screen layout readout, only with ?gapdebug=1 */
+(() => { if (!/gapdebug=1/.test(location.search)) return;
+  const box = document.createElement("pre"); box.style.cssText = "position:fixed;left:4px;right:4px;bottom:4px;z-index:2147483647;max-height:45vh;overflow:auto;margin:0;padding:6px 8px;background:rgba(0,0,0,.82);color:#9f9;font:10px/1.35 monospace;white-space:pre-wrap;border-radius:6px;pointer-events:none;";
+  const r = (el, n) => { if (!el) return n + ": none"; const b = el.getBoundingClientRect(), s = getComputedStyle(el); return `${n}: top${Math.round(b.top)} bot${Math.round(b.bottom)} h${Math.round(b.height)} mt${s.marginTop} mb${s.marginBottom} pb${s.paddingBottom} ${s.position}`; };
+  let log = [];
+  const tick = () => { const f = document.getElementById("home-hero-search"); const m = f && f.querySelector("[data-area-menu]"); const mid = document.elementsFromPoint(innerWidth / 2, innerHeight * 0.55).slice(0, 4).map((e) => `${e.tagName}.${[...e.classList].join(".").slice(0, 40)} h${Math.round(e.offsetHeight)}`).join(" > ");
+    box.textContent = [`vw ${innerWidth}x${innerHeight} vv ${Math.round(visualViewport ? visualViewport.height : 0)} scrollY ${Math.round(scrollY)} menu ${m ? (m.hidden ? "closed" : "OPEN") : "-"}`, r(f, "FORM"), r(f && f.parentElement, "SLOT"), r(document.querySelector(".locus-home-hero"), "HERO"), r(document.querySelector(".hero-collections-strip"), "FEATURED"), r(document.querySelector(".homepage-agent-nudge, .locus-home-agent-strip-top--mobile"), "AGENT"), r(document.getElementById("homepage-listings"), "LISTINGS"), "FORMSTYLE: " + (f ? (f.getAttribute("style") || "").slice(-160) : ""), "MID: " + mid, ...log.slice(-12)].join("\n"); };
+  addEventListener("resize", () => log.push(`resize ${innerWidth}x${innerHeight} at ${Math.round(performance.now())}`));
+  /* gapdebug-v2: who scrolls the page? */
+  const who = () => ((new Error().stack || "").split("\n").slice(3, 4).join("").replace(/https?:\/\/[^/]+/g, "").trim().slice(0, 70));
+  const wrapS = (o, k, lbl) => { const f = o[k]; if (!f) return; o[k] = function (...a) { log.push(`${lbl}(${JSON.stringify(a).slice(0, 40)}) ${who()}`); return f.apply(this, a); }; };
+  wrapS(window, "scrollTo", "scrollTo"); wrapS(window, "scroll", "scroll"); wrapS(window, "scrollBy", "scrollBy"); wrapS(Element.prototype, "scrollIntoView", "intoView"); wrapS(HTMLElement.prototype, "focus", "focus");
+  const td = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop"); Object.defineProperty(Element.prototype, "scrollTop", { configurable: true, get() { return td.get.call(this); }, set(v) { if (this === document.documentElement || this === document.body) log.push(`scrollTop=${v} ${who()}`); td.set.call(this, v); } });
+  new MutationObserver(() => log.push(`LOCK html="${(document.documentElement.getAttribute("style") || "").slice(0, 50)}" body="${(document.body.getAttribute("style") || "").slice(0, 60)}"`)).observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
+  let lastY = scrollY; addEventListener("scroll", () => { if (Math.abs(scrollY - lastY) > 150) log.push(`JUMP ${Math.round(lastY)}->${Math.round(scrollY)}`); lastY = scrollY; }, { passive: true });
+  setTimeout(() => new MutationObserver(() => log.push(`BODY style="${(document.body.getAttribute("style") || "").slice(0, 70)}"`)).observe(document.body, { attributes: true, attributeFilter: ["style", "class"] }), 0);
+  const start = () => { document.body.appendChild(box); setInterval(tick, 500); tick(); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true }); else start();
+})();
+</script><script is:inline>
+/* mobile-search-tidy-v1: drop leftover padding under the search card once menus close */
+(() => { const fix = () => { const f = document.getElementById("home-hero-search"); if (!f) return; const open = [...f.querySelectorAll('[data-area-menu], .hero-single-dropdown__menu, [role="listbox"]')].some((x) => !x.hidden && x.offsetHeight > 0); if (open) return; const pb = parseFloat(f.style.paddingBottom || "0"); if (pb > 40) f.style.removeProperty("padding-bottom"); const cs = parseFloat(getComputedStyle(f).paddingBottom); if (cs > 60) f.style.setProperty("padding-bottom", "25px", "important"); };
+  document.addEventListener("click", () => { setTimeout(fix, 60); setTimeout(fix, 300); }, true); addEventListener("resize", () => setTimeout(fix, 80)); })();
+</script><style>/* area-menu-mobile-v1 */
+@media (max-width: 700px) {
+  html body #home-hero-search .area-multiselect__menu .area-multiselect__scroll, html body #home-hero-search [data-area-options-scroll] { max-height: 46vh !important; overflow-y: auto !important; overscroll-behavior: auto !important; -webkit-overflow-scrolling: touch !important; touch-action: auto !important; }
+}
+</style>
+<script is:inline>
+/* area-tick-noscroll-v1: tick area boxes without the browser jumping to the hidden checkbox */
+document.addEventListener("click", (e) => {
+  const lab = e.target && e.target.closest && e.target.closest("label.area-multiselect__option, [data-area-option]");
+  if (!lab || (e.target.matches && e.target.matches("input"))) return;
+  const inp = lab.querySelector('input[type="checkbox"], input[type="radio"]'); if (!inp) return;
+  e.preventDefault(); const y = window.scrollY;
+  inp.checked = inp.type === "radio" ? true : !inp.checked;
+  inp.dispatchEvent(new Event("input", { bubbles: true })); inp.dispatchEvent(new Event("change", { bubbles: true }));
+  if (Math.abs(window.scrollY - y) > 2) window.scrollTo({ top: y, left: 0, behavior: "instant" });
+}, true);
+</script><style>/* area-menu-mobile-v2 */
+@media (max-width: 700px) {
+  html body #home-hero-search .area-multiselect__menu:not([hidden]) { display: flex !important; flex-direction: column !important; max-height: 60vh !important; overflow: hidden !important; }
+  html body #home-hero-search .area-multiselect__menu > *:not(.area-multiselect__scroll):not([data-area-options-scroll]) { flex: 0 0 auto !important; }
+  html body #home-hero-search .area-multiselect__menu .area-multiselect__scroll, html body #home-hero-search [data-area-options-scroll] { flex: 1 1 auto !important; min-height: 0 !important; max-height: none !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch !important; overscroll-behavior: auto !important; touch-action: pan-y !important; }
+}
+</style><script is:inline>
+/* area-defer-submit-v1: on the homepage, tick several areas without the search firing on each tick */
+(() => {
+  let pending = false, doneAt = 0;
+  const menuOf = (f) => f && f.querySelector("[data-area-menu]");
+  const isOpen = (f) => { const m = menuOf(f); return !!(m && !m.hidden); };
+  const fit = () => { const f = document.getElementById("home-hero-search"), m = menuOf(f); if (!m || m.hidden || innerWidth > 700) return; const sc = m.querySelector("[data-area-options-scroll], .area-multiselect__scroll"); m.style.setProperty("max-height", Math.round(innerHeight * 0.6) + "px", "important"); m.style.setProperty("display", "flex", "important"); m.style.setProperty("flex-direction", "column", "important"); m.style.setProperty("overflow", "hidden", "important"); if (sc) { ["flex:1 1 auto", "min-height:0", "max-height:none", "overflow-y:auto", "touch-action:pan-y"].forEach((d) => { const i = d.indexOf(":"); sc.style.setProperty(d.slice(0, i), d.slice(i + 1), "important"); }); } };
+  document.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest("button"); if (b && b.closest("[data-area-menu]") && /^\s*done\s*$/i.test(b.textContent)) doneAt = Date.now(); setTimeout(fit, 30); setTimeout(fit, 200); }, true);
+  addEventListener("resize", () => setTimeout(fit, 50));
+  document.addEventListener("submit", (e) => { const f = e.target; if (!f || f.id !== "home-hero-search") return; if (isOpen(f) && Date.now() - doneAt > 1500) { e.preventDefault(); e.stopImmediatePropagation(); pending = true; } }, true);
+  new MutationObserver(() => { const f = document.getElementById("home-hero-search"); if (!f) return; if (!isOpen(f)) { const m = menuOf(f); if (m) ["max-height", "display", "flex-direction", "overflow"].forEach((k) => m.style.removeProperty(k)); } if (pending && !isOpen(f)) { pending = false; setTimeout(() => (f.requestSubmit ? f.requestSubmit() : f.submit()), 0); } }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["hidden"] });
 })();
 </script></body>
 </html>
