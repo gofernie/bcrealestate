@@ -13,7 +13,52 @@ const { title, accentColor = "#2f6f73", city = "nanaimo", site = null } = Astro.
 <!doctype html>
 <html lang="en" style={`--accent: ${accentColor};`} data-theme="light">
   <head>
-    <script is:inline>/* opt-img-v1: same URL the server builds for card + hero photos */ window.__optImg = function (src, w, h, q) { src = String(src || "").trim(); if (!src || /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || src.indexOf("placehold.co") >= 0 || src.indexOf("https://cdn.repliers.io/") !== 0) return src; return "/.netlify/images?url=" + encodeURIComponent(src) + "&w=" + w + "&h=" + h + "&fit=cover&fm=webp&q=" + q; }; window.__optCardImg = function (src) { return window.__optImg(src, 760, 475, 76); };</script>
+<style>/* keep-scroll-v2 */ html { scroll-behavior: auto !important; overflow-anchor: auto !important; }</style>
+<script is:inline>
+(() => {
+  /* keep-scroll-v2: stop filter picks from moving the page */
+  const KEY = "keepScroll";
+  const bar = () => document.querySelector(".intent-controls") || document.getElementById("home-hero-search");
+  const stuck = (el) => { for (let e = el; e && e !== document.body; e = e.parentElement) { const p = getComputedStyle(e).position; if (p === "sticky" || p === "fixed") return true; } return false; };
+  const ref = () => { const b = bar(); if (!b) return null; return stuck(b) ? ((document.getElementById("listing-results-anchor") || document.getElementById("homepage-listings")) || b) : b; };
+  let blockUntil = 0; const stop = () => { blockUntil = 0; };
+  ["wheel", "touchmove", "keydown"].forEach((ev) => window.addEventListener(ev, stop, { passive: true }));
+  const origSIV = Element.prototype.scrollIntoView, origTo = window.scrollTo.bind(window), origBy = window.scrollBy.bind(window);
+  Element.prototype.scrollIntoView = function (...a) { if (Date.now() < blockUntil) return; return origSIV.apply(this, a); };
+  window.scrollTo = function (...a) { if (Date.now() < blockUntil) return; return origTo(...a); };
+  const origScroll = window.scroll.bind(window); window.scroll = function (...a) { if (Date.now() < blockUntil) return; return origScroll(...a); };
+  let jumpTok = 0; ["wheel", "touchmove", "keydown"].forEach((ev) => window.addEventListener(ev, () => { jumpTok++; }, { passive: true }));
+  const fix = (top) => { const el = ref(); if (!el) return; const d = el.getBoundingClientRect().top - top; if (Math.abs(d) > 4) origBy({ top: d, left: 0, behavior: "instant" }); };
+  /* keep-scroll-dock-v1 */
+  const toListings = () => { const a = (document.getElementById("listing-results-anchor") || document.getElementById("homepage-listings")), b = bar(); if (!a) return; const h = b && stuck(b) ? b.getBoundingClientRect().height : 0; const y = Math.max(0, a.getBoundingClientRect().top + window.scrollY - h - 16); if (Math.abs(window.scrollY - y) > 8) origTo({ top: y, left: 0, behavior: "instant" }); };
+  const isDocked = () => { if (document.getElementById("home-hero-search")) return true; /* home-always-listings */ const b = bar(), a = (document.getElementById("listing-results-anchor") || document.getElementById("homepage-listings")); return !!(b && a && stuck(b) && a.getBoundingClientRect().top < b.getBoundingClientRect().bottom + 4); };
+  const save = (pick) => { const el = ref(); if (!el) return; const docked = isDocked(); const top = el.getBoundingClientRect().top; if (pick) { try { sessionStorage.setItem(KEY, JSON.stringify({ p: location.pathname, t: Date.now(), top, docked })); } catch (e) {} } blockUntil = Date.now() + 1500; if (pick && docked) { /* keep-scroll-dock-v2 */ blockUntil = Date.now() + 1800; const tok = ++jumpTok; [60, 200, 500, 900, 1400].forEach((ms) => setTimeout(() => { if (tok === jumpTok) toListings(); }, ms)); } };
+  const isOpener = (t) => t && t.closest && t.closest('[aria-haspopup], .filter-dd__trigger, .hero-single-dropdown__trigger, .area-multiselect__trigger');
+  const hit = (t) => t && t.closest && t.closest(".filter-dd__option, .hero-single-dropdown__option, .area-multiselect__option, [data-area-clear], .intent-controls button, #home-hero-search button");
+  /* keep-scroll-v3 */
+  let downY = null;
+  document.addEventListener("pointerdown", (e) => { if (e.target && e.target.closest && e.target.closest(".intent-controls, #home-hero-search, [data-area-menu], .area-multiselect__menu")) downY = window.scrollY; }, true);
+  document.addEventListener("focusin", (e) => { const t = e.target; if (downY !== null && t && t.matches && t.matches("input[type=checkbox], input[type=radio]") && Math.abs(window.scrollY - downY) > 2) origTo({ top: downY, left: 0, behavior: "instant" }); }, true);
+  document.addEventListener("click", () => { setTimeout(() => { downY = null; }, 400); }, false);
+  const tuck = () => document.querySelectorAll(".intent-controls input[type=checkbox], #home-hero-search input[type=checkbox], .area-multiselect__menu input[type=checkbox]").forEach((i) => {
+    const cs = getComputedStyle(i); const hidden = cs.opacity === "0" || parseFloat(cs.width) <= 1 || cs.clip !== "auto" || cs.clipPath !== "none" || i.getBoundingClientRect().width <= 1;
+    if (!hidden || i.dataset.tucked) return; i.dataset.tucked = "1"; const lb = i.closest("label") || i.parentElement; if (lb && getComputedStyle(lb).position === "static") lb.style.setProperty("position", "relative", "important");
+    ["position:absolute", "left:0", "top:0", "width:1px", "height:1px", "opacity:0", "margin:0", "pointer-events:none"].forEach((d) => { const [k, v] = d.split(":"); i.style.setProperty(k, v, "important"); });
+  });
+  document.addEventListener("click", () => requestAnimationFrame(tuck), true); document.addEventListener("DOMContentLoaded", tuck);
+  document.addEventListener("click", (e) => { const inBar = e.target && e.target.closest && e.target.closest(".intent-controls, #home-hero-search, .area-multiselect__menu, [data-area-menu]"); if (isOpener(e.target)) { if (inBar) save(false); return; } if (hit(e.target)) save(true); else if (inBar) save(false); }, true);
+  document.addEventListener("change", (e) => { if (e.target && e.target.closest && e.target.closest(".intent-controls, #home-hero-search")) save(true); }, true);
+  let saved = null; try { saved = JSON.parse(sessionStorage.getItem(KEY) || "null"); } catch (e) {}
+  if (saved && saved.p === location.pathname && Date.now() - saved.t < 60000) {
+    try { sessionStorage.removeItem(KEY); } catch (e) {}
+    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+    blockUntil = Date.now() + 2500;
+    const go = () => (saved.docked ? toListings() : fix(saved.top));
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go, { once: true }); else go();
+    window.addEventListener("load", go, { once: true }); setTimeout(go, 300); setTimeout(go, 800);
+  }
+})();
+</script>    <script is:inline>/* opt-img-v1: same URL the server builds for card + hero photos */ window.__optImg = function (src, w, h, q) { src = String(src || "").trim(); if (!src || /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || src.indexOf("placehold.co") >= 0 || src.indexOf("https://cdn.repliers.io/") !== 0) return src; return "/.netlify/images?url=" + encodeURIComponent(src) + "&w=" + w + "&h=" + h + "&fit=cover&fm=webp&q=" + q; }; window.__optCardImg = function (src) { return window.__optImg(src, 760, 475, 76); };</script>
     <link rel="preconnect" href="https://cdn.repliers.io" crossorigin /><!-- preconnect-repliers-v1 -->
     <link rel="canonical" href={(() => { let p = Astro.url.pathname.replace(/\/+$/, ""); if (p.split("/").filter(Boolean).length <= 1) p += "/"; return new URL(p || "/", Astro.url.origin).href; })()} /><!-- canonical-v1 -->
     <meta charset="UTF-8" />
@@ -301,8 +346,8 @@ html body *:has(> article > .type-stat-icon) { margin-bottom: 32px !important; }
   /* hero-counts-v1 */
   const heroTest = (dim, v, f) => {
     if (!v) return true;
-    if (dim === "type") return f[3] === v;
-    if (dim === "maxPrice") { const b = heroBands()[v]; return !b || (f[0] > b[0] * 1000 && f[0] <= b[1] * 1000); }
+    if (dim === "type") { if (v === "house") return f[3] === "house" && !f[5]; if (v === "land") return !!f[5]; if (v === "townhouse") return f[3] === "townhouse" || f[3] === "townhome"; return f[3] === v; }
+    if (dim === "maxPrice") { const b = heroBands()[v]; return !b || (f[0] >= b[0] * 1000 && f[0] <= b[1] * 1000); } /* hero-band-edge */
     if (dim === "beds") return f[1] >= +v;
     if (dim === "baths") return f[2] >= +v;
     return true;
@@ -310,10 +355,15 @@ html body *:has(> article > .type-stat-icon) { margin-bottom: 32px !important; }
   const heroUpdate = () => {
     const form = document.getElementById("home-hero-search"); const all = window.__heroFacts;
     if (!form || !Array.isArray(all) || !all.length) return;
-    const picked = [...form.querySelectorAll('input[name="area"]:checked')].map((i) => nrm(i.value));
-    const facts = picked.length ? all.filter((f) => picked.includes(nrm(f[4]))) : all;
+    const slug = (v) => String(v || "").trim().toLowerCase().replace(/[\s-]+/g, "-"); const pickedS = [...form.querySelectorAll('input[name="area"]:checked')].map((i) => slug(i.value)); /* hero-area-polygons */
+    const known = window.__heroSlugs || []; const areaHit = (f, raw) => { const s = slug(raw); if (String(f[4]).startsWith("|") && known.includes(s)) return String(f[4]).includes("|" + s + "|"); return String(f[6] || f[4] || "").includes(String(raw || "").trim().toLowerCase()); }; /* hero-area-counts-v1 */
+    const pickedRaw = [...form.querySelectorAll('input[name="area"]:checked')].map((i) => i.value);
+    const facts = pickedRaw.length ? all.filter((f) => pickedRaw.some((v) => areaHit(f, v))) : all;
     const dims = ["type", "maxPrice", "beds", "baths"]; const cur = {};
     dims.forEach((d) => { const s = form.querySelector(`select[name="${d}"]`); cur[d] = s ? s.value : ""; });
+    const baseA = all.filter((f) => dims.every((k) => heroTest(k, cur[k], f)));
+    form.querySelectorAll('input[name="area"]').forEach((inp) => { const lab = inp.closest("label"); const cnt = lab && lab.querySelector(".area-multiselect__count"); if (!cnt) return; const n = baseA.filter((f) => areaHit(f, inp.value)).length; cnt.textContent = String(n); lab.classList.toggle("is-empty", n === 0); });
+    const allBtn = form.querySelector("[data-area-clear]"); if (allBtn) { let ac = allBtn.querySelector(".area-multiselect__count"); if (!ac) { ac = document.createElement("span"); ac.className = "area-multiselect__count"; allBtn.insertBefore(ac, allBtn.querySelector(".area-multiselect__check")); } ac.textContent = String(baseA.length); }
     dims.forEach((d) => {
       const s = form.querySelector(`select[name="${d}"]`); const dd = s && s.parentElement.querySelector(".hero-single-dropdown"); if (!dd) return;
       const base = facts.filter((f) => dims.every((k) => k === d || heroTest(k, cur[k], f)));
@@ -325,7 +375,7 @@ html body *:has(> article > .type-stat-icon) { margin-bottom: 32px !important; }
       });
     });
   };
-  if (!document.getElementById("hero-count-css")) { const st = document.createElement("style"); st.id = "hero-count-css"; st.textContent = ".hero-single-dropdown__option{display:flex !important;align-items:center !important;}.hero-single-dropdown__option > span:first-child{flex:1 1 auto;text-align:left;}.hero-dd-count{margin-left:auto;min-width:3ch;padding:0 12px 0 14px;text-align:right;color:#8a9199;font-size:.82em;font-weight:600;font-variant-numeric:tabular-nums;}.hero-single-dropdown__check{flex:0 0 16px;width:16px;text-align:right;}.hero-single-dropdown__option.is-empty{opacity:.45;}"; document.head.appendChild(st); }
+  if (!document.getElementById("hero-count-css")) { const st = document.createElement("style"); st.id = "hero-count-css"; st.textContent = ".hero-single-dropdown__option{display:flex !important;align-items:center !important;}.hero-single-dropdown__option > span:first-child{flex:1 1 auto;text-align:left;}.hero-dd-count{margin-left:auto;min-width:3ch;padding:0 12px 0 14px;text-align:right;color:#8a9199;font-size:.82em;font-weight:600;font-variant-numeric:tabular-nums;}.hero-single-dropdown__check{flex:0 0 16px;width:16px;text-align:right;}.hero-single-dropdown__option.is-empty,.area-multiselect__option.is-empty{opacity:.45;}"; document.head.appendChild(st); }
   /* hero-price-bands-v1 */
   const heroBands = () => {
     const s = document.querySelector('#home-hero-search select[name="maxPrice"]'); const map = {};
@@ -349,6 +399,24 @@ html body *:has(> article > .type-stat-icon) { margin-bottom: 32px !important; }
   const setHeroMin = (v) => { const f = document.getElementById("home-hero-search"); const mi = f && f.querySelector('input[name="minPrice"]'); const b = heroBands()[v]; if (mi && b && b[1] !== Infinity) mi.value = b[0] ? String(b[0]) : ""; if (mi && !v) mi.value = ""; };
   document.addEventListener("click", (e) => { const opt = e.target.closest && e.target.closest(".hero-single-dropdown__option"); if (!opt) return; const s = opt.closest(".hero-single-dropdown") && opt.closest(".hero-single-dropdown").parentElement.querySelector('select[name="maxPrice"]'); if (s) setHeroMin(opt.dataset.value || ""); }, true);
   document.addEventListener("change", (e) => { if (e.target && e.target.name === "maxPrice") setHeroMin(e.target.value); }, true);
+  /* hero-band-fetch-v1: make the homepage list honour the band's minimum */
+  if (!window.__bandFetch) { window.__bandFetch = true; const of = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      try {
+        const u = typeof input === "string" ? input : input && input.url;
+        const s = document.querySelector('#home-hero-search select[name="maxPrice"]');
+        if (u && s && u.includes("/api/home-listings")) {
+          const url = new URL(u, location.origin); const mx = url.searchParams.get("maxPrice"); const b = heroBands()[s.value];
+          if (mx && !url.searchParams.get("minPrice") && b && b[0] > 0 && b[1] !== Infinity) {
+            url.searchParams.set("minPrice", String(Number(mx) > 10000 ? b[0] * 1000 : b[0]));
+            input = typeof input === "string" ? url.pathname + url.search : new Request(url.toString(), input);
+            const page = new URL(location.href); if (!page.searchParams.get("minPrice")) { page.searchParams.set("minPrice", String(b[0])); history.replaceState(history.state, "", page.pathname + page.search + page.hash); }
+          }
+        }
+      } catch (e) {}
+      return of(input, init);
+    };
+  }
   /* together-place-v1 */
   const placeTogether = () => {
     const t = document.getElementById("together"); const b = document.getElementById("together-btn");

@@ -2561,10 +2561,22 @@ const perfHeroSrcSet = featuredHeroImage ? perfSrcSet(featuredHeroImage, [640, 9
 const perfFeaturedSrc = featuredImage ? perfViaNetlify(featuredImage, 800) : featuredImage;
 const perfFeaturedSrcSet = featuredImage ? perfSrcSet(featuredImage, [480, 800, 1000]) : undefined;
 /* hero-facts-v1 */
-let heroFacts: any[] = [];
+let heroFacts: any[] = []; let heroSlugs: string[] = [];
 try {
-  const { data: hf } = await supabase.from("listing_rows").select("price, beds, baths, normalized_type, normalized_area").eq("status", "A").in("normalized_city", cityDatabaseKeys).neq("property_type", "Lease").range(0, 4999);
-  heroFacts = (hf || []).map((r: any) => [Number(r.price) || 0, Number(r.beds) || 0, Number(r.baths) || 0, String(r.normalized_type || ""), String(r.normalized_area || "").toLowerCase().replace(/-/g, " ").trim()]);
+  const { data: hf } = await supabase.from("listing_rows").select("price, beds, baths, normalized_type, normalized_area, mls_number, address, property_type, description, lat, lng").eq("status", "A").in("normalized_city", cityDatabaseKeys).neq("property_type", "Lease").range(0, 4999); /* hero-facts-v2 */
+  /* hero-facts-v3: same rules as /api/home-listings */
+  const heroCity = String(Astro.params.city || "").toLowerCase();
+  const { data: hb } = await supabase.from("area_boundaries").select("area_slug, polygon_geojson").eq("city", heroCity);
+  const pip = (x: number, y: number, ring: any[]) => { let inside = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const xi = +ring[i][0], yi = +ring[i][1], xj = +ring[j][0], yj = +ring[j][1]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside; } return inside; };
+  const polys = (g: any): any[] => { if (!g) return []; if (typeof g === "string") { try { g = JSON.parse(g); } catch { return []; } } if (g.type === "Feature") return polys(g.geometry); if (g.type === "FeatureCollection") return (g.features || []).flatMap((f: any) => polys(f.geometry || f)); if (g.type === "Polygon") return [g.coordinates]; if (g.type === "MultiPolygon") return g.coordinates; return []; };
+  const shapes = (hb || []).map((b: any) => ({ slug: String(b.area_slug || "").toLowerCase(), polys: polys(b.polygon_geojson) })).filter((s: any) => s.slug && s.polys.length);
+  const landish = (r: any) => { const ad = String(r.address || ""); const t = (ad + " " + (r.property_type || "") + " " + (r.description || "")).toLowerCase(); return String(r.normalized_type || "") === "land" || /^\s*(lot|lt)\b/i.test(ad) || /\b(vacant land|bare land|building lot|residential lot|development lot|land only|lot for sale)\b/i.test(t) || /\b(vacant|bare|building|residential|serviced)\s+lot\b/i.test(t); };
+  heroSlugs = shapes.map((s: any) => s.slug);
+  heroFacts = (hf || []).filter((r: any) => { const s = `${r.normalized_type || ""} ${r.property_type || ""}`.toLowerCase(); const pr = Number(r.price) || 0; return !/\b(lease|commercial|business|industrial|retail|office)\b/i.test(s) && !(pr > 0 && pr < 50000); }).map((r: any) => {
+    const lat = Number(r.lat), lng = Number(r.lng);
+    const areaKey = shapes.length ? "|" + shapes.filter((s: any) => Number.isFinite(lat) && Number.isFinite(lng) && s.polys.some((rings: any[]) => rings.length && pip(lng, lat, rings[0]) && !rings.slice(1).some((h: any[]) => pip(lng, lat, h)))).map((s: any) => s.slug).join("|") + "|" : String(r.normalized_area || "").toLowerCase().replace(/-/g, " ").trim();
+    return [Number(r.price) || 0, Number(r.beds) || 0, Number(r.baths) || 0, String(r.normalized_type || ""), areaKey, landish(r) ? 1 : 0, String(r.normalized_area || "").toLowerCase()];
+  });
 } catch (e) { heroFacts = []; }---
 
 <script is:inline define:vars={{ jawgAccessToken }}>
@@ -16245,7 +16257,7 @@ const navBottom = () => {
   }
 }
 </style>
-<script define:vars={{ heroFacts }}>window.__heroFacts = heroFacts;</script>
+<script define:vars={{ heroFacts, heroSlugs }}>window.__heroFacts = heroFacts; window.__heroSlugs = heroSlugs;</script>
 </Layout>
 
 
