@@ -1269,7 +1269,7 @@ let navRowsQuery = supabase
 
 if (filterBeds > 0) {
   navRowsQuery =
-    navRowsQuery.gte("beds", filterBeds);
+    navRowsQuery.filter("beds", filterBeds >= 4 ? "gte" : "eq", filterBeds); /* beds-exact-v1 */
 }
 
 const navUnderPrice =
@@ -1672,7 +1672,7 @@ if (filterAreas.length > 0) {
 }
 
 if (filterBeds > 0) {
-  query = query.gte("beds", filterBeds);
+  query = query.filter("beds", filterBeds >= 4 ? "gte" : "eq", filterBeds);
 }
 
 if (filterBaths > 0) {
@@ -2674,11 +2674,12 @@ const typePageNewThisWeek = listings.filter((listing) => {
 /* filter-counts-v1: compact facts for live dropdown counts */
 let filterFacts: any[] = [];
 try {
-  let fq = supabase.from("listing_rows").select("price, beds, baths, normalized_type").eq("status", "A").in("normalized_city", cityDatabaseKeys).neq("property_type", "Lease");
+  let fq = supabase.from("listing_rows").select("price, beds, baths, normalized_type, normalized_area, address, mls_number" + (effectivePropertyType === "house" ? ", property_type, description" : "")).eq("status", "A").in("normalized_city", cityDatabaseKeys).neq("property_type", "Lease");
   if (Array.isArray(districtAreas) && districtAreas.length) fq = fq.in("normalized_area", districtAreas);
   else if (page?.area) { const a = String(page.area).toLowerCase().trim().replace(/\s+/g, " "); fq = fq.or(`normalized_area.eq.${a},normalized_area.eq.${a.replace(/\s+/g, "-")}`); }
+  /* facts-type-scope-v1 */ if (isDedicatedTypePage && effectivePropertyType) fq = fq.eq("normalized_type", effectivePropertyType);
   const { data: factRows } = await fq.range(0, 4999);
-  filterFacts = (factRows || []).map((r: any) => [Number(r.price) || 0, Number(r.beds) || 0, Number(r.baths) || 0, String(r.normalized_type || "")]);
+  /* facts-dedupe-v1 */ filterFacts = (() => { const seen = new Set(); return (factRows || []).filter((r: any) => { /* facts-land-check-v1 */ if (effectivePropertyType !== "house") return true; const ad = String(r.address || ""); const t = (ad + " " + (r.property_type || "") + " " + (r.description || "")).toLowerCase(); return !(/^\s*(lot|lt)\b/i.test(ad) || /\b(vacant land|bare land|building lot|residential lot|development lot|land only|lot for sale)\b/i.test(t) || /\b(vacant|bare|building|residential|serviced)\s+lot\b/i.test(t)); }).filter((r: any) => { const k = String(r.mls_number || "").trim().toUpperCase() || (String(r.address || "").toLowerCase().replace(/[^a-z0-9]/g, "") + "|" + (Number(r.price) || 0)); if (!k || k === "|0") return true; if (seen.has(k)) return false; seen.add(k); return true; }); })().map((r: any) => [Number(r.price) || 0, Number(r.beds) || 0, Number(r.baths) || 0, String(r.normalized_type || ""), String(r.normalized_area || "").toLowerCase().replace(/-/g, " ").trim()]);
 } catch (e) { filterFacts = []; }/* type-dom-freshness-v1 */
 const typePageDomValues = listings
   .map((listing: any) => { const t = new Date(listing.listed_at || "").getTime(); return Number.isFinite(t) ? Math.max(0, Math.round((Date.now() - t) / 86400000)) : null; })
@@ -11454,9 +11455,9 @@ Approximate driving times from{" "}
         Any beds
       </option>
 
-      <option value="1" selected={filterBeds === 1}>1+ bed</option>
-      <option value="2" selected={filterBeds === 2}>2+ beds</option>
-      <option value="3" selected={filterBeds === 3}>3+ beds</option>
+      <option value="1" selected={filterBeds === 1}>1 bed</option>
+      <option value="2" selected={filterBeds === 2}>2 beds</option>
+      <option value="3" selected={filterBeds === 3}>3 beds</option>
       <option value="4" selected={filterBeds === 4}>4+ beds</option>
       <option value="5" selected={filterBeds === 5}>5+ beds</option>
     </select>
@@ -12155,7 +12156,7 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
   type="application/json"
   id="price-band-inventory-data"
   set:html={JSON.stringify(
-    priceBandInventoryRows.map((listing) => ({
+    /* stable-price-bands-v1 */ (filterFacts.length ? filterFacts.map((f: any) => ({ normalized_type: f[3], price: f[0], address: "" })) : priceBandInventoryRows).map((listing: any) => ({
       type: listing.normalized_type || listing.property_type || "",
       price: listing.price || 0,
       address: listing.address || "",
@@ -12403,7 +12404,7 @@ lot_size_acres: listing.lot_size_acres,
       };
       const filters = [];
 
-      if (beds > 0) filters.push(`${beds}+ bed`);
+      if (beds > 0) filters.push(`${beds}${beds >= 4 ? "+" : ""} bed`);
       if (baths > 0) filters.push(`${baths}+ bath`);
 
       return `${filters.length ? `${filters.join(", ")} ` : ""}${
@@ -12700,7 +12701,7 @@ function __rawAddr5(v) {
       }
       (window.__pageStyles ??= new URLSearchParams(window.location.search).getAll("style")).forEach((s) => params.append("style", s));
         if (dataEl.dataset.type) params.set("type", dataEl.dataset.type);
-      if (dataEl.dataset.beds) params.set("beds", dataEl.dataset.beds);
+      if (dataEl.dataset.beds) { params.set("beds", dataEl.dataset.beds); params.set("bedsMode", "exact"); }
       if (dataEl.dataset.baths) params.set("baths", dataEl.dataset.baths);
       if (dataEl.dataset.minSqft) params.set("minSqft", dataEl.dataset.minSqft);
       const activeLotSize = new URLSearchParams(window.location.search).get("minLotSqft");
@@ -16962,7 +16963,7 @@ const nextSearch = params.toString();
       if (selectedType && selectedType !== "all") apiParams.set("type", selectedType);
 
     if (bedsSelect?.value && bedsSelect.value !== "all") {
-      apiParams.set("beds", bedsSelect.value);
+      apiParams.set("beds", bedsSelect.value); apiParams.set("bedsMode", "exact");
     }
     if (bathsSelect?.value && bathsSelect.value !== "all") {
       apiParams.set("baths", bathsSelect.value);

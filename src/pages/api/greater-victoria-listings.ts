@@ -353,7 +353,7 @@ export const GET: APIRoute = async ({ request }) => {
   const type = String(url.searchParams.get("type") || "").trim().toLowerCase();
   const minPrice = Number(url.searchParams.get("minPrice") || 0);
   const maxPrice = Number(url.searchParams.get("maxPrice") || 0);
-  const beds = Number(url.searchParams.get("beds") || 0);
+  const beds = Number(url.searchParams.get("beds") || 0); const bedsExact = url.searchParams.get("bedsMode") === "exact"; /* beds-exact-v1 */
   const baths = Number(url.searchParams.get("baths") || 0);
   const age55 = url.searchParams.get("age55") === "true";
   const otherPark = url.searchParams.get("otherPark") === "true";
@@ -516,7 +516,7 @@ export const GET: APIRoute = async ({ request }) => {
 
     if (minPrice && listing.rawPrice < minPrice) return false;
     if (maxPrice && listing.rawPrice > maxPrice) return false;
-    if (beds && Number(listing.beds || 0) < beds) return false;
+    if (beds && Number(listing.beds || 0) < beds) return false; if (bedsExact && beds && beds < 4 && Number(listing.beds || 0) !== beds) return false;
     if (baths && Number(listing.baths || 0) < baths) return false;
     if (minSqft && Number(listing.sqft || 0) < minSqft) return false;
     if (minLotSqft && (Number(listing.lotSqft || listing.lot_size_sqft || 0) || Math.round(Number(listing.lot_size_acres || 0) * 43560)) < minLotSqft) return false;

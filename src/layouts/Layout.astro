@@ -176,7 +176,9 @@ html body *:has(> article > .type-stat-icon) { margin-bottom: 32px !important; }
 <style is:global>
 /* filter-counts-ui-v1 */
 .filter-dd__count { margin-left: auto; padding: 0 10px 0 14px; color: #8a9199; font-size: .82em; font-weight: 600; font-variant-numeric: tabular-nums; }
-.filter-dd__option.is-empty { opacity: .45; }
+.filter-dd__option.is-empty, .area-count-opt.is-empty { opacity: .45; }
+.area-count-opt { position: relative !important; padding-right: 70px !important; }
+.area-count-opt .filter-dd__count { position: absolute !important; right: 42px !important; top: 50% !important; transform: translateY(-50%) !important; margin: 0 !important; }
 .filter-dd__option { display: flex !important; align-items: center !important; }
 .filter-dd__option > span:first-child { flex: 1 1 auto; text-align: left; }
 .filter-dd__count { margin-left: auto !important; min-width: 3ch; padding: 0 12px 0 14px !important; text-align: right; }
@@ -185,6 +187,7 @@ html body *:has(> article > .type-stat-icon) { margin-bottom: 32px !important; }
 </style>
 <script is:inline>
 (() => {
+  /* filter-counts-v2 */
   const range = (v) => {
     v = String(v || "");
     let m = v.match(/^under-(\d+)$/); if (m) return [0, +m[1] * 1000];
@@ -197,15 +200,19 @@ html body *:has(> article > .type-stat-icon) { margin-bottom: 32px !important; }
     if (!val || val === "all" || val === "any") return true;
     if (dim === "type") return f[3] === val;
     if (dim === "price") { const r = range(val); return !r || (f[0] >= r[0] && f[0] < r[1]); }
-    if (dim === "beds") return f[1] >= +val;
+    if (dim === "beds") return +val >= 4 ? f[1] >= +val : f[1] === +val;
     if (dim === "baths") return f[2] >= +val;
     return true;
   };
+  const nrm = (s) => String(s || "").replace(/\u2713/g, "").toLowerCase().replace(/^(feru|fe|se|sw|pq|na|ob)\s*-\s*/, "").replace(/-(neighbourhood|neighborhood|area)$/, "").replace(/[0-9]+/g, " ").replace(/[^a-z]+/g, " ").trim();
+  const raw = () => (Array.isArray(window.__filterFacts) ? window.__filterFacts : []);
+  const pickedAreas = () => new URLSearchParams(location.search).getAll("area").flatMap((v) => v.split(",")).map(nrm).filter((v) => v && v !== "all" && v !== "all neighbourhoods");
+  const currentVals = () => { const c = {}; for (const [dim, cls] of Object.entries(DIMS)) { const s = document.querySelector("select." + cls); c[dim] = s ? s.value : "all"; } return c; };
   const update = () => {
-    const facts = window.__filterFacts;
-    if (!Array.isArray(facts) || !facts.length) return;
-    const current = {};
-    for (const [dim, cls] of Object.entries(DIMS)) { const s = document.querySelector("select." + cls); current[dim] = s ? s.value : "all"; }
+    if (!raw().length) return;
+    const picked = pickedAreas();
+    const facts = picked.length ? raw().filter((f) => picked.includes(nrm(f[4]))) : raw();
+    const current = currentVals();
     for (const [dim, cls] of Object.entries(DIMS)) {
       const s = document.querySelector("select." + cls); const dd = s && s.nextElementSibling;
       if (!dd || !dd.classList.contains("filter-dd")) continue;
@@ -219,10 +226,39 @@ html body *:has(> article > .type-stat-icon) { margin-bottom: 32px !important; }
       });
     }
   };
-  const soon = () => setTimeout(update, 80);
+  const updateAreas = () => {
+    if (!raw().length) return;
+    const current = currentVals();
+    const base = raw().filter((f) => Object.keys(DIMS).every((d) => test(d, current[d], f)));
+    const allOpt = [...document.querySelectorAll("button, li, label, a, div, [role=option]")].find((e) => nrm(e.dataset.areaLabel || e.textContent) === "all neighbourhoods" && e.children.length <= 3 && e.parentElement && e.parentElement.children.length > 2);
+    if (!allOpt) return;
+    [...allOpt.parentElement.children].forEach((opt) => {
+      let el = opt.querySelector(".filter-dd__count");
+      if (!opt.dataset.areaLabel) opt.dataset.areaLabel = (opt.textContent || "").replace(el ? el.textContent : "", "").trim();
+      const key = nrm(opt.dataset.areaLabel);
+      if (!key) return;
+      const n = key === "all neighbourhoods" ? base.length : base.filter((f) => nrm(f[4]) === key).length;
+      if (!el) { el = document.createElement("span"); el.className = "filter-dd__count"; opt.appendChild(el); }
+      opt.classList.add("area-count-opt");
+      el.textContent = String(n);
+      opt.classList.toggle("is-empty", n === 0);
+    });
+  };
+  /* area-pill-v1 */
+  const markArea = () => {
+    const lab = [...document.querySelectorAll("span, div, label, strong, small, p, b")].find((e) => !e.children.length && e.textContent.trim() === "Area" && e.nextElementSibling);
+    if (!lab) return;
+    const val = lab.nextElementSibling;
+    const txt = (val.textContent || "").trim().toLowerCase();
+    const on = pickedAreas().length > 0 || (txt && !/^all\s*neigh/.test(txt));
+    val.classList.toggle("area-pill-on", on);
+  };
+  if (!document.getElementById("area-pill-css")) { const st = document.createElement("style"); st.id = "area-pill-css"; st.textContent = ".area-pill-on{display:inline-block !important;background:#e3efed !important;color:#2b6664 !important;font-weight:700 !important;border-radius:6px !important;padding:2px 8px !important;margin:-2px 0 -2px -8px !important;}"; document.head.appendChild(st); }
+  const run = () => { update(); updateAreas(); markArea(); };
+  const soon = () => { setTimeout(run, 80); setTimeout(run, 400); };
   document.addEventListener("change", soon);
   document.addEventListener("click", soon);
-  window.addEventListener("load", () => { update(); setTimeout(update, 800); });
+  window.addEventListener("load", () => { run(); setTimeout(run, 800); });
 })();
 </script>
 </head>
