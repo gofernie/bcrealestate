@@ -1349,6 +1349,28 @@ const propertyTypes = [...new Set(
 )].sort((a, b) => a.localeCompare(b));
 
 const navIntentPages = await getNavIntentPages(supabase, site?.id);
+// area-links-v1: link area names in the type-page guide copy to their area pages
+const { data: guideAreaRows } = await supabase.from("area_boundaries").select("area_slug").in("city", cityDatabaseKeys);
+const guideAreaLinks = [...new Set((guideAreaRows || []).map((r: any) => String(r.area_slug || "").trim()).filter(Boolean))]
+  .map((s) => ({ href: "/" + city + "/" + s + (["house", "condo", "townhouse", "mobile", "land"].includes(String(page?.property_type || "")) ? "?type=" + page.property_type + "#listing-results-anchor" : ""), label: s.replace(/^(se|sw|pq|na)-/i, "").replace(/-/g, " ") }))
+  .filter((a) => a.label.length > 2)
+  .sort((a, b) => b.label.length - a.label.length);
+const escapeGuideHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const escapeGuideRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const linkAreas = (text: string) => {
+  let html = escapeGuideHtml(String(text || ""));
+  for (const a of guideAreaLinks) {
+    const re = new RegExp("(^|[^\\w-])(" + escapeGuideRe(a.label).replace(/ /g, "\\s+") + ")(?![\\w-])", "i");
+    let done = false;
+    html = html.split(/(<a\b[^>]*>[\s\S]*?<\/a>)/).map((part) => {
+      if (done || part.startsWith("<a")) return part;
+      if (!re.test(part)) return part;
+      done = true;
+      return part.replace(re, (_m, pre, name) => pre + '<a href="' + a.href + '" style="color:inherit;text-decoration:underline;text-underline-offset:3px;">' + name + "</a>");
+    }).join("");
+  }
+  return html;
+};
 
 let areaIntentQuery = supabase
   .from("intent_pages")
@@ -12968,12 +12990,12 @@ style="display:grid;grid-template-columns:1fr 1fr;gap:18px;"
               .map((p) => <p style="margin-bottom:1rem;break-inside:avoid;">{p.trim()}</p>)}
           </>
         : <>
-            <p style="margin-bottom:1rem;break-inside:avoid;">{page.seo_intro || seo.intro}</p>
-            <p style="margin-bottom:1rem;break-inside:avoid;">{page.seo_body || seo.body}</p>
+            <p style="margin-bottom:1rem;break-inside:avoid;" set:html={linkAreas(page.seo_intro || seo.intro)} />
+            <p style="margin-bottom:1rem;break-inside:avoid;" set:html={linkAreas(page.seo_body || seo.body)} />
             {(page.seo_long || seo.long)
               .split(/\n\n|\r\n\r\n/)
               .filter((p) => p.trim())
-              .map((p) => <p style="margin-bottom:1rem;break-inside:avoid;">{p.trim()}</p>)}
+              .map((p) => <p style="margin-bottom:1rem;break-inside:avoid;" set:html={linkAreas(p.trim())} />)}
           </>
       }
     </div>
