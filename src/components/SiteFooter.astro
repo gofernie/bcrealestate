@@ -1,4 +1,5 @@
 ---
+import { createClient } from "@supabase/supabase-js";
 import { getAgentForSite } from "../lib/getAgentForSite";
 
 const { site = null, city = "nanaimo" } = Astro.props;
@@ -11,88 +12,86 @@ const cityLabel = String(city || "nanaimo")
   .replace(/-/g, " ")
   .replace(/\b\w/g, (character) => character.toUpperCase());
 
-const agentName = first(
-  agent?.name,
-  site?.agent_name,
-  site?.realtor_name,
-  site?.owner_name,
-  site?.site_name,
-  `${cityLabel} Homes`
-);
-
-
-const credentials = String(
-  agent?.credentials || ""
-).trim();
-
-const displayName = [
-  agentName,
-  credentials
-]
-  .filter(Boolean)
-  .join(" ");
-
-const legalName = first(
-  agent?.legal_name,
-  agentName
-);
-
-const brokerage = first(
-  agent?.brokerage,
-  site?.brokerage,
-  site?.brokerage_name
-);
-
-const brokerageLogoUrl = first(
-  agent?.brokerage_logo_url,
-  site?.brokerage_logo_url
-);
-
-const phone = first(
-  agent?.phone,
-  site?.agent_phone,
-  site?.phone,
-  site?.contact_phone
-);
-
-const email = first(
-  agent?.email,
-  site?.agent_email,
-  site?.email,
-  site?.contact_email
-);
-
-const secondaryMarkets =
-  Array.isArray(site?.secondary_markets)
-    ? site.secondary_markets
-        .map((market) =>
-          typeof market === "string"
-            ? market
-            : market?.city
-        )
-        .filter(Boolean)
-    : [];
+const agentName = first(agent?.name, site?.agent_name, site?.realtor_name, site?.owner_name, site?.site_name, `${cityLabel} Homes`);
+const credentials = String(agent?.credentials || "").trim();
+const displayName = [agentName, credentials].filter(Boolean).join(" ");
+const legalName = first(agent?.legal_name, agentName);
+const brokerage = first(agent?.brokerage, site?.brokerage, site?.brokerage_name);
+const brokerageLogoUrl = first(agent?.brokerage_logo_url, site?.brokerage_logo_url);
+const phone = first(agent?.phone, site?.agent_phone, site?.phone, site?.contact_phone);
+const email = first(agent?.email, site?.agent_email, site?.email, site?.contact_email);
 
 const toMarketSlug = (market) =>
-  String(market || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
+  String(market || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 const toMarketLabel = (market) =>
-  String(market || "")
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  String(market || "").replace(/-/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
 
-const markets = Array.from(
-  new Set([city, ...secondaryMarkets].filter(Boolean))
-).slice(0, 4);
+const secondaryMarkets = Array.isArray(site?.secondary_markets)
+  ? site.secondary_markets.map((market) => (typeof market === "string" ? market : market?.city)).filter(Boolean)
+  : [];
 
 const primaryMarketSlug = toMarketSlug(city);
 const primaryMarketLabel = toMarketLabel(city);
-
 const year = new Date().getFullYear();
+
+/* footer-links-v1: relevant internal links, scoped to this site's own towns */
+const TYPE_SLUGS = ["homes", "condos", "townhomes", "mobile-homes", "land"];
+const REGIONS = [
+  { label: "Greater Victoria", cities: ["greater-victoria", "victoria", "victoria-west", "saanich-east", "saanich-west", "saanich", "oak-bay", "esquimalt", "view-royal", "colwood", "langford", "highlands", "metchosin", "sooke", "central-saanich", "north-saanich", "sidney"] },
+  { label: "Vancouver Island", cities: ["nanaimo", "lantzville", "ladysmith", "duncan", "parksville", "qualicum-beach", "french-creek", "comox", "campbell-river", "port-alberni", "tofino"] },
+  { label: "BC mountain towns", cities: ["fernie", "sparwood", "kimberley", "nelson", "rossland", "golden", "revelstoke", "columbia-valley", "whistler", "sun-peaks"] },
+];
+const cleanSearchLabel = (value) => {
+  let s = String(value || "").split("|")[0].trim().replace(/\.+$/, "");
+  s = s.replace(new RegExp("^" + cityLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s+", "i"), "");
+  s = s.replace(/\b(\w+)(\s+\1\b)+/gi, "$1");
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+};
+
+let areaLinks = [];
+let searchLinks = [];
+let nearbyTitle = "Explore";
+let nearbyLinks = [];
+try {
+  const supabase = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
+  const cityKeys = Array.from(new Set([primaryMarketSlug, primaryMarketSlug.replace(/-/g, " ")]));
+  let searchQuery = supabase
+    .from("intent_pages")
+    .select("slug, hero_heading, seo_heading")
+    .eq("city", primaryMarketSlug)
+    .eq("is_published", true);
+  if (site?.id) searchQuery = searchQuery.eq("site_id", site.id);
+  const [areasRes, searchesRes, sitesRes] = await Promise.all([
+    supabase.from("area_boundaries").select("area_slug").in("city", cityKeys),
+    searchQuery.order("featured_rank", { ascending: true, nullsFirst: false }).order("sort_order", { ascending: true }).limit(40),
+    site?.domain ? supabase.from("sites").select("city").eq("domain", site.domain) : Promise.resolve({ data: [] }),
+  ]);
+
+  const cityWords = primaryMarketSlug.replace(/-/g, " ");
+  areaLinks = Array.from(new Set((areasRes.data || []).map((r) => String(r.area_slug || "").trim()).filter(Boolean)))
+    .map((slug) => ({ href: `/${primaryMarketSlug}/${slug}`, label: toMarketLabel(slug.replace(/^(se|sw|pq|na|ob)-/i, "").replace(/-(neighbourhood|neighborhood|area)$/i, "")) }))
+    .filter((a) => a.label.length > 2 && a.label.toLowerCase() !== cityWords)
+    .sort((a, b) => a.label.localeCompare(b.label))
+    .slice(0, 8);
+
+  const skip = new Set(["searches", ...TYPE_SLUGS, ...TYPE_SLUGS.map((t) => `${primaryMarketSlug}-${t}`)]);
+  const seenLabels = new Set();
+  searchLinks = (searchesRes.data || [])
+    .filter((r) => r.slug && !skip.has(r.slug))
+    .map((r) => ({ href: `/${primaryMarketSlug}/${r.slug}`, label: cleanSearchLabel(r.hero_heading || r.seo_heading || toMarketLabel(r.slug)) }))
+    .filter((l) => l.label && !seenLabels.has(l.label.toLowerCase()) && seenLabels.add(l.label.toLowerCase()))
+    .slice(0, 6);
+
+  const siteTowns = Array.from(new Set([...(sitesRes.data || []).map((r) => toMarketSlug(r.city)), ...secondaryMarkets.map(toMarketSlug)]))
+    .filter((c) => c && c !== primaryMarketSlug && c !== "calgary");
+  const region = REGIONS.find((r) => r.cities.includes(primaryMarketSlug));
+  let towns = region ? region.cities.filter((c) => c !== primaryMarketSlug && siteTowns.includes(c)) : [];
+  if (towns.length >= 3) nearbyTitle = region.label;
+  else { towns = siteTowns; nearbyTitle = "More markets"; }
+  nearbyLinks = towns.slice(0, 10).map((c) => ({ href: `/${c}`, label: toMarketLabel(c) }));
+} catch (error) {
+  console.error("Footer links failed", error);
+}
 ---
 
 <footer class="site-footer">
@@ -101,234 +100,138 @@ const year = new Date().getFullYear();
       <strong>{displayName}</strong>
       <span>{brokerage || `${cityLabel} real estate`}</span>
       {brokerageLogoUrl && (
-        <img
-          class="site-footer__brokerage-logo"
-          src={brokerageLogoUrl}
-          alt={`${brokerage || "Brokerage"} logo`}
-          loading="lazy"
-        />
+        <img class="site-footer__brokerage-logo" src={brokerageLogoUrl} alt={`${brokerage || "Brokerage"} logo`} loading="lazy" />
       )}
-      <p>
-        Local listings and practical market guidance, without the runaround.
-      </p>
+      <p>Local listings and practical market guidance, without the runaround.</p>
+      <div class="site-footer__contact">
+        <span>CONTACT</span>
+        {phone && <a href={`tel:${String(phone).replace(/[^\d+]/g, "")}`}>{phone}</a>}
+        {email && <a href={`mailto:${email}`}>{email}</a>}
+        {!phone && !email && <a href={`/${primaryMarketSlug}`}>Browse homes</a>}
+      </div>
     </div>
 
-    <nav class="site-footer__markets" aria-label="Markets">
-      <span>EXPLORE</span>
-
-      {markets.map((market) => (
-        <a href={`/${toMarketSlug(market)}`}>{toMarketLabel(market)}</a>
-      ))}
-    </nav>
-
-    <nav class="site-footer__browse" aria-label={`Browse ${primaryMarketLabel}`}>
+    <nav class="site-footer__col" aria-label={`Browse ${primaryMarketLabel}`}>
       <span>BROWSE {primaryMarketLabel.toUpperCase()}</span>
       <a href={`/${primaryMarketSlug}`}>Homes for sale</a>
       <a href={`/${primaryMarketSlug}/condos`}>Condos</a>
       <a href={`/${primaryMarketSlug}/townhomes`}>Townhomes</a>
+      <a href={`/${primaryMarketSlug}/mobile-homes`}>Mobile homes</a>
+      <a href={`/${primaryMarketSlug}/land`}>Lots &amp; land</a>
       <a href={`/${primaryMarketSlug}/market-intelligence`}>Market intelligence</a>
       <a href={`/${primaryMarketSlug}/searches`}>All searches</a>
     </nav>
 
-    <div class="site-footer__contact">
-      <span>CONTACT</span>
-      {phone && (
-        <a href={`tel:${String(phone).replace(/[^\d+]/g, "")}`}>
-          {phone}
-        </a>
-      )}
-      {email && <a href={`mailto:${email}`}>{email}</a>}
-      {!phone && !email && <a href={`/${city}`}>Browse homes</a>}
-    </div>
+    {areaLinks.length > 0 && (
+      <nav class="site-footer__col" aria-label={`${primaryMarketLabel} neighbourhoods`}>
+        <span>NEIGHBOURHOODS</span>
+        {areaLinks.map((a) => <a href={a.href}>{a.label}</a>)}
+        <a href={`/${primaryMarketSlug}/areas`}>All areas</a>
+      </nav>
+    )}
+
+    {searchLinks.length > 0 && (
+      <nav class="site-footer__col" aria-label="Popular searches">
+        <span>POPULAR SEARCHES</span>
+        {searchLinks.map((l) => <a href={l.href}>{l.label}</a>)}
+      </nav>
+    )}
+
+    {nearbyLinks.length > 0 && (
+      <nav class="site-footer__col" aria-label={nearbyTitle}>
+        <span>{nearbyTitle.toUpperCase()}</span>
+        {nearbyLinks.map((l) => <a href={l.href}>{l.label}</a>)}
+      </nav>
+    )}
   </div>
 
   <div class="site-footer__legal">
     <span>&copy; {year} {legalName}</span>
-
     <div>
       <a href={`/privacy?city=${encodeURIComponent(city)}`}>Privacy</a>
       <a href={`/terms?city=${encodeURIComponent(city)}`}>Terms</a>
     </div>
-
     <p>
       Listing information is supplied by CREA members, who are responsible
       for its accuracy. CREA and REALTOR.ca Canada Inc. do not guarantee its
-      accuracy. REALTOR®, REALTORS® and the REALTOR® logo are certification
-      marks controlled by CREA. The MLS® trademark and logo are owned by CREA.
+      accuracy. REALTOR&reg;, REALTORS&reg; and the REALTOR&reg; logo are certification
+      marks controlled by CREA. The MLS&reg; trademark and logo are owned by CREA.
       Listing content is for personal, non-commercial use.
     </p>
   </div>
 </footer>
 
 <style>
-  .site-footer {
-    margin-top: 72px;
-    padding: 54px max(24px, calc((100vw - 1180px) / 2)) 28px;
-    border-top: 1px solid var(--line-warm);
-    background: color-mix(in srgb, var(--accent) 5%, #faf9f7);
-    color: var(--ink);
+  /* footer-dark-v1 */
+  footer.site-footer {
+    margin-top: 80px !important;
+    padding: 72px max(24px, calc((100vw - 1180px) / 2)) 32px !important;
+    border-top: 0 !important;
+    background: #14181b !important;
+    color: #ece8e1 !important;
   }
-
-  .site-footer__inner {
-    display: grid;
-    grid-template-columns: minmax(280px, 1.5fr) 1fr 1fr 1fr;
-    gap: 40px;
+  footer.site-footer .site-footer__inner {
+    display: grid !important;
+    grid-template-columns: minmax(240px, 1.35fr) repeat(4, minmax(0, 1fr)) !important;
+    gap: 48px !important;
+    align-items: start !important;
   }
-
-  .site-footer__brand strong {
-    display: block;
-    font-family: var(--f-display, Georgia, serif);
-    font-size: 1.55rem;
+  footer.site-footer .site-footer__brand strong {
+    display: block; font-family: var(--f-display, Georgia, serif); font-size: 1.6rem; font-weight: 500;
+    letter-spacing: -.01em; color: #fff;
   }
-
-  .site-footer__brand > span {
-    display: block;
-    margin-top: 6px;
-    color: var(--accent);
-    font-size: .78rem;
-    font-weight: 800;
+  footer.site-footer .site-footer__brand > span {
+    display: block; margin-top: 6px; font-size: .74rem; font-weight: 700; letter-spacing: .04em;
+    color: color-mix(in srgb, var(--accent, #6fa3a6) 55%, #ffffff);
   }
-
-  .site-footer__brokerage-logo {
-    display: block;
-    width: auto;
-    max-width: 150px;
-    height: auto;
-    max-height: 48px;
-    margin-top: 14px;
-    padding: 10px 12px;
-    border-radius: 4px;
-    background: #18344f;
-    box-sizing: content-box;
-    padding: 10px 12px;
-    border-radius: 4px;
-    background: #18344f;
-    box-sizing: content-box;
-    object-fit: contain;
-    object-position: left center;
+  footer.site-footer .site-footer__brokerage-logo {
+    display: block; width: auto; max-width: 140px; height: auto; max-height: 44px; margin-top: 18px;
+    padding: 9px 11px; border-radius: 4px; background: #18344f; box-sizing: content-box;
+    object-fit: contain; object-position: left center;
   }
-
-  .site-footer__brand p {
-    max-width: 400px;
-    margin: 16px 0 0;
-    color: var(--muted);
-    font-size: .88rem;
-    line-height: 1.6;
+  footer.site-footer .site-footer__brand p {
+    max-width: 320px; margin: 18px 0 0; color: rgba(236, 232, 225, .6); font-size: .86rem; line-height: 1.65;
   }
-
-  .site-footer__markets,
-  .site-footer__browse,
-  .site-footer__contact {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
+  footer.site-footer .site-footer__contact { margin-top: 26px; }
+  footer.site-footer .site-footer__col,
+  footer.site-footer .site-footer__contact {
+    display: flex !important; flex-direction: column !important; align-items: flex-start !important; gap: 11px !important;
   }
-
-  .site-footer__markets > span,
-  .site-footer__browse > span,
-  .site-footer__contact > span {
-    margin-bottom: 4px;
-    color: var(--muted);
-    font-size: .66rem;
-    font-weight: 850;
-    letter-spacing: .15em;
+  footer.site-footer .site-footer__col > span,
+  footer.site-footer .site-footer__contact > span {
+    display: block !important; margin: 0 0 6px !important; padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, .1); align-self: stretch;
+    color: rgba(236, 232, 225, .5) !important; font-size: .64rem !important; font-weight: 700 !important;
+    letter-spacing: .18em !important; text-transform: uppercase;
   }
-
-  .site-footer a {
-    color: inherit;
-    font-size: .86rem;
-    font-weight: 700;
-    text-decoration: none;
+  footer.site-footer a {
+    display: inline-block !important; color: rgba(236, 232, 225, .86) !important; font-size: .86rem !important;
+    font-weight: 500 !important; line-height: 1.35 !important; text-decoration: none !important;
+    transition: color .15s ease;
   }
-
-  .site-footer a:hover {
-    color: var(--accent);
+  footer.site-footer a:hover {
+    color: #fff !important; text-decoration: underline !important; text-underline-offset: 4px;
+    text-decoration-color: color-mix(in srgb, var(--accent, #6fa3a6) 70%, #ffffff) !important;
   }
-
-  .site-footer__legal {
-    margin-top: 42px;
-    padding-top: 20px;
-    display: grid;
-    grid-template-columns: auto auto 1fr;
-    gap: 24px;
-    align-items: start;
-    border-top: 1px solid var(--line-warm);
-    color: var(--muted);
-    font-size: .71rem;
+  footer.site-footer .site-footer__contact a { font-size: .92rem !important; color: #fff !important; }
+  footer.site-footer .site-footer__legal {
+    margin-top: 56px; padding-top: 24px; display: grid; grid-template-columns: auto auto 1fr; gap: 28px;
+    align-items: start; border-top: 1px solid rgba(255, 255, 255, .1); color: rgba(236, 232, 225, .45); font-size: .7rem;
   }
-
-  .site-footer__legal div {
-    display: flex;
-    gap: 16px;
+  footer.site-footer .site-footer__legal div { display: flex; gap: 18px; }
+  footer.site-footer .site-footer__legal a { font-size: .72rem !important; color: rgba(236, 232, 225, .6) !important; }
+  footer.site-footer .site-footer__legal p { margin: 0; max-width: 620px; justify-self: end; text-align: right; line-height: 1.6; }
+  @media (max-width: 1100px) {
+    footer.site-footer .site-footer__inner { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 40px 32px !important; }
+    footer.site-footer .site-footer__brand { grid-column: 1 / -1; }
   }
-
-  .site-footer__legal p {
-    margin: 0;
-    text-align: right;
-    line-height: 1.5;
-  }
-
   @media (max-width: 760px) {
-    .site-footer {
-      margin-top: 44px;
-      padding: 36px 22px 86px;
-    }
-
-    .site-footer__inner {
-      grid-template-columns: 1fr 1fr;
-      gap: 30px 24px;
-    }
-
-    .site-footer__brand {
-      grid-column: 1 / -1;
-    }
-
-    .site-footer__legal {
-      grid-template-columns: 1fr;
-      gap: 12px;
-    }
-
-    .site-footer__legal p {
-      text-align: left;
-    }
+    footer.site-footer { margin-top: 48px !important; padding: 48px 22px 90px !important; }
+    footer.site-footer .site-footer__legal { grid-template-columns: 1fr; gap: 12px; }
+    footer.site-footer .site-footer__legal p { justify-self: start; text-align: left; }
   }
-
-  /* neutral-prospect-footer */
-  :global(body:has(.prospect-page)) .site-footer {
-    border-top-color: #d4d7d6;
-    background: #f0f1ef;
-    color: #202526;
-  }
-
-  :global(body:has(.prospect-page))
-    .site-footer__brand > span {
-    color: #4c5556;
-  }
-
-  :global(body:has(.prospect-page))
-    .site-footer__brand p,
-  :global(body:has(.prospect-page))
-    .site-footer__markets > span,
-  :global(body:has(.prospect-page))
-    .site-footer__contact > span,
-  :global(body:has(.prospect-page))
-    .site-footer__legal {
-    color: #62696a;
-  }
-
-  :global(body:has(.prospect-page))
-    .site-footer a {
-    color: #202526;
-  }
-
-  :global(body:has(.prospect-page))
-    .site-footer a:hover {
-    color: #000000;
-  }
-
-  :global(body:has(.prospect-page))
-    .site-footer__legal {
-    border-top-color: #d4d7d6;
-  }
-  /* end-neutral-prospect-footer */</style>
+  /* footer-heading-oneline */
+  footer.site-footer .site-footer__col > span, footer.site-footer .site-footer__contact > span { white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
+  /* footer-legal-size */
+  footer.site-footer .site-footer__legal p { font-size: .7rem !important; line-height: 1.6 !important; color: rgba(236, 232, 225, .42) !important; }
+</style>
