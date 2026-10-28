@@ -2671,7 +2671,15 @@ const typePageNewThisWeek = listings.filter((listing) => {
   const listedTime = new Date(listing.listed_at || "").getTime();
   return Number.isFinite(listedTime) && listedTime >= sevenDaysAgo;
 }).length;
-/* type-dom-freshness-v1 */
+/* filter-counts-v1: compact facts for live dropdown counts */
+let filterFacts: any[] = [];
+try {
+  let fq = supabase.from("listing_rows").select("price, beds, baths, normalized_type").eq("status", "A").in("normalized_city", cityDatabaseKeys).neq("property_type", "Lease");
+  if (Array.isArray(districtAreas) && districtAreas.length) fq = fq.in("normalized_area", districtAreas);
+  else if (page?.area) { const a = String(page.area).toLowerCase().trim().replace(/\s+/g, " "); fq = fq.or(`normalized_area.eq.${a},normalized_area.eq.${a.replace(/\s+/g, "-")}`); }
+  const { data: factRows } = await fq.range(0, 4999);
+  filterFacts = (factRows || []).map((r: any) => [Number(r.price) || 0, Number(r.beds) || 0, Number(r.baths) || 0, String(r.normalized_type || "")]);
+} catch (e) { filterFacts = []; }/* type-dom-freshness-v1 */
 const typePageDomValues = listings
   .map((listing: any) => { const t = new Date(listing.listed_at || "").getTime(); return Number.isFinite(t) ? Math.max(0, Math.round((Date.now() - t) / 86400000)) : null; })
   .filter((d: any) => d != null)
@@ -11375,6 +11383,7 @@ Approximate driving times from{" "}
 
 
 
+<script define:vars={{ filterFacts }}>window.__filterFacts = filterFacts;</script>
 <!-- intent-type-filter-control -->
 {!isDedicatedTypePage && (
   <select

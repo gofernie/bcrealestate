@@ -173,6 +173,58 @@ html body *:has(> article > .type-stat-icon) { margin-bottom: 32px !important; }
   text-overflow: ellipsis;
 }
 </style>
+<style is:global>
+/* filter-counts-ui-v1 */
+.filter-dd__count { margin-left: auto; padding: 0 10px 0 14px; color: #8a9199; font-size: .82em; font-weight: 600; font-variant-numeric: tabular-nums; }
+.filter-dd__option.is-empty { opacity: .45; }
+.filter-dd__option { display: flex !important; align-items: center !important; }
+.filter-dd__option > span:first-child { flex: 1 1 auto; text-align: left; }
+.filter-dd__count { margin-left: auto !important; min-width: 3ch; padding: 0 12px 0 14px !important; text-align: right; }
+.filter-dd__check { display: inline-block !important; flex: 0 0 16px; width: 16px; text-align: right; }
+.filter-dd__option:not(.is-selected) .filter-dd__check { visibility: hidden; }
+</style>
+<script is:inline>
+(() => {
+  const range = (v) => {
+    v = String(v || "");
+    let m = v.match(/^under-(\d+)$/); if (m) return [0, +m[1] * 1000];
+    m = v.match(/^(\d+)-plus$/); if (m) return [+m[1] * 1000, Infinity];
+    m = v.match(/^(\d+)-(\d+)$/); if (m) return [+m[1] * 1000, +m[2] * 1000];
+    return null;
+  };
+  const DIMS = { type: "type-filter-select", price: "price-filter-select", beds: "beds-filter-select", baths: "baths-filter-select" };
+  const test = (dim, val, f) => {
+    if (!val || val === "all" || val === "any") return true;
+    if (dim === "type") return f[3] === val;
+    if (dim === "price") { const r = range(val); return !r || (f[0] >= r[0] && f[0] < r[1]); }
+    if (dim === "beds") return f[1] >= +val;
+    if (dim === "baths") return f[2] >= +val;
+    return true;
+  };
+  const update = () => {
+    const facts = window.__filterFacts;
+    if (!Array.isArray(facts) || !facts.length) return;
+    const current = {};
+    for (const [dim, cls] of Object.entries(DIMS)) { const s = document.querySelector("select." + cls); current[dim] = s ? s.value : "all"; }
+    for (const [dim, cls] of Object.entries(DIMS)) {
+      const s = document.querySelector("select." + cls); const dd = s && s.nextElementSibling;
+      if (!dd || !dd.classList.contains("filter-dd")) continue;
+      const base = facts.filter((f) => Object.keys(DIMS).every((d) => d === dim || test(d, current[d], f)));
+      dd.querySelectorAll(".filter-dd__option[data-value]").forEach((opt) => {
+        const n = base.filter((f) => test(dim, opt.dataset.value, f)).length;
+        let el = opt.querySelector(".filter-dd__count");
+        if (!el) { el = document.createElement("span"); el.className = "filter-dd__count"; const check = opt.querySelector(".filter-dd__check"); opt.insertBefore(el, check || null); }
+        el.textContent = String(n);
+        opt.classList.toggle("is-empty", n === 0);
+      });
+    }
+  };
+  const soon = () => setTimeout(update, 80);
+  document.addEventListener("change", soon);
+  document.addEventListener("click", soon);
+  window.addEventListener("load", () => { update(); setTimeout(update, 800); });
+})();
+</script>
 </head>
 
 <body data-google-maps-api-key={import.meta.env.PUBLIC_GOOGLE_MAPS_API_KEY || ""}>
