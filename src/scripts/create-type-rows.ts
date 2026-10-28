@@ -1,4 +1,4 @@
-﻿import "dotenv/config";
+import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
 import { TYPE_PAGES } from "../lib/copy/generateTypeCopy";
 
@@ -10,21 +10,21 @@ const title = (s: string) => s.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUp
 
 (async () => {
   const types = Object.keys(TYPE_PAGES);
-  const { data: sites, error: sErr } = await supabase.from("sites").select("id, city, domain").ilike("domain", "%bc.realestate%");
+  const { data: sites, error: sErr } = await supabase.from("sites").select("id, city, domain").ilike("domain", "%" + (process.argv.find((a) => a.startsWith("--domain="))?.slice(9) || "bc.realestate") + "%");
   if (sErr) throw sErr;
   const { data: templates, error: tErr } = await supabase.from("intent_pages").select("*").eq("city", "fernie").in("slug", types);
   if (tErr) throw tErr;
   const { data: existing, error: eErr } = await supabase.from("intent_pages").select("site_id, slug").range(0, 19999);
   if (eErr) throw eErr;
   const have = new Set((existing || []).map((r: any) => `${r.site_id}|${r.slug}`));
-  const skipCities = new Set(["fernie", "calgary"]);
+  const skipCities = new Set(["calgary"]);
   const toInsert: any[] = [];
 
   for (const site of sites || []) {
     const cityKey = String(site.city || "").trim().toLowerCase().replace(/\s+/g, "-");
     if (!cityKey || skipCities.has(cityKey)) continue;
     for (const type of types) {
-      if (have.has(`${site.id}|${type}`) || have.has(`${site.id}|${cityKey}-${type}`)) continue;
+      if (have.has(`${site.id}|${type}`)) continue;
       const tpl: any = (templates || []).find((t: any) => t.slug === type);
       if (!tpl) continue;
       const row: any = { ...tpl };

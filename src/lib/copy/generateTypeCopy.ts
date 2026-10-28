@@ -110,13 +110,15 @@ export async function generateTypeCopy(city: string, opts: { dry?: boolean; forc
         month: String(m.month_start).slice(0, 7), sales: m.sales, activeListings: m.active_listings, medianDaysOnMarket: m.median_days_on_market,
         ...(t.type === "house" ? { medianSingleFamilySoldPrice: m.median_single_family_sold_price } : {}),
       }));
+      for (const target of targets) { // per-site-copy-v1: unique wording per site
       const copy = await writeCopy(facts).catch(() => writeCopy(facts));
       const update: any = { ...(copy.hero ? { intro_copy: copy.hero } : {}), seo_heading: copy.seo_heading, seo_intro: copy.seo_intro, seo_body: copy.seo_body, seo_long: copy.seo_long, market_commentary: copy.market_commentary || null };
       if (opts.dry || opts.verbose) console.log(`\n===== ${city}/${slug} =====\n${update.seo_heading}\n\n${update.seo_intro}\n\n${update.seo_body}\n\n${update.seo_long}\n\n${update.market_commentary || ""}`);
       if (opts.dry) continue;
-      const { error: uErr } = await supabase.from("intent_pages").update(update).in("id", targets.map((p: any) => p.id));
+      const { error: uErr } = await supabase.from("intent_pages").update(update).eq("id", target.id);
       if (uErr) throw uErr;
-      saved += targets.length;
+      saved += 1;
+      }
     } catch (err: any) {
       console.error(`${city}/${slug}: copy failed - ${err?.message || err}`);
     }
