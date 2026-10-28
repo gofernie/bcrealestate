@@ -188,7 +188,7 @@ export const CITY_FETCH_GROUPS: Record<string, string[]> = {
     "Ladysmith",
     "Lake Cowichan",
     "Saltair",
-    "Youbou"
+    "Youbou", "Shawnigan Lake", "Mill Bay", "Cobble Hill"
   ],
 
   colwood: [

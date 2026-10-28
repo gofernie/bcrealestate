@@ -539,7 +539,7 @@ const PARKSVILLE_MARKET_CITIES = new Set([
 const COLUMBIA_VALLEY_MARKET_CITIES = new Set(["invermere", "windermere", "radium hot springs", "panorama"]);
 
 const DUNCAN_MARKET_CITIES = new Set([
-  "ladysmith", "cowichan station/glenora",
+  "ladysmith", "cowichan station/glenora", "shawnigan lake", "mill bay", "cobble hill",
   "duncan",
   "chemainus",
   "cowichan bay",
@@ -2429,16 +2429,18 @@ console.log(
 console.log("Done.");
 // last-seen-cleanup-v1: stamp-based, covers every town in the fetch group
 const cleanupCities = Array.from(new Set([cleanupCity, TARGET_CITY, ...uniqueRows.map((row) => clean(row.normalized_city)), ...(((directInput as any)?.extraCleanupCities) || []).map((c: any) => clean(c))].filter(Boolean)));
-const { count: deactivated, error: cleanupError } = await supabase
+// town-scoped-cleanup-v1: only switch off listings in the towns this run actually fetched
+const cleanupTowns = Array.from(new Set([TARGET_CITY, ...uniqueRows.map((row: any) => String(row.city || "")), ...(((directInput as any)?.extraCleanupCities) || [])].flatMap((t: any) => [clean(t), String(t || "").trim(), String(t || "").trim().toLowerCase()]).filter(Boolean)));const { count: deactivated, error: cleanupError } = await supabase
   .from("listing_rows")
   .update({ status: "inactive" }, { count: "exact" })
   .in("normalized_city", cleanupCities)
+  .in("city", cleanupTowns)
   .eq("status", "A")
   .or(`last_seen_at.is.null,last_seen_at.lt."${runStartedAt}"`);
 if (cleanupError) {
   throw new Error(`Post-cleanup failed: ${cleanupError.message}`);
 }
-console.log(`Deactivated ${deactivated ?? 0} listings no longer in the feed across: ${cleanupCities.join(", ")}`);
+console.log(`Deactivated ${deactivated ?? 0} listings no longer in the feed, towns: ${cleanupTowns.join(", ")}`);
 return {
   ok: true,
   city: cleanupCity,

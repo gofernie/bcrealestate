@@ -251,10 +251,24 @@ html body *:has(> article > .type-stat-icon) { margin-bottom: 32px !important; }
     const val = lab.nextElementSibling;
     const txt = (val.textContent || "").trim().toLowerCase();
     const on = pickedAreas().length > 0 || (txt && !/^all\s*neigh/.test(txt));
-    val.classList.toggle("area-pill-on", on);
+    /* area-pill-v2 */
+    const props = ["background-color", "color", "border-radius", "padding", "margin", "position", "top", "font-weight", "font-size", "line-height", "display"];
+    if (on) {
+      const ref = [...document.querySelectorAll(".filter-dd__value")].find((e) => { const bg = getComputedStyle(e).backgroundColor; return bg && bg !== "transparent" && !/rgba\(0, 0, 0, 0\)/.test(bg); });
+      if (ref) { const cs = getComputedStyle(ref); props.forEach((k) => val.style.setProperty(k, cs.getPropertyValue(k), "important")); val.style.setProperty("width", "auto", "important"); val.style.setProperty("max-width", "100%", "important"); val.classList.remove("area-pill-on"); val.dataset.pillCopied = "1"; }
+      else { val.classList.add("area-pill-on"); }
+    } else {
+      val.classList.remove("area-pill-on");
+      if (val.dataset.pillCopied) { props.concat(["width", "max-width"]).forEach((k) => val.style.removeProperty(k)); delete val.dataset.pillCopied; }
+    }
   };
-  if (!document.getElementById("area-pill-css")) { const st = document.createElement("style"); st.id = "area-pill-css"; st.textContent = ".area-pill-on{display:inline-block !important;background:#e3efed !important;color:#2b6664 !important;font-weight:700 !important;border-radius:6px !important;padding:2px 8px !important;margin:-2px 0 -2px -8px !important;}"; document.head.appendChild(st); }
-  const run = () => { update(); updateAreas(); markArea(); };
+  if (!document.getElementById("area-pill-css")) { const st = document.createElement("style"); st.id = "area-pill-css"; st.textContent = ".area-pill-on{display:inline-block !important;width:auto !important;background:#e3efed !important;color:#2b6664 !important;font-weight:700 !important;border-radius:999px !important;padding:2px 8px !important;margin:-2px 0 -2px -8px !important;position:relative !important;top:4px !important;}"; document.head.appendChild(st); }
+  /* see-above-count-v1 */
+  window.__seeAboveLabel = (ceil, label, budget) => {
+    const picked = pickedAreas(); const cur = currentVals();
+    const n = raw().filter((f) => (!picked.length || picked.includes(nrm(f[4]))) && f[0] > Number(ceil) && ["type", "beds", "baths"].every((d) => test(d, cur[d], f))).length;
+    return n > 6 ? `See the 6 closest of ${n} ${label} above ${budget}` : n > 0 ? `See ${n} more ${label} above ${budget}` : `See ${label} above ${budget}`;
+  };  const run = () => { update(); updateAreas(); markArea(); };
   const soon = () => { setTimeout(run, 80); setTimeout(run, 400); };
   document.addEventListener("change", soon);
   document.addEventListener("click", soon);
