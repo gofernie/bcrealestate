@@ -256,10 +256,16 @@ html body *:has(> article > .type-stat-icon) { margin-bottom: 32px !important; }
     if (on) {
       const ref = [...document.querySelectorAll(".filter-dd__value")].find((e) => { const bg = getComputedStyle(e).backgroundColor; return bg && bg !== "transparent" && !/rgba\(0, 0, 0, 0\)/.test(bg); });
       if (ref) { const cs = getComputedStyle(ref); props.forEach((k) => val.style.setProperty(k, cs.getPropertyValue(k), "important")); val.style.setProperty("width", "auto", "important"); val.style.setProperty("max-width", "100%", "important"); val.classList.remove("area-pill-on"); val.dataset.pillCopied = "1"; }
-      else { val.classList.add("area-pill-on"); }
+      else {
+        /* area-pill-accent-v1 */
+        val.classList.add("area-pill-on");
+        const btn = [...document.querySelectorAll("button, a")].find((b) => b.textContent.trim() === "List");
+        const m = btn && getComputedStyle(btn).backgroundColor.match(/\d+(\.\d+)?/g);
+        if (m && m.length >= 3) { const [r, g, b] = m.map(Number); val.style.setProperty("background", `rgba(${r}, ${g}, ${b}, 0.12)`, "important"); val.style.setProperty("color", `rgb(${r}, ${g}, ${b})`, "important"); }
+      }
     } else {
       val.classList.remove("area-pill-on");
-      if (val.dataset.pillCopied) { props.concat(["width", "max-width"]).forEach((k) => val.style.removeProperty(k)); delete val.dataset.pillCopied; }
+      props.concat(["width", "max-width", "background"]).forEach((k) => val.style.removeProperty(k)); delete val.dataset.pillCopied;
     }
   };
   if (!document.getElementById("area-pill-css")) { const st = document.createElement("style"); st.id = "area-pill-css"; st.textContent = ".area-pill-on{display:inline-block !important;width:auto !important;background:#e3efed !important;color:#2b6664 !important;font-weight:700 !important;border-radius:999px !important;padding:2px 8px !important;margin:-2px 0 -2px -8px !important;position:relative !important;top:4px !important;}"; document.head.appendChild(st); }
@@ -268,13 +274,40 @@ html body *:has(> article > .type-stat-icon) { margin-bottom: 32px !important; }
     const picked = pickedAreas(); const cur = currentVals();
     const n = raw().filter((f) => (!picked.length || picked.includes(nrm(f[4]))) && f[0] > Number(ceil) && ["type", "beds", "baths"].every((d) => test(d, cur[d], f))).length;
     return n > 6 ? `See the 6 closest of ${n} ${label} above ${budget}` : n > 0 ? `See ${n} more ${label} above ${budget}` : `See ${label} above ${budget}`;
-  };  const run = () => { update(); updateAreas(); markArea(); };
+  };  /* filter-title-font-v1 */
+  const matchTitles = () => {
+    const ref = document.querySelector(".filter-dd__option");
+    if (!ref) return;
+    const cs = getComputedStyle(ref);
+    const titles = [...document.querySelectorAll(".filter-dd__label")];
+    const areaLab = [...document.querySelectorAll("span, div, label, strong, small, p, b")].find((e) => !e.children.length && e.textContent.trim() === "Area" && e.nextElementSibling);
+    if (areaLab) titles.push(areaLab);
+    titles.forEach((t) => { t.style.setProperty("font-family", cs.fontFamily, "important"); t.style.setProperty("font-size", cs.fontSize, "important"); t.style.setProperty("font-weight", "700", "important"); t.style.setProperty("letter-spacing", cs.letterSpacing, "important"); }); /* pill-square-v2 */ document.querySelectorAll(".filter-dd__value, .filter-dd__value *, [data-pill-copied], .area-pill-on").forEach((v) => v.style.setProperty("border-radius", "6px", "important"));
+  };
+  /* area-align-v1 */
+  const alignArea = () => {
+    const pl = document.querySelector(".filter-dd--price .filter-dd__label"), pv = document.querySelector(".filter-dd--price .filter-dd__value");
+    const al = [...document.querySelectorAll("span, div, label, strong, small, p, b")].find((e) => !e.children.length && e.textContent.trim() === "Area" && e.nextElementSibling);
+    if (!pl || !pv || !al) return;
+    const av = al.nextElementSibling;
+    al.style.transform = ""; av.style.transform = "";
+    const mid = (r) => r.top + r.height / 2;
+    const dl = mid(pl.getBoundingClientRect()) - mid(al.getBoundingClientRect());
+    const dv = mid(pv.getBoundingClientRect()) - mid(av.getBoundingClientRect());
+    if (Math.abs(dl) < 20) al.style.transform = `translateY(${dl.toFixed(1)}px)`;
+    if (Math.abs(dv) < 20) av.style.transform = `translateY(${dv.toFixed(1)}px)`;
+  };
+  const tagMore = () => { /* more-filters-wrap-v3 */ const b = document.querySelector(".type-more-filters-toggle"); const box = b && b.closest(".intent-controls"); if (!b || !box) return; ["grid-column", "justify-self", "margin-left", "flex", "width"].forEach((k) => b.style.removeProperty(k)); const over = b.getBoundingClientRect().right > box.getBoundingClientRect().right + 1; if (over) { b.style.setProperty("grid-column", "1 / -1", "important"); b.style.setProperty("justify-self", "end", "important"); b.style.setProperty("width", "auto", "important"); } };
+  const run = () => { update(); updateAreas(); markArea(); matchTitles(); tagMore(); requestAnimationFrame(alignArea); };
+  window.addEventListener("resize", () => requestAnimationFrame(() => { tagMore(); alignArea(); }));
   const soon = () => { setTimeout(run, 80); setTimeout(run, 400); };
   document.addEventListener("change", soon);
   document.addEventListener("click", soon);
   window.addEventListener("load", () => { run(); setTimeout(run, 800); });
 })();
 </script>
+<style>/* pill-square-v1 */ html body .filter-dd .filter-dd__value { border-radius: 6px !important; } html body .area-pill-on { border-radius: 6px !important; }</style>
+<style>/* more-filters-wrap-v1 */ html body .intent-controls { flex-wrap: wrap !important; row-gap: 12px !important; max-width: 100% !important; } html body .more-filters-btn { margin-left: auto !important; flex: 0 0 auto !important; white-space: nowrap !important; }</style>
 </head>
 
 <body data-google-maps-api-key={import.meta.env.PUBLIC_GOOGLE_MAPS_API_KEY || ""}>
