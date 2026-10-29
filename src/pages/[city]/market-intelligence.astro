@@ -1240,6 +1240,23 @@ const priceHistory =
         (row) => row.medianSoldPrice > 0
       );
 
+/* outlier-trim-v1: months far outside the normal spread don't steer the trend line or the read */
+const priceSortedForIqr = priceHistory
+  .map((r) => r.medianSoldPrice)
+  .filter((p) => p > 0)
+  .sort((a, b) => a - b);
+const priceQuartile = (q) => {
+  const a = priceSortedForIqr;
+  if (!a.length) return 0;
+  const pos = (a.length - 1) * q, lo = Math.floor(pos), hi = Math.ceil(pos);
+  return a[lo] + (a[hi] - a[lo]) * (pos - lo);
+};
+const priceQ1 = priceQuartile(0.25), priceQ3 = priceQuartile(0.75), priceIqr = priceQ3 - priceQ1;
+const isPriceOutlier = (v) =>
+  priceSortedForIqr.length >= 8 && priceIqr > 0 &&
+  (v < priceQ1 - 1.5 * priceIqr || v > priceQ3 + 1.5 * priceIqr);
+const trimmedPrices = (rows) =>
+  rows.map((r) => r.medianSoldPrice).filter((p) => p > 0 && !isPriceOutlier(p));
 const latestRollingPriceSample = Number(
   priceHistory.at(-1)?.sampleSize || 0
 );
@@ -1330,7 +1347,14 @@ const rawPricePath = priceHistory
   )
   .join(" ");
 
-const pricePath = smoothedPriceHistory
+/* outlier-trim-v1 */
+const trimmedSmoothedPriceHistory = priceHistory.map((row, index) => {
+  let values = trimmedPrices(priceHistory.slice(Math.max(0, index - 5), index + 1));
+  if (!values.length) values = trimmedPrices(priceHistory.slice(index, index + 6));
+  if (!values.length) values = [row.medianSoldPrice];
+  return { ...row, movingAverage: values.reduce((a, b) => a + b, 0) / values.length };
+});
+const pricePath = trimmedSmoothedPriceHistory
   .map((row, index) =>
     `${index === 0 ? "M" : "L"} ${priceTrendX(
       index
@@ -1363,10 +1387,10 @@ const priceTicks = Array.from(
 );
 
 const firstMedianPrice =
-  ((v) => v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0)(priceHistory.slice(0, 6).map((r) => r.medianSoldPrice).filter((p) => p > 0)); /* smoothed-change-v1 */
+  ((v) => v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0)(trimmedPrices(priceHistory.slice(0, 6))); /* smoothed-change-v1 outlier-trim-v1 */
 
 const latestMedianPrice =
-  ((v) => v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0)(priceHistory.slice(-6).map((r) => r.medianSoldPrice).filter((p) => p > 0));
+  ((v) => v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0)(trimmedPrices(priceHistory.slice(-6)));
 
 const medianPriceChange =
   firstMedianPrice > 0
@@ -2136,26 +2160,6 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
               <strong>
                 {formatPrice(latestMedianPrice)}
               </strong>
-            </p>
-
-            <p>
-              <span>Period high</span>
-              <strong>
-                {formatPrice(
-                  highestMedianMonth.medianSoldPrice
-                )}
-              </strong>
-              <small>{highestMedianMonth.label}</small>
-            </p>
-
-            <p>
-              <span>Period low</span>
-              <strong>
-                {formatPrice(
-                  lowestMedianMonth.medianSoldPrice
-                )}
-              </strong>
-              <small>{lowestMedianMonth.label}</small>
             </p>
           </div>
 
