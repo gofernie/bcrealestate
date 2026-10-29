@@ -44,11 +44,13 @@ document.addEventListener("astro:before-swap", (e) => { const nd = e.newDocument
   document.addEventListener("pointerdown", (e) => { if (e.target && e.target.closest && e.target.closest(".intent-controls, #home-hero-search, [data-area-menu], .area-multiselect__menu")) downY = window.scrollY; }, true);
   document.addEventListener("focusin", (e) => { const t = e.target; if (downY !== null && t && t.matches && t.matches("input[type=checkbox], input[type=radio]") && Math.abs(window.scrollY - downY) > 2) origTo({ top: downY, left: 0, behavior: "instant" }); }, true);
   document.addEventListener("click", () => { setTimeout(() => { downY = null; }, 400); }, false);
-  const tuck = () => document.querySelectorAll(".intent-controls input[type=checkbox], #home-hero-search input[type=checkbox], .area-multiselect__menu input[type=checkbox]").forEach((i) => {
-    const cs = getComputedStyle(i); const hidden = cs.opacity === "0" || parseFloat(cs.width) <= 1 || cs.clip !== "auto" || cs.clipPath !== "none" || i.getBoundingClientRect().width <= 1;
-    if (!hidden || i.dataset.tucked) return; i.dataset.tucked = "1"; const lb = i.closest("label") || i.parentElement; if (lb && getComputedStyle(lb).position === "static") lb.style.setProperty("position", "relative", "important");
-    ["position:absolute", "left:0", "top:0", "width:1px", "height:1px", "opacity:0", "margin:0", "pointer-events:none"].forEach((d) => { const [k, v] = d.split(":"); i.style.setProperty(k, v, "important"); });
-  });
+  const tuck = () => { /* tuck-batched-v1: skip done ones, read all, then write */
+    const list = [...document.querySelectorAll(".intent-controls input[type=checkbox]:not([data-tucked]), #home-hero-search input[type=checkbox]:not([data-tucked]), .area-multiselect__menu input[type=checkbox]:not([data-tucked])")];
+    if (!list.length) return;
+    const todo = [];
+    list.forEach((i) => { const cs = getComputedStyle(i); const hidden = cs.opacity === "0" || parseFloat(cs.width) <= 1 || cs.clip !== "auto" || cs.clipPath !== "none" || i.getBoundingClientRect().width <= 1; if (!hidden) return; const lb = i.closest("label") || i.parentElement; todo.push([i, lb, !!(lb && getComputedStyle(lb).position === "static")]); });
+    todo.forEach(([i, lb, rel]) => { i.dataset.tucked = "1"; if (rel) lb.style.setProperty("position", "relative", "important"); ["position:absolute", "left:0", "top:0", "width:1px", "height:1px", "opacity:0", "margin:0", "pointer-events:none"].forEach((d) => { const [k, v] = d.split(":"); i.style.setProperty(k, v, "important"); }); });
+  };
   document.addEventListener("click", () => requestAnimationFrame(tuck), true); document.addEventListener("DOMContentLoaded", tuck);
   let pendingArea = false; /* home-area-jump-on-close-v1 */
   new MutationObserver((list) => { if (!pendingArea) return; if (list.some((m) => m.target.matches && m.target.matches("[data-area-menu]") && m.target.hidden)) { pendingArea = false; blockUntil = Date.now() + 1800; const tok = ++jumpTok; [250, 900].forEach((ms2) => setTimeout(() => { if (tok === jumpTok) toListings(); }, ms2)); } }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["hidden"] });
@@ -1602,17 +1604,14 @@ html body .together__card #together-submit { border-radius: 6px !important; }
     { let ac = num(d.lotAcres); if (!ac && d.lotSize) { const ls = String(d.lotSize).toLowerCase(); ac = /acre/.test(ls) ? num(ls) : (/ft/.test(ls) ? num(ls) / 43560 : 0); } if (ac >= 1) list.push(["Acreage", "land"]); }
     return list.slice(0, 2);
   };
-  const fix = (card) => {
-    if (!card.classList.contains("card") || card.dataset.badged) return;
-    const img = card.querySelector("img"); const box = img && img.parentElement; if (!box) return;
-    card.dataset.badged = "1";
-    const list = badgesFor(card.dataset); if (!list.length) return;
-    if (getComputedStyle(box).position === "static") box.style.position = "relative";
-    const el = document.createElement("div"); el.className = "card-badges";
-    el.innerHTML = list.map(([txt, k]) => `<span class="b-${k}">${txt}</span>`).join("");
-    box.appendChild(el);
+  const fixAll = (cards) => { /* badges-batched-v1: read all box positions, then write */
+    const jobs = [];
+    new Set(cards).forEach((card) => { if (!card.classList.contains("card") || card.dataset.badged) return; const img = card.querySelector("img"); const box = img && img.parentElement; if (!box) return; jobs.push([card, box, badgesFor(card.dataset)]); });
+    const stat = jobs.map(([, box, list]) => list.length ? getComputedStyle(box).position === "static" : false);
+    jobs.forEach(([card, box, list], n) => { card.dataset.badged = "1"; if (!list.length) return; if (stat[n]) box.style.position = "relative"; const el = document.createElement("div"); el.className = "card-badges"; el.innerHTML = list.map(([txt, k]) => `<span class="b-${k}">${txt}</span>`).join(""); box.appendChild(el); });
   };
-  const run = (el) => { if (el.nodeType !== 1) return; const c = el.closest(".card[data-address]"); if (c) fix(c); el.querySelectorAll(".card[data-address]").forEach(fix); };
+  const fix = (card) => fixAll([card]);
+  const run = (el) => { if (el.nodeType !== 1) return; const cards = []; const c = el.closest(".card[data-address]"); if (c) cards.push(c); el.querySelectorAll(".card[data-address]").forEach((x) => cards.push(x)); fixAll(cards); };
   run(document.body);
   new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach(run))).observe(document.body, { childList: true, subtree: true });
 })();
