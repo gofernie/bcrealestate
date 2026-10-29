@@ -69,13 +69,24 @@ export const onRequest = defineMiddleware(async (context, next) => {
         if (user) await purgeAfterAdminSave(pathname, referer);
       } catch {}
     }
+    // cdn-cache-api-v1: read-only public data APIs are the same for every visitor, so cache them at the CDN too
+    try {
+      const cacheableApi = /^\/api\/(home-listings|listing-detail|listing-filters|listing-style|osm-amenities|photo-kind|greater-victoria-listings)\/?$/.test(pathname);
+      const apiType = response.headers.get("content-type") || "";
+      if (context.request.method === "GET" && cacheableApi && response.status === 200 && apiType.includes("json") && !response.headers.has("set-cookie") && !response.headers.has("cache-control")) {
+        response.headers.set("Cache-Control", "public, max-age=0, must-revalidate");
+        response.headers.set("Netlify-CDN-Cache-Control", "public, durable, s-maxage=3600, stale-while-revalidate=86400");
+        const apiHostTag = "host-" + tagSafe(context.url.hostname.replace(/^www\./, ""));
+        response.headers.set("Netlify-Cache-Tag", ["all-pages", apiHostTag, "api"].join(","));
+      }
+    } catch {}
     // cdn-cache-v1: public HTML is the same for every visitor, so let Netlify's CDN serve it
     try {
       const perVisitor = /^\/(api|login|logout|shortlists|listings|reset-password|buyers|account|unsubscribe)(\/|$)/.test(pathname);
       const type = response.headers.get("content-type") || "";
       if (context.request.method === "GET" && !perVisitor && response.status === 200 && type.includes("text/html") && !response.headers.has("set-cookie") && !response.headers.has("cache-control")) {
         response.headers.set("Cache-Control", "public, max-age=0, must-revalidate");
-        response.headers.set("Netlify-CDN-Cache-Control", "public, durable, s-maxage=300, stale-while-revalidate=86400");
+        response.headers.set("Netlify-CDN-Cache-Control", "public, durable, s-maxage=3600, stale-while-revalidate=86400");
         const hostTag = "host-" + tagSafe(context.url.hostname.replace(/^www\./, ""));
         const seg = segs[0] ? `${hostTag}-${tagSafe(segs[0])}` : "";
         response.headers.set("Netlify-Cache-Tag", ["all-pages", hostTag, seg].filter(Boolean).join(","));
