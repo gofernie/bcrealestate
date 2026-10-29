@@ -1404,32 +1404,37 @@ html body .together__card #together-submit { border-radius: 6px !important; }
 <!-- site-square: business-class corners sitewide (opt out with data-keep-round) -->
 <script is:inline>
 (() => {
-  if (window.__siteSquare) return; window.__siteSquare = true;
+  if (window.__siteSquare) return; window.__siteSquare = true; /* site-square-batched-v1: read everything first, then write, so layout runs once instead of per element */
   const SKIP = ".leaflet-container, .leaflet-container *, svg, svg *, [data-keep-round], [data-keep-round] *";
   const C = ["border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius"];
-  const fix = (el) => {
-    if (!(el instanceof HTMLElement) || el.matches(SKIP)) return;
-    if (/toggle|switch|avatar/i.test(el.className)) return;
-    const cs = getComputedStyle(el);
-    const vals = C.map((p) => cs.getPropertyValue(p));
-    if (vals.some((v) => v.includes("%"))) return;
-    const px = vals.map((v) => parseFloat(v) || 0);
-    const max = Math.max(...px);
-    if (max <= 3) return;
-    const b = el.getBoundingClientRect();
-    if (b.width && b.height && Math.abs(b.width - b.height) < 4 && max >= b.width / 2 - 2) return;
-    const target = b.height ? (b.height <= 60 ? 3 : 6) : (max >= 100 ? 3 : 6);
-    if (max <= target) return;
-    C.forEach((p, i) => { if (px[i] > 0) el.style.setProperty(p, Math.min(px[i], target) + "px", "important"); });
+  const sweepAll = (roots) => {
+    const els = [];
+    roots.forEach((r) => { if (r instanceof HTMLElement) { els.push(r); r.querySelectorAll("*").forEach((e) => els.push(e)); } });
+    const writes = [];
+    for (const el of els) {
+      if (!(el instanceof HTMLElement) || el.matches(SKIP)) continue;
+      if (/toggle|switch|avatar/i.test(el.className)) continue;
+      const cs = getComputedStyle(el);
+      const vals = C.map((p) => cs.getPropertyValue(p));
+      if (vals.some((v) => v.includes("%"))) continue;
+      const px = vals.map((v) => parseFloat(v) || 0);
+      const max = Math.max(...px);
+      if (max <= 3) continue;
+      const b = el.getBoundingClientRect();
+      if (b.width && b.height && Math.abs(b.width - b.height) < 4 && max >= b.width / 2 - 2) continue;
+      const target = b.height ? (b.height <= 60 ? 3 : 6) : (max >= 100 ? 3 : 6);
+      if (max > target) writes.push([el, px, target]);
+    }
+    writes.forEach(([el, px, target]) => C.forEach((p, i) => { if (px[i] > 0) el.style.setProperty(p, Math.min(px[i], target) + "px", "important"); }));
   };
-  const sweep = (root) => { fix(root); root.querySelectorAll?.("*").forEach(fix); };
-  const start = () => sweep(document.body);
+  let lastStart = -1e9;
+  const start = () => { const now = performance.now(); if (now - lastStart < 1000) return; lastStart = now; sweepAll([document.body]); };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true }); else start();
   document.addEventListener("astro:page-load", start);
   const queue = new Set(); let raf = 0;
   new MutationObserver((ms) => {
     ms.forEach((m) => m.addedNodes.forEach((n) => n.nodeType === 1 && queue.add(n)));
-    if (!raf) raf = requestAnimationFrame(() => { raf = 0; const q = [...queue]; queue.clear(); q.forEach(sweep); });
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; const q = [...queue]; queue.clear(); sweepAll(q); });
   }).observe(document.body, { childList: true, subtree: true });
 })();
 </script>
