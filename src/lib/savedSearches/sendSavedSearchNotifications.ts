@@ -315,6 +315,15 @@ export async function sendSavedSearchNotifications(
         )
         .join("");
 
+    /* alert-label-v1 */
+    const __f: Record<string, any> = savedSearch.filters || {};
+    const __rawName = String((savedSearch as any).search_name || (savedSearch as any).name || __f.searchName || __f.search_name || __f.name || __f.label || "").trim();
+    const __named = /^saved property search$/i.test(__rawName) ? "" : __rawName;
+    const __wf = String(__f.waterfrontType || "").trim().toLowerCase();
+    const __type = String(__f.propertyType || __f.type || "").trim();
+    const __typeWord = __type && __type !== "all" ? __type.replace(/[-_]/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase()) : "Homes";
+    const __wfWord = __wf === "any" ? "Waterfront " : __wf ? __wf.charAt(0).toUpperCase() + __wf.slice(1) + " " : "";
+    const __alertLabel = __named || `${__wfWord}${__typeWord} in ${cityLabel}`;
     const emailResult =
       await resend
         .emails
@@ -329,8 +338,8 @@ export async function sendSavedSearchNotifications(
 
           subject:
             count === 1
-              ? `A new ${cityLabel} home just matched your search`
-              : `${count} new ${cityLabel} homes just matched your search`,
+              ? `New match: ${__alertLabel}`
+              : `${count} new matches: ${__alertLabel}`,
 
           html: `
             <div
@@ -352,8 +361,8 @@ export async function sendSavedSearchNotifications(
               >
                 ${
                   count === 1
-                    ? `🏡 A new ${cityLabel} home just matched your search`
-                    : `🏡 ${count} new ${cityLabel} homes just matched your search`
+                    ? `🏡 New match: ${__alertLabel}`
+                    : `🏡 ${count} new matches: ${__alertLabel}`
                 }
               </h2>
 
