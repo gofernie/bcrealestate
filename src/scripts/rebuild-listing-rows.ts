@@ -2164,7 +2164,7 @@ const normalizedLotSize =
        normalized_type: finalType,
 
         price: numOrNull(listing?.price || listing?.listPrice),
-        beds: intOrNull(
+        beds: /* beds-plus-v1 */ ((l: any) => { const up = Number(l?.details?.numBedrooms ?? l?.raw?.details?.numBedrooms); const dn = Number(l?.details?.numBedroomsPlus ?? l?.raw?.details?.numBedroomsPlus); const t = (Number.isFinite(up) ? up : 0) + (Number.isFinite(dn) ? dn : 0); return t > 0 ? t : null; })(listing) ?? intOrNull(
   listing?.beds ||
     listing?.bedrooms ||
     listing?.details?.numBedrooms ||
