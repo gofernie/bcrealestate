@@ -1704,7 +1704,7 @@ html body .together__card #together-submit { border-radius: 6px !important; }
     const head = document.createElement("div"); head.className = "card-head"; head.style.cssText = "display:flex;align-items:center;gap:12px;margin-bottom:4px;text-align:left;";
     const ic = document.createElement("div"); ic.innerHTML = svg;
     const ref = document.querySelector("#watch-home-card svg") && document.querySelector("#watch-home-card svg").parentElement;
-    if (ref) { const cs = getComputedStyle(ref); ["background-color", "color", "width", "height", "border-radius", "display", "align-items", "justify-content"].forEach((p) => ic.style.setProperty(p, cs.getPropertyValue(p), "important")); }
+    if (ref) { /* lead-inline-fast-v1 */ const k = document.documentElement.getAttribute("data-theme") || "x"; const o = ICON[k] || (ICON[k] = grab(ref, ["background-color", "color", "width", "height", "border-radius", "display", "align-items", "justify-content"])); put(ic, o); }
     else { ic.style.cssText = "display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:var(--accent,#2f4a66);color:#fff;"; }
     ic.style.setProperty("flex", "0 0 auto", "important"); /* card-icons-white */ ic.style.setProperty("color", "#fff", "important"); ic.querySelectorAll("svg, svg *").forEach((n) => { n.style.setProperty("stroke", "#fff", "important"); n.style.setProperty("color", "#fff", "important"); });
     const txt = document.createElement("div"); txt.style.cssText = "min-width:0;";
@@ -1712,20 +1712,38 @@ html body .together__card #together-submit { border-radius: 6px !important; }
     t.style.setProperty("margin-bottom", "2px", "important");
   };
   document.addEventListener("click", (e) => { if (e.target.closest && e.target.closest("#together-btn")) setTimeout(() => addHead(document.getElementById("together-form"), SVG.together), 0); }, false);
-  const style = (card) => {
+  const SNAP = {}, ICON = {};
+  const BORD = ["border-top-width", "border-top-style", "border-top-color", "border-right-width", "border-right-style", "border-right-color", "border-bottom-width", "border-bottom-style", "border-bottom-color", "border-left-width", "border-left-style", "border-left-color"];
+  const grab = (el, props) => { if (!el) return null; const cs = getComputedStyle(el), o = {}; props.forEach((p) => { o[p] = cs.getPropertyValue(p); }); return o; };
+  const put = (el, o) => { if (!el || !o) return; for (const p in o) el.style.setProperty(p, o[p], "important"); };
+  const snap = () => {
+    const k = document.documentElement.getAttribute("data-theme") || "x"; if (SNAP[k]) return SNAP[k];
     const tc = document.getElementById("together-card"), tn = document.getElementById("together-name"), ts = document.getElementById("together-submit");
-    copy(card, tc, ["background-color", "border-top-width", "border-top-style", "border-top-color", "border-right-width", "border-right-style", "border-right-color", "border-bottom-width", "border-bottom-style", "border-bottom-color", "border-left-width", "border-left-style", "border-left-color", "padding-top", "padding-right", "padding-bottom", "padding-left", "color", "font-family"]);
-    card.style.setProperty("border-radius", "6px", "important"); card.style.setProperty("box-sizing", "border-box", "important"); card.style.setProperty("text-align", "left", "important"); /* lead-inline-left */ card.style.setProperty("display", "block", "important");
-    copy(card.querySelector(".li-title"), document.querySelector("#together-card .together__title"), ["font-size", "font-weight", "color", "margin-bottom", "line-height"]);
-    copy(card.querySelector(".li-sub"), document.querySelector("#together-card .together__sub"), ["font-size", "color", "line-height", "margin-bottom"]);
-    card.querySelectorAll("label").forEach((lb) => { copy(lb, tn && tn.parentElement, ["font-size", "font-weight", "color"]); lb.style.setProperty("display", "grid", "important"); lb.style.setProperty("gap", "6px", "important"); });
-    card.querySelectorAll("input, textarea").forEach((i) => { copy(i, tn, ["background-color", "border-top-width", "border-top-style", "border-top-color", "border-right-width", "border-right-style", "border-right-color", "border-bottom-width", "border-bottom-style", "border-bottom-color", "border-left-width", "border-left-style", "border-left-color", "padding-left", "padding-right", "font-size", "color", "font-family"]); i.style.setProperty("border-radius", "6px", "important"); i.style.setProperty("width", "100%", "important"); i.style.setProperty("box-sizing", "border-box", "important"); if (i.tagName === "INPUT") copy(i, tn, ["height"]); else { i.style.setProperty("padding-top", "10px", "important"); i.style.setProperty("resize", "vertical", "important"); } });
-    const go = card.querySelector(".li-go"); copy(go, ts, ["background-color", "color", "height", "font-size", "font-weight", "font-family", "border-top-width", "border-top-style", "border-top-color"]); if (go) { go.style.setProperty("border-radius", "6px", "important"); go.style.setProperty("width", "100%", "important"); go.style.setProperty("cursor", "pointer", "important"); go.style.setProperty("margin-top", "12px", "important"); }
+    const s = {
+      card: grab(tc, ["background-color", ...BORD, "padding-top", "padding-right", "padding-bottom", "padding-left", "color", "font-family"]),
+      title: grab(document.querySelector("#together-card .together__title"), ["font-size", "font-weight", "color", "margin-bottom", "line-height"]),
+      sub: grab(document.querySelector("#together-card .together__sub"), ["font-size", "color", "line-height", "margin-bottom"]),
+      label: grab(tn && tn.parentElement, ["font-size", "font-weight", "color"]),
+      input: grab(tn, ["background-color", ...BORD, "padding-left", "padding-right", "font-size", "color", "font-family"]),
+      height: grab(tn, ["height"]),
+      go: grab(ts, ["background-color", "color", "height", "font-size", "font-weight", "font-family", "border-top-width", "border-top-style", "border-top-color"])
+    };
+    if (s.card) SNAP[k] = s; return s;
+  };
+  const style = (card) => { /* lead-inline-fast-v1 */
+    const S = snap();
+    put(card, S.card);
+    card.style.setProperty("border-radius", "6px", "important"); card.style.setProperty("box-sizing", "border-box", "important"); card.style.setProperty("text-align", "left", "important"); card.style.setProperty("display", "block", "important");
+    put(card.querySelector(".li-title"), S.title);
+    put(card.querySelector(".li-sub"), S.sub);
+    card.querySelectorAll("label").forEach((lb) => { put(lb, S.label); lb.style.setProperty("display", "grid", "important"); lb.style.setProperty("gap", "6px", "important"); });
+    card.querySelectorAll("input, textarea").forEach((i) => { put(i, S.input); i.style.setProperty("border-radius", "6px", "important"); i.style.setProperty("width", "100%", "important"); i.style.setProperty("box-sizing", "border-box", "important"); if (i.tagName === "INPUT") put(i, S.height); else { i.style.setProperty("padding-top", "10px", "important"); i.style.setProperty("resize", "vertical", "important"); } });
+    const go = card.querySelector(".li-go"); put(go, S.go); if (go) { go.style.setProperty("border-radius", "6px", "important"); go.style.setProperty("width", "100%", "important"); go.style.setProperty("cursor", "pointer", "important"); go.style.setProperty("margin-top", "12px", "important"); }
     const grid = card.querySelector(".li-grid"); if (grid) { grid.style.cssText = "display:grid;gap:10px;margin-top:12px;grid-template-columns:" + (matchMedia("(max-width: 520px)").matches ? "1fr" : "1fr 1fr") + ";"; }
     card.querySelectorAll(".li-chips button").forEach((b) => { b.style.cssText = "appearance:none;border:1px solid rgba(16,32,44,.18);border-radius:6px;background:#fff;color:inherit;padding:6px 10px;font:inherit;font-size:.8rem;cursor:pointer;"; });
     const chips = card.querySelector(".li-chips"); if (chips) chips.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;";
     card.querySelectorAll(".li-fine").forEach((f) => { f.style.cssText = "margin-top:10px;font-size:.78rem;opacity:.75;"; });
-  };
+ };
   const open = (btnId) => {
     const cfg = KIND[btnId]; const existing = document.getElementById("lead-inline");
     if (existing && existing.dataset.kind === btnId) { close(); return; }
