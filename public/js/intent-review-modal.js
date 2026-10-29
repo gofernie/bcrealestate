@@ -6021,6 +6021,7 @@ sheetFloorplanBtn?.addEventListener("click", (event) => {
   showActivePhoto();
   hidePhotoOverlayTemporarily();
 
+  /* floorplan-arrows-live-v1 */ setTimeout(() => { if (photoPrevBtn) photoPrevBtn.disabled = false; if (photoNextBtn) photoNextBtn.disabled = false; }, 0);
   // floorplan-contained-navigation
   if (photoPrevBtn) {
     photoPrevBtn.disabled = true;
@@ -7335,6 +7336,8 @@ sheetImage?.addEventListener("touchend", (event) => {
 
 
 
+      /* floorplan-skip-capture-v2 */ document.addEventListener("click", (e) => { const btn = e.target && e.target.closest && e.target.closest("#photo-next-btn, #photo-prev-btn"); if (!btn) return; const dir = btn.id === "photo-next-btn" ? 1 : -1; const fps = getCurrentFloorplanUrls(); if (!fps.length) return; const nf = fps.map(normalizeGalleryUrl); const isFp = (k) => nf.includes(normalizeGalleryUrl(activePhotoUrls[k] || "")); const go = (k) => { e.preventDefault(); e.stopImmediatePropagation(); isFloorplanMode = false; activePhotoIndex = k; try { lastRegularPhotoIndex = k; } catch (x) {} showActivePhoto(); hidePhotoOverlayTemporarily(); }; const pos = getActiveFloorplanPosition(); if (pos >= 0) { /* floorplan-wrap-v1 */ if (dir === 1 && pos === fps.length - 1) { e.preventDefault(); e.stopImmediatePropagation(); goToFloorplanPosition(0); } else if (dir === -1 && pos === 0) { e.preventDefault(); e.stopImmediatePropagation(); goToFloorplanPosition(fps.length - 1); } return; } let k = activePhotoIndex + dir; while (k >= 0 && k < activePhotoUrls.length && isFp(k)) k += dir; if (k >= 0 && k < activePhotoUrls.length && k !== activePhotoIndex + dir) go(k); }, true);
+      /* floorplan-arrows-observer-v1 */ [photoPrevBtn, photoNextBtn].forEach((b) => { if (!b) return; const live = () => { if (!isFloorplanMode) return; if (b.disabled) b.disabled = false; if (b.hasAttribute("aria-disabled")) b.removeAttribute("aria-disabled"); ["is-disabled", "disabled"].forEach((k) => { if (b.classList.contains(k)) b.classList.remove(k); }); if (b.style.pointerEvents) b.style.removeProperty("pointer-events"); }; new MutationObserver(live).observe(b, { attributes: true, attributeFilter: ["disabled", "aria-disabled", "class", "style"] }); });
       photoNextBtn?.addEventListener("click", (event) => {
   event.stopPropagation();
 
@@ -7349,9 +7352,7 @@ sheetImage?.addEventListener("touchend", (event) => {
       goToFloorplanPosition(
         floorplanPosition + 1
       );
-    } else if (!goToAdjacentRegularPhoto(1)) {
-      returnToRegularPhotos();
-    }
+    } else { /* floorplan-exit-v2 */ const __fps = getCurrentFloorplanUrls().map(normalizeGalleryUrl); const __isFp = (k) => __fps.includes(normalizeGalleryUrl(activePhotoUrls[k] || "")); let __i = (typeof lastRegularPhotoIndex === "number" && activePhotoUrls[lastRegularPhotoIndex] && !__isFp(lastRegularPhotoIndex)) ? lastRegularPhotoIndex : activePhotoUrls.findIndex((u, k) => !__isFp(k)); if (__i < 0) __i = 0; isFloorplanMode = false; activePhotoIndex = __i; showActivePhoto(); hidePhotoOverlayTemporarily(); }
 
     return;
   }
