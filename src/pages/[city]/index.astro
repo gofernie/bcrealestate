@@ -4296,6 +4296,7 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
   </div>
 </section>
 
+<div class="homepage-save-nudge homepage-save-nudge--inline homepage-save-nudge--top" data-save-search-prompt hidden={!hasActiveSearch} style="width:100%;max-width:none;box-sizing:border-box;margin:0 0 20px;"><div class="homepage-save-nudge__copy"><strong>Like these results?</strong><span>Save this search and get matching new listings sent to you.</span></div><button type="button" class="interrupt-btn interrupt-primary" onclick="document.getElementById('save-search-btn')?.click()">Save This Search</button></div>
 <div class="explore-toolbar">
           <div class="view-pill">
            <button type="button" class="view-pill__btn active" id="list-view-btn">&#9776; List</button>
@@ -4538,6 +4539,7 @@ data-liked-tags="[]"
               );
             })}
                  </section>
+<div class="homepage-save-nudge homepage-save-nudge--inline" data-save-search-prompt hidden={!hasActiveSearch} style="flex:1 0 100%;width:100%;max-width:none;box-sizing:border-box;margin:8px 0 24px;"><div class="homepage-save-nudge__copy"><strong>Like these results?</strong><span>Save this search and get matching new listings sent to you.</span></div><button type="button" class="interrupt-btn interrupt-primary" onclick="document.getElementById('save-search-btn')?.click()">Save This Search</button></div>
 <button type="button" id="home-load-more" class="home-load-more-btn">Load more listings</button>
 
 <div
@@ -8870,6 +8872,17 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
         areaSelect.value = "";
       }
 
+      // hero-advanced-sync-v1: carry More filters values into the results form
+      ["minSqft", "minLotSqft", "minYear", "viewType", "waterfrontType", "oceanViews", "primaryOnMain", "threeSameFloor", "fourSameFloor", "age55", "otherPark", "petsAllowed"].forEach((name) => {
+        const heroField = heroForm.elements.namedItem(name);
+        const resultsField = resultsForm.elements.namedItem(name);
+        if (!heroField || !(resultsField instanceof HTMLInputElement || resultsField instanceof HTMLSelectElement)) return;
+        if (heroField instanceof HTMLInputElement && heroField.type === "checkbox") {
+          resultsField.value = heroField.checked ? "true" : "";
+        } else if (heroField instanceof HTMLInputElement || heroField instanceof HTMLSelectElement) {
+          resultsField.value = String(heroField.value || "");
+        }
+      });
       ["type", "maxPrice", "beds", "baths", "minPrice"].forEach((name) => {
         const heroField = heroForm.elements.namedItem(name);
         const resultsField = resultsForm.elements.namedItem(name);
@@ -11462,18 +11475,18 @@ function syncSaveSearchPrompts() {
     currentMaxPrice > 0 ||
     Boolean(currentPriceSelection) ||
     currentBeds > 0 ||
-    currentBaths > 0;
+    currentBaths > 0 || /* save-prompt-advanced-v1 */ ["minSqft", "minLotSqft", "minYear", "viewType", "waterfrontType", "oceanViews", "primaryOnMain", "threeSameFloor", "fourSameFloor", "age55", "otherPark", "petsAllowed"].some((k) => { const v = String(form.elements[k]?.value || "").trim().toLowerCase(); return v !== "" && v !== "0" && v !== "false"; });
 
   document
     .querySelectorAll("[data-save-search-prompt]")
     .forEach((prompt) => {
       if (prompt instanceof HTMLElement) {
-        prompt.hidden = !hasCuratedSearch;
+        prompt.hidden = !hasCuratedSearch;        /* save-prompt-slot-open-v1 */ prompt.closest(".homepage-save-nudge-slot")?.classList.toggle("is-open", hasCuratedSearch);
       }
     });
 }
 
-syncSaveSearchPrompts();
+syncSaveSearchPrompts(); /* save-prompt-resync-v1 */ ["change", "submit"].forEach((ev) => document.addEventListener(ev, (e) => { const t = e.target; if (t && t.closest && t.closest("#home-hero-search, #home-filter-form")) { setTimeout(syncSaveSearchPrompts, 0); setTimeout(syncSaveSearchPrompts, 400); } })); /* save-prompt-resync-v1 */ ["change", "submit"].forEach((ev) => document.addEventListener(ev, (e) => { const t = e.target; if (t && t.closest && t.closest("#home-hero-search, #home-filter-form")) { setTimeout(syncSaveSearchPrompts, 0); setTimeout(syncSaveSearchPrompts, 400); } }));
 
 heroSaveSearchBtn?.addEventListener("click", () => {
   homepageSaveSearchBtn?.click();
