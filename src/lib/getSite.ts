@@ -1,9 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
+import { cachedFetch } from "./cachedFetch";
 
 const supabase = createClient(
   import.meta.env.PUBLIC_SUPABASE_URL,
-  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
-);
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY, { global: { fetch: cachedFetch } });
 
 export async function getSite(hostname: string, city?: string) {
   const host = hostname.replace(/^www\./, "");
