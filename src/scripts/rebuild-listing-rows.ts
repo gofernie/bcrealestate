@@ -1709,6 +1709,11 @@ export const rebuildListingRows = async (
     }
 
     snapshots = snapshotRows || [];
+// stale-snapshot-guard-v1: never rebuild from old snapshot data
+const newestSnapAt = snapshots[0]?.created_at ? new Date(snapshots[0].created_at).getTime() : 0;
+if (!newestSnapAt || Date.now() - newestSnapAt > 48 * 3600 * 1000) {
+  throw new Error(`Newest snapshot is from ${snapshots[0]?.created_at || "never"}. Refusing to rebuild from stale data; use the live refresh.`);
+}
 
     console.log(
       `Snapshots found: ${snapshots.length}`
@@ -2430,13 +2435,23 @@ console.log("Done.");
 // last-seen-cleanup-v1: stamp-based, covers every town in the fetch group
 const cleanupCities = Array.from(new Set([cleanupCity, TARGET_CITY, ...uniqueRows.map((row) => clean(row.normalized_city)), ...(((directInput as any)?.extraCleanupCities) || []).map((c: any) => clean(c))].filter(Boolean)));
 // town-scoped-cleanup-v1: only switch off listings in the towns this run actually fetched
-const cleanupTowns = Array.from(new Set([TARGET_CITY, ...uniqueRows.map((row: any) => String(row.city || "")), ...(((directInput as any)?.extraCleanupCities) || [])].flatMap((t: any) => [clean(t), String(t || "").trim(), String(t || "").trim().toLowerCase()]).filter(Boolean)));const { count: deactivated, error: cleanupError } = await supabase
+const cleanupTowns = Array.from(new Set([TARGET_CITY, ...uniqueRows.map((row: any) => String(row.city || "")), ...(((directInput as any)?.extraCleanupCities) || [])].flatMap((t: any) => [clean(t), String(t || "").trim(), String(t || "").trim().toLowerCase()]).filter(Boolean)));// cleanup-guard-v1: grace period + shrink check so a short feed can't wipe listings
+const graceCutoff = new Date(Date.now() - 26 * 3600 * 1000).toISOString();
+const { count: activeNow } = await supabase
+  .from("listing_rows")
+  .select("id", { count: "exact", head: true })
+  .in("normalized_city", cleanupCities)
+  .in("city", cleanupTowns)
+  .eq("status", "A");
+const skipCleanup = (activeNow ?? 0) > 50 && uniqueRows.length < (activeNow ?? 0) * 0.85;
+if (skipCleanup) console.warn(`Cleanup SKIPPED: feed returned ${uniqueRows.length} of ${activeNow} active (<85%). Possible partial fetch.`);
+const { count: deactivated, error: cleanupError } = skipCleanup ? ({ count: 0, error: null } as any) : await supabase
   .from("listing_rows")
   .update({ status: "inactive" }, { count: "exact" })
   .in("normalized_city", cleanupCities)
   .in("city", cleanupTowns)
   .eq("status", "A")
-  .or(`last_seen_at.is.null,last_seen_at.lt."${runStartedAt}"`);
+  .or(`last_seen_at.is.null,last_seen_at.lt."${graceCutoff}"`);
 if (cleanupError) {
   throw new Error(`Post-cleanup failed: ${cleanupError.message}`);
 }
