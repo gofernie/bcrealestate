@@ -72,10 +72,10 @@ export default async function handler() {
     );
 
   // priority-picker-v1: each city's target interval comes from refresh_priority
-  // (90+ = 4h, 50-89 = 8h, under 50 = 24h). Pick the city most overdue vs its own target.
+  // (90+ = 2h, 50-89 = 4h, under 50 = 12h). Pick the city most overdue vs its own target.
   const targetHours = (p: any) => {
     const n = Number(p) || 0;
-    return n >= 90 ? 4 : n >= 50 ? 8 : 24;
+    return n >= 90 ? 2 : n >= 50 ? 4 : 12;
   };
   const nowMs = Date.now();
   const scored = (markets || [])
@@ -189,5 +189,5 @@ export default async function handler() {
 
 export const config: Config = {
   schedule:
-    "*/20 * * * *",
+    "*/10 * * * *",
 };

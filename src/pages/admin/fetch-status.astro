@@ -36,6 +36,7 @@ if (Astro.request.method === "POST") {
 }
 
 const { data, error: loadError } = await supabase.from("city_fetch_status").select("*");
+const { data: townData } = await supabase.from("city_town_counts").select("*");
 const now = Date.now();
 const isQueued = (iso: any) => !!iso && new Date(iso).getFullYear() < 2001;
 
@@ -78,6 +79,8 @@ function stateOf(r: any) {
 const GROUPS: Record<string, string[]> = {
   comox: ["courtenay", "cumberland", "royston", "union bay", "black creek", "fanny bay", "merville", "denman island"],
   victoria: ["victoria west"],
+  parksville: ["qualicum beach", "french creek", "nanoose bay"],
+  duncan: ["ladysmith", "chemainus", "mill bay"],
 };
 const parentOf: Record<string, string> = {};
 for (const [parent, kids] of Object.entries(GROUPS)) for (const k of kids) parentOf[k] = parent;
@@ -91,26 +94,47 @@ const parents = all
   .sort((a: any, b: any) =>
     RANK[a.state] - RANK[b.state] || Number(b.hours_since ?? 0) - Number(a.hours_since ?? 0)
   );
+// town-breakdown-v1: towns whose listings are stored under each city
+const townsBy: Record<string, any[]> = {};
+for (const tr of townData || []) (townsBy[tr.normalized_city] ||= []).push(tr);
+const pushTowns = (r: any) => {
+  const towns = (townsBy[r.city] || [])
+    .filter((tw: any) => String(tw.town).toLowerCase() !== r.city)
+    .sort((a: any, b: any) => Number(b.active) - Number(a.active));
+  for (const tw of towns) rows.push({
+    city: tw.town, active: tw.active, isChild: true, isTown: true,
+    parent: r.city, parentState: r.state, newest_seen: r.last_success_at || r.newest_seen,
+  });
+};
 const rows: any[] = [];
 for (const p of parents) {
   const kids = (byParent[p.city] || []).sort((a: any, b: any) => Number(b.active || 0) - Number(a.active || 0));
   p.kidCount = kids.length;
   p.kidActive = kids.reduce((s: number, k: any) => s + Number(k.active || 0), 0);
   rows.push(p);
-  for (const k of kids) rows.push({ ...k, isChild: true, parentState: p.state });
+  pushTowns(p);
+  for (const k of kids) { const kr = { ...k, isChild: true, parentState: p.state }; rows.push(kr); pushTowns(kr); }
 }
 
+// sortable-v1: each city + its towns sorts as one block
+const groups: any[][] = [];
+for (const r of rows) { if (!r.isChild || !groups.length) groups.push([r]); else groups[groups.length - 1].push(r); }
 const counts: Record<string, number> = {};
 for (const r of rows) if (!r.isChild) counts[r.state] = (counts[r.state] || 0) + 1;
 const totalActive = rows.reduce((s: number, r: any) => s + Number(r.active || 0), 0);
 
+// Same scoring as the picker in listing-refresh-schedule.ts (priority-picker-v1)
+const TARGET_H = (p: any) => { const n = Number(p) || 0; return n >= 90 ? 2 : n >= 50 ? 4 : 12; };
 const nextUp = rows
-  .filter((r: any) => r.in_rotation && r.enabled)
-  .sort((a: any, b: any) =>
-    new Date(a.last_success_at || 0).getTime() - new Date(b.last_success_at || 0).getTime()
-  )
+  .filter((r: any) => r.in_rotation && r.enabled && r.state !== "running")
+  .map((r: any) => {
+    const last = r.last_success_at ? new Date(r.last_success_at).getTime() : 0;
+    const hours = last ? (now - last) / 3600000 : Infinity;
+    return { city: r.city, score: hours / TARGET_H(r.refresh_priority), p: Number(r.refresh_priority) || 0 };
+  })
+  .sort((a: any, b: any) => b.score - a.score || b.p - a.p)
   .slice(0, 3)
-  .map((r: any) => r.city);
+  .map((x: any) => x.city);
 
 const updated = new Date().toLocaleString("en-CA", { timeZone: "America/Edmonton", dateStyle: "medium", timeStyle: "short" });
 ---
@@ -144,6 +168,10 @@ const updated = new Date().toLocaleString("en-CA", { timeZone: "America/Edmonton
       .warn { color: #b42318; font-weight: 600; }
       button { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid #d0d5dd; background: #fff; cursor: pointer; }
       button:hover { background: #f2f4f7; }
+      th[data-k] { cursor: pointer; user-select: none; }
+      th[data-k]:hover { color: #1c2430; }
+      th[data-dir="asc"]::after { content: " ▲"; font-size: 10px; }
+      th[data-dir="desc"]::after { content: " ▼"; font-size: 10px; }
       tr.r-child td { background: #fcfcfd; font-size: 12.5px; padding-top: 5px; padding-bottom: 5px; }
       .kid { padding-left: 14px; color: #475467; }
       .via { color: #667085; }
@@ -155,7 +183,7 @@ const updated = new Date().toLocaleString("en-CA", { timeZone: "America/Edmonton
       <AdminSidebar />
       <main class="fs-main">
         <h1>Listing fetch status</h1>
-        <p class="fs-sub">One row per city. The rotation refreshes one city about every 20 minutes. Loaded {updated}; reload to update.</p>
+        <p class="fs-sub">One row per city. The rotation refreshes one city every 10 minutes, busiest cities most often (priority 90+ every ~2h, 50+ every ~4h, others every ~12h).</p>
 
         {flash && <p class="fs-flash">{flash}</p>}
         {loadError && <p class="fs-flash fs-err">Couldn't load status: {loadError.message}. Has the city_fetch_status view been created?</p>}
@@ -173,19 +201,20 @@ const updated = new Date().toLocaleString("en-CA", { timeZone: "America/Edmonton
           <table>
             <thead>
               <tr>
-                <th>Status</th><th>City</th><th>Last success</th><th>Active</th><th>New 7d</th>
-                <th>Back on mkt</th><th>Dropped 24h</th><th>Priority</th><th>Error</th><th></th>
+                <th data-k="status">Status</th><th data-k="city">City</th><th data-k="last">Last success</th><th data-k="active">Active</th><th data-k="new">New 7d</th>
+                <th data-k="bom">Back on mkt</th><th data-k="drop">Dropped 24h</th><th data-k="priority">Priority</th><th>Error</th><th></th>
               </tr>
             </thead>
-            <tbody>
-              {rows.map((r: any) => (
+            {groups.map((g: any[]) => (
+            <tbody class="grp-body" data-status={RANK[g[0].state]} data-city={g[0].city} data-last={g[0].hours_since ?? 99999} data-active={Number(g[0].active || 0) + Number(g[0].kidActive || 0)} data-new={g[0].new_7d || 0} data-bom={g[0].bom_14d || 0} data-drop={g[0].off_24h || 0} data-priority={g[0].refresh_priority ?? -1}>
+              {g.map((r: any) => (
                 <tr class={r.isChild ? "r-child" : `r-${r.state}`}>
                   <td>{r.isChild
                     ? <span class="via"><span class={`dot s-${r.parentState}`}></span>via {r.parent}</span>
                     : <><span class={`dot s-${r.state}`}></span>{LABEL[r.state]}</>}</td>
                   <td>{r.isChild
                     ? <span class="kid">↳ {r.city}</span>
-                    : <>{r.city}{r.kidCount ? <span class="grp"> + {r.kidCount} towns · {Number(r.kidActive).toLocaleString()} listings</span> : null}</>}</td>
+                    : <>{r.city}{r.kidActive ? <span class="grp"> + {r.kidCount} towns · {Number(r.kidActive).toLocaleString()} listings</span> : null}</>}</td>
                   <td title={r.last_success_at || r.newest_seen || ""}>{ago(r.in_rotation ? r.last_success_at : r.newest_seen)}</td>
                   <td class="num">{Number(r.active || 0).toLocaleString()}</td>
                   <td class="num">{r.new_7d}</td>
@@ -204,9 +233,33 @@ const updated = new Date().toLocaleString("en-CA", { timeZone: "America/Edmonton
                 </tr>
               ))}
             </tbody>
+            ))}
           </table>
         </div>
       </main>
     </div>
-  </body>
+    <script is:inline>
+    (() => {
+      const table = document.querySelector(".fs-table-wrap table");
+      if (!table) return;
+      let key = "status", dir = 1;
+      table.querySelectorAll("th[data-k]").forEach((th) => {
+        th.addEventListener("click", () => {
+          const k = th.dataset.k;
+          dir = key === k ? -dir : (k === "city" || k === "status" ? 1 : -1);
+          key = k;
+          const bodies = [...table.querySelectorAll("tbody.grp-body")];
+          bodies.sort((a, b) => {
+            const av = a.dataset[k] || "", bv = b.dataset[k] || "";
+            const c = k === "city" ? av.localeCompare(bv) : Number(av) - Number(bv);
+            return c * dir;
+          });
+          bodies.forEach((b) => table.appendChild(b));
+          table.querySelectorAll("th[data-k]").forEach((h) => h.removeAttribute("data-dir"));
+          th.dataset.dir = dir > 0 ? "asc" : "desc";
+        });
+      });
+    })();
+  </script>
+</body>
 </html>
