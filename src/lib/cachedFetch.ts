@@ -3,9 +3,7 @@
 // Lives per warm Netlify function instance; cuts repeat queries when crawlers walk many pages.
 
 const TTL_MS: Record<string, number> = {
-  sites: 10 * 60_000,
-  area_boundaries: 30 * 60_000,
-  intent_pages: 10 * 60_000,
+  area_boundaries: 5 * 60_000,
   market_metrics_public: 30 * 60_000,
   listing_refresh_runs: 5 * 60_000,
   osm_amenities: 60 * 60_000,
