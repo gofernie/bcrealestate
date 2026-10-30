@@ -234,7 +234,7 @@ listenModalWindow("resize", () => {
 });
 
 // sync-listing-sections-to-open-panel
-const syncListingSectionsToOpenPanel = () => {
+const syncListingSectionsToOpenPanel = () => { /* sync-sections-typing-guard-v1 */ { const __ae = document.activeElement; if (__ae && /^(INPUT|TEXTAREA|SELECT)$/.test(__ae.tagName) && __ae.closest("#preview-sheet, .panel")) return; }
   const openPanelContent =
     Array.from(
       document.querySelectorAll(".panel__content")
