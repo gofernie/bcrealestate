@@ -1,0 +1,212 @@
+---
+import AdminSidebar from "../../components/AdminSidebar.astro";
+import { createClient } from "@supabase/supabase-js";
+
+export const prerender = false;
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// "Refresh next": same queue-jump as doing it by hand in SQL
+let flash = "";
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const city = String(form.get("city") || "").trim();
+  const action = String(form.get("action") || "queue");
+  if (city && action === "add") {
+    const providerCity = city.replace(/\b\w/g, (c) => c.toUpperCase());
+    const { error } = await supabase.from("listing_markets").insert({
+      city, provider_city: providerCity, enabled: true, refresh_priority: 20,
+      last_refresh_at: "2000-01-01T00:00:00Z", last_success_at: "2000-01-01T00:00:00Z",
+    });
+    flash = error
+      ? `Couldn't add ${city}: ${error.message}`
+      : `${city} added to the rotation and queued. Check its row after the next run.`;
+  } else if (city) {
+    const { error } = await supabase
+      .from("listing_markets")
+      .update({ last_refresh_at: "2000-01-01T00:00:00Z", last_success_at: "2000-01-01T00:00:00Z" })
+      .eq("city", city);
+    flash = error
+      ? `Couldn't queue ${city}: ${error.message}`
+      : `${city} queued. It refreshes on the next run, within about 20 minutes.`;
+  }
+}
+
+const { data, error: loadError } = await supabase.from("city_fetch_status").select("*");
+const now = Date.now();
+const isQueued = (iso: any) => !!iso && new Date(iso).getFullYear() < 2001;
+
+const ago = (iso: any) => {
+  if (!iso) return "never";
+  if (isQueued(iso)) return "queued";
+  const m = Math.round((now - new Date(iso).getTime()) / 60000);
+  if (m < 60) return `${m}m ago`;
+  const h = m / 60;
+  return h < 48 ? `${Math.round(h)}h ago` : `${Math.round(h / 24)}d ago`;
+};
+
+const LABEL: Record<string, string> = {
+  error: "Error", drop: "Big drop", stale: "Stale", running: "Running", queued: "Queued",
+  aging: "Aging", ok: "OK", disabled: "Disabled", off: "Not in rotation",
+};
+const RANK: Record<string, number> = {
+  error: 0, drop: 1, stale: 2, running: 3, queued: 4, aging: 5, ok: 6, disabled: 7, off: 8,
+};
+
+function stateOf(r: any) {
+  if (!r.in_rotation) return "off";
+  if (!r.enabled) return "disabled";
+  if (isQueued(r.last_success_at)) return "queued";
+  const status = String(r.last_refresh_status || "");
+  if (status && status !== "completed") {
+    const startedMin = r.last_refresh_at ? (now - new Date(r.last_refresh_at).getTime()) / 60000 : 9999;
+    return startedMin < 30 && !r.last_error ? "running" : "error";
+  }
+  const dropped = Number(r.off_24h || 0);
+  const active = Number(r.active || 0);
+  if (dropped >= 10 && dropped > 0.15 * (active + dropped)) return "drop";
+  const h = Number(r.hours_since ?? 9999);
+  if (h > 36) return "stale";
+  if (h > 12) return "aging";
+  return "ok";
+}
+
+// Towns fetched as part of another city's refresh: shown under their parent, not as separate rows.
+const GROUPS: Record<string, string[]> = {
+  comox: ["courtenay", "cumberland", "royston", "union bay", "black creek", "fanny bay", "merville", "denman island"],
+  victoria: ["victoria west"],
+};
+const parentOf: Record<string, string> = {};
+for (const [parent, kids] of Object.entries(GROUPS)) for (const k of kids) parentOf[k] = parent;
+
+const all = (data || []).map((r: any) => ({ ...r, state: stateOf(r), parent: parentOf[r.city] || "" }));
+const cityNames = new Set(all.map((r: any) => r.city));
+const byParent: Record<string, any[]> = {};
+for (const r of all) if (r.parent && cityNames.has(r.parent)) (byParent[r.parent] ||= []).push(r);
+const parents = all
+  .filter((r: any) => !r.parent || !cityNames.has(r.parent))
+  .sort((a: any, b: any) =>
+    RANK[a.state] - RANK[b.state] || Number(b.hours_since ?? 0) - Number(a.hours_since ?? 0)
+  );
+const rows: any[] = [];
+for (const p of parents) {
+  const kids = (byParent[p.city] || []).sort((a: any, b: any) => Number(b.active || 0) - Number(a.active || 0));
+  p.kidCount = kids.length;
+  p.kidActive = kids.reduce((s: number, k: any) => s + Number(k.active || 0), 0);
+  rows.push(p);
+  for (const k of kids) rows.push({ ...k, isChild: true, parentState: p.state });
+}
+
+const counts: Record<string, number> = {};
+for (const r of rows) if (!r.isChild) counts[r.state] = (counts[r.state] || 0) + 1;
+const totalActive = rows.reduce((s: number, r: any) => s + Number(r.active || 0), 0);
+
+const nextUp = rows
+  .filter((r: any) => r.in_rotation && r.enabled)
+  .sort((a: any, b: any) =>
+    new Date(a.last_success_at || 0).getTime() - new Date(b.last_success_at || 0).getTime()
+  )
+  .slice(0, 3)
+  .map((r: any) => r.city);
+
+const updated = new Date().toLocaleString("en-CA", { timeZone: "America/Edmonton", dateStyle: "medium", timeStyle: "short" });
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fetch Status</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      .fs-wrap { display: flex; min-height: 100vh; background: #f6f7f9; font-family: system-ui, sans-serif; color: #1c2430; }
+      .fs-main { flex: 1; min-width: 0; padding: 24px 16px 48px; max-width: 1280px; }
+      .fs-main h1 { font-size: 22px; margin: 0 0 4px; }
+      .fs-sub { color: #667085; font-size: 13px; margin: 0 0 16px; }
+      .fs-flash { background: #e8f4ec; border: 1px solid #b7dcc3; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
+      .fs-err { background: #fdecec; border-color: #f2b8b8; }
+      .fs-tiles { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .fs-tile { background: #fff; border: 1px solid #e4e7ec; border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+      .fs-tile b { font-size: 18px; display: block; }
+      .fs-next { font-size: 13px; color: #475467; margin: 0 0 12px; }
+      .fs-table-wrap { overflow-x: auto; background: #fff; border: 1px solid #e4e7ec; border-radius: 10px; }
+      table { border-collapse: collapse; width: 100%; font-size: 13px; }
+      th, td { padding: 8px 10px; border-bottom: 1px solid #eef0f3; text-align: left; white-space: nowrap; }
+      th { background: #fafbfc; font-weight: 600; color: #475467; position: sticky; top: 0; }
+      td.num { text-align: right; font-variant-numeric: tabular-nums; }
+      td.err { white-space: normal; max-width: 280px; color: #b42318; font-size: 12px; }
+      .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+      .s-ok { background: #12b76a; } .s-aging { background: #f5a524; } .s-stale, .s-error, .s-drop { background: #e5484d; }
+      .s-running, .s-queued { background: #3b82f6; } .s-disabled, .s-off { background: #b0b7c3; }
+      tr.r-error td, tr.r-drop td, tr.r-stale td { background: #fff6f6; }
+      .warn { color: #b42318; font-weight: 600; }
+      button { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid #d0d5dd; background: #fff; cursor: pointer; }
+      button:hover { background: #f2f4f7; }
+      tr.r-child td { background: #fcfcfd; font-size: 12.5px; padding-top: 5px; padding-bottom: 5px; }
+      .kid { padding-left: 14px; color: #475467; }
+      .via { color: #667085; }
+      .grp { color: #98a2b3; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="fs-wrap">
+      <AdminSidebar />
+      <main class="fs-main">
+        <h1>Listing fetch status</h1>
+        <p class="fs-sub">One row per city. The rotation refreshes one city about every 20 minutes. Loaded {updated}; reload to update.</p>
+
+        {flash && <p class="fs-flash">{flash}</p>}
+        {loadError && <p class="fs-flash fs-err">Couldn't load status: {loadError.message}. Has the city_fetch_status view been created?</p>}
+
+        <div class="fs-tiles">
+          <div class="fs-tile"><b>{totalActive.toLocaleString()}</b>active listings</div>
+          {Object.keys(RANK).filter((k) => counts[k]).map((k) => (
+            <div class="fs-tile"><b><span class={`dot s-${k}`}></span>{counts[k]}</b>{LABEL[k]}</div>
+          ))}
+        </div>
+
+        {nextUp.length > 0 && <p class="fs-next">Likely next: {nextUp.join(" → ")}</p>}
+
+        <div class="fs-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th><th>City</th><th>Last success</th><th>Active</th><th>New 7d</th>
+                <th>Back on mkt</th><th>Dropped 24h</th><th>Priority</th><th>Error</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r: any) => (
+                <tr class={r.isChild ? "r-child" : `r-${r.state}`}>
+                  <td>{r.isChild
+                    ? <span class="via"><span class={`dot s-${r.parentState}`}></span>via {r.parent}</span>
+                    : <><span class={`dot s-${r.state}`}></span>{LABEL[r.state]}</>}</td>
+                  <td>{r.isChild
+                    ? <span class="kid">↳ {r.city}</span>
+                    : <>{r.city}{r.kidCount ? <span class="grp"> + {r.kidCount} towns · {Number(r.kidActive).toLocaleString()} listings</span> : null}</>}</td>
+                  <td title={r.last_success_at || r.newest_seen || ""}>{ago(r.in_rotation ? r.last_success_at : r.newest_seen)}</td>
+                  <td class="num">{Number(r.active || 0).toLocaleString()}</td>
+                  <td class="num">{r.new_7d}</td>
+                  <td class="num">{r.bom_14d}</td>
+                  <td class={`num ${r.state === "drop" ? "warn" : ""}`}>{r.off_24h}</td>
+                  <td class="num">{r.refresh_priority ?? ""}</td>
+                  <td class="err">{r.last_error || ""}</td>
+                  <td>
+                    {!r.in_rotation && !r.isChild && (
+                      <form method="post" onsubmit="return confirm('Add ' + this.city.value + ' to the rotation?')"><input type="hidden" name="action" value="add" /><input type="hidden" name="city" value={r.city} /><button type="submit">Add to rotation</button></form>
+                    )}
+                    {r.in_rotation && r.enabled && r.state !== "queued" && (
+                      <form method="post"><input type="hidden" name="city" value={r.city} /><button type="submit">Refresh next</button></form>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

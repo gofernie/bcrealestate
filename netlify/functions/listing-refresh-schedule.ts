@@ -57,19 +57,11 @@ export default async function handler() {
     ).toISOString();
 
   const {
-    data: market,
+    data: markets,
     error,
   } = await supabase
     .from("listing_markets")
-    .select(
-      `
-        city,
-        refresh_priority,
-        last_success_at,
-        last_refresh_status,
-        last_refresh_at
-      `
-    )
+    .select("city, refresh_priority, last_success_at, last_refresh_status, last_refresh_at")
     .eq("enabled", true)
     .or(
       [
@@ -77,22 +69,26 @@ export default async function handler() {
         "last_refresh_status.is.null",
         `last_refresh_at.lt.${staleRunningCutoff}`,
       ].join(",")
-    )
-    .order(
-      "last_success_at",
-      {
-        ascending: true,
-        nullsFirst: true,
-      }
-    )
-    .order(
-      "refresh_priority",
-      {
-        ascending: true,
-      }
-    )
-    .limit(1)
-    .maybeSingle();
+    );
+
+  // priority-picker-v1: each city's target interval comes from refresh_priority
+  // (90+ = 4h, 50-89 = 8h, under 50 = 24h). Pick the city most overdue vs its own target.
+  const targetHours = (p: any) => {
+    const n = Number(p) || 0;
+    return n >= 90 ? 4 : n >= 50 ? 8 : 24;
+  };
+  const nowMs = Date.now();
+  const scored = (markets || [])
+    .map((m: any) => {
+      const last = m.last_success_at ? new Date(m.last_success_at).getTime() : 0;
+      const hours = last ? (nowMs - last) / 3600000 : Infinity;
+      return { m, score: hours / targetHours(m.refresh_priority) };
+    })
+    .sort((a, b) =>
+      b.score - a.score || (Number(b.m.refresh_priority) || 0) - (Number(a.m.refresh_priority) || 0)
+    );
+  const market = scored[0]?.m || null;
+  if (market) console.log("Picker scores (top 3)", scored.slice(0, 3).map((s) => ({ city: s.m.city, score: Math.round(s.score * 100) / 100 })));
 
   if (error) {
     throw new Error(
