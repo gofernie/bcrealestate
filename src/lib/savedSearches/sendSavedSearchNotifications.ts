@@ -205,7 +205,7 @@ export async function sendSavedSearchNotifications(
             const href =
               siteUrl &&
               mlsNumber
-                ? `${siteUrl}/${savedSearch.city}?listing_id=${encodeURIComponent(
+                ? `${siteUrl}/${savedSearch.city}/?listing_id=${encodeURIComponent(
                     mlsNumber
                   )}`
                 : "#";

@@ -48,6 +48,12 @@ if (listingId) {
   }
 }
 
+// mls-fallback-v1: regions like greater-victoria store listings under district cities, so retry by MLS alone
+if (!listing && listingId) {
+  const anyCity = await supabase.from("listing_rows").select("*").eq("mls_number", listingId).limit(1).maybeSingle();
+  listing = anyCity.data || null;
+}
+
 // expired-listing-redirect-v1: off-market or unknown listings 301 to a live page instead of a dead end
 const slugifyArea = (v: unknown) => String(v || "").trim().toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 if (!listing) {
@@ -139,7 +145,7 @@ const listingTypePath =
     : "homes";
 
 const listingBrowserUrl =
-  `/${city}/${listingTypePath}` +
+  `/${city}/` +
   `?listing_id=${encodeURIComponent(
     listing?.mls_number ||
     listing?.id ||

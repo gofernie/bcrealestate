@@ -16270,6 +16270,25 @@ const navBottom = () => {
 }
 </style>
 <script define:vars={{ heroFacts, heroSlugs }}>window.__heroFacts = heroFacts; window.__heroSlugs = heroSlugs;</script>
+<script is:inline>
+/* deep-link-listing-v1: open the listing modal when ?listing_id= is in the URL */
+(() => {
+  const id = (new URLSearchParams(location.search).get("listing_id") || "").trim();
+  if (!id) return;
+  let tries = 0;
+  const go = async () => {
+    if (typeof window.ensureHomeListingCard !== "function" || typeof window.openSheet !== "function") {
+      if (++tries < 60) setTimeout(go, 100);
+      return;
+    }
+    try {
+      const card = await window.ensureHomeListingCard(id);
+      if (card) window.openSheet(card);
+    } catch (e) { console.warn("deep-link listing failed", e); }
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go); else go();
+})();
+</script>
 </Layout>
 
 
