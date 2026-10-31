@@ -4,5 +4,5 @@ import netlify from "@astrojs/netlify";
 export default defineConfig({
   output: "server",
   adapter: netlify(),
-  build: { inlineStylesheets: "always" },
+  build: { inlineStylesheets: "auto" },
 });
