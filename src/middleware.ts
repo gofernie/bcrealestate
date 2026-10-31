@@ -1,4 +1,4 @@
-import { defineMiddleware } from "astro:middleware";
+﻿import { defineMiddleware } from "astro:middleware";
 import { createClient } from "@supabase/supabase-js";
 import { purgeCache } from "@netlify/functions";
 import { createSupabaseServerClient } from "./lib/supabaseServer";
@@ -84,9 +84,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
     try {
       const perVisitor = /^\/(api|login|logout|shortlists|listings|reset-password|buyers|account|unsubscribe)(\/|$)/.test(pathname);
       const type = response.headers.get("content-type") || "";
-      if (context.request.method === "GET" && !perVisitor && response.status === 200 && type.includes("text/html") && !response.headers.has("set-cookie") && !response.headers.has("cache-control")) {
-        response.headers.set("Cache-Control", "public, max-age=0, must-revalidate");
-        response.headers.set("Netlify-CDN-Cache-Control", "public, durable, s-maxage=3600, stale-while-revalidate=86400");
+      if (context.request.method === "GET" && !perVisitor && response.status === 200 && type.includes("text/html") && !response.headers.has("set-cookie")) { /* cdn-cache-v2: tag pages that set their own cache headers too, so admin purges reach them */
+        if (!response.headers.has("cache-control")) response.headers.set("Cache-Control", "public, max-age=0, must-revalidate");
+        if (!response.headers.has("netlify-cdn-cache-control")) response.headers.set("Netlify-CDN-Cache-Control", "public, durable, s-maxage=3600, stale-while-revalidate=86400");
         const hostTag = "host-" + tagSafe(context.url.hostname.replace(/^www\./, ""));
         const seg = segs[0] ? `${hostTag}-${tagSafe(segs[0])}` : "";
         response.headers.set("Netlify-Cache-Tag", ["all-pages", hostTag, seg].filter(Boolean).join(","));
