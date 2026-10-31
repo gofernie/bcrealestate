@@ -3571,7 +3571,7 @@ html[data-theme="dark"] #preview-sheet #sheet-highlight-chips .panel__highlight-
 <script is:inline>
 (() => {
   window.__actionsV2 = true;
-  function arrange() { if (document.activeElement?.matches?.("#preview-sheet input, #preview-sheet textarea")) return;
+  function arrange() { /* arrange-gate-v1: only when a listing is open - avoids forced reflows on page load */ if (!document.querySelector(".panel__content.open")) return; if (document.activeElement?.matches?.("#preview-sheet input, #preview-sheet textarea")) return;
     const $ = (id) => document.getElementById(id);
     const engage = $("sheet-engage");
     const actions = engage?.querySelector(".panel__engage-actions");
@@ -3602,7 +3602,7 @@ html[data-theme="dark"] #preview-sheet #sheet-highlight-chips .panel__highlight-
       if (rooms.nextElementSibling !== row) rooms.after(row);
     }
   }
-  const run = () => requestAnimationFrame(arrange);
+  function hookOpenSheet() { const o = window.openSheet; if (typeof o !== "function" || o.__arrangeHook) return; const w = function (...args) { const r = o.apply(this, args); requestAnimationFrame(() => requestAnimationFrame(arrange)); setTimeout(arrange, 300); return r; }; w.__arrangeHook = true; window.openSheet = w; } const run = () => { hookOpenSheet(); requestAnimationFrame(arrange); };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run, { once: true });
   else run();
   document.addEventListener("astro:page-load", run);
