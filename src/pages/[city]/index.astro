@@ -1493,6 +1493,36 @@ let areaOptions: string[] = [];
 let navAreaOptions: string[] = [];
 let homepageAreaCards: any[] = [];
 let areaListingCounts = new Map<string, number>();
+/* boundary-simplify-v1: drop polygon points within ~2 m of a straight edge */
+const __dpSimplify = (pts: number[][], tol: number): number[][] => {
+  if (!Array.isArray(pts) || pts.length <= 4) return pts;
+  const sq = tol * tol;
+  const keep = new Uint8Array(pts.length); keep[0] = 1; keep[pts.length - 1] = 1;
+  const stack: [number, number][] = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop()!;
+    const [ax, ay] = pts[a], [bx, by] = pts[b];
+    const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+    let maxD = 0, idx = -1;
+    for (let i = a + 1; i < b; i++) {
+      const [px, py] = pts[i];
+      const t = len ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len)) : 0;
+      const ex = ax + t * dx - px, ey = ay + t * dy - py, d = ex * ex + ey * ey;
+      if (d > maxD) { maxD = d; idx = i; }
+    }
+    if (idx > -1 && maxD > sq) { keep[idx] = 1; stack.push([a, idx], [idx, b]); }
+  }
+  const out = pts.filter((_, i) => keep[i]);
+  return out.length >= 4 ? out : pts;
+};
+const simplifyBoundaryGeometry = (g: any, tol = 0.00002) => {
+  try {
+    if (!g || typeof g !== "object" || !Array.isArray(g.coordinates)) return g;
+    if (g.type === "Polygon") return { ...g, coordinates: g.coordinates.map((r: any) => __dpSimplify(r, tol)) };
+    if (g.type === "MultiPolygon") return { ...g, coordinates: g.coordinates.map((p: any) => p.map((r: any) => __dpSimplify(r, tol))) };
+    return g;
+  } catch { return g; }
+};
 let homeMapAreaBoundaries: any[] = [];
 
 try {
@@ -1509,7 +1539,7 @@ try {
         .replace(/-/g, " ")
         .toLowerCase()
         .trim(),
-      geometry: boundary.polygon_geojson,
+      geometry: simplifyBoundaryGeometry(boundary.polygon_geojson),
     }))
     .filter((boundary: any) => boundary.slug && boundary.geometry);
 
