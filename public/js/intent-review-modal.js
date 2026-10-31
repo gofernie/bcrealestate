@@ -1,4 +1,3 @@
-/* sized-photo-v1: phones get a 1000px WebP of cdn.repliers.io photos instead of the 1600px original */ window.__sizedPhoto = window.__sizedPhoto || ((url) => { try { if (!url || window.innerWidth > 768) return url; const u = new URL(url, location.href); if (u.hostname !== "cdn.repliers.io") return url; return location.origin + "/.netlify/images?url=" + encodeURIComponent(u.href) + "&w=1000&fm=webp&q=75"; } catch { return url; } });
 function initIntentReviewModal() {
         const sheet = document.getElementById("preview-sheet");
         const overlay = document.getElementById("sheet-overlay");
@@ -2929,7 +2928,7 @@ syncMobileMediaCounts();
 
   if (hydratedUrls.length) {
     const currentSrc =
-      sheetImage?.dataset?.rawSrc || sheetImage?.src || "";
+      sheetImage?.src || "";
 
     activePhotoUrls = hydratedUrls;
 
@@ -3643,7 +3642,7 @@ lastRegularPhotoIndex = activePhotoIndex;
 
             const loader = new Image();
         loader.onload = () => {
-  sheetImage.dataset.rawSrc = targetSrc; sheetImage.src = window.__sizedPhoto(targetSrc);
+  sheetImage.src = targetSrc;
   sheetImage.style.opacity = "1";
 
   if (sheetImageStage) {
@@ -3666,11 +3665,11 @@ lastRegularPhotoIndex = activePhotoIndex;
   }
 };
             loader.onerror = () => {
-              sheetImage.dataset.rawSrc = targetSrc; sheetImage.src = window.__sizedPhoto(targetSrc);
+              sheetImage.src = targetSrc;
               sheetImage.style.opacity = "1";
               if (sheetImageStage) sheetImageStage.style.visibility = "visible";
             };
-            loader.src = window.__sizedPhoto(targetSrc);
+            loader.src = targetSrc;
           }
 
         renderActivePhoto();
@@ -6185,7 +6184,7 @@ photoPrevBtn?.addEventListener("click", (event) => {
   activePhotoIndex -= 1;
 
   if (sheetImage) {
-    sheetImage.dataset.rawSrc = activePhotoUrls[activePhotoIndex]; sheetImage.src = window.__sizedPhoto(activePhotoUrls[activePhotoIndex]);
+    sheetImage.src = activePhotoUrls[activePhotoIndex];
 
     const nextPreload = activePhotoUrls[activePhotoIndex + 1];
 
@@ -6679,7 +6678,7 @@ function showActivePhoto() {
   // keep current photo visible while next photo loads
 
   const revealTargetPhoto = () => {
-  sheetImage.dataset.rawSrc = targetSrc; sheetImage.src = window.__sizedPhoto(targetSrc);
+  sheetImage.src = targetSrc;
   sheetImage.style.opacity = "1";
 
   if (sheetImageStage) {
@@ -6706,7 +6705,7 @@ if (loadedImageUrls.has(targetSrc)) {
   };
 
   loader.onerror = revealTargetPhoto;
-  loader.src = window.__sizedPhoto(targetSrc);
+  loader.src = targetSrc;
 }
 
   updatePhotoCounter();
@@ -6741,7 +6740,7 @@ function syncDesktopPhotoOverlay() {
     !desktopPhotoImage
   ) return;
 
-  const currentSource = sheetImage?.currentSrc || sheetImage?.dataset?.rawSrc || sheetImage?.src || "";
+  const currentSource = sheetImage?.currentSrc || sheetImage?.src || "";
 
   if (currentSource) {
     desktopPhotoImage.src = currentSource;
@@ -7362,7 +7361,7 @@ sheetImage?.addEventListener("touchend", (event) => {
   activePhotoIndex += 1;
 
   if (sheetImage) {
-    sheetImage.dataset.rawSrc = activePhotoUrls[activePhotoIndex]; sheetImage.src = window.__sizedPhoto(activePhotoUrls[activePhotoIndex]);
+    sheetImage.src = activePhotoUrls[activePhotoIndex];
   }
 
  updatePhotoCounter();
