@@ -805,11 +805,15 @@ textarea:focus {
   <label>Draw search area</label>
   <div id="polygonMap" class="polygon-map"></div>
 
-  <div class="polygon-tools">
-    <button type="button" class="btn btn--ghost" id="clearPolygonBtn">
-      Clear shape
-    </button>
-  </div>
+    <div class="polygon-tools">
+      <button type="button" class="btn btn--ghost" id="finishPolygonBtn">
+        Finish shape &amp; start another
+      </button>
+      <button type="button" class="btn btn--ghost" id="clearPolygonBtn">
+        Clear all shapes
+      </button>
+      <span class="hint" id="polygonShapeCount">0 shapes</span>
+    </div>
 
   <p class="hint">
     Click the map to draw points. Once you have 3+ points, the shape will save with the page.
@@ -1312,37 +1316,68 @@ let polygonMap = null;
 let activePolygon = null;
 let polygonPath = [];
 let polygonMarkers = [];
+let finishedPaths = [];
+let finishedPolygons = [];
+const finishPolygonBtn = document.getElementById("finishPolygonBtn");
+const polygonShapeCount = document.getElementById("polygonShapeCount");
+
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (window.__leafletLoading) return window.__leafletLoading;
+  const css = document.createElement("link");
+  css.rel = "stylesheet";
+  css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+  document.head.appendChild(css);
+  window.__leafletLoading = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  return window.__leafletLoading;
+}
+
+function allPaths() {
+  const paths = finishedPaths.slice();
+  if (polygonPath.length >= 3) paths.push(polygonPath);
+  return paths;
+}
+
+function updateShapeCount() {
+  if (!polygonShapeCount) return;
+  const n = allPaths().length;
+  polygonShapeCount.textContent = n === 1 ? "1 shape" : `${n} shapes`;
+}
 
 function savePolygon() {
-  if (!polygonInput || polygonPath.length < 3) {
-    polygonInput.value = "";
+  if (!polygonInput) return;
+  const paths = allPaths();
+  updateShapeCount();
 
+  if (!paths.length) {
+    polygonInput.value = "";
     if (polygonCenterLatInput) polygonCenterLatInput.value = "";
     if (polygonCenterLngInput) polygonCenterLngInput.value = "";
     if (polygonBoundsInput) polygonBoundsInput.value = "";
-
     return;
   }
 
-  const coordinates = polygonPath.map((point) => [point.lng, point.lat]);
-  coordinates.push(coordinates[0]);
-
-  polygonInput.value = JSON.stringify({
-    type: "Polygon",
-    coordinates: [coordinates],
+  const polys = paths.map((path) => {
+    const ring = path.map((p) => [p.lng, p.lat]);
+    ring.push(ring[0]);
+    return [ring];
   });
 
-  const avgLat =
-    polygonPath.reduce((sum, p) => sum + p.lat, 0) /
-    polygonPath.length;
+  polygonInput.value = JSON.stringify(
+    polys.length === 1
+      ? { type: "Polygon", coordinates: polys[0] }
+      : { type: "MultiPolygon", coordinates: polys }
+  );
 
-  const avgLng =
-    polygonPath.reduce((sum, p) => sum + p.lng, 0) /
-    polygonPath.length;
-
-  const lats = polygonPath.map((p) => p.lat);
-  const lngs = polygonPath.map((p) => p.lng);
-
+  const pts = paths.flat();
+  const lats = pts.map((p) => p.lat);
+  const lngs = pts.map((p) => p.lng);
   const bounds = {
     north: Math.max(...lats),
     south: Math.min(...lats),
@@ -1350,57 +1385,69 @@ function savePolygon() {
     west: Math.min(...lngs),
   };
 
-  if (polygonCenterLatInput) {
-    polygonCenterLatInput.value = String(avgLat);
-  }
-
-  if (polygonCenterLngInput) {
-    polygonCenterLngInput.value = String(avgLng);
-  }
-
-  if (polygonBoundsInput) {
-    polygonBoundsInput.value = JSON.stringify(bounds);
-  }
+  if (polygonCenterLatInput) polygonCenterLatInput.value = String((bounds.north + bounds.south) / 2);
+  if (polygonCenterLngInput) polygonCenterLngInput.value = String((bounds.east + bounds.west) / 2);
+  if (polygonBoundsInput) polygonBoundsInput.value = JSON.stringify(bounds);
 }
 
+const toLatLngs = (path) => path.map((p) => [p.lat, p.lng]);
+
 function redrawPolygon() {
-  if (activePolygon) {
-    activePolygon.setMap(null);
+  if (activePolygon) activePolygon.remove();
+  activePolygon = null;
+
+  if (polygonPath.length >= 2) {
+    activePolygon = L.polygon(toLatLngs(polygonPath), {
+      interactive: false,
+      weight: 2,
+      fillOpacity: 0.22,
+    }).addTo(polygonMap);
   }
 
-  if (polygonPath.length < 2) {
-    savePolygon();
-    return;
-  }
-
-  activePolygon = new google.maps.Polygon({
-    paths: polygonPath,
-    editable: true,
-    draggable: false,
-    strokeWeight: 2,
-    fillOpacity: 0.22,
-  });
-
-  activePolygon.setMap(polygonMap);
   savePolygon();
 }
 
-function addPolygonPoint(latLng) {
-  const point = {
-    lat: latLng.lat(),
-    lng: latLng.lng(),
-  };
-
+function addPolygonPoint(latlng) {
+  const point = { lat: latlng.lat, lng: latlng.lng };
   polygonPath.push(point);
 
-  const marker = new google.maps.Marker({
-    position: point,
-    map: polygonMap,
-    label: String(polygonPath.length),
-  });
+  polygonMarkers.push(
+    L.circleMarker([point.lat, point.lng], {
+      radius: 5,
+      weight: 2,
+      fillOpacity: 1,
+      interactive: false,
+    })
+      .bindTooltip(String(polygonPath.length), { permanent: true, direction: "top", offset: [0, -6] })
+      .addTo(polygonMap)
+  );
 
-  polygonMarkers.push(marker);
   redrawPolygon();
+}
+
+function finishShape() {
+  if (polygonPath.length < 3) {
+    alert("Add at least 3 points before finishing a shape.");
+    return;
+  }
+
+  const path = polygonPath.slice();
+  finishedPaths.push(path);
+  finishedPolygons.push(
+    L.polygon(toLatLngs(path), {
+      interactive: false,
+      weight: 2,
+      fillOpacity: 0.3,
+    }).addTo(polygonMap)
+  );
+
+  if (activePolygon) activePolygon.remove();
+  activePolygon = null;
+  polygonMarkers.forEach((m) => m.remove());
+  polygonMarkers = [];
+  polygonPath = [];
+
+  savePolygon();
 }
 
 const cityCenters = {
@@ -1409,40 +1456,51 @@ const cityCenters = {
   fernie:     { lat: 49.5037, lng: -115.0631 },
 };
 
-function initPolygonMap() {
-  if (polygonMap || !window.google?.maps) return;
-
+function getCityCenter() {
   const selectedCity = (cityInput?.value || "nanaimo").toLowerCase();
-  const center = cityCenters[selectedCity] || cityCenters.nanaimo;
+  return cityCenters[selectedCity] || cityCenters.nanaimo;
+}
 
-  polygonMap = new google.maps.Map(document.getElementById("polygonMap"), {
-    center,
-    zoom: 11,
-    mapTypeId: "roadmap",
-    draggableCursor: "crosshair",
-  });
+async function initPolygonMap() {
+  if (polygonMap) return;
 
-  polygonMap.addListener("click", (e) => {
-    addPolygonPoint(e.latLng);
-  });
+  try {
+    await loadLeaflet();
+  } catch (err) {
+    console.error("Leaflet failed to load", err);
+    return;
+  }
+
+  if (polygonMap) return;
+
+  const el = document.getElementById("polygonMap");
+  el.innerHTML = "";
+  const center = getCityCenter();
+
+  polygonMap = L.map(el, { doubleClickZoom: false }).setView([center.lat, center.lng], 13);
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors",
+  }).addTo(polygonMap);
+
+  el.style.cursor = "crosshair";
+  polygonMap.on("click", (e) => addPolygonPoint(e.latlng));
 }
 
 function clearPolygon() {
-  polygonPath = [];
-
-  if (activePolygon) {
-    activePolygon.setMap(null);
-  }
-
-  polygonMarkers.forEach((marker) => marker.setMap(null));
-  polygonMarkers = [];
+  if (activePolygon) activePolygon.remove();
   activePolygon = null;
-
-  if (polygonInput) {
-    polygonInput.value = "";
-  }
+  polygonMarkers.forEach((m) => m.remove());
+  polygonMarkers = [];
+  polygonPath = [];
+  finishedPolygons.forEach((p) => p.remove());
+  finishedPolygons = [];
+  finishedPaths = [];
+  savePolygon();
 }
 
+finishPolygonBtn?.addEventListener("click", finishShape);
 clearPolygonBtn?.addEventListener("click", clearPolygon);
 
 function syncPolygonBlock() {
@@ -1453,14 +1511,13 @@ function syncPolygonBlock() {
   polygonBlock.hidden = pageType !== "polygon";
 
   if (pageType === "polygon") {
-    setTimeout(() => {
-      initPolygonMap();
-
-   if (polygonMap) {
-        const selectedCity = (cityInput?.value || "nanaimo").toLowerCase();
-        const center = cityCenters[selectedCity] || cityCenters.nanaimo;
-        google.maps.event.trigger(polygonMap, "resize");
-        polygonMap.setCenter(center);
+    setTimeout(async () => {
+      await initPolygonMap();
+      if (!polygonMap) return;
+      polygonMap.invalidateSize();
+      if (!finishedPaths.length && !polygonPath.length) {
+        const center = getCityCenter();
+        polygonMap.setView([center.lat, center.lng], polygonMap.getZoom());
       }
     }, 100);
   }
