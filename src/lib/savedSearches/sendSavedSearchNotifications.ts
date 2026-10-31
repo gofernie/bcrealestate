@@ -179,6 +179,22 @@ export async function sendSavedSearchNotifications(
           ? `${siteUrl}/${savedSearch.city}#new-matches`
           : "#";
 
+    /* cache-warm-v2: render the alert pages (all matches + each home) into the CDN before the buyer clicks */
+    {
+      const warmUrls = [
+        newMatchesUrl.split("#")[0],
+        ...orderedListings
+          .map((listing: any) => String(listing.mls_number || "").trim())
+          .filter(Boolean)
+          .map((mls: string) => `${siteUrl}/${savedSearch.city}/?listing_id=${encodeURIComponent(mls)}`),
+      ].filter((u) => u.startsWith("http")).slice(0, 20);
+      if (warmUrls.length) {
+        await Promise.race([
+          Promise.allSettled(warmUrls.map((u) => fetch(u, { headers: { "user-agent": "locus-cache-warm" } }))),
+          new Promise((r) => setTimeout(r, 15000)),
+        ]);
+      }
+    }
     const listingHtml =
       orderedListings
         .map(
