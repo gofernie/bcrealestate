@@ -1,4 +1,4 @@
-﻿---
+---
 import AdminSidebar from "../../../../components/AdminSidebar.astro";
 import { createClient } from "@supabase/supabase-js";
 export const prerender = false;
@@ -44,6 +44,7 @@ if (Astro.request.method === "POST") {
       slug: clean(form.get("slug")).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, ""),
       city: clean(form.get("city")).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, ""),
       area: clean(form.get("area")).toLowerCase(),
+      ...(form.has("polygon_geojson") ? (() => { /* polygon-edit-v1 */ const raw = clean(form.get("polygon_geojson")); let geo = null, bounds = null; try { geo = raw ? JSON.parse(raw) : null; } catch { geo = null; } try { const b = clean(form.get("polygon_bounds")); bounds = b ? JSON.parse(b) : null; } catch { bounds = null; } return { polygon_geojson: geo, polygon_center_lat: Number(clean(form.get("polygon_center_lat"))) || null, polygon_center_lng: Number(clean(form.get("polygon_center_lng"))) || null, polygon_bounds: bounds }; })() : {}),
       property_type: form.getAll("property_type").map((v) => clean(v).toLowerCase()).filter(Boolean).join(",") || null,
       price_min: form.get("price_min") ? Number(form.get("price_min")) : null,
       price_max: form.get("price_max") ? Number(form.get("price_max")) : null,
@@ -666,6 +667,133 @@ select {
           <a href="/admin/intent-pages">Cancel</a>
           <a href={`/${page.city}/${page.slug}`} target="_blank">Open public page</a>
         </div>
+<div class="polygon-edit" style="margin:28px 0 8px;">
+  <label style="display:block;font-weight:600;margin-bottom:6px;">Search area shapes</label>
+  <input type="hidden" name="polygon_geojson" id="polygonGeojsonInput" value={page.polygon_geojson ? (typeof page.polygon_geojson === "string" ? page.polygon_geojson : JSON.stringify(page.polygon_geojson)) : ""} />
+  <input type="hidden" name="polygon_center_lat" id="polygonCenterLatInput" value={page.polygon_center_lat ?? ""} />
+  <input type="hidden" name="polygon_center_lng" id="polygonCenterLngInput" value={page.polygon_center_lng ?? ""} />
+  <input type="hidden" name="polygon_bounds" id="polygonBoundsInput" value={page.polygon_bounds ? (typeof page.polygon_bounds === "string" ? page.polygon_bounds : JSON.stringify(page.polygon_bounds)) : ""} />
+  <div id="polygonMap" style="height:400px;border-radius:12px;overflow:hidden;border:1px solid #ddd;"></div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px;">
+    <button type="button" class="btn btn--ghost" id="finishPolygonBtn">Finish shape &amp; start another</button>
+    <button type="button" class="btn btn--ghost" id="clearPolygonBtn">Clear all shapes</button>
+    <span id="polygonShapeCount" style="color:#888;font-size:14px;">0 shapes</span>
+  </div>
+  <small style="color:#888;">Click the map to add points. Existing shapes load here. Clear all and save to remove the shape filter.</small>
+</div>
+<script is:inline>
+(() => {
+  const input = document.getElementById("polygonGeojsonInput");
+  const latIn = document.getElementById("polygonCenterLatInput");
+  const lngIn = document.getElementById("polygonCenterLngInput");
+  const boundsIn = document.getElementById("polygonBoundsInput");
+  const countEl = document.getElementById("polygonShapeCount");
+  const mapEl = document.getElementById("polygonMap");
+  if (!input || !mapEl) return;
+
+  const centers = { nanaimo: [49.1659, -123.9401], parksville: [49.3193, -124.3136], fernie: [49.5037, -115.0631] };
+  const city = String(document.querySelector("[name='city']")?.value || "").toLowerCase();
+  let map = null, active = null, path = [], markers = [], finished = [], layers = [];
+
+  const allPaths = () => { const p = finished.slice(); if (path.length >= 3) p.push(path); return p; };
+  const toLatLngs = (pts) => pts.map((p) => [p.lat, p.lng]);
+  const updateCount = () => { const n = allPaths().length; countEl.textContent = n === 1 ? "1 shape" : n + " shapes"; };
+
+  function save() {
+    const paths = allPaths();
+    updateCount();
+    if (!paths.length) { input.value = ""; latIn.value = ""; lngIn.value = ""; boundsIn.value = ""; return; }
+    const polys = paths.map((pts) => { const ring = pts.map((p) => [p.lng, p.lat]); ring.push(ring[0]); return [ring]; });
+    input.value = JSON.stringify(polys.length === 1 ? { type: "Polygon", coordinates: polys[0] } : { type: "MultiPolygon", coordinates: polys });
+    const all = paths.flat();
+    const lats = all.map((p) => p.lat), lngs = all.map((p) => p.lng);
+    const b = { north: Math.max(...lats), south: Math.min(...lats), east: Math.max(...lngs), west: Math.min(...lngs) };
+    latIn.value = String((b.north + b.south) / 2);
+    lngIn.value = String((b.east + b.west) / 2);
+    boundsIn.value = JSON.stringify(b);
+  }
+
+  function redraw() {
+    if (active) active.remove();
+    active = path.length >= 2 ? L.polygon(toLatLngs(path), { interactive: false, weight: 2, fillOpacity: 0.22 }).addTo(map) : null;
+    save();
+  }
+
+  function addFinished(pts) {
+    finished.push(pts);
+    layers.push(L.polygon(toLatLngs(pts), { interactive: false, weight: 2, fillOpacity: 0.3 }).addTo(map));
+  }
+
+  function addPoint(ll) {
+    path.push({ lat: ll.lat, lng: ll.lng });
+    markers.push(
+      L.circleMarker([ll.lat, ll.lng], { radius: 5, weight: 2, fillOpacity: 1, interactive: false })
+        .bindTooltip(String(path.length), { permanent: true, direction: "top", offset: [0, -6] })
+        .addTo(map)
+    );
+    redraw();
+  }
+
+  function finishShape() {
+    if (path.length < 3) { alert("Add at least 3 points before finishing a shape."); return; }
+    addFinished(path.slice());
+    if (active) active.remove();
+    active = null;
+    markers.forEach((m) => m.remove());
+    markers = [];
+    path = [];
+    save();
+  }
+
+  function clearAll() {
+    if (active) active.remove();
+    active = null;
+    markers.forEach((m) => m.remove());
+    markers = [];
+    path = [];
+    layers.forEach((l) => l.remove());
+    layers = [];
+    finished = [];
+    save();
+  }
+
+  function loadExisting() {
+    let g = null;
+    try { g = input.value ? JSON.parse(input.value) : null; } catch (e) { g = null; }
+    if (g && g.type === "Feature") g = g.geometry;
+    else if (g && g.type === "FeatureCollection") g = g.features && g.features[0] && g.features[0].geometry;
+    const polys = g && g.type === "Polygon" ? [g.coordinates] : g && g.type === "MultiPolygon" ? g.coordinates : [];
+    polys.forEach((poly) => {
+      const ring = (poly[0] || []).map((c) => ({ lat: Number(c[1]), lng: Number(c[0]) }));
+      const last = ring[ring.length - 1];
+      if (ring.length > 1 && ring[0].lat === last.lat && ring[0].lng === last.lng) ring.pop();
+      if (ring.length >= 3) addFinished(ring);
+    });
+  }
+
+  function init() {
+    map = L.map(mapEl, { doubleClickZoom: false }).setView(centers[city] || centers.fernie, 13);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
+    mapEl.style.cursor = "crosshair";
+    loadExisting();
+    if (layers.length) map.fitBounds(L.featureGroup(layers).getBounds(), { padding: [20, 20] });
+    updateCount();
+    map.on("click", (e) => addPoint(e.latlng));
+    document.getElementById("finishPolygonBtn")?.addEventListener("click", finishShape);
+    document.getElementById("clearPolygonBtn")?.addEventListener("click", clearAll);
+  }
+
+  if (window.L) { init(); return; }
+  const css = document.createElement("link");
+  css.rel = "stylesheet";
+  css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+  document.head.appendChild(css);
+  const s = document.createElement("script");
+  s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+  s.onload = init;
+  document.head.appendChild(s);
+})();
+</script>
       </form>
        </main>
   </div>
