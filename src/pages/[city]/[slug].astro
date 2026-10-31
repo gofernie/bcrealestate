@@ -1261,7 +1261,7 @@ const filterWaterfrontType =
 let navRowsQuery = supabase
   .from("listing_rows")
   .select(
-    "normalized_type, normalized_area, price, beds, waterfront, waterfront_type"
+    "normalized_type, normalized_area, price, beds, waterfront, waterfront_type, lat, lng"
   )
   .in("normalized_city", cityDatabaseKeys)
   .eq("status", "A")
@@ -1559,9 +1559,18 @@ const propertyTypeMap: Record<string, string> = {
   land: "land",
 };
 
+// multi-type-v1
+const pageTypeList: string[] = [...new Set(
+  String(page.property_type || "")
+    .toLowerCase()
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => propertyTypeMap[t] || t)
+)];
+
 const normalizedPropertyType =
-  propertyTypeMap[String(page.property_type || "").toLowerCase()] ||
-  String(page.property_type || "").toLowerCase();
+  pageTypeList.length === 1 ? pageTypeList[0] : "";
 
 const typeAreaCounts = new Map<string, number>();
 
@@ -1570,7 +1579,7 @@ const typeAreaCounts = new Map<string, number>();
     .trim()
     .toLowerCase();
 
-  if (rowType === normalizedPropertyType) {
+  if (pageTypeList.length > 1 ? pageTypeList.includes(rowType) : rowType === normalizedPropertyType) {
     const areaKey = String(row.normalized_area || "")
       .replace(/-/g, " ")
       .replace(/\s+/g, " ")
@@ -1651,8 +1660,7 @@ const sitePrimaryType = String(
   .trim();
 
 const requestedPropertyType =
-  propertyTypeMap[filterType] ||
-  filterType;
+  /* multi-type-v1: a comma list means "use the page's type list" */ String(filterType || "").includes(",") ? "" : (propertyTypeMap[filterType] || filterType);
 
 const effectivePropertyType =
   requestedPropertyType ||
@@ -1661,11 +1669,17 @@ const effectivePropertyType =
     ? sitePrimaryType
     : "");
 
-if (effectivePropertyType) {
-  query = query.eq(
-    "normalized_type",
-    effectivePropertyType
-  );
+// multi-type-v1: page may list several types ("condo,townhouse"); a visitor's ?type= pick narrows to one
+const effectiveTypeList: string[] = effectivePropertyType
+  ? [effectivePropertyType]
+  : pageTypeList.length > 1
+    ? pageTypeList
+    : [];
+
+if (effectiveTypeList.length === 1) {
+  query = query.eq("normalized_type", effectiveTypeList[0]);
+} else if (effectiveTypeList.length > 1) {
+  query = query.in("normalized_type", effectiveTypeList);
 }
 if (filterAreas.length > 0) {
   query = query.in("normalized_area", filterAreas);
@@ -1724,8 +1738,8 @@ const priceBandInventoryRows =
         ).trim().toLowerCase();
 
         if (
-          effectivePropertyType &&
-          listingType !== effectivePropertyType
+          effectiveTypeList.length > 0 &&
+          !effectiveTypeList.includes(listingType)
         ) {
           return false;
         }
@@ -2677,7 +2691,7 @@ try {
   let fq = supabase.from("listing_rows").select("price, beds, baths, normalized_type, normalized_area, address, mls_number, lot_size_sqft, lot_size_acres" + (effectivePropertyType === "house" ? ", property_type, description" : "")).eq("status", "A").in("normalized_city", cityDatabaseKeys).neq("property_type", "Lease");
   if (Array.isArray(districtAreas) && districtAreas.length) fq = fq.in("normalized_area", districtAreas);
   else if (page?.area) { const a = String(page.area).toLowerCase().trim().replace(/\s+/g, " "); fq = fq.or(`normalized_area.eq.${a},normalized_area.eq.${a.replace(/\s+/g, "-")}`); }
-  /* facts-type-scope-v2: match listing query */ if (effectivePropertyType) fq = fq.eq("normalized_type", effectivePropertyType);
+  /* facts-type-scope-v2: match listing query */ if (effectiveTypeList.length === 1) fq = fq.eq("normalized_type", effectiveTypeList[0]); else if (effectiveTypeList.length > 1) fq = fq.in("normalized_type", effectiveTypeList);
   const { data: factRows } = await fq.range(0, 4999); /* facts-lot-filter-v1: respect ?minLotSqft= in filter counts */ const factMinLot = Number(filterMinLotSqft || 0); /* facts-lot-filter-v2: include intent page min_lot_sqft */ const factLotOk = (r: any) => !factMinLot || Number(r.lot_size_sqft || 0) >= factMinLot; /* facts-lot-filter-v3: sqft only, matches listing query */
   /* facts-dedupe-v1 */ filterFacts = (() => { const seen = new Set(); return (factRows || []).filter(factLotOk).filter((r: any) => { /* facts-land-check-v2 */ if (!(useHomepageListingPipeline && effectivePropertyType === "house") || String(r.normalized_type || "") !== "house") return true; const ad = String(r.address || ""); const t = (ad + " " + (r.property_type || "") + " " + (r.description || "")).toLowerCase(); return !(/^\s*(lot|lt)\b/i.test(ad) || /\b(vacant land|bare land|building lot|residential lot|development lot|land only|lot for sale)\b/i.test(t) || /\b(vacant|bare|building|residential|serviced)\s+lot\b/i.test(t)); }).filter((r: any) => { const k = String(r.mls_number || "").trim().toUpperCase() || (String(r.address || "").toLowerCase().replace(/[^a-z0-9]/g, "") + "|" + (Number(r.price) || 0)); if (!k || k === "|0") return true; if (seen.has(k)) return false; seen.add(k); return true; }); })().map((r: any) => [Number(r.price) || 0, Number(r.beds) || 0, Number(r.baths) || 0, String(r.normalized_type || ""), String(r.normalized_area || "").toLowerCase().replace(/-/g, " ").trim()]);
 } catch (e) { filterFacts = []; }/* type-dom-freshness-v1 */

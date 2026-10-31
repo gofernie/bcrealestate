@@ -1,4 +1,5 @@
 ---
+import { polygonRings, insidePolygon } from "../lib/intentCounts";
 const {
   city = "nanaimo",
   pages = [],
@@ -70,6 +71,7 @@ for (const intent of pages) {
     .replace(/\/+$/, "");
 
   const type = normalise(intent.property_type);
+  const types = String(intent.property_type || "").split(",").map(normalise).filter(Boolean);
   const area = normalise(intent.area);
   const cardIdentity = dedupeBy === "href" ? href : type ? `type:${type}:${area || "all"}` : href;
 
@@ -85,16 +87,18 @@ for (const intent of pages) {
   seenTargets.add(cardIdentity);
   let matching = Array.isArray(inventory) ? [...inventory] : [];
   // Keep this count in step with the destination page.
-  if (type) {
-    matching = matching.filter((listing) =>
-      listingMatchesType(listing, type)
-    );
-  }
+  if (types.length) matching = matching.filter((listing) => types.some((t) => listingMatchesType(listing, t)));
 
   if (area) {
     matching = matching.filter(
       (listing) => normalise(listing.normalized_area || listing.area) === area
     );
+  }
+
+  // polygon-count-v1: count only listings inside the page's shapes
+  const rings = polygonRings(intent.polygon_geojson);
+  if (rings.length) {
+    matching = matching.filter((listing) => insidePolygon(listing, rings));
   }
 
   const intentSignals =
@@ -189,7 +193,7 @@ for (const intent of pages) {
         : cardType === "waterfront"
           ? "Waterfront homes"
           : typeLabels[type] ||
-            titleCase(intent.property_type || intent.area || "Listings");
+            (types.length > 1 ? "Listings" : titleCase(intent.property_type || intent.area || "Listings"));
 
   const count = matching.length;
 

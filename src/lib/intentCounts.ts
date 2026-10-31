@@ -10,13 +10,43 @@ const matchesType = (listing: any, wanted: string) => {
   return actual === wanted;
 };
 
+/* polygon-count-v1: same "inside any shape" rule as the intent page */
+export const polygonRings = (raw: unknown): any[][] => {
+  let g: any = raw;
+  if (typeof g === "string") { try { g = JSON.parse(g); } catch { return []; } }
+  if (g?.type === "Feature") g = g.geometry;
+  else if (g?.type === "FeatureCollection") g = g.features?.[0]?.geometry;
+  if (!g?.coordinates) return [];
+  if (g.type === "MultiPolygon") return g.coordinates.flat();
+  if (g.type === "Polygon") return g.coordinates;
+  return [];
+};
+
+export const inRing = (x: number, y: number, ring: any[]) => {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = Number(ring[i][0]), yi = Number(ring[i][1]);
+    const xj = Number(ring[j][0]), yj = Number(ring[j][1]);
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+};
+
 /** Count active listings that match an intent page's filters. Mirrors RelatedIntentCards. */
 export function countIntentListings(intent: any, inventory: any[]): number {
   let matching = Array.isArray(inventory) ? [...inventory] : [];
-  const type = normalise(intent.property_type);
+  const types = String(intent.property_type || "").split(",").map(normalise).filter(Boolean);
   const area = normalise(intent.area);
-  if (type) matching = matching.filter((l) => matchesType(l, type));
+  if (types.length) matching = matching.filter((l) => types.some((t) => matchesType(l, t)));
   if (area) matching = matching.filter((l) => normalise(l.normalized_area || l.area) === area);
+  const rings = polygonRings(intent.polygon_geojson);
+  if (rings.length) {
+    matching = matching.filter((l) => {
+      const lat = Number(l.lat ?? l.latitude);
+      const lng = Number(l.lng ?? l.longitude);
+      return Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && rings.some((ring) => inRing(lng, lat, ring));
+    });
+  }
 
   const signals = `${intent.slug || ""} ${intent.hero_heading || ""} ${intent.seo_heading || ""}`;
   const viewType = String(intent.view_type || "").trim().toLowerCase() || (/ocean\s+view/i.test(signals) ? "ocean" : "");
@@ -46,3 +76,9 @@ export function countIntentListings(intent: any, inventory: any[]): number {
 
   return matching.length;
 }
+
+export const insidePolygon = (l: any, rings: any[][]) => {
+  const lat = Number(l.lat ?? l.latitude);
+  const lng = Number(l.lng ?? l.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && rings.some((ring) => inRing(lng, lat, ring));
+};

@@ -44,7 +44,7 @@ if (Astro.request.method === "POST") {
       slug: clean(form.get("slug")).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, ""),
       city: clean(form.get("city")).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, ""),
       area: clean(form.get("area")).toLowerCase(),
-      property_type: clean(form.get("property_type")).toLowerCase() || null,
+      property_type: form.getAll("property_type").map((v) => clean(v).toLowerCase()).filter(Boolean).join(",") || null,
       price_min: form.get("price_min") ? Number(form.get("price_min")) : null,
       price_max: form.get("price_max") ? Number(form.get("price_max")) : null,
       featured_rank: form.get("featured_rank") ? Number(form.get("featured_rank")) : null,
@@ -462,14 +462,14 @@ select {
 
           <div class="field">
             <label>Property type</label>
-            <select name="property_type">
-              <option value="" selected={!page.property_type}>Any</option>
-              <option value="house" selected={page.property_type === "house"}>House</option>
-              <option value="condo" selected={page.property_type === "condo"}>Condo</option>
-              <option value="townhouse" selected={page.property_type === "townhouse"}>Townhouse</option>
-<option value="mobile" selected={page.property_type === "mobile"}>Mobile</option>
-              <option value="land" selected={page.property_type === "land"}>Land</option>
-            </select>
+            <div class="type-checks" style="display:flex;flex-wrap:wrap;gap:6px 16px;padding:10px 0;">
+              {[["house","House"],["condo","Condo"],["townhouse","Townhouse"],["mobile","Mobile"],["land","Land"]].map(([v, l]) => (
+                <label style="display:inline-flex;align-items:center;gap:6px;font-weight:400;margin:0;">
+                  <input type="checkbox" name="property_type" value={v} checked={String(page.property_type || "").split(",").includes(v)} /> {l}
+                </label>
+              ))}
+            </div>
+            <small style="color:#888;">None checked = any type.</small>
           </div>
         </div>
 
@@ -684,7 +684,7 @@ select {
     const heading = document.querySelector("[name='hero_heading']")?.value || "";
     const city = (document.querySelector("[name='city']")?.value || "Nanaimo")
       .replace(/\b\w/g, c => c.toUpperCase());
-    const type = document.querySelector("[name='property_type']")?.value || "";
+    const type = document.querySelector("[name='property_type']:checked")?.value || "";
     const priceMax = document.querySelector("[name='price_max']")?.value || "";
     const priceMin = document.querySelector("[name='price_min']")?.value || "";
 
