@@ -1,0 +1,114 @@
+---
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const { id } = Astro.params;
+
+function clean(v) {
+  return String(v || "").trim();
+}
+
+let message = "";
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const sectionBlocksRaw = clean(form.get("section_blocks"));
+  const sectionBlocks = sectionBlocksRaw ? JSON.parse(sectionBlocksRaw) : [];
+
+  const { error } = await supabase
+    .from("guide_pages")
+    .update({
+      title: clean(form.get("title")),
+      eyebrow: clean(form.get("eyebrow")) || null,
+      hero_image_url: clean(form.get("hero_image_url")) || null,
+      seo_title: clean(form.get("seo_title")) || null,
+      meta_description: clean(form.get("meta_description")) || null,
+      template: clean(form.get("template")) || "custom",
+      status: clean(form.get("status")) || "draft",
+      neighbourhood_copy: clean(form.get("neighbourhood_copy")) || null,
+      section_blocks: sectionBlocks,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+
+  if (error) {
+    message = "Save failed: " + error.message;
+  } else {
+    message = "Saved.";
+  }
+}
+
+const { data: page } = await supabase
+  .from("guide_pages")
+  .select("*")
+  .eq("id", id)
+  .single();
+
+if (!page) return Astro.redirect("/admin/intent-pages");
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Edit Guide Page</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+    label { display: block; font-weight: 600; margin: 16px 0 4px; }
+    input, textarea, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box; }
+    textarea { min-height: 100px; font-family: inherit; }
+    button { margin-top: 24px; padding: 10px 24px; background: #2f6f73; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; }
+    .message { margin-top: 12px; padding: 8px 12px; background: #f0f9f0; border-left: 3px solid #2f6f73; }
+    .back { display: inline-block; margin-bottom: 24px; color: #2f6f73; text-decoration: none; }
+    h1 { margin-bottom: 4px; }
+    .subtitle { color: #666; margin-bottom: 32px; }
+  </style>
+</head>
+<body>
+  <a class="back" href="/admin/intent-pages">? Back to pages</a>
+  <h1>Edit Guide Page</h1>
+  <p class="subtitle">/{page.city}/guides/{page.slug}</p>
+  {message && <div class="message">{message}</div>}
+  <form method="POST">
+    <label>Title</label>
+    <input name="title" value={page.title || ""} required />
+
+    <label>Eyebrow <span style="font-weight:400;color:#888">— small label above title</span></label>
+    <input name="eyebrow" value={page.eyebrow || ""} placeholder="e.g. Alberta Buyers Guide" />
+
+    <label>Hero image URL</label>
+    <input name="hero_image_url" value={page.hero_image_url || ""} placeholder="https://..." />
+
+    <label>Template</label>
+    <select name="template">
+      <option value="custom" selected={page.template === "custom"}>Custom</option>
+      <option value="alberta-buyers" selected={page.template === "alberta-buyers"}>Alberta buyers</option>
+      <option value="str-rules" selected={page.template === "str-rules"}>STR rules</option>
+      <option value="vs-canmore" selected={page.template === "vs-canmore"}>Fernie vs Canmore</option>
+    </select>
+
+    <label>Body copy <span style="font-weight:400;color:#888">— main guide text, supports paragraph breaks</span></label>
+    <textarea name="neighbourhood_copy" rows="8">{page.neighbourhood_copy || ""}</textarea>
+
+    <label>SEO title</label>
+    <input name="seo_title" value={page.seo_title || ""} />
+
+    <label>Meta description</label>
+    <textarea name="meta_description" rows="3">{page.meta_description || ""}</textarea>
+
+    <label>Status</label>
+    <select name="status">
+      <option value="draft" selected={page.status === "draft"}>Draft</option>
+      <option value="live" selected={page.status === "live"}>Live</option>
+    </select>
+
+    <input type="hidden" name="section_blocks" value={JSON.stringify(page.section_blocks || [])} />
+
+    <button type="submit">Save guide page</button>
+  </form>
+</body>
+</html>

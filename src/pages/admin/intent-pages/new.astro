@@ -1,4 +1,4 @@
-ï»¿---
+---
 import { createClient } from "@supabase/supabase-js";
 import AdminSidebar from "../../../components/AdminSidebar.astro";
 import { getSite } from "../../../lib/getSite";
@@ -264,6 +264,26 @@ const metaDescription = [
         ]
           .filter(Boolean)
           .join(" ");
+  if (pageType === "guide") {
+    const guideSlug = city + "-" + (clean(form.get("slug")) || "guide");
+    const { data: newGuide, error: guideError } = await supabase
+      .from("guide_pages")
+      .insert({
+        site_id: site?.id,
+        city,
+        slug: guideSlug,
+        status: "draft",
+        title: clean(form.get("hero_heading")) || cityLabel + " Guide",
+        template: clean(form.get("template")) || "custom",
+        section_blocks: [],
+      })
+      .select("id")
+      .single();
+    if (!guideError && newGuide) {
+      return Astro.redirect(`/admin/guide-pages/${newGuide.id}/edit`);
+    }
+    message = "Failed to create guide page.";
+  } else {
 const { data: existingPage } = await supabase
   .from("intent_pages")
   .select("id, city, slug, site_id")
@@ -340,6 +360,7 @@ waterfront_type:
         }))
       );
 
+}
     }
 
 return Astro.redirect(
@@ -726,6 +747,15 @@ textarea:focus {
       <strong>Polygon page</strong>
       <span>
         Draw a custom area on a map and create a page from listings inside that shape.
+      </span>
+    </div>
+  </label>
+  <label class="page-type-option">
+    <input type="radio" name="page_type" value="guide" />
+    <div class="page-type-card">
+      <strong>Guide page</strong>
+      <span>
+        Content-rich landing page with typed sections — text, STR building lists, stats, and CTAs. Renders at /[city]/guides/[slug].
       </span>
     </div>
   </label>

@@ -1,0 +1,54 @@
+---
+import { createClient } from "@supabase/supabase-js";
+import Layout from "../../../layouts/Layout.astro";
+import SiteNav from "../../../components/SiteNav.astro";
+import { getSite } from "../../../lib/getSite";
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const city = String(Astro.params.city || "").toLowerCase().trim();
+const slug = String(Astro.params.slug || "").toLowerCase().trim();
+
+const requestHost = Astro.request.headers.get("x-forwarded-host") || Astro.request.headers.get("host") || "";
+const requestDomain = requestHost.split(",")[0].trim().replace(/^www\./, "").split(":")[0];
+const localSubdomainMatch = requestDomain.match(/^([a-z0-9-]+)\.localhost$/);
+const isLocalRequest = requestDomain === "localhost" || requestDomain === "127.0.0.1" || Boolean(localSubdomainMatch);
+const isNetlifyProjectDomain = requestDomain === "bc-realestate.netlify.app" || requestDomain.endsWith("--bc-realestate.netlify.app");
+const inferredLocalDomain = localSubdomainMatch ? `${localSubdomainMatch[1]}.bc.realestate` : "bc.realestate";
+const requestedLocalDomain = String(Astro.url.searchParams.get("siteDomain") || inferredLocalDomain).trim().replace(/^www\./, "");
+const effectiveSiteDomain = isLocalRequest || isNetlifyProjectDomain ? requestedLocalDomain : requestDomain;
+
+const site = await getSite(effectiveSiteDomain, city);
+const accent = site?.accent_color || "#2f6f73";
+
+const { data: page } = await supabase
+  .from("guide_pages")
+  .select("*")
+  .eq("city", city)
+  .eq("slug", slug)
+  .eq("status", "live")
+  .single();
+
+if (!page) return new Response(null, { status: 404 });
+
+const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+const title = page.seo_title || page.title || `${cityLabel} Guide`;
+const description = page.meta_description || "";
+---
+<Layout title={title} description={description} accent={accent}>
+  <SiteNav site={site} city={city} accent={accent} />
+  <main style="max-width:800px;margin:0 auto;padding:40px 20px;">
+    {page.eyebrow && <p style="font-size:.85rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent, #2f6f73);margin-bottom:8px;">{page.eyebrow}</p>}
+    <h1 style="font-size:2.5rem;line-height:1.15;margin-bottom:24px;">{page.title}</h1>
+    {page.neighbourhood_copy && (
+      <div style="font-size:1.05rem;line-height:1.7;color:#333;">
+        {String(page.neighbourhood_copy).split(/\n\n|\r\n\r\n/).filter(p => p.trim()).map(p => (
+          <p style="margin-bottom:1.2em;">{p.trim()}</p>
+        ))}
+      </div>
+    )}
+  </main>
+</Layout>
