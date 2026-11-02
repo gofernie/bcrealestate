@@ -97,6 +97,52 @@ if (!page) return Astro.redirect("/admin/intent-pages");
 
     <label>Body copy <span style="font-weight:400;color:#888">� main guide text, supports paragraph breaks</span></label>
     <textarea name="neighbourhood_copy" rows="8">{page.neighbourhood_copy || ""}</textarea>
+<!-- guide-gen:start -->
+<div style="margin:.6rem 0 1.2rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
+  <input id="guide-gen-notes" placeholder="Optional: what to cover, angle, local details" style="flex:1;min-width:240px;" />
+  <button type="button" id="guide-gen-btn">Generate with AI</button>
+  <button type="button" id="guide-gen-insert" style="display:none;">Insert generated draft</button>
+  <span id="guide-gen-status" style="font-size:.85rem;color:#777;"></span>
+</div>
+<script is:inline>
+(function () {
+  var btn = document.getElementById("guide-gen-btn"); if (!btn) return;
+  var ins = document.getElementById("guide-gen-insert"), st = document.getElementById("guide-gen-status");
+  var root = btn.closest("form") || document;
+  var ta = root.querySelector('textarea[name="neighbourhood_copy"]');
+  var id = (location.pathname.match(/guide-pages\/([^/]+)/) || [])[1] || "";
+  var API = "/admin/api/generate-guide", draft = "";
+  function show(d) {
+    if (d.status === "working") { btn.disabled = true; st.textContent = "Researching and writing. This takes a minute or two. You can leave and come back."; return true; }
+    btn.disabled = false;
+    if (d.status === "done" && d.draft) { draft = d.draft; ins.style.display = ""; st.textContent = d.error ? "Draft ready, but it may be cut off. Check the ending before you save." : "Draft ready."; }
+    else if (d.status === "failed") st.textContent = "Failed: " + (d.error || "unknown error");
+    else st.textContent = "";
+    return false;
+  }
+  async function check() {
+    try { var r = await fetch(API + "?id=" + encodeURIComponent(id)); var d = await r.json(); var ne = document.getElementById("guide-gen-notes"); if (d.notes && ne && !ne.value) ne.value = d.notes; if (show(d)) setTimeout(check, 5000); }
+    catch (e) { setTimeout(check, 8000); }
+  }
+  btn.addEventListener("click", async function () {
+    if (!id || !ta) return;
+    var t = root.querySelector('[name="title"]');
+    ins.style.display = "none"; btn.disabled = true; st.textContent = "Starting...";
+    try {
+      var r = await fetch(API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: id, title: t ? t.value : "", notes: document.getElementById("guide-gen-notes").value }) });
+      var d = await r.json(); if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+      check();
+    } catch (e) { btn.disabled = false; st.textContent = "Failed: " + e.message; }
+  });
+  ins.addEventListener("click", function () {
+    if (ta.value.trim() && !confirm("Replace the current body copy with the generated draft?")) return;
+    ta.value = draft; ins.style.display = "none"; st.textContent = "Inserted. Review it, then Save.";
+    fetch(API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: id, action: "dismiss" }) });
+  });
+  if (id) check();
+})();
+</script>
+<!-- guide-gen:end -->
 
     <label>SEO title</label>
     <input name="seo_title" value={page.seo_title || ""} />
