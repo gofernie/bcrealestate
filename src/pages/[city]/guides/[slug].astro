@@ -29,11 +29,73 @@ const { data: page } = await supabase
   .select("*")
   .eq("city", city)
   .eq("slug", slug)
-  .eq("status", "live")
+  .in("status", isLocalRequest ? ["live", "draft"] : ["live"])
   .single();
 
 if (!page) return new Response(null, { status: 404 });
+const { data: __intentMatch } = await supabase.from("intent_pages").select("id").eq("slug", slug).limit(1);
+if (__intentMatch && __intentMatch.length) return Astro.redirect(`/${city}/${slug}`, 301);
 
+function escHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function mdInline(s) {
+  let t = escHtml(s);
+  t = t.replace(/`([^`]+)`/g, "<code>$1</code>");
+  t = t.replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/)[^\s)]*)\)/g, '<a href="$2">$1</a>');
+  t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  t = t.replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\w)/g, "$1<em>$2</em>");
+  return t;
+}
+function renderGuideMd(src) {
+  const lines = String(src || "").replace(/\r\n?/g, "\n").split("\n");
+  const out = [];
+  const isTable = (l) => /^\s*\|/.test(l);
+  const isUl = (l) => /^\s*[-*]\s+/.test(l);
+  const isOl = (l) => /^\s*\d+[.)]\s+/.test(l);
+  const isHead = (l) => /^#{2,4}\s+/.test(l);
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+    if (isHead(line)) {
+      const m = line.match(/^(#{2,4})\s+(.*)$/);
+      const lvl = m[1].length;
+      out.push(`<h${lvl}>${mdInline(m[2].trim())}</h${lvl}>`);
+      i++; continue;
+    }
+    if (isTable(line)) {
+      const rows = [];
+      while (i < lines.length && isTable(lines[i])) { rows.push(lines[i]); i++; }
+      const cells = (r) => r.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+      const data = rows.filter((r) => !/^[\s|:-]+$/.test(r));
+      if (!data.length) continue;
+      const head = cells(data[0]).map((c) => `<th>${mdInline(c)}</th>`).join("");
+      const body = data.slice(1).map((r) => `<tr>${cells(r).map((c) => `<td>${mdInline(c)}</td>`).join("")}</tr>`).join("");
+      out.push(`<div class="guide-table"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`);
+      continue;
+    }
+    if (isUl(line) || isOl(line)) {
+      const ordered = isOl(line);
+      const test = ordered ? isOl : isUl;
+      const items = [];
+      while (i < lines.length && test(lines[i])) {
+        items.push(lines[i].replace(ordered ? /^\s*\d+[.)]\s+/ : /^\s*[-*]\s+/, ""));
+        i++;
+      }
+      const tag = ordered ? "ol" : "ul";
+      out.push(`<${tag}>${items.map((it) => `<li>${mdInline(it)}</li>`).join("")}</${tag}>`);
+      continue;
+    }
+    const para = [];
+    while (i < lines.length && lines[i].trim() && !isHead(lines[i]) && !isTable(lines[i]) && !isUl(lines[i]) && !isOl(lines[i])) {
+      para.push(mdInline(lines[i].trim()));
+      i++;
+    }
+    out.push(`<p>${para.join("<br>")}</p>`);
+  }
+  return out.join("\n");
+}
 const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 const title = page.seo_title || page.title || `${cityLabel} Guide`;
 const description = page.meta_description || "";
@@ -44,11 +106,22 @@ const description = page.meta_description || "";
     {page.eyebrow && <p style="font-size:.85rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent, #2f6f73);margin-bottom:8px;">{page.eyebrow}</p>}
     <h1 style="font-size:2.5rem;line-height:1.15;margin-bottom:24px;">{page.title}</h1>
     {page.neighbourhood_copy && (
-      <div style="font-size:1.05rem;line-height:1.7;color:#333;">
-        {String(page.neighbourhood_copy).split(/\n\n|\r\n\r\n/).filter(p => p.trim()).map(p => (
-          <p style="margin-bottom:1.2em;">{p.trim()}</p>
-        ))}
-      </div>
+      <div class="guide-body" set:html={renderGuideMd(page.neighbourhood_copy)} />
     )}
   </main>
 </Layout>
+
+<style is:global>
+  .guide-body { font-size: 1.05rem; line-height: 1.7; color: #333; }
+  .guide-body p { margin: 0 0 1.2em; }
+  .guide-body h2 { font-size: 1.6rem; line-height: 1.25; margin: 2em 0 .6em; }
+  .guide-body h3 { font-size: 1.25rem; margin: 1.6em 0 .5em; }
+  .guide-body ul, .guide-body ol { margin: 0 0 1.2em; padding-left: 1.4em; }
+  .guide-body li { margin-bottom: .4em; }
+  .guide-body a { color: var(--accent, #2f6f73); text-decoration: underline; }
+  .guide-body code { background: #f3f1ec; padding: .1em .35em; border-radius: 4px; font-size: .9em; }
+  .guide-table { overflow-x: auto; margin: 0 0 1.6em; }
+  .guide-body table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  .guide-body th, .guide-body td { text-align: left; vertical-align: top; padding: .6em .75em; border-bottom: 1px solid #e4e0d8; }
+  .guide-body th { font-weight: 700; background: color-mix(in srgb, var(--accent, #2f6f73) 8%, white); }
+</style>
