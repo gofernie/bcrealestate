@@ -265,7 +265,16 @@ const metaDescription = [
           .filter(Boolean)
           .join(" ");
   if (pageType === "guide") {
-    const guideSlug = city + "-" + (clean(form.get("slug")) || "guide");
+    const guideSlug = (clean(form.get("slug")) || "guide");
+    const { data: existingGuide } = await supabase
+      .from("guide_pages")
+      .select("id")
+      .eq("site_id", site?.id)
+      .eq("slug", guideSlug)
+      .maybeSingle();
+    if (existingGuide) {
+      return Astro.redirect(`/admin/guide-pages/${existingGuide.id}/edit`);
+    }
     const { data: newGuide, error: guideError } = await supabase
       .from("guide_pages")
       .insert({
@@ -273,7 +282,7 @@ const metaDescription = [
         city,
         slug: guideSlug,
         status: "draft",
-        title: clean(form.get("hero_heading")) || cityLabel + " Guide",
+        title: clean(form.get("hero_heading")) || (String(city).replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) + " Guide"),
         template: clean(form.get("template")) || "custom",
         section_blocks: [],
       })
@@ -282,7 +291,7 @@ const metaDescription = [
     if (!guideError && newGuide) {
       return Astro.redirect(`/admin/guide-pages/${newGuide.id}/edit`);
     }
-    message = "Failed to create guide page.";
+    message = "Failed to create guide page: " + (guideError?.message || "unknown error");
   } else {
 const { data: existingPage } = await supabase
   .from("intent_pages")
@@ -755,7 +764,7 @@ textarea:focus {
     <div class="page-type-card">
       <strong>Guide page</strong>
       <span>
-        Content-rich landing page with typed sections — text, STR building lists, stats, and CTAs. Renders at /[city]/guides/[slug].
+        Long-form guide content. Give it the same slug as an intent page and it renders in that page's Area Guide section.
       </span>
     </div>
   </label>

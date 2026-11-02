@@ -114,6 +114,17 @@ const selectedFeatures = (page.intent_page_features || []).map(
   (feature) => feature.feature_key
 );
 
+// paired-guide: a guide_pages row with the same slug supplies the public Area Guide section
+let pairedGuide = null;
+try {
+  if (page && page.slug) {
+    const __gdb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
+    const { data: __pg } = await __gdb.from("guide_pages").select("*").eq("slug", page.slug).limit(1);
+    const __g = __pg && __pg[0];
+    if (__g && String(__g.neighbourhood_copy || "").trim()) pairedGuide = __g;
+  }
+} catch (e) { pairedGuide = null; }
+const pairedGuideEdit = pairedGuide && "/admin/guide-pages" ? `/admin/guide-pages/${pairedGuide.id}/edit` : "";
 ---
 
 <html lang="en">
@@ -592,8 +603,15 @@ select {
         <div class="field">
           <label>Intro copy</label>
           <textarea name="intro_copy" required>{page.intro_copy || ""}</textarea>
-          <label>Neighbourhood copy <span style="font-weight:400;color:var(--muted);">— &quot;What buyers should know&quot; body text</span></label>
-          <textarea name="neighbourhood_copy" rows="5">{page.neighbourhood_copy || ""}</textarea>
+          <label>Neighbourhood copy <span style="font-weight:400;color:var(--muted);">&mdash;&quot;What buyers should know&quot; body text</span></label>
+          {pairedGuide ? (
+            <>
+              <textarea name="neighbourhood_copy" rows="5" readonly style="opacity:.55;background:#f3f1ec;cursor:not-allowed;">{page.neighbourhood_copy || ""}</textarea>
+              <p style="margin:.4rem 0 0;font-size:.85rem;color:var(--muted);">Not used on this page. This section comes from the guide <strong>{pairedGuide.title || pairedGuide.slug}</strong>, which shares this page's slug. {pairedGuideEdit && <a href={pairedGuideEdit}>Edit the guide &rarr;</a>}</p>
+            </>
+          ) : (
+            <textarea name="neighbourhood_copy" rows="5">{page.neighbourhood_copy || ""}</textarea>
+          )}
         </div>
 
       <div class="field">
