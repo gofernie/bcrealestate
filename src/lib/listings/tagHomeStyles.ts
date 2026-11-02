@@ -10,6 +10,18 @@ export const HOME_STYLES = [
 
 const SKIP_CITIES = ["calgary"];
 const OK_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+// Cottage / cabin guardrail: detached house, built 50+ years ago, 1,500 sq ft or less.
+const COTTAGE = "Cottage / cabin";
+const COTTAGE_MAX_SQFT = 1500;
+const COTTAGE_MIN_AGE = 50;
+const posNum = (v: any) => { const n = Number(String(v ?? "").replace(/[^0-9.]/g, "")); return Number.isFinite(n) && n > 0 ? n : null; };
+export function cottageEligible(row: any) {
+  const year = posNum(row?.year_built);
+  const sqft = posNum(row?.sqft ?? row?.square_feet ?? row?.living_area ?? row?.sq_ft ?? row?.total_sqft);
+  const type = String(row?.normalized_type || "").toLowerCase();
+  return type === "house" && !!year && year <= new Date().getFullYear() - COTTAGE_MIN_AGE && !!sqft && sqft <= COTTAGE_MAX_SQFT;
+}
+const NO_COTTAGE = ' Do not answer "Cottage / cabin": this home is too new or too large for that style. Pick the next closest style.';
 
 type Env = {
   ANTHROPIC_API_KEY?: string;
@@ -77,7 +89,7 @@ function typeHint(mlsType: string) {
   return "";
 }
 
-async function tagPhoto(raw: string, env: Env, model: string, mlsType = "") {
+async function tagPhoto(raw: string, env: Env, model: string, mlsType = "", noCottage = false) {
   const img = await fetch(photoUrl(raw, env.REPLIERS_CDN || "https://cdn.repliers.io/"));
   if (!img.ok) throw new Error("photo " + img.status);
   const type = (img.headers.get("content-type") || "image/jpeg").split(";")[0].trim();
@@ -99,7 +111,7 @@ async function tagPhoto(raw: string, env: Env, model: string, mlsType = "") {
         tool_choice: { type: "tool", name: "tag" },
         messages: [{ role: "user", content: [
           { type: "image", source: { type: "base64", media_type: type, data } },
-          { type: "text", text: PROMPT + typeHint(mlsType) },
+          { type: "text", text: PROMPT + typeHint(mlsType) + (noCottage ? NO_COTTAGE : "") },
         ] }],
       }),
     });
@@ -136,7 +148,7 @@ export async function tagUntaggedListings(
 
   const { data: rows, error } = await db
     .from("listing_rows")
-    .select("id, image_url, normalized_type")
+    .select("*")
     .eq("status", "A")
     .is("home_style", null)
     .not("image_url", "is", null)
@@ -151,10 +163,11 @@ export async function tagUntaggedListings(
     while (queue.length) {
       const row: any = queue.shift();
       try {
-        const t = await tagPhoto(row.image_url, env, model, row.normalized_type);
+        const okCottage = cottageEligible(row);
+        const t = await tagPhoto(row.image_url, env, model, row.normalized_type, !okCottage);
         if (!t) throw new Error("no answer");
         const { error: upErr } = await db.from("listing_rows").update({
-          home_style: normalizeHomeStyle(t.style),
+          home_style: (() => { const s = normalizeHomeStyle(t.style); return s === COTTAGE && !okCottage ? "Other" : s; })(),
           home_style_meta: {
             storeys: Number.isInteger(t.storeys) ? t.storeys : null,
             exterior: t.exterior || null,
