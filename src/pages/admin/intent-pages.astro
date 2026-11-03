@@ -1,4 +1,4 @@
-﻿---
+---
 import AdminSidebar from "../../components/AdminSidebar.astro";
 import { createClient } from "@supabase/supabase-js";
 import { getSite } from "../../lib/getSite";
@@ -13,6 +13,7 @@ const site = await getSite(Astro.url.hostname, selectedCity);
 const formData =
   Astro.request.method === "POST" ? await Astro.request.formData() : null;
 
+if (formData?.get("_action") === "toggle-publish") { const pid = String(formData.get("id") || ""); const pub = formData.get("publish") === "1"; if (pid) await supabase.from("intent_pages").update({ is_published: pub, status: pub ? "published" : "draft" }).eq("id", pid); return Astro.redirect(Astro.url.pathname + Astro.url.search); }
 if (formData?.get("_action") === "delete") {
   const id = String(formData.get("id") || "");
 
@@ -587,6 +588,12 @@ function publicHref(page: any) {
                   <input type="hidden" name="id" value={page.id} />
                   <button class="btn btn--danger" type="submit">Delete</button>
                 </form>
+                  <form method="POST" onsubmit={page.is_published === false ? undefined : "return confirm('Unpublish this page? It will disappear from the live site.');"}>
+                    <input type="hidden" name="_action" value="toggle-publish" />
+                  <input type="hidden" name="id" value={page.id} />
+                    <input type="hidden" name="publish" value={page.is_published === false ? "1" : "0"} />
+                    <button class="btn" type="submit">{page.is_published === false ? "Publish" : "Unpublish"}</button>
+                  </form>
               </div>
             </article>
           );
