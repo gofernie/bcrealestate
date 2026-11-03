@@ -63,6 +63,10 @@ export function countIntentListings(intent: any, inventory: any[]): number {
   } else if (intent.requires_waterfront === true) {
     matching = matching.filter((l) => ["true", "yes", "y", "1"].includes(String(l.waterfront ?? "").trim().toLowerCase()));
   }
+  /* counts-newfilters-v1: suite / main-level / year built / lot size */
+  if (intent.requires_suite === true) matching = matching.filter((l) => l.has_suite === true);
+  if (intent.primary_on_main === true) matching = matching.filter((l) => l.primary_on_main === true);
+  if (Number(intent.min_year || 0) > 0) matching = matching.filter((l) => Number(l.year_built || 0) >= Number(intent.min_year));
 
   const num = (v: unknown) => Number(v || 0);
   const lotSqftOf = (l: any) => num(l.lot_size_sqft) || num(l.lot_size_acres) * 43560;

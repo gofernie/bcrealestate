@@ -52,7 +52,7 @@ if (city === "greater-victoria") {
   ));
   const { data: inv } = await supabase
     .from("listing_rows")
-    .select("normalized_type, property_type, normalized_area, price, waterfront, waterfront_type, view_type, beds, baths, sqft, lot_size_sqft, lot_size_acres, lat, lng")
+    .select("normalized_type, property_type, normalized_area, price, waterfront, waterfront_type, view_type, beds, baths, sqft, lot_size_sqft, lot_size_acres, lat, lng, has_suite, primary_on_main, year_built")
     .in("normalized_city", keys)
     .eq("status", "A")
     .neq("property_type", "Lease")
@@ -67,16 +67,18 @@ const typeLabels: Record<string, string> = {
   mobile: "Mobile Homes",
   land: "Land",
 };
-const typeOrder = ["Homes", "Condos", "Townhomes", "Mobile Homes", "Land", "More searches"];
+/* hub-groups-v1 */ const typeOrder = ["Homes", "Condos", "Townhomes", "Mobile Homes", "Land", "Acreage & Rural", "Waterfront", "Ranchers & Main-Level", "Homes with a Suite", "New Construction", "More searches"];
+const hubGroup = (row: any) => { if (row.requires_suite) return "Homes with a Suite"; if (row.requires_waterfront || row.waterfront_type) return "Waterfront"; if (Number(row.min_lot_sqft || 0) >= 43560 || /acre|rural/i.test(String(row.slug || ""))) return "Acreage & Rural"; if (row.primary_on_main) return "Ranchers & Main-Level"; if (row.min_year) return "New Construction"; return ""; };
 const cityPrefix = new RegExp(`^${cityLabel}\\s+(?=\\S)`, "i");
 
 const pages = (rows || [])
-  .filter((row: any) => row.slug && String(row.city || "").toLowerCase() === city)
+  .filter((row: any) => row.slug && row.is_published !== false && String(row.city || "").toLowerCase() === city)
   .map((row: any) => ({
     count: countIntentListings(row, inventory),
     href: `/${row.city || city}/${String(row.slug).replace(/^\/+/, "")}`,
     title: String(row.hero_heading || row.seo_heading || titleCase(row.slug)).replace(cityPrefix, ""),
     type: String(row.property_type || "").toLowerCase(),
+    group: hubGroup(row),
     area: String(row.area || "").toLowerCase(),
     copy: String(row.meta_description || row.intro_copy || "").replace(/\s+/g, " ").trim(),
   }))
@@ -84,7 +86,7 @@ const pages = (rows || [])
 
 const byType = new Map<string, any[]>();
 for (const p of pages) {
-  const key = typeLabels[p.type] || "More searches";
+  const key = p.group || typeLabels[p.type] || "More searches";
   if (!byType.has(key)) byType.set(key, []);
   byType.get(key)!.push(p);
 }
