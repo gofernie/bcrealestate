@@ -1022,7 +1022,7 @@ const featureResult =
     ? await supabase
         .from("intent_page_features")
         .select("feature_key")
-        .eq("intent_page_id", page.id)
+        .eq("intent_page_id", /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(page?.id || "")) ? page.id : "00000000-0000-0000-0000-000000000000")
     : {
         data: [],
         error: null,
@@ -18015,6 +18015,49 @@ html body .area-hero-visual .hero-step-details__price { white-space: nowrap; }
   } else {
     moveSort();
   }
+})();
+</script>
+<style is:global>
+  /* sort-menu-below-v1: the sort menu always opens directly under its button */
+  .filter-dd--sort .filter-dd__menu {
+    position: absolute !important;
+    top: calc(100% + 6px) !important;
+    bottom: auto !important;
+    left: 0 !important;
+    right: auto !important;
+    transform: none !important;
+    min-width: 220px;
+    z-index: 60;
+  }
+</style>
+<script is:inline>
+/* sort-keep-scroll-v2: picking a sort holds your place; other scripts can't jump the page for a moment */
+(() => {
+  const KEY = "sortKeepY";
+  const ws = window.scrollTo.bind(window);
+  const sb = window.scrollBy ? window.scrollBy.bind(window) : null;
+  const siv = Element.prototype.scrollIntoView;
+  let pin = null, until = 0;
+  const holding = () => pin !== null && Date.now() < until;
+  window.scrollTo = function () { if (holding()) return ws(0, pin); return ws.apply(window, arguments); };
+  if (sb) window.scrollBy = function () { if (holding()) return; return sb.apply(window, arguments); };
+  Element.prototype.scrollIntoView = function () { if (holding()) return; return siv.apply(this, arguments); };
+  const hold = (y, ms) => {
+    pin = y; until = Date.now() + ms;
+    const tick = () => { if (!holding()) { pin = null; return; } if (Math.abs(window.scrollY - pin) > 2) ws(0, pin); requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  };
+  try {
+    const y = sessionStorage.getItem(KEY);
+    if (y !== null) { sessionStorage.removeItem(KEY); ws(0, +y); hold(+y, 2500); }
+  } catch (e) {}
+  const keep = () => {
+    const y = window.scrollY;
+    try { sessionStorage.setItem(KEY, String(y)); setTimeout(() => { try { sessionStorage.removeItem(KEY); } catch (e) {} }, 4000); } catch (e) {}
+    hold(y, 1500);
+  };
+  const SORT_LABELS = /^(newest first|price low to high|price high to low|most bedrooms first|largest homes first)$/i; document.addEventListener("click", (e) => { let el = e.target; for (let i = 0; el && i < 4; i++, el = el.parentElement) { if (SORT_LABELS.test((el.textContent || "").replace(/\s+/g, " ").trim()) || (el.closest && el.closest(".filter-dd--sort .filter-dd__option"))) { keep(); return; } } }, true);
+  document.addEventListener("change", (e) => { if (e.target.matches && e.target.matches(".sort-filter-select")) keep(); }, true);
 })();
 </script>
 <script is:inline>/* area-search-actions-v1 */(() => { const place = () => { const row = document.querySelector(".filter-save-row"); const save = document.querySelector(".slug-save-search [data-slug-save-open]"); const native = document.querySelector(".sort-filter-select"); const dropdown = document.querySelector(".filter-dd--sort"); const typePills = document.querySelector(".property-type-pills"); if (row && save && native && dropdown) { const oldPill = native.closest(".filter-sort-pill"); if (oldPill instanceof HTMLElement) oldPill.style.display = "none"; native.style.display = "none"; row.insertBefore(dropdown, save); dropdown.style.cssText = "position:relative;display:inline-flex;min-width:0;height:40px;align-self:auto;"; const trigger = dropdown.querySelector(".filter-dd__trigger"); const label = dropdown.querySelector(".filter-dd__label"); const value = dropdown.querySelector(".filter-dd__value"); if (trigger instanceof HTMLElement) trigger.style.cssText = "width:auto;min-height:40px;padding:0 30px 0 13px;border:1px solid #d8dfdd;border-radius:999px;background:#fff;color:#355c64;font:inherit;font-size:.85rem;font-weight:700;"; if (label instanceof HTMLElement) { label.style.cssText = "display:inline;font:inherit;font-size:.85rem;font-weight:800;"; label.textContent = "Sort"; } if (value instanceof HTMLElement) value.style.cssText = "display:inline;margin:0 0 0 6px;font:inherit;font-size:.85rem;font-weight:600;color:#355c64;"; } if (row && typePills instanceof HTMLElement) { typePills.style.setProperty("display", "flex", "important"); typePills.style.setProperty("margin", "10px 0 12px", "important"); row.insertAdjacentElement("afterend", typePills); } }; if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", place, { once: true }); } else { place(); } })();</script>
