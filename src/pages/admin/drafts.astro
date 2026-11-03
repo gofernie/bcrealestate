@@ -1,0 +1,103 @@
+---
+import { createClient } from "@supabase/supabase-js";
+export const prerender = false;
+const supabase = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
+const formData = Astro.request.method === "POST" ? await Astro.request.formData() : null;
+if (formData?.get("_action") === "publish") {
+  const id = String(formData.get("id") || "");
+  if (id) await supabase.from("intent_pages").update({ is_published: true, status: "published" }).eq("id", id);
+  return Astro.redirect("/admin/drafts?published=" + encodeURIComponent(String(formData.get("label") || "")));
+}
+const justPublished = Astro.url.searchParams.get("published") || "";
+const { data: drafts } = await supabase
+  .from("intent_pages")
+  .select("id, city, slug, hero_heading, intro_copy, site_id, created_at, is_published, area, requires_waterfront, waterfront_type, min_lot_sqft, primary_on_main, min_year, requires_suite")
+  .or("is_published.eq.false,status.eq.draft")
+  .order("created_at", { ascending: false });
+const { data: sites } = await supabase.from("sites").select("id, domain, city");
+const siteById = new Map((sites || []).map((s: any) => [s.id, s]));
+const filters = (p: any) => {
+  const f: string[] = [];
+  if (p.requires_suite) f.push("Suite (2+ kitchens)");
+  if (p.waterfront_type) f.push(p.waterfront_type); else if (p.requires_waterfront) f.push("Waterfront");
+  if ((p.min_lot_sqft || 0) >= 43560) f.push("1+ acre");
+  if (p.primary_on_main) f.push("Main-level living");
+  if (p.min_year) f.push(`Built ${p.min_year}+`);
+  if (p.area) f.push(`Area: ${p.area}`);
+  return f;
+};
+const groups = new Map<string, any[]>();
+for (const p of drafts || []) {
+  const s: any = siteById.get(p.site_id);
+  const key = `${s?.domain || "?"} · ${p.city || ""}`;
+  if (!groups.has(key)) groups.set(key, []);
+  groups.get(key)!.push({ ...p, domain: s?.domain || "bc.realestate" });
+}
+---
+<html lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Drafts | Locus Admin</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f6f3ee; color: #1d1b19; margin: 0; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 28px 16px 60px; }
+    a { color: inherit; }
+    .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    h1 { margin: 6px 0 4px; font-size: 28px; }
+    .muted { color: #7a736c; font-size: 14px; }
+    .ok { background: #e6f3ea; border: 1px solid #b9dcc4; padding: 10px 14px; border-radius: 8px; margin: 16px 0; }
+    h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #6b645d; margin: 28px 0 10px; }
+    .card { background: #fff; border: 1px solid #e5dfd7; border-radius: 10px; padding: 16px 18px; margin-bottom: 10px; }
+    .card h3 { margin: 0 0 2px; font-size: 17px; }
+    .slug { font-size: 13px; color: #8a827a; }
+    .intro { font-size: 14px; color: #4a443e; margin: 8px 0; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+    .chip { font-size: 12px; background: #f1ece5; border-radius: 999px; padding: 3px 10px; }
+    .chip--warn { background: #fdecd2; }
+    .btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .btn { font: inherit; font-size: 14px; padding: 7px 14px; border-radius: 7px; border: 1px solid #d6cfc6; background: #fff; text-decoration: none; cursor: pointer; }
+    .btn--go { background: #1d1b19; color: #fff; border-color: #1d1b19; }
+    form { margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <a class="muted" href="/admin">← Admin</a>
+        <h1>Drafts waiting for review</h1>
+        <div class="muted">{(drafts || []).length} draft page(s) across all sites. Preview links work on localhost.</div>
+      </div>
+    </div>
+    {justPublished && <div class="ok">Published: <strong>{justPublished}</strong></div>}
+    {!(drafts || []).length && <p class="muted" style="margin-top:24px">No drafts waiting. Nice.</p>}
+    {[...groups.entries()].map(([group, items]) => (
+      <section>
+        <h2>{group}</h2>
+        {items.map((p: any) => (
+          <div class="card">
+            <h3>{p.hero_heading || p.slug}</h3>
+            <div class="slug">/{p.city}/{p.slug}</div>
+            {p.intro_copy && <div class="intro">{String(p.intro_copy).slice(0, 180)}{String(p.intro_copy).length > 180 ? "…" : ""}</div>}
+            <div class="chips">
+              {filters(p).map((f) => <span class="chip">{f}</span>)}
+              {p.is_published && <span class="chip chip--warn">Marked draft but may already be visible live</span>}
+            </div>
+            <div class="btns">
+              <a class="btn" href={`/${p.city}/${p.slug}`} target="_blank">Preview</a>
+              <a class="btn" href={`/admin/intent-pages/${p.id}/edit`} target="_blank">Edit</a>
+              <form method="POST">
+                <input type="hidden" name="_action" value="publish" />
+                <input type="hidden" name="id" value={p.id} />
+                <input type="hidden" name="label" value={`${p.domain}/${p.city}/${p.slug}`} />
+                <button class="btn btn--go" type="submit">Publish</button>
+              </form>
+            </div>
+          </div>
+        ))}
+      </section>
+    ))}
+  </div>
+</body>
+</html>
