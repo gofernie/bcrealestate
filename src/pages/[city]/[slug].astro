@@ -18060,6 +18060,39 @@ html body .area-hero-visual .hero-step-details__price { white-space: nowrap; }
   document.addEventListener("change", (e) => { if (e.target.matches && e.target.matches(".sort-filter-select")) keep(); }, true);
 })();
 </script>
+<script is:inline>
+/* sort-menu-anchor-v2: pin the sort menu to the Sort button (below it, or just above when there's no room) */
+(() => {
+  let trig = null;
+  const findMenu = () => {
+    const dd = trig && trig.closest(".filter-dd--sort");
+    const own = dd && dd.querySelector(".filter-dd__menu");
+    if (own && own.getBoundingClientRect().height > 0) return own;
+    return [...document.querySelectorAll(".filter-dd__menu")].find((m) => /most bedrooms first/i.test(m.textContent || "") && m.getBoundingClientRect().height > 0) || null;
+  };
+  const set = (el, k, v) => el.style.setProperty(k, v, "important");
+  const place = () => {
+    if (!trig) return;
+    const menu = findMenu(); if (!menu) return;
+    const r = trig.getBoundingClientRect();
+    const h = menu.offsetHeight, w = menu.offsetWidth;
+    const below = window.innerHeight - r.bottom, above = r.top;
+    const top = (below >= h + 12 || below >= above) ? r.bottom + 6 : Math.max(8, r.top - h - 6);
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+    set(menu, "position", "fixed"); set(menu, "top", top + "px"); set(menu, "left", left + "px");
+    set(menu, "right", "auto"); set(menu, "bottom", "auto"); set(menu, "transform", "none"); set(menu, "z-index", "1000");
+  };
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest && e.target.closest(".filter-dd--sort .filter-dd__trigger");
+    if (!t) return;
+    trig = t;
+    requestAnimationFrame(() => requestAnimationFrame(place));
+    setTimeout(place, 80);
+  }, true);
+  window.addEventListener("scroll", () => { if (findMenu()) place(); }, { passive: true });
+  window.addEventListener("resize", () => { if (findMenu()) place(); });
+})();
+</script>
 <script is:inline>/* area-search-actions-v1 */(() => { const place = () => { const row = document.querySelector(".filter-save-row"); const save = document.querySelector(".slug-save-search [data-slug-save-open]"); const native = document.querySelector(".sort-filter-select"); const dropdown = document.querySelector(".filter-dd--sort"); const typePills = document.querySelector(".property-type-pills"); if (row && save && native && dropdown) { const oldPill = native.closest(".filter-sort-pill"); if (oldPill instanceof HTMLElement) oldPill.style.display = "none"; native.style.display = "none"; row.insertBefore(dropdown, save); dropdown.style.cssText = "position:relative;display:inline-flex;min-width:0;height:40px;align-self:auto;"; const trigger = dropdown.querySelector(".filter-dd__trigger"); const label = dropdown.querySelector(".filter-dd__label"); const value = dropdown.querySelector(".filter-dd__value"); if (trigger instanceof HTMLElement) trigger.style.cssText = "width:auto;min-height:40px;padding:0 30px 0 13px;border:1px solid #d8dfdd;border-radius:999px;background:#fff;color:#355c64;font:inherit;font-size:.85rem;font-weight:700;"; if (label instanceof HTMLElement) { label.style.cssText = "display:inline;font:inherit;font-size:.85rem;font-weight:800;"; label.textContent = "Sort"; } if (value instanceof HTMLElement) value.style.cssText = "display:inline;margin:0 0 0 6px;font:inherit;font-size:.85rem;font-weight:600;color:#355c64;"; } if (row && typePills instanceof HTMLElement) { typePills.style.setProperty("display", "flex", "important"); typePills.style.setProperty("margin", "10px 0 12px", "important"); row.insertAdjacentElement("afterend", typePills); } }; if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", place, { once: true }); } else { place(); } })();</script>
 <script is:inline>
   /* final-left-search-actions-v2 */
