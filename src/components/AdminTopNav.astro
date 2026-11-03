@@ -1,217 +1,171 @@
----
-const {
-  active = "",
-  siteId = "",
-  siteName = "",
-  city = ""
-} = Astro.props;
+﻿---
+import { createClient } from "@supabase/supabase-js";
 
-const querySiteId =
-  Astro.url.searchParams.get("site_id") || "";
+const { active = "", siteId = "", siteName = "", city = "" } = Astro.props;
 
-const resolvedSiteId =
-  String(siteId || querySiteId || "").trim();
+const path = Astro.url.pathname;
+const querySiteId = Astro.url.searchParams.get("site_id") || "";
+const pathSiteId = (path.match(/^\/admin\/sites\/([0-9a-f-]{36})/i) || [])[1] || "";
+const resolvedSiteId = String(siteId || pathSiteId || querySiteId || "").trim();
 
-const withSite = (path) => {
-  if (!resolvedSiteId) return path;
+let siteLabel = siteName;
+let siteCity = city;
+let siteDomain = "";
 
-  const separator = path.includes("?") ? "&" : "?";
-  return `${path}${separator}site_id=${encodeURIComponent(resolvedSiteId)}`;
+if (resolvedSiteId) {
+  const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
+  const { data } = await sb
+    .from("sites")
+    .select("site_name, domain, primary_city, city")
+    .eq("id", resolvedSiteId)
+    .maybeSingle();
+  if (data) {
+    siteLabel = siteLabel || data.site_name || data.domain;
+    siteCity = siteCity || data.primary_city || data.city || "";
+    siteDomain = data.domain || "";
+  }
+}
+
+const titleCase = (v) => String(v || "").replace(/[-_]+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
+
+const withSite = (p) => {
+  if (!resolvedSiteId) return p;
+  return `${p}${p.includes("?") ? "&" : "?"}site_id=${encodeURIComponent(resolvedSiteId)}`;
 };
 
-const links = [
-  {
-    key: "pages",
-    label: "Pages",
-    href: resolvedSiteId
-      ? `/admin/sites/${resolvedSiteId}/pages`
-      : "/admin/sites?view=pages"
-  },
-  { key: "sites", label: "Sites", href: resolvedSiteId ? `/admin/sites?site_id=${encodeURIComponent(resolvedSiteId)}` : "/admin/sites" },
-  { key: "sessions", label: "Intent Sessions", href: withSite("/admin/intent-sessions") },
+const nav = [
+  { key: "sites", label: "Sites", href: "/admin/sites" },
   { key: "leads", label: "Leads", href: withSite("/admin/leads") },
+  { key: "sessions", label: "Sessions", href: withSite("/admin/intent-sessions") },
+  {
+    key: "buyers", label: "Buyers", match: ["buyers", "watches", "shortlists", "create-shortlist"],
+    items: [
+      ["Buyers", "/admin/buyers"],
+      ["Watched homes", withSite("/admin/watches")],
+      ["Shortlists", withSite("/shortlists")],
+      ["Create shortlist", "/admin/create-shortlist"],
+    ],
+  },
   { key: "digests", label: "Digests", href: withSite("/admin/digests") },
-  { key: "shortlists", label: "Shortlists", href: withSite("/shortlists") }
+  { key: "agents", label: "Agents", href: "/admin/agents" },
+  {
+    key: "tools", label: "Tools", match: ["tools", "area-boundaries", "fetch-status", "market-intelligence", "news", "prospect-email"],
+    items: [
+      ["Area boundaries", "/admin/area-boundaries"],
+      ["Fetch status", "/admin/fetch-status"],
+      ["Market intelligence", "/admin/market-intelligence"],
+      ["News", "/admin/news"],
+      ["Prospect email", "/admin/prospect-email"],
+    ],
+  },
 ];
 
-const createHref = resolvedSiteId
-  ? `/listings?site_id=${encodeURIComponent(resolvedSiteId)}`
-  : "/listings";
+const isActive = (item) => {
+  if (item.key === "sites") return active === "sites" || active === "pages" || path.startsWith("/admin/sites");
+  if (item.match) return item.match.includes(active) || item.items.some(([, h]) => path === h.split("?")[0]);
+  return active === item.key;
+};
+
+const siteTab =
+  path.endsWith("/settings") ? "settings" :
+  path.endsWith("/pages") || path.startsWith("/admin/intent-pages") || path.startsWith("/admin/guide-pages") ? "pages" :
+  path.startsWith("/admin/leads") ? "leads" :
+  path.startsWith("/admin/intent-sessions") ? "sessions" : "";
+
+const siteTabs = resolvedSiteId ? [
+  { key: "pages", label: "Pages", href: `/admin/sites/${resolvedSiteId}/pages` },
+  { key: "settings", label: "Settings", href: `/admin/sites/${resolvedSiteId}/settings` },
+  { key: "leads", label: "Leads", href: withSite("/admin/leads") },
+  { key: "sessions", label: "Sessions", href: withSite("/admin/intent-sessions") },
+] : [];
+
+const createHref = resolvedSiteId ? `/listings?site_id=${encodeURIComponent(resolvedSiteId)}` : "/listings";
 ---
 
 <header class="admin-topnav">
   <div class="admin-topnav__main">
-    <a href="/admin/sites" class="admin-topnav__brand">
-      Locus
-      <span>Admin</span>
-    </a>
+    <a href="/admin/sites" class="admin-topnav__brand">Locus <span>Admin</span></a>
 
     <nav class="admin-topnav__links">
-      {links.map(link => (
-        <a
-          href={link.href}
-          class:list={{ active: active === link.key }}
-        >
-          {link.label}
-        </a>
-      ))}
+      {nav.map((item) =>
+        item.items ? (
+          <details class:list={["admin-topnav__menu", { active: isActive(item) }]}>
+            <summary>{item.label} <span class="caret">▾</span></summary>
+            <div class="admin-topnav__dropdown">
+              {item.items.map(([label, href]) => <a href={href}>{label}</a>)}
+            </div>
+          </details>
+        ) : (
+          <a href={item.href} class:list={{ active: isActive(item) }}>{item.label}</a>
+        )
+      )}
     </nav>
 
-    <a href={createHref} class="admin-topnav__create">
-      + Create
-    </a>
+    <a href={createHref} class="admin-topnav__create">+ Create</a>
   </div>
 
-  {resolvedSiteId && siteName && (
+  {resolvedSiteId && siteLabel && (
     <div class="admin-topnav__site">
-      <div>
-        <strong>{siteName}</strong>
-        {city && <span>{city}</span>}
+      <a class="admin-topnav__back" href="/admin/sites">← All sites</a>
+      <div class="admin-topnav__sitename">
+        <strong>{siteLabel}</strong>
+        {siteCity && <span>{titleCase(siteCity)}</span>}
       </div>
-
-      <nav>
-        <a href={`/admin/sites/${resolvedSiteId}/pages`}>
-          Pages
-        </a>
-        <a href={`/admin/sites/${resolvedSiteId}/settings`}>
-          Markets & settings
-        </a>
+      <nav class="admin-topnav__tabs">
+        {siteTabs.map((t) => (
+          <a href={t.href} class:list={{ active: siteTab === t.key }}>{t.label}</a>
+        ))}
       </nav>
+      {siteDomain && (
+        <a class="admin-topnav__view" href={`https://${siteDomain}`} target="_blank" rel="noopener">View site ↗</a>
+      )}
     </div>
   )}
 </header>
 
+<script is:inline>
+  document.addEventListener("click", function (e) {
+    document.querySelectorAll(".admin-topnav details[open]").forEach(function (d) {
+      if (!d.contains(e.target)) d.removeAttribute("open");
+    });
+  });
+</script>
+
 <style>
-  .admin-topnav {
-    width: 100%;
-    background: #111;
-    color: white;
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    font-size: 14px;
-    font-weight: 400;
-    line-height: 1;
-    letter-spacing: 0;
-  }
-
-  .admin-topnav__main {
-    min-height: 64px;
-    padding: 0 32px;
-    display: flex;
-    align-items: center;
-    gap: 34px;
-  }
-
-  .admin-topnav__brand {
-    color: white;
-    text-decoration: none;
-    font-size: 18px;
-    font-weight: 750;
-    letter-spacing: -0.03em;
-    white-space: nowrap;
-  }
-
-  .admin-topnav__brand span {
-    color: #888;
-    font-weight: 500;
-  }
-
-  .admin-topnav__links {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex: 1;
-  }
-
-  .admin-topnav__links a {
-    color: #aaa;
-    text-decoration: none;
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    font-size: 14px;
-    font-weight: 600;
-    line-height: 20px;
-    letter-spacing: 0;
-    padding: 10px 13px;
-    border-radius: 8px;
-  }
-
-  .admin-topnav__links a:hover {
-    color: white;
-    background: #222;
-  }
-
-  .admin-topnav__links a.active {
-    color: white;
-    background: #292929;
-  }
-
-  .admin-topnav__create {
-    color: #111;
-    background: white;
-    text-decoration: none;
-    font-size: 14px;
-    font-weight: 700;
-    padding: 10px 16px;
-    border-radius: 8px;
-    white-space: nowrap;
-  }
-
-  .admin-topnav__site {
-    min-height: 52px;
-    padding: 0 32px;
-    border-top: 1px solid #292929;
-    background: #191919;
-    display: flex;
-    align-items: center;
-    gap: 32px;
-  }
-
-  .admin-topnav__site > div {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .admin-topnav__site strong {
-    font-size: 14px;
-  }
-
-  .admin-topnav__site span {
-    color: #888;
-    font-size: 12px;
-  }
-
-  .admin-topnav__site nav {
-    display: flex;
-    gap: 20px;
-  }
-
-  .admin-topnav__site nav a {
-    color: #aaa;
-    text-decoration: none;
-    font-size: 13px;
-    font-weight: 600;
-  }
-
-  .admin-topnav__site nav a:hover {
-    color: white;
-  }
-
-  @media (max-width: 800px) {
-    .admin-topnav__main {
-      padding: 12px 18px;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-
-    .admin-topnav__links {
-      order: 3;
-      width: 100%;
-      overflow-x: auto;
-    }
-
-    .admin-topnav__site {
-      padding: 12px 18px;
-      flex-wrap: wrap;
-    }
+  .admin-topnav { width:100%; background:#111; color:#fff; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-size:14px; line-height:1; position:relative; z-index:40; }
+  .admin-topnav__main { min-height:64px; padding:0 32px; display:flex; align-items:center; gap:30px; }
+  .admin-topnav__brand { color:#fff; text-decoration:none; font-size:18px; font-weight:750; letter-spacing:-.03em; white-space:nowrap; }
+  .admin-topnav__brand span { color:#888; font-weight:500; }
+  .admin-topnav__links { display:flex; align-items:center; gap:4px; flex:1; }
+  .admin-topnav__links > a, .admin-topnav__menu > summary { color:#aaa; text-decoration:none; font-size:14px; font-weight:600; line-height:20px; padding:10px 13px; border-radius:8px; cursor:pointer; white-space:nowrap; }
+  .admin-topnav__links > a:hover, .admin-topnav__menu > summary:hover { color:#fff; background:#222; }
+  .admin-topnav__links > a.active, .admin-topnav__menu.active > summary { color:#fff; background:#292929; }
+  .admin-topnav__menu { position:relative; }
+  .admin-topnav__menu > summary { list-style:none; display:block; }
+  .admin-topnav__menu > summary::-webkit-details-marker { display:none; }
+  .admin-topnav__menu > summary::marker { content:""; }
+  .caret { font-size:10px; opacity:.7; margin-left:2px; }
+  .admin-topnav__dropdown { position:absolute; top:calc(100% + 6px); left:0; min-width:210px; padding:6px; background:#1b1b1b; border:1px solid #2e2e2e; border-radius:12px; box-shadow:0 14px 34px rgba(0,0,0,.35); z-index:60; }
+  .admin-topnav__dropdown a { display:block; padding:10px 12px; border-radius:8px; color:#ccc; text-decoration:none; font-size:13.5px; font-weight:600; line-height:1.2; }
+  .admin-topnav__dropdown a:hover { background:#292929; color:#fff; }
+  .admin-topnav__create { color:#111; background:#fff; text-decoration:none; font-size:14px; font-weight:700; padding:10px 16px; border-radius:8px; white-space:nowrap; }
+  .admin-topnav__site { min-height:52px; padding:0 32px; border-top:1px solid #292929; background:#191919; display:flex; align-items:center; gap:24px; }
+  .admin-topnav__back { color:#888; text-decoration:none; font-size:13px; font-weight:600; white-space:nowrap; }
+  .admin-topnav__back:hover { color:#fff; }
+  .admin-topnav__sitename { display:flex; align-items:center; gap:10px; padding-left:24px; border-left:1px solid #333; }
+  .admin-topnav__sitename strong { font-size:14px; }
+  .admin-topnav__sitename span { color:#888; font-size:12px; }
+  .admin-topnav__tabs { display:flex; gap:4px; flex:1; }
+  .admin-topnav__tabs a { color:#aaa; text-decoration:none; font-size:13px; font-weight:600; padding:8px 11px; border-radius:7px; }
+  .admin-topnav__tabs a:hover { color:#fff; background:#242424; }
+  .admin-topnav__tabs a.active { color:#fff; background:#2c2c2c; }
+  .admin-topnav__view { color:#aaa; text-decoration:none; font-size:13px; font-weight:600; white-space:nowrap; }
+  .admin-topnav__view:hover { color:#fff; }
+  @media (max-width: 860px) {
+    .admin-topnav__main { padding:12px 16px; gap:12px; flex-wrap:wrap; }
+    .admin-topnav__links { order:3; width:100%; flex-wrap:wrap; }
+    .admin-topnav__site { padding:10px 16px; flex-wrap:wrap; gap:10px 16px; }
+    .admin-topnav__sitename { padding-left:0; border-left:0; }
+    .admin-topnav__tabs { order:3; width:100%; flex-wrap:wrap; }
   }
 </style>
