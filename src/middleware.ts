@@ -1,4 +1,4 @@
-﻿import { defineMiddleware } from "astro:middleware";
+import { defineMiddleware } from "astro:middleware";
 import { createClient } from "@supabase/supabase-js";
 import { purgeCache } from "@netlify/functions";
 import { createSupabaseServerClient } from "./lib/supabaseServer";
@@ -75,9 +75,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
       const apiType = response.headers.get("content-type") || "";
       if (context.request.method === "GET" && cacheableApi && response.status === 200 && apiType.includes("json") && !response.headers.has("set-cookie")) { /* cdn-cache-api-v2: apply even when the API sets its own short Cache-Control */
         if (!response.headers.has("cache-control")) response.headers.set("Cache-Control", "public, max-age=0, must-revalidate");
-        response.headers.set("Netlify-CDN-Cache-Control", "public, durable, s-maxage=3600, stale-while-revalidate=86400");
+        response.headers.set("Netlify-CDN-Cache-Control", pathname.startsWith("/api/listing-detail") ? "public, durable, s-maxage=3600, stale-while-revalidate=86400" : "public, durable, s-maxage=43200, stale-while-revalidate=604800");
         const apiHostTag = "host-" + tagSafe(context.url.hostname.replace(/^www\./, ""));
-        response.headers.set("Netlify-Cache-Tag", ["all-pages", apiHostTag, "api"].join(","));
+        const apiCity = tagSafe(context.url.searchParams.get("city") || context.url.searchParams.get("market") || ""); response.headers.set("Netlify-Cache-Tag", ["all-pages", apiHostTag, "api", apiCity ? "city-" + apiCity : ""].filter(Boolean).join(","));
       }
     } catch {}
     // cdn-cache-v1: public HTML is the same for every visitor, so let Netlify's CDN serve it
@@ -86,10 +86,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
       const type = response.headers.get("content-type") || "";
       if (context.request.method === "GET" && !perVisitor && response.status === 200 && type.includes("text/html") && !response.headers.has("set-cookie")) { /* cdn-cache-v2: tag pages that set their own cache headers too, so admin purges reach them */
         if (!response.headers.has("cache-control")) response.headers.set("Cache-Control", "public, max-age=0, must-revalidate");
-        if (!response.headers.has("netlify-cdn-cache-control")) response.headers.set("Netlify-CDN-Cache-Control", "public, durable, s-maxage=3600, stale-while-revalidate=86400");
+        if (!response.headers.has("netlify-cdn-cache-control")) response.headers.set("Netlify-CDN-Cache-Control", "public, durable, s-maxage=43200, stale-while-revalidate=604800");
         const hostTag = "host-" + tagSafe(context.url.hostname.replace(/^www\./, ""));
         const seg = segs[0] ? `${hostTag}-${tagSafe(segs[0])}` : "";
-        response.headers.set("Netlify-Cache-Tag", ["all-pages", hostTag, seg].filter(Boolean).join(","));
+        response.headers.set("Netlify-Cache-Tag", ["all-pages", hostTag, seg, segs[0] ? "city-" + tagSafe(segs[0]) : ""].filter(Boolean).join(","));
       }
     } catch {}
     return response;

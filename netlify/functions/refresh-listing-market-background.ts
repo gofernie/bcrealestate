@@ -1,3 +1,4 @@
+import { purgeCache } from "@netlify/functions";
 import type {
   Config,
 } from "@netlify/functions";
@@ -56,12 +57,34 @@ function json(
   );
 }
 
+// listing-cache-purge-v1: clear this city's cached pages and listing APIs once fresh listings are in
+async function purgeListingCache(city: string) {
+  const c = String(city || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!c) return;
+  try {
+    const tags = [`city-${c}`];
+    const slug = (v: unknown) => String(v || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const { data: siteRows } = await supabase.from("sites").select("domain, city, primary_city, secondary_markets");
+    for (const s of siteRows || []) {
+      const d = String(s.domain || "").trim().toLowerCase().replace(/^www\./, "");
+      if (!d || d === "bc.realestate") continue;
+      const markets = [s.primary_city, s.city, ...(Array.isArray(s.secondary_markets) ? s.secondary_markets : [])].map((m: any) => slug(typeof m === "object" && m ? (m.city || m.slug || m.name) : m));
+      if (markets.includes(c)) tags.push("host-" + slug(d));
+    }
+    await purgeCache({ tags });
+    console.log("listing cache purged", c);
+  } catch (e) {
+    console.error("listing cache purge failed", c, e);
+  }
+}
 // Runs after every city's listing refresh. Each step is isolated so one failure
 // never blocks the others or fails the refresh itself.
 async function afterRefresh(
   city: string,
   origin: string
 ) {
+  await purgeListingCache(city);
+
   // 1. Saved-search alerts (unchanged behaviour).
   try {
     const savedSearchResult =
