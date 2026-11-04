@@ -47,6 +47,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
         isMobileHome ||
         p === "/nanaimo/mobile-homes" || p.startsWith("/nanaimo/mobile-homes/") ||
         p === "/nanaimo/areas" ||
+        p === "/nanaimo/park-directory" || p.startsWith("/nanaimo/park-directory/") ||
         p === "/mobile-home-parks-in-nanaimo" || p.startsWith("/mobile-home-parks-in-nanaimo/") ||
         /^\/(api|admin|_astro|_image|js|css|images|img|fonts|login|logout|shortlists|listings|account|unsubscribe|reset-password)(\/|$)/.test(p) ||
         /\.[a-z0-9]{2,5}$/i.test(p);
