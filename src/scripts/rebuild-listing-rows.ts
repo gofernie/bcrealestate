@@ -539,7 +539,7 @@ const PARKSVILLE_MARKET_CITIES = new Set([
 const COLUMBIA_VALLEY_MARKET_CITIES = new Set(["invermere", "windermere", "radium hot springs", "panorama"]);
 
 const DUNCAN_MARKET_CITIES = new Set([
-  "ladysmith", "cowichan station/glenora", "shawnigan lake", "mill bay", "cobble hill",
+  /* ladysmith-own-site-v1: Ladysmith has its own site, so keep its own city label */ "cowichan station/glenora", "shawnigan lake", "mill bay", "cobble hill",
   "duncan",
   "chemainus",
   "cowichan bay",
