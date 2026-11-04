@@ -323,7 +323,7 @@ function updateResultsHeading(filters, resultCount) {
       : pluralTypeLabel;
 
   heading.textContent =
-    `${resultCount} ${typeLabel} for sale in ${locationLabel}`;
+    `${resultCount} ${typeLabel} for sale in ${String(locationLabel || "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`;
 }
 function submitFilters() {
   const filters = getCurrentFilters();
