@@ -32,6 +32,36 @@ async function purgeAfterAdminSave(pathname: string, referer: string) {
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const { pathname, search } = context.url;
+  // nanaimomobiles-guard-v1: nanaimomobiles.com only serves its own pages; everything else 301s to the same path on bc.realestate
+  {
+    const reqHost = context.url.hostname.replace(/^www\./, "").toLowerCase();
+    const isLocalReq = reqHost === "localhost" || reqHost === "127.0.0.1";
+    const onNanaimoMobiles =
+      reqHost === "nanaimomobiles.com" ||
+      (isLocalReq && context.url.searchParams.get("siteDomain") === "nanaimomobiles.com");
+    if (onNanaimoMobiles) {
+      const p = pathname.replace(/\/+$/, "") || "/";
+      const isMobileHome = p === "/nanaimo" && context.url.searchParams.get("type") === "mobile"; // "/" rewrites here
+      const keep =
+        p === "/" ||
+        isMobileHome ||
+        p === "/nanaimo/mobile-homes" || p.startsWith("/nanaimo/mobile-homes/") ||
+        p === "/nanaimo/areas" ||
+        p === "/mobile-home-parks-in-nanaimo" || p.startsWith("/mobile-home-parks-in-nanaimo/") ||
+        /^\/(api|admin|_astro|_image|js|css|images|img|fonts|login|logout|shortlists|listings|account|unsubscribe|reset-password)(\/|$)/.test(p) ||
+        /\.[a-z0-9]{2,5}$/i.test(p);
+      if (!keep) {
+        if (p === "/nanaimo") return context.redirect("/", 301);
+        const q = new URLSearchParams(search);
+        q.delete("siteDomain");
+        const qs = q.toString();
+        return new Response(null, {
+          status: 301,
+          headers: { Location: `https://bc.realestate${pathname}${qs ? `?${qs}` : ""}`, "Cache-Control": "public, max-age=3600" },
+        });
+      }
+    }
+  }
 
   // junk-url-guard-v1: old link bug left endless "-real-estate-market" URLs; collapse or 404 them
   const JUNK_BASES = new Set(["404", "contact", "explore", "search", "searches", "login", "about", "privacy", "terms", "admin", "api"]);
