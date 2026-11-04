@@ -10,9 +10,9 @@ const tc = (s) => String(s || '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.t
 const join = (a) => (a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1] : a[0] || '');
 const acres = (r) => Math.max(Number(r.lot_size_acres) || 0, (Number(r.lot_size_sqft) || 0) / 43560);
 const PATTERNS = [
-  /^(Most current [^.]*? in [^.]+? are in )([^.]+?)(\. )/,
-  /^(At this price in [^,]+, most current [^.]*?listings are in )([^.]+?)(\. )/,
-  /^(In [^,]+, most current listings with a shop are in )([^.]+?)(\. )/,
+  /(Most current [^.]*? in [^.]+? are in )([^.]+?)(\. )/,
+  /(At this price in [^,]+, most current [^.]*?listings are in )([^.]+?)(\. )/,
+  /(In [^,]+, most current listings with a shop are in )([^.]+?)(\. )/,
 ];
 
 function matches(p, r) {
