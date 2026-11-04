@@ -1411,12 +1411,11 @@ html body .together__card #together-submit { border-radius: 6px !important; }
   if (window.__siteSquare) return; window.__siteSquare = true; /* site-square-batched-v1: read everything first, then write, so layout runs once instead of per element */
   const SKIP = ".leaflet-container, .leaflet-container *, svg, svg *, [data-keep-round], [data-keep-round] *";
   const C = ["border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius"];
-  const sweepAll = (roots) => {
-    const els = [];
-    roots.forEach((r) => { if (r instanceof HTMLElement) { els.push(r); r.querySelectorAll("*").forEach((e) => els.push(e)); } });
+  /* site-square-sliced-v1: same rules as before, but done in small slices during idle time so it never blocks the page */
+  const squareBatch = (els) => {
     const writes = [];
     for (const el of els) {
-      if (!(el instanceof HTMLElement) || el.matches(SKIP)) continue;
+      if (!(el instanceof HTMLElement) || !el.isConnected || el.matches(SKIP)) continue;
       if (/toggle|switch|avatar/i.test(el.className)) continue;
       const cs = getComputedStyle(el);
       const vals = C.map((p) => cs.getPropertyValue(p));
@@ -1430,6 +1429,13 @@ html body .together__card #together-submit { border-radius: 6px !important; }
       if (max > target) writes.push([el, px, target]);
     }
     writes.forEach(([el, px, target]) => C.forEach((p, i) => { if (px[i] > 0) el.style.setProperty(p, Math.min(px[i], target) + "px", "important"); }));
+  };
+  let pending = [], sched = 0;
+  const idle = window.requestIdleCallback ? (f) => window.requestIdleCallback(f, { timeout: 400 }) : (f) => setTimeout(f, 16);
+  const run = () => { sched = 0; const t0 = performance.now(); while (pending.length && performance.now() - t0 < 10) squareBatch(pending.splice(0, 40)); if (pending.length) sched = idle(run); };
+  const sweepAll = (roots) => {
+    roots.forEach((r) => { if (r instanceof HTMLElement) { pending.push(r); r.querySelectorAll("*").forEach((e) => pending.push(e)); } });
+    if (!sched && pending.length) sched = idle(run);
   };
   let lastStart = -1e9;
   const start = () => { const now = performance.now(); if (now - lastStart < 1000) return; lastStart = now; sweepAll([document.body]); };
