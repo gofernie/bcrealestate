@@ -1630,23 +1630,26 @@ html body .together__card #together-submit { border-radius: 6px !important; }
 (() => {
   const GAP = 24;
   let fs, strips = [];
-  const layout = () => {
+  const layout = () => { /* gap-batched-v1: read everything first, then write only what changed, so layout runs once */
     if (!fs) return;
     const form = document.getElementById("home-hero-search");
-    if (form && !form.closest(".listing-filter-rail.is-visible") && getComputedStyle(form).position !== "fixed") {
-      fs.style.setProperty("margin-top", "0px", "important");
-      const gap = fs.getBoundingClientRect().top - form.getBoundingClientRect().bottom;
-      fs.style.setProperty("margin-top", Math.max(-40, GAP - gap) + "px", "important");
-    }
-    fs.style.setProperty("margin-bottom", "0px", "important");
     const ref = document.getElementById("homepage-listings");
+    let mt = null;
+    if (form && !form.closest(".listing-filter-rail.is-visible") && getComputedStyle(form).position !== "fixed") {
+      const cur = parseFloat(getComputedStyle(fs).marginTop) || 0;
+      const gap = fs.getBoundingClientRect().top - cur - form.getBoundingClientRect().bottom;
+      mt = Math.max(-40, GAP - gap) + "px";
+    }
     const w = ref ? ref.getBoundingClientRect().width : 0;
+    const set = (el, k, v) => { if (el.style.getPropertyValue(k) !== v || el.style.getPropertyPriority(k) !== "important") el.style.setProperty(k, v, "important"); };
+    if (mt !== null) set(fs, "margin-top", mt);
+    set(fs, "margin-bottom", "0px");
     strips.forEach((s) => {
-      s.style.setProperty("transform", "none", "important");
-      s.style.setProperty("margin-top", (GAP + 20) + "px", "important");
-      s.style.setProperty("margin-bottom", innerWidth <= 700 ? "20px" : "-20px", "important"); /* agent-strip-mobile-gap */
-      if (w > 0) { s.style.setProperty("max-width", w + "px", "important"); s.style.setProperty("margin-left", "auto", "important"); s.style.setProperty("margin-right", "auto", "important"); }
-      const inner = s.firstElementChild; if (inner) inner.style.setProperty("margin-top", "0px", "important");
+      set(s, "transform", "none");
+      set(s, "margin-top", (GAP + 20) + "px");
+      set(s, "margin-bottom", innerWidth <= 700 ? "20px" : "-20px"); /* agent-strip-mobile-gap */
+      if (w > 0) { set(s, "max-width", w + "px"); set(s, "margin-left", "auto"); set(s, "margin-right", "auto"); }
+      const inner = s.firstElementChild; if (inner) set(inner, "margin-top", "0px");
     });
   };
   const place = () => {
