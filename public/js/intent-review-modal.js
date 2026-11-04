@@ -7407,7 +7407,7 @@ sheetImage?.addEventListener("touchend", (event) => {
  document.addEventListener("astro:page-load", initIntentReviewModal);
 
 
-;(()=>{if(window.__lookSearch||document.querySelector('script[src="/look-search.js"]'))return;const s=document.createElement('script');s.src='/look-search.js';s.defer=true;document.head.appendChild(s);})();
+;(()=>{if(window.__lookSearch||window.__lookSearchLazy||document.querySelector('script[src="/look-search.js"]'))return;const s=document.createElement('script');s.src='/look-search.js';s.defer=true;document.head.appendChild(s);})();
 
 
 
