@@ -6,6 +6,36 @@ import { createSupabaseServerClient } from "./lib/supabaseServer";
 const tagSafe = (v: unknown) => String(v || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 const SHARED_HOSTS = new Set(["bc.realestate"]);
 
+// agent-city-guard-v1: map each domain to its primary city + secondary markets (cached 10 min)
+type SiteCities = { primary: string; cities: Set<string> };
+let siteCityCache: { at: number; byDomain: Map<string, SiteCities>; allCities: Set<string> } | null = null;
+async function getSiteCityMap() {
+  if (siteCityCache && Date.now() - siteCityCache.at < 10 * 60 * 1000) return siteCityCache;
+  const byDomain = new Map<string, SiteCities>();
+  const allCities = new Set<string>();
+  try {
+    const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
+    const { data } = await sb.from("sites").select("domain, city, secondary_markets");
+    for (const row of (data || []) as any[]) {
+      const domain = String(row?.domain || "").replace(/^www\./, "").toLowerCase();
+      const city = tagSafe(row?.city);
+      if (city) allCities.add(city);
+      const markets = Array.isArray(row?.secondary_markets) ? row.secondary_markets : [];
+      for (const m of markets) { const mc = tagSafe(m?.city); if (mc) allCities.add(mc); }
+      if (!domain) continue;
+      const entry = byDomain.get(domain) || { primary: city, cities: new Set<string>() };
+      if (!entry.primary && city) entry.primary = city;
+      if (city) entry.cities.add(city);
+      for (const m of markets) { const mc = tagSafe(m?.city); if (mc) entry.cities.add(mc); }
+      byDomain.set(domain, entry);
+    }
+  } catch (e) {
+    console.error("site city map failed", e);
+  }
+  siteCityCache = { at: Date.now(), byDomain, allCities };
+  return siteCityCache;
+}
+
 // cache-purge-v1: when an admin saves, drop that site's cached pages so changes show immediately
 async function purgeAfterAdminSave(pathname: string, referer: string) {
   if (import.meta.env.DEV) return;
@@ -83,6 +113,49 @@ export const onRequest = defineMiddleware(async (context, next) => {
       if (!base || JUNK_BASES.has(base)) q.delete("city"); else q.set("city", base);
       const qs = q.toString();
       return context.redirect(`/explore${qs ? `?${qs}` : ""}`, 301);
+    }
+  }
+
+  // agent-city-guard-v1: agent sites only serve their own markets; other city paths go to the primary city
+  {
+    const reqHost = context.url.hostname.replace(/^www\./, "").toLowerCase();
+    const isLocalReq = reqHost === "localhost" || reqHost === "127.0.0.1";
+    const siteHost = isLocalReq
+      ? (context.url.searchParams.get("siteDomain") || "").replace(/^www\./, "").toLowerCase()
+      : reqHost;
+    if (siteHost && !SHARED_HOSTS.has(siteHost) && siteHost !== "nanaimomobiles.com" && segs[0]) {
+      const map = await getSiteCityMap();
+      const site = map.byDomain.get(siteHost);
+      const seg = tagSafe(segs[0]);
+      if (site && site.primary && map.allCities.has(seg) && !site.cities.has(seg)) {
+        const q = isLocalReq ? `?siteDomain=${encodeURIComponent(siteHost)}` : "";
+        return new Response(null, {
+          status: 302,
+          headers: { Location: `/${site.primary}/${q}`, "Cache-Control": "no-store" },
+        });
+      }
+    }
+  }
+
+  // agent-city-guard-v2: /explore?city=X on agent sites stays inside the agent's markets
+  {
+    const reqHost = context.url.hostname.replace(/^www\./, "").toLowerCase();
+    const isLocalReq = reqHost === "localhost" || reqHost === "127.0.0.1";
+    const siteHost = isLocalReq
+      ? (context.url.searchParams.get("siteDomain") || "").replace(/^www\./, "").toLowerCase()
+      : reqHost;
+    const c = tagSafe(context.url.searchParams.get("city") || "");
+    if (siteHost && !SHARED_HOSTS.has(siteHost) && siteHost !== "nanaimomobiles.com" && c && pathname.replace(/\/+$/, "") === "/explore") {
+      const map = await getSiteCityMap();
+      const site = map.byDomain.get(siteHost);
+      if (site && site.primary && !site.cities.has(c)) {
+        const q = new URLSearchParams(context.url.searchParams);
+        q.set("city", site.primary);
+        return new Response(null, {
+          status: 302,
+          headers: { Location: `/explore?${q.toString()}`, "Cache-Control": "no-store" },
+        });
+      }
     }
   }
 
