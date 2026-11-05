@@ -25,6 +25,13 @@ if (Astro.request.method === "POST") {
       title: clean(form.get("title")),
       slug: clean(form.get("slug")).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || undefined,
       eyebrow: clean(form.get("eyebrow")) || null,
+        interscroller_img: clean(form.get("interscroller_img")) || null,
+        interscroller_img_mobile: clean(form.get("interscroller_img_mobile")) || null,
+        interscroller_alt: clean(form.get("interscroller_alt")) || null,
+        interscroller_title: clean(form.get("interscroller_title")) || null,
+        interscroller_sub: clean(form.get("interscroller_sub")) || null,
+        interscroller_href: clean(form.get("interscroller_href")) || null,
+        interscroller_cta: clean(form.get("interscroller_cta")) || null,
       hero_image_url: clean(form.get("hero_image_url")) || null,
       seo_title: clean(form.get("seo_title")) || null,
       meta_description: clean(form.get("meta_description")) || null,
@@ -81,11 +88,71 @@ if (!page) return Astro.redirect("/admin/intent-pages");
     <label>Page URL slug <span style="font-weight:400;color:#888">/{page.city}/guides/...</span></label>
     <input name="slug" value={page.slug || ""} placeholder="str-rules" />
 
-    <label>Eyebrow <span style="font-weight:400;color:#888">� small label above title</span></label>
+    <label>Eyebrow <span style="font-weight:400;color:#888">— small label above title</span></label>
     <input name="eyebrow" value={page.eyebrow || ""} placeholder="e.g. Alberta Buyers Guide" />
 
     <label>Hero image URL</label>
     <input name="hero_image_url" value={page.hero_image_url || ""} placeholder="https://..." />
+<fieldset style="border:1px solid #ddd;border-radius:8px;padding:12px 14px;margin:16px 0;">
+  <legend style="font-weight:700;padding:0 6px;">Scroll photo panel <span style="font-weight:400;color:#888">(shows mid-article; leave photo blank to hide)</span></legend>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:4px 0 10px;">
+    <input type="file" id="isc-file" accept="image/jpeg,image/png,image/webp" />
+    <span id="isc-status" style="color:#666;font-size:.9rem;"></span>
+  </div>
+  <img id="isc-preview" alt="" src={page.interscroller_img_mobile || page.interscroller_img || ""} hidden={!(page.interscroller_img_mobile || page.interscroller_img)} style="display:block;max-width:140px;border-radius:6px;margin:0 0 12px;" />
+  <script define:vars={{ guideId: id }}>
+    (function () {
+      var f = document.getElementById("isc-file"), st = document.getElementById("isc-status"), pv = document.getElementById("isc-preview");
+      if (!f) return;
+      function shrink(file) {
+        return new Promise(function (res, rej) {
+          var url = URL.createObjectURL(file), im = new Image();
+          im.onload = function () {
+            var s = Math.min(1, 2400 / Math.max(im.naturalWidth, im.naturalHeight));
+            var c = document.createElement("canvas");
+            c.width = Math.round(im.naturalWidth * s); c.height = Math.round(im.naturalHeight * s);
+            c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+            URL.revokeObjectURL(url);
+            c.toBlob(function (b) { b ? res(b) : rej(new Error("Could not read image")); }, "image/jpeg", 0.88);
+          };
+          im.onerror = function () { rej(new Error("Could not read image (if it's HEIC, export as JPEG)")); };
+          im.src = url;
+        });
+      }
+      f.addEventListener("change", async function () {
+        var file = f.files && f.files[0]; if (!file) return;
+        st.textContent = "Resizing...";
+        try {
+          var blob = await shrink(file);
+          st.textContent = "Uploading...";
+          var fd = new FormData(); fd.append("id", guideId); fd.append("file", blob, "upload.jpg");
+          var r = await fetch("/admin/api/guide-image", { method: "POST", body: fd });
+          var d = await r.json();
+          if (!r.ok || d.error) throw new Error(d.error || ("HTTP " + r.status));
+          document.querySelector('[name="interscroller_img"]').value = d.img;
+          document.querySelector('[name="interscroller_img_mobile"]').value = d.img_mobile;
+          pv.src = d.img_mobile; pv.hidden = false;
+          st.textContent = "Done (" + d.kb.wide + " KB + " + d.kb.tall + " KB). Click Save.";
+        } catch (e) { st.textContent = "Upload failed: " + e.message; }
+        f.value = "";
+      });
+    })();
+  </script>
+  <label>Photo, desktop (landscape)</label>
+  <input name="interscroller_img" value={page.interscroller_img || ""} placeholder="/img/fernie-mountains.webp or https://images.unsplash.com/..." />
+  <label>Photo, mobile (portrait) <span style="font-weight:400;color:#888">optional; Unsplash tip: add ?w=900&h=1600&fit=crop&fm=webp&q=60</span></label>
+  <input name="interscroller_img_mobile" value={page.interscroller_img_mobile || ""} placeholder="/img/fernie-mountains-portrait.webp" />
+  <label>Alt text</label>
+  <input name="interscroller_alt" value={page.interscroller_alt || ""} placeholder="Downtown Fernie street with the mountains behind" />
+  <label>Headline</label>
+  <input name="interscroller_title" value={page.interscroller_title || ""} placeholder="Three hours from Calgary. Worlds away." />
+  <label>Subline</label>
+  <input name="interscroller_sub" value={page.interscroller_sub || ""} placeholder="See what's for sale in Fernie right now." />
+  <label>Button link</label>
+  <input name="interscroller_href" value={page.interscroller_href || ""} placeholder="/fernie/homes" />
+  <label>Button text</label>
+  <input name="interscroller_cta" value={page.interscroller_cta || ""} placeholder="Browse Fernie homes" />
+</fieldset>
 
     <label>Template</label>
     <select name="template">
