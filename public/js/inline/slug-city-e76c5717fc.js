@@ -27,7 +27,7 @@
       sortLabel.textContent = "Sort";
 
       const chevron = document.createElement("span");
-      chevron.textContent = "âŒ„";
+      chevron.textContent = "⌄";
       chevron.setAttribute("aria-hidden", "true");
       chevron.style.cssText = "font-size:1rem;line-height:1;";
 
