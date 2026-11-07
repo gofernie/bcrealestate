@@ -1428,7 +1428,12 @@ html body .together__card #together-submit { border-radius: 6px !important; }
   }
 </style>
   <script is:inline>/* look-search-lazy-v1: load "Search this look" on first interaction, not at page load */(function(){window.__lookSearchLazy=true;var ev=["pointerdown","touchstart","keydown","scroll","mousemove"],done=false;function go(){if(done)return;done=true;ev.forEach(function(e){removeEventListener(e,go,true)});var s=document.createElement("script");s.src="/look-search.js?v=20261026e";s.defer=true;document.head.appendChild(s);}ev.forEach(function(e){addEventListener(e,go,{capture:true,passive:true})});})();</script>
-<!-- site-square: business-class corners sitewide (opt out with data-keep-round) -->
+<style is:global>
+  /* hero-square-css-v1: square the area hero from the first paint (matches site-square's 6px) */
+  html body .type-map-card,
+  html body .area-hero-collage__secondary,
+  html body .area-hero-visual__label { border-radius: 6px !important; }
+</style><!-- site-square: business-class corners sitewide (opt out with data-keep-round) -->
 <script is:inline>
 (() => {
   if (window.__siteSquare) return; window.__siteSquare = true; /* site-square-batched-v1: read everything first, then write, so layout runs once instead of per element */
@@ -1461,13 +1466,13 @@ html body .together__card #together-submit { border-radius: 6px !important; }
     if (!sched && pending.length) sched = idle(run);
   };
   let lastStart = -1e9;
-  const start = () => { const now = performance.now(); if (now - lastStart < 1000) return; lastStart = now; sweepAll([document.body]); };
+  const start = () => { const now = performance.now(); if (now - lastStart < 1000) return; lastStart = now; /* site-square-prepaint-v1 */ try { squareBatch(Array.from(document.body.querySelectorAll("*")).slice(0, 300)); } catch {} sweepAll([document.body]); };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true }); else start();
   document.addEventListener("astro:page-load", start);
   const queue = new Set(); let raf = 0;
   new MutationObserver((ms) => {
     ms.forEach((m) => m.addedNodes.forEach((n) => n.nodeType === 1 && queue.add(n)));
-    if (!raf) raf = requestAnimationFrame(() => { raf = 0; const q = [...queue]; queue.clear(); sweepAll(q); });
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; const q = [...queue]; queue.clear(); const els = []; q.forEach((r) => { if (r instanceof HTMLElement && r.isConnected) { els.push(r); r.querySelectorAll("*").forEach((e) => els.push(e)); } }); if (els.length <= 600) squareBatch(els); else sweepAll(q); });
   }).observe(document.body, { childList: true, subtree: true });
 })();
 </script>
