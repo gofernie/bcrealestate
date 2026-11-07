@@ -123,16 +123,44 @@ export const POST: APIRoute = async ({ request }) => {
         model: env("SESSION_MODEL") || "claude-haiku-5-5",
         max_tokens: 1500,
         system: SYSTEM,
+        tools: [{
+          name: "submit_drafts",
+          description: "Return exactly two email drafts.",
+          input_schema: {
+            type: "object",
+            properties: {
+              drafts: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    label: { type: "string" },
+                    type: { type: "string", enum: ["homes", "financing", "market", "process", "checkin"] },
+                    subject: { type: "string" },
+                    body: { type: "string" },
+                  },
+                  required: ["label", "type", "subject", "body"],
+                },
+              },
+            },
+            required: ["drafts"],
+          },
+        }],
+        tool_choice: { type: "tool", name: "submit_drafts" },
         messages: [{ role: "user", content: `Message types:\n${guide}\n\nTask: ${ask}\n\nBuyer session data (JSON):\n${JSON.stringify(brief)}` }],
       }),
     });
     const out = await r.json();
     if (!r.ok) return json({ error: out?.error?.message || "AI request failed" }, 502);
 
-    const text = (out.content || []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return json({ error: "AI returned no drafts" }, 502);
-    const parsed = JSON.parse(match[0]);
+    const toolBlock = (out.content || []).find((b: any) => b.type === "tool_use");
+    let parsed: any = toolBlock?.input || null;
+    if (!parsed) {
+      const text = (out.content || []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) { try { parsed = JSON.parse(match[0]); } catch {} }
+    }
+    if (!parsed?.drafts?.length) return json({ error: "Couldn't get drafts this time. Try Suggest again." }, 502);
     const drafts = (parsed.drafts || []).slice(0, 2).map((d: any) => ({
       label: String(d.label || "Draft"),
       type: TYPES.includes(d.type) ? d.type : (type === "auto" ? null : type),
