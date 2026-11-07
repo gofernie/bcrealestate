@@ -34,7 +34,7 @@ function linkAddresses(html: string, links: Array<[string, string]>) {
   }
   return html;
 }
-const toHtml = (t: string, links: Array<[string, string]> = []) => linkAddresses(escH(t).replace(/https?:\/\/[^\s<]+/g, (u) => linkOrButton(u)), links).replace(/\n/g, "<br>");
+const toHtml = (t: string, links: Array<[string, string]> = []) => linkAddresses(escH(t).replace(/https?:\/\/[^\s<]+/g, (u) => linkOrButton(u)), links).replace(/^[ \t]*\u2022[ \t]*/gm, "&nbsp;&nbsp;&nbsp;&bull;&nbsp;").replace(/\n/g, "<br>");
 
 async function agentFor(siteId?: string | null) {
   let agentName = "", agentEmail = "", siteName = "", brokerage = "";

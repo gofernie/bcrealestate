@@ -1,5 +1,6 @@
 ---
 function __tcAddrIdx(s) { return String(s || "").replace(/\b[A-Z][A-Z'-]+\b/g, (w) => /^(NE|NW|SE|SW)$/.test(w) ? w : w.toLowerCase().replace(/(^|[-'])([a-z])/g, (m, p, c) => p + c.toUpperCase())); }
+import { computeAreaNeighbours } from "../../lib/areaNeighbours";
 import { ClientRouter } from "astro:transitions";
 import { createClient } from "@supabase/supabase-js";
 import { cachedFetch } from "../../lib/cachedFetch";
@@ -1525,6 +1526,7 @@ const simplifyBoundaryGeometry = (g: any, tol = 0.00002) => {
   } catch { return g; }
 };
 let homeMapAreaBoundaries: any[] = [];
+let homeAreaNeighbours: Record<string, any> = {};
 
 try {
    const { data: boundaries = [] } = isGreaterVictoriaMarket
@@ -1543,6 +1545,7 @@ try {
       geometry: simplifyBoundaryGeometry(boundary.polygon_geojson),
     }))
     .filter((boundary: any) => boundary.slug && boundary.geometry);
+  homeAreaNeighbours = computeAreaNeighbours(boundaries || []);
 
   const allowedAreas = (boundaries || [])
     .map((boundary: any) =>
@@ -7433,7 +7436,20 @@ font-size: clamp(3.2rem, 6vw, 6.2rem);
 <script is:inline data-astro-rerun src="/js/inline/index-city-81f36f2077.js"></script>
 <script is:inline src="/js/inline/index-city-07a367502b.js"></script>
 <script is:inline src="/js/inline/index-city-627e7b4d55.js"></script>
-  <script is:inline src="/js/inline/index-city-3f0d00efd1.js"></script>
+  <script type="application/json" id="area-neighbours" is:inline set:html={JSON.stringify(homeAreaNeighbours).replace(/</g, "\\u003c")}></script>
+<script is:inline src="/js/inline/index-city-3f0d00efd1.js?v=nb2"></script>
+<style is:global>
+  /* home-search-complete-centered v2: match the area/type page "Search complete" card */
+  #home-search-complete:not([hidden]) { display:flex !important; flex-direction:column !important; align-items:center !important; text-align:center !important; width:auto !important; max-width:680px !important; margin:24px auto !important; padding:32px 28px !important; gap:0 !important; box-sizing:border-box; }
+  #home-search-complete:not([hidden]) > * { width:100% !important; max-width:100% !important; }
+  #home-search-complete h1, #home-search-complete h2, #home-search-complete h3, #home-search-complete h4, #home-search-complete strong, #home-search-complete [class*="title"] { display:block !important; font-family:"DM Sans", system-ui, sans-serif !important; font-weight:800 !important; font-size:clamp(1.45rem, 2.4vw, 1.9rem) !important; line-height:1.2 !important; letter-spacing:-0.01em; margin:8px 0 10px !important; }
+  #home-search-complete #home-search-complete-copy { font-size:1rem !important; max-width:520px !important; margin:0 auto 20px !important; line-height:1.55 !important; opacity:.8; }
+  #home-search-complete div:has(> button):not(#home-neighbour-areas), #home-search-complete [data-seen-all-actions] { display:flex !important; flex-direction:column !important; align-items:center !important; justify-content:center !important; gap:10px !important; margin:0 0 4px !important; }
+  #home-search-complete button { margin:0 !important; }
+  #home-search-complete #home-neighbour-areas { display:flex !important; flex-direction:row !important; flex-wrap:wrap !important; justify-content:center !important; align-items:center !important; gap:10px !important; margin-top:20px !important; }
+  #home-search-complete #home-neighbour-areas > span { flex-basis:100% !important; text-align:center !important; margin-bottom:2px; }
+</style>
+<script is:inline src="/js/inline/home-neighbours.js?v=1"></script>
 <script is:inline>
   document.querySelectorAll(".filter-select").forEach(function(el) {
     el.style.appearance = "none";

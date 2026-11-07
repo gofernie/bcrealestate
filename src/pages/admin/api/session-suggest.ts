@@ -33,7 +33,7 @@ Rules:
 - Never refer to homes vaguely ("a few stand out", "those", "some of the homes"). Either name a home by its address from the data, or refer to attached homes as "the homes below". Every home mentioned must be identifiable.
 - If they asked a question, answer only from the data or say you'll find out. Never guess.
 - Don't repeat the subject or angle of emails_already_sent.
-- attached_homes are NEW homes the agent picked to send; the buyer has not reacted to them yet. They appear as cards under the message. If present, BOTH drafts must mention them: one leads with the homes, the other covers its main point first and then points to the homes below. Never offer to send homes when they are already attached (e.g. "I found a few homes similar to what you've been liking - they're below"). Introduce each one briefly in a natural phrase using only the details given, e.g. "a 3-bed house at 2131 Minto Avenue in Extension" (with more than 3, summarize instead), say they're below, and never describe them as homes the buyer already loved.
+- attached_homes are NEW homes the agent picked to send; the buyer has not reacted to them yet. They appear as cards under the message. If present, BOTH drafts must mention them: one leads with the homes, the other covers its main point first and then points to the homes below. Never offer to send homes when they are already attached (e.g. "I found a few homes similar to what you've been liking - they're below"). Introduce each one briefly in a natural phrase using only the details given, e.g. "a 3-bed house at 2131 Minto Avenue in Extension" (with more than 6, summarize instead), say they're below, and never describe them as homes the buyer already loved.
 - If attached_homes is empty, nothing is attached: never say homes are attached, included, added or below.
 - Format the body with line breaks: greeting on its own line, short paragraphs separated by a blank line, and no sign-off at the end.
 - label: 2-4 words naming the angle, e.g. "Light check-in".`;
@@ -121,17 +121,20 @@ function stripPhantomHomes(body: string, n: number) {
 function describeHome(h: any) {
   const tc = (x: unknown) => String(x || "").replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
   const beds = h?.beds ? `${Math.round(Number(h.beds))}-bed ` : "";
-  const type = String(h?.type || "home").toLowerCase().replace(/_/g, " ");
+  const rawType = String(h?.type || "home").toLowerCase().replace(/_/g, " ");
+  const type = ({ mobile: "mobile home", manufactured: "mobile home", "single family": "house", detached: "house", apartment: "condo" } as Record<string, string>)[rawType] || rawType;
   const p = `${beds}${type} at ${h?.address}${h?.area ? ` in ${tc(h.area)}` : ""}`;
   return (/^[aeiou8]/i.test(p) ? "an " : "a ") + p;
 }
 function ensureHomesDescribed(homes: any[], body: string) {
-  if (!homes.length || homes.length > 3) return body;
+  if (!homes.length || homes.length > 6) return body;
   const lower = body.toLowerCase();
   if (homes.some((h) => h?.address && lower.includes(String(h.address).toLowerCase()))) return body;
+  body = body.replace(/\s*I've also added (?:a home|\d+ homes) below that fits? what you've been looking at\.\s*$/, "");
+  const prefix = /\bbelow\b/i.test(body) ? "Here's what I picked: " : (homes.length === 1 ? "I've also added a home below: " : "I've also added these below: ");
   const list = homes.map(describeHome);
-  const joined = list.length > 1 ? list.slice(0, -1).join(", ") + " and " + list[list.length - 1] : list[0];
-  return body.replace(/\s+$/, "") + "\n\nHere's what I picked: " + joined + ".";
+  const joined = list.map((x) => "  \u2022 " + x.replace(/^an? /, "")).join("\n");
+  return body.replace(/\s+$/, "") + "\n\n" + prefix.trim() + "\n" + joined + ((homes.length === 1 ? "\n\nWant to see it in person? Reply and I'll set up a time." : "\n\nWant to see any of these in person? Reply and I'll set up a time."));
 }
 export const POST: APIRoute = async ({ request }) => {
   try {

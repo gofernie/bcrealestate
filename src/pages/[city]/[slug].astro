@@ -1108,6 +1108,58 @@ const areas = areaBoundaryRows
   .filter(Boolean)
   .sort((a, b) => a.localeCompare(b));
 
+/* area-neighbours-v1: which areas border each other (within ~0.5 km), from the drawn boundaries */
+const areaNeighbours: Record<string, Array<{ value: string; label: string }>> = (() => {
+  try {
+    const norm = (r: any) => String(r?.area_name || r?.area_slug || "").replace(/-/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+    const title = (v: string) => v.replace(/^pq\s+/i, "").replace(/\b\w/g, (ch: string) => ch.toUpperCase());
+    const ringsOf = (raw: any) => {
+      let g: any = raw;
+      if (typeof g === "string") { try { g = JSON.parse(g); } catch { return []; } }
+      const geoms = g?.type === "FeatureCollection" ? (g.features || []).map((ft: any) => ft?.geometry) : g?.type === "Feature" ? [g.geometry] : [g];
+      const rings: any[] = [];
+      for (const geom of geoms) {
+        if (geom?.type === "Polygon") rings.push(...(geom.coordinates || []));
+        else if (geom?.type === "MultiPolygon") for (const poly of geom.coordinates || []) rings.push(...poly);
+      }
+      return rings.filter((r: any) => Array.isArray(r) && r.length > 1);
+    };
+    const items: any[] = (areaBoundaryRows || []).map((r: any) => {
+      const rings = ringsOf(r.polygon_geojson);
+      const pts = rings.flat();
+      if (!pts.length || !norm(r)) return null;
+      let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+      for (const p of pts) { if (p[0] < minLng) minLng = p[0]; if (p[0] > maxLng) maxLng = p[0]; if (p[1] < minLat) minLat = p[1]; if (p[1] > maxLat) maxLat = p[1]; }
+      return { value: norm(r), label: title(norm(r)), rings, minLng, maxLng, minLat, maxLat };
+    }).filter(Boolean);
+    const KM = 0.5, PAD = 0.01;
+    const segKm = (p: any, a: any, b: any) => {
+      const kx = 111.32 * Math.cos((p[1] * Math.PI) / 180), ky = 110.57;
+      const px = p[0] * kx, py = p[1] * ky, ax = a[0] * kx, ay = a[1] * ky, bx = b[0] * kx, by = b[1] * ky;
+      const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+      const t = len ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len)) : 0;
+      return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+    };
+    const near = (A: any, B: any) => {
+      for (const ring of A.rings) for (const p of ring) {
+        if (p[0] < B.minLng - PAD || p[0] > B.maxLng + PAD || p[1] < B.minLat - PAD || p[1] > B.maxLat + PAD) continue;
+        for (const rb of B.rings) for (let i = 0; i < rb.length - 1; i++) if (segKm(p, rb[i], rb[i + 1]) <= KM) return true;
+      }
+      return false;
+    };
+    const out: Record<string, Array<{ value: string; label: string }>> = {};
+    for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+      const a = items[i], b = items[j];
+      if (a.value === b.value) continue;
+      if (a.maxLng + PAD < b.minLng || b.maxLng + PAD < a.minLng || a.maxLat + PAD < b.minLat || b.maxLat + PAD < a.minLat) continue;
+      if (near(a, b) || near(b, a)) {
+        (out[a.value] ||= []).push({ value: b.value, label: b.label });
+        (out[b.value] ||= []).push({ value: a.value, label: a.label });
+      }
+    }
+    return out;
+  } catch { return {}; }
+})();
 const areaLinks = areaBoundaryRows
   .map((r) => {
     const areaSlug =
@@ -12248,6 +12300,8 @@ lot_size_acres: listing.lot_size_acres,
   </>
 )}
 
+<script type="application/json" id="area-neighbours" is:inline set:html={JSON.stringify(areaNeighbours).replace(/</g, "\\u003c")}></script>
+
 <script is:inline>
   (() => {
     const button =
@@ -12533,7 +12587,7 @@ function __rawAddr5(v) {
         if (useFastListings && fastTotal > 0 && ceiling && !hasSelectedArea()) {
           setWrapperVisible(true);
           nearbyButton.hidden = true;
-          eyebrow.textContent = "Search complete";
+          eyebrow.textContent = "Search complete"; hideNeighbourAreas();
           title.textContent = "You’ve seen every match";
           copy.textContent =
             `We found ${fastTotal} ${fastTotal === 1 ? "match" : "matches"} for ${nextPriceHomeLabel()} up to ` +
@@ -12556,7 +12610,7 @@ function __rawAddr5(v) {
 
           if (expandedAreaKm > 0) {
             copy.textContent =
-              `That includes all current ${nextPriceHomeLabel()} in ${selectedAreaLabel()} and up to ${expandedAreaKm} km beyond it.`;
+              `That includes all current ${nextPriceHomeLabel()} in ${selectedAreaLabel()} and up to ${expandedAreaKm} km beyond it.`; renderNeighbourAreas();
             button.hidden = true;
             nearbyButton.hidden = true;
             return;
@@ -12576,7 +12630,7 @@ function __rawAddr5(v) {
 
           nearbyButton.hidden = false;
           nearbyButton.textContent =
-            `Search 1 km beyond ${selectedAreaLabel()}`;
+            `Search 1 km beyond ${selectedAreaLabel()}`; renderNeighbourAreas();
           return;
         }
 
@@ -12587,7 +12641,7 @@ function __rawAddr5(v) {
       setWrapperVisible(true);
       const listingLabel = remaining === 1 ? "listing" : "listings";
       eyebrow.textContent = "More to explore";
-      title.textContent = "Keep browsing";
+      title.textContent = "Keep browsing"; hideNeighbourAreas();
       nearbyButton.hidden = true;
       copy.textContent = `${remaining} more ${listingLabel} match this search.`;
       button.hidden = false;
@@ -12601,6 +12655,62 @@ function __rawAddr5(v) {
       fastOffset = Number(event.detail?.visible || 0);
       updateRemainingCopy();
     });
+
+    // area-neighbours-v1: offer neighbouring areas (with match counts) when an area search runs out
+    const __nbCache = new Map();
+    function hideNeighbourAreas() { const b = document.getElementById("neighbour-areas"); if (b) b.hidden = true; }
+    function renderNeighbourAreas() {
+      /* nb-spacing-v2 */ try { button.style.margin = "6px"; nearbyButton.style.margin = "6px"; } catch {}
+      let map = {};
+      try { map = JSON.parse(document.getElementById("area-neighbours")?.textContent || "{}"); } catch {}
+      let selected = [];
+      try { selected = selectedAreaDetails().map((a) => String(a.value || "").toLowerCase()).filter(Boolean); } catch {}
+      if (!selected.length) { hideNeighbourAreas(); return; }
+      const seen = new Set(selected), cands = [];
+      selected.forEach((v) => (map[v] || []).forEach((n) => { if (!seen.has(n.value)) { seen.add(n.value); cands.push(n); } }));
+      if (!cands.length) { hideNeighbourAreas(); return; }
+      let box = document.getElementById("neighbour-areas");
+      if (!box) {
+        box = document.createElement("div");
+        box.id = "neighbour-areas";
+        box.style.cssText = "flex-basis:100%;width:100%;margin-top:18px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;";
+        nearbyButton.parentElement?.appendChild(box);
+      }
+      box.hidden = false;
+      box.innerHTML = '<span style="font-size:.84rem;opacity:.75;">Checking neighbouring areas...</span>';
+      let base; try { base = fastParams(0); } catch { base = new URLSearchParams(); }
+      const key = base.toString() + "|" + cands.map((c) => c.value).join(",");
+      const draw = (rows) => {
+        const hits = rows.filter((r) => r.count > 0).sort((a, b) => b.count - a.count).slice(0, 5);
+        if (!hits.length) { hideNeighbourAreas(); return; }
+        box.innerHTML = '<span style="flex-basis:100%;text-align:center;font-size:.84rem;opacity:.75;margin-bottom:2px;">' + (hits.length === 1 ? "Try the neighbouring area:" : "Try a neighbouring area:") + "</span>";
+        hits.forEach((h) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.style.cssText = "border:1px solid var(--accent);border-radius:999px;background:transparent;padding:8px 14px;color:var(--accent);font:inherit;font-size:.82rem;font-weight:800;cursor:pointer;";
+          b.textContent = h.label + " (" + h.count + ")";
+          b.addEventListener("click", () => {
+            const u = new URL(location.href);
+            const cur = u.searchParams.getAll("area");
+            if (!cur.length) selected.forEach((v) => u.searchParams.append("area", v));
+            if (!u.searchParams.getAll("area").includes(h.value)) u.searchParams.append("area", h.value);
+            location.href = u.toString();
+          });
+          box.appendChild(b);
+        });
+      };
+      if (__nbCache.has(key)) { draw(__nbCache.get(key)); return; }
+      Promise.all(cands.slice(0, 8).map(async (c) => {
+        try {
+          const p = new URLSearchParams(base);
+          p.delete("area"); p.delete("areaBufferKm");
+          p.set("areas", c.value); p.set("offset", "0"); p.set("limit", "1");
+          const r = await fetch("/api/home-listings?" + p.toString());
+          const j = await r.json();
+          return { ...c, count: Number(j.total || 0) };
+        } catch { return { ...c, count: 0 }; }
+      })).then((rows) => { __nbCache.set(key, rows); draw(rows); });
+    }
 
     const fastParams = (offset) => {
       const params = new URLSearchParams({

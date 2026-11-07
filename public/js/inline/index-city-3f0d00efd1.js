@@ -500,6 +500,7 @@ function showMoreCards() {
         }
       }
 
+
     };
 
     document.addEventListener(
@@ -792,7 +793,7 @@ const selectedFeatures = String(document.querySelector(".story-blank[data-story-
   updateLoadMoreBtn();
 
   try {
-    const response = await fetch(`/api/home-listings?${params.toString()}`);
+    window.__homeLastParams = params.toString(); const response = await fetch(`/api/home-listings?${params.toString()}`);
     if (!response.ok) throw new Error(`Listing request failed (${response.status})`);
     const payload = await response.json();
     const pageListings = Array.isArray(payload.listings) ? payload.listings : [];

@@ -84,6 +84,9 @@ export function apiParamsFor(savedSearch: { city: string; filters: any }) {
   out.set("city", slug(savedSearch.city));
   out.set("sort", "newest");
   out.set("markers", "0");
+  // saved-buffer-km: keep the "within X km of the area" reach the buyer saw when saving
+  const savedBufferKm = Number(savedSearch?.filters?.criteria?.areaBufferKm || 0);
+  if (savedBufferKm > 0 && !out.has("areaBufferKm")) out.set("areaBufferKm", String(savedBufferKm));
   return out;
 }
 
