@@ -92,7 +92,7 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
       <div class="card-body">
         <div class="price">${esc(listing.price)}</div>
         <div class="address">${esc(listing.address)}</div>
-<div class="card-city">${esc(String(listing.city || city || "Nanaimo").replace(/\b\w/g, (char) => char.toUpperCase()))}, BC</div>
+<div class="card-city">${(() => { const tc = (s) => String(s).toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase()); const c = String(listing.city || city || "Nanaimo"); const a = String(listing.area || "").replace(/^(feru|fe|se|sw|pq|na|ob)\s*-\s*/i, "").replace(/-(neighbourhood|neighborhood|area)$/i, "").replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim(); const showA = a && !["unknown", c.toLowerCase()].includes(a.toLowerCase()); return (showA ? `<span class="card-area">${esc(tc(a))} \u00b7 </span>` : "") + esc(tc(c)); })()}</div>
         <div class="meta">
           <span>${esc(listing.beds || "-")} bd</span>
           <span>${esc(listing.baths || "-")} ba</span>
