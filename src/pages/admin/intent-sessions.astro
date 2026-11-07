@@ -2212,6 +2212,11 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
           <div id="cmp-drafts" class="cmp-drafts"></div>
           <label class="cmp-field"><span>Subject</span><input id="cmp-subject" type="text"></label>
           <label class="cmp-field"><span>Message</span><textarea id="cmp-text" rows="12"></textarea></label>
+          <div class="cmp-homes">
+            <div class="cmp-homes-head"><span id="cmp-homes-count">No homes added</span><button type="button" id="cmp-homes-btn" class="cmp-homes-btn">+ Add similar homes</button></div>
+            <div id="cmp-homes-picked" class="cmp-homes-picked"></div>
+            <div id="cmp-homes-list" class="cmp-homes-list" hidden></div>
+          </div>
           <p class="cmp-note">Your signature and an unsubscribe line are added automatically. Replies go to your email.</p>
           <div id="cmp-history"></div>
         </div>
@@ -2247,6 +2252,29 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
       #cmp .cmp-foot { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px 20px; border-top:1px solid #eee; }
       #cmp-status { font-size:.82rem; color:#666; }
       .sent-log { padding:12px 32px; background:#fff; border-bottom:1px solid #eee; }
+          #cmp .cmp-homes { border:1px solid #eee; border-radius:8px; padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+      #cmp .cmp-homes-head { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:.82rem; color:#555; }
+      #cmp .cmp-homes-btn { border:1px solid #ddd; background:#fff; border-radius:6px; padding:5px 10px; font-weight:600; font-size:.8rem; cursor:pointer; }
+      #cmp .cmp-homes-picked { display:flex; flex-wrap:wrap; gap:6px; }
+      #cmp .cmp-home-chip { display:inline-flex; align-items:center; gap:4px; background:#f1f7f5; border:1px solid #d5e7e1; color:#1f6b60; border-radius:6px; padding:3px 6px 3px 9px; font-size:.78rem; }
+      #cmp .cmp-home-chip button { border:0; background:none; cursor:pointer; color:#1f6b60; font-size:1rem; line-height:1; padding:0 2px; }
+      #cmp .cmp-homes-list { display:grid; gap:6px; max-height:340px; overflow:auto; }
+      #cmp .cmp-homes-list[hidden] { display:none; }
+      #cmp .cmp-home { display:grid; grid-template-columns:18px 72px 1fr; gap:10px; align-items:center; padding:6px; border:1px solid #eee; border-radius:8px; cursor:pointer; }
+      #cmp .cmp-home:hover { border-color:#cfe3dd; }
+      #cmp .cmp-home img, #cmp .cmp-home-noimg { width:72px; height:54px; object-fit:cover; border-radius:6px; background:#eee; display:block; }
+      #cmp .cmp-home-info { display:flex; flex-direction:column; font-size:.8rem; color:#333; min-width:0; }
+      #cmp .cmp-home-info strong { font-size:.88rem; color:#111; }
+      #cmp .cmp-home-meta { color:#777; }
+      #cmp .cmp-home-why { color:#1f6b60; font-size:.74rem; }
+      #cmp .cmp-homes-empty { font-size:.8rem; color:#888; padding:6px 2px; }
+          #cmp .cmp-suggest:disabled { opacity:.9; }
+      #cmp .cmp-dots { display:inline-flex; gap:3px; margin-left:5px; vertical-align:middle; }
+      #cmp .cmp-dots i { width:5px; height:5px; border-radius:50%; background:currentColor; display:block; animation:cmp-wiggle 1s infinite ease-in-out; }
+      #cmp .cmp-dots i:nth-child(2) { animation-delay:.15s; }
+      #cmp .cmp-dots i:nth-child(3) { animation-delay:.3s; }
+      @keyframes cmp-wiggle { 0%, 60%, 100% { transform:translateY(0); opacity:.45; } 30% { transform:translateY(-4px); opacity:1; } }
+      #cmp .cmp-hint { font-size:.84rem; color:#1f6b60; background:#f1f7f5; border:1px dashed #c9e6e1; border-radius:8px; padding:10px 12px; line-height:1.45; }
     </style>
 
     <script is:inline>
@@ -2296,10 +2324,10 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
         });
 
         $("cmp-suggest").addEventListener("click", async () => {
-          const btn = $("cmp-suggest"); btn.disabled = true; btn.textContent = "Thinking...";
-          $("cmp-drafts").innerHTML = ""; statusEl.textContent = "";
+          const btn = $("cmp-suggest"); btn.disabled = true; btn.innerHTML = 'Thinking<span class="cmp-dots"><i></i><i></i><i></i></span>';
+          $("cmp-drafts").innerHTML = '<div class="cmp-hint"><strong>Two drafts on the way.</strong> Pick one, tweak it if you like, and hit Send. Keep the loop going. Return the serve.</div>'; statusEl.textContent = "";
           try {
-            const r = await fetch("/admin/api/session-suggest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type, data: D, stats: stats() }) });
+            const r = await fetch("/admin/api/session-suggest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type, data: { ...D, homes: [...picked.values()] }, stats: stats() }) });
             const j = await r.json();
             if (!r.ok) throw new Error(j.error || "Suggest failed");
             drafts = j.drafts || [];
@@ -2313,7 +2341,7 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
               $("cmp-drafts").querySelectorAll(".cmp-draft").forEach((x) => x.classList.toggle("on", x === el));
             }));
           } catch (err) { statusEl.textContent = err.message; }
-          btn.disabled = false; btn.innerHTML = "&#10022; Suggest a reply";
+          if ($("cmp-drafts").querySelector(".cmp-hint")) $("cmp-drafts").innerHTML = ""; btn.disabled = false; btn.innerHTML = "&#10022; Suggest a reply";
         });
 
         $("cmp-send").addEventListener("click", async () => {
@@ -2322,16 +2350,57 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
           const btn = $("cmp-send"); btn.disabled = true; statusEl.textContent = "Sending...";
           try {
             const r = await fetch("/admin/api/session-send", { method: "POST", headers: { "content-type": "application/json" },
-              body: JSON.stringify({ session_id: D.session_id, to: D.to, subject, body, message_type: msgType || (type === "auto" ? null : type) }) });
+              body: JSON.stringify({ session_id: D.session_id, to: D.to, subject, body, homes: [...picked.keys()], message_type: msgType || (type === "auto" ? null : type) }) });
             const j = await r.json();
             if (!r.ok) throw new Error(j.error || "Send failed");
             statusEl.textContent = "Sent.";
-            $("cmp-text").value = ""; $("cmp-drafts").innerHTML = ""; msgType = null;
+            $("cmp-text").value = ""; $("cmp-drafts").innerHTML = ""; msgType = null; picked.clear(); renderPicked();
             await loadHistory(); setTimeout(close, 700);
           } catch (err) { statusEl.textContent = err.message; }
           btn.disabled = false;
         });
 
+        // session-homes-picker
+        const picked = new Map();
+        let homesLoaded = false;
+        const fmtP = (p) => (p ? "$" + Math.round(p).toLocaleString("en-CA") : "");
+        function renderPicked() {
+          const n = picked.size;
+          $("cmp-homes-count").textContent = n ? n + (n === 1 ? " home" : " homes") + " added as cards" : "No homes added";
+          $("cmp-homes-picked").innerHTML = [...picked.values()].map((h) => '<span class="cmp-home-chip">' + esc(h.address || h.mls) + ' <button type="button" data-rm="' + esc(h.id) + '" aria-label="Remove">&times;</button></span>').join("");
+          $("cmp-homes-list").querySelectorAll("input[data-id]").forEach((cb) => { cb.checked = picked.has(cb.dataset.id); });
+        }
+        $("cmp-homes-picked").addEventListener("click", (e) => { const b = e.target.closest("[data-rm]"); if (!b) return; picked.delete(b.dataset.rm); renderPicked(); });
+        $("cmp-homes-btn").addEventListener("click", async () => {
+          const list = $("cmp-homes-list");
+          if (!list.hidden) { list.hidden = true; return; }
+          list.hidden = false;
+          if (homesLoaded) return;
+          list.innerHTML = '<div class="cmp-homes-empty">Finding similar homes...</div>';
+          try {
+            const r = await fetch("/admin/api/session-homes?session_id=" + encodeURIComponent(D.session_id));
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || "Couldn't load homes");
+            const homes = j.homes || [];
+            homesLoaded = true;
+            if (!homes.length) { list.innerHTML = '<div class="cmp-homes-empty">No active matches found for this buyer yet.</div>'; return; }
+            list.innerHTML = homes.map((h) =>
+              '<label class="cmp-home"><input type="checkbox" data-id="' + esc(h.id) + '">' +
+              (h.image ? '<img src="' + esc(h.image) + '" alt="" loading="lazy">' : '<span class="cmp-home-noimg"></span>') +
+              '<span class="cmp-home-info"><strong>' + esc(fmtP(h.price)) + "</strong><span>" + esc(h.address) + '</span><span class="cmp-home-meta">' +
+              esc([h.beds ? h.beds + " bd" : "", h.baths ? h.baths + " ba" : "", h.area].filter(Boolean).join(" \u00b7 ")) + "</span>" +
+              (h.why ? '<span class="cmp-home-why">' + esc(h.why) + "</span>" : "") + "</span></label>").join("");
+            const byId = new Map(homes.map((h) => [String(h.id), h]));
+            list.querySelectorAll("input[data-id]").forEach((cb) => cb.addEventListener("change", () => {
+              const h = byId.get(cb.dataset.id); if (!h) return;
+              if (cb.checked) {
+                if (picked.size >= 6) { cb.checked = false; statusEl.textContent = "Up to 6 homes per email."; return; }
+                picked.set(cb.dataset.id, h);
+              } else picked.delete(cb.dataset.id);
+              renderPicked();
+            }));
+          } catch (err) { list.innerHTML = '<div class="cmp-homes-empty">' + esc(err.message) + "</div>"; }
+        });
         loadHistory();
       })();
     </script>

@@ -31,6 +31,7 @@ Rules:
 - Never describe tracking (e.g. "I saw you viewed 41 photos"). Refer to their interests naturally ("since you've been looking at townhomes in Saanich East").
 - If they asked a question, answer only from the data or say you'll find out. Never guess.
 - Don't repeat the subject or angle of emails_already_sent.
+- If attached_homes is not empty, those homes appear as cards under the message. Mention them briefly (e.g. "I've added a few homes below") instead of listing them.
 - label: 2-4 words naming the angle, e.g. "Light check-in".`;
 
 const prettyCity = (c?: string | null) => String(c || "").replace(/-/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
@@ -103,6 +104,7 @@ export const POST: APIRoute = async ({ request }) => {
       suggested_next_step: data?.next || null,
       activity_stats: stats || {},
       listing_reactions: (Array.isArray(data?.reactions) ? data.reactions : []).slice(0, 30).map((r: any) => slim(r)),
+      attached_homes: (Array.isArray(data?.homes) ? data.homes : []).slice(0, 6).map((h: any) => ({ address: h.address, price: h.price, beds: h.beds, baths: h.baths, type: h.type, area: h.area })),
       emails_already_sent: (sentRes.data || []).map((m: any) => ({ date: String(m.created_at).slice(0, 10), type: m.message_type, subject: m.subject })),
       market_data: market,
       agent_first_name: agent.agentName.split(/\s+/)[0],
