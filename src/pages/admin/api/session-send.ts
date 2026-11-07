@@ -54,7 +54,7 @@ export const POST: APIRoute = async ({ request }) => {
     const sessionId = String(b?.session_id || "").trim();
     const to = String(b?.to || "").trim();
     const subject = String(b?.subject || "").trim().slice(0, 200);
-    const text = String(b?.body || "").trim().slice(0, 5000);
+    let text = String(b?.body || "").trim().slice(0, 5000);
     const messageType = TYPES.includes(b?.message_type) ? b.message_type : null;
     const homeIds = (Array.isArray(b?.homes) ? b.homes : []).map((x: any) => String(x)).filter(Boolean).slice(0, 6);
     if (!sessionId || !to || !subject || !text) return json({ error: "Missing fields" }, 400);
@@ -70,7 +70,9 @@ export const POST: APIRoute = async ({ request }) => {
 
     const key = env("RESEND_API_KEY");
     if (!key) return json({ error: "RESEND_API_KEY is not set" }, 500);
-    const senderAddr = env("SENDER_ADDRESS") || "notify@bc.realestate";
+    const senderDomain = (env("SENDER_ADDRESS") || "notify@bc.realestate").split("@")[1] || "bc.realestate";
+    const localPart = agent.agentName.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").split(/\s+/)[0].replace(/[^a-z0-9]/g, "") || "notify";
+    const senderAddr = `${localPart}@${senderDomain}`;
     const fromName = agent.agentName.replace(/["<>]/g, "").trim() || "Your agent";
     const from = `${fromName} <${senderAddr}>`;
     const sig = [agent.agentName, agent.brokerage || env("LEAD_BROKERAGE"), agent.agentEmail].filter(Boolean).join("\n");
@@ -84,6 +86,9 @@ export const POST: APIRoute = async ({ request }) => {
       const homes = (hrows || []).map(mapListing).filter((h) => h.mls).sort((a, b) => homeIds.indexOf(a.id) - homeIds.indexOf(b.id));
       const dot = " \u00b7 ";
       const urlFor = (h: any) => listingUrl(base, String((sess as any)?.city || h.city), h.mls, sessionId);
+      if (homes.length && !/\bbelow\b/i.test(text)) {
+        text += "\n\n" + (homes.length === 1 ? "I've also added a home below that fits what you've been looking at." : `I've also added ${homes.length} homes below that fit what you've been looking at.`);
+      }
       if (homes.length) {
         homesText = "\n\n" + homes.map((h) => [h.address, [fmtPrice(h.price), h.beds ? h.beds + " bd" : "", h.baths ? h.baths + " ba" : ""].filter(Boolean).join(dot), urlFor(h)].filter(Boolean).join("\n")).join("\n\n");
         homesHtml = "<br><br>" + homes.map((h) => {

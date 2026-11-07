@@ -2280,6 +2280,7 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
       #sent-log .cmp-hist-label { font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#888; margin-bottom:6px; }
       #sent-log .cmp-hist-row { display:grid; grid-template-columns:64px 84px 1fr; gap:8px; font-size:.82rem; color:#444; padding:5px 0; border-top:1px solid #f0f0f0; }
       #sent-log .cmp-hist-row span:nth-child(2) { text-transform:capitalize; color:#1f6b60; font-weight:600; }
+          #cmp .cmp-drafts.stale { opacity:.4; pointer-events:none; transition:opacity .2s; }
     </style>
 
     <script is:inline>
@@ -2330,7 +2331,7 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
         });
 
         $("cmp-suggest").addEventListener("click", async () => {
-          const btn = $("cmp-suggest"); btn.disabled = true; btn.innerHTML = 'Thinking<span class="cmp-dots"><i></i><i></i><i></i></span>';
+          const btn = $("cmp-suggest"); $("cmp-drafts").classList.remove("stale"); btn.disabled = true; btn.innerHTML = 'Thinking<span class="cmp-dots"><i></i><i></i><i></i></span>';
           $("cmp-drafts").innerHTML = '<div class="cmp-hint"><strong>Two drafts on the way.</strong> Pick one, tweak it if you like, and hit Send. Keep the loop going. Return the serve.</div>'; statusEl.textContent = "";
           try {
             const r = await fetch("/admin/api/session-suggest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type, data: { ...D, homes: [...picked.values()] }, stats: stats() }) });
@@ -2370,12 +2371,21 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
         const picked = new Map();
         let homesLoaded = false;
         const fmtP = (p) => (p ? "$" + Math.round(p).toLocaleString("en-CA") : "");
+        function syncHomesLine() {
+          const ta = $("cmp-text");
+          let v = ta.value.replace(/\s*I've also added (?:a home|\d+ homes) below that fits? what you've been looking at\.\s*$/, "");
+          const n = picked.size;
+          if (v.trim() && n && !/\bbelow\b/i.test(v)) {
+            v = v.replace(/\s+$/, "") + "\n\n" + (n === 1 ? "I've also added a home below that fits what you've been looking at." : `I've also added ${n} homes below that fit what you've been looking at.`);
+          }
+          ta.value = v;
+        }
         function renderPicked() {
           const n = picked.size;
           $("cmp-homes-count").textContent = n ? n + (n === 1 ? " home" : " homes") + " added as cards" : "No homes added";
           $("cmp-homes-picked").innerHTML = [...picked.values()].map((h) => '<span class="cmp-home-chip">' + esc(h.address || h.mls) + ' <button type="button" data-rm="' + esc(h.id) + '" aria-label="Remove">&times;</button></span>').join("");
-          $("cmp-homes-list").querySelectorAll("input[data-id]").forEach((cb) => { cb.checked = picked.has(cb.dataset.id); });
-          if ($("cmp-drafts").querySelector(".cmp-draft")) statusEl.textContent = "Homes changed. Click Suggest again so the draft matches them.";
+          $("cmp-homes-list").querySelectorAll("input[data-id]").forEach((cb) => { cb.checked = picked.has(cb.dataset.id); }); syncHomesLine();
+          if ($("cmp-drafts").querySelector(".cmp-draft")) { $("cmp-drafts").classList.add("stale"); statusEl.textContent = "Updating drafts to include your homes..."; clearTimeout(window.__cmpRedraft); const go = () => { const b = $("cmp-suggest"); if (b.disabled) { window.__cmpRedraft = setTimeout(go, 800); } else { b.click(); } }; window.__cmpRedraft = setTimeout(go, 1200); }
         }
         $("cmp-homes-picked").addEventListener("click", (e) => { const b = e.target.closest("[data-rm]"); if (!b) return; picked.delete(b.dataset.rm); renderPicked(); });
         $("cmp-homes-btn").addEventListener("click", async () => {
