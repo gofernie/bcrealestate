@@ -29,7 +29,14 @@ async function agentFor(siteId?: string | null) {
       brokerage = String((a as any)?.brokerage || "").trim();
     }
   }
-  if (!agentName) agentName = env("DEFAULT_AGENT_NAME") || "Chris Crump";
+  // fallback-agent-row: site has no agent, so use the default agent's own record (name, email, brokerage)
+  if (!agentName && !agentEmail) {
+    const fallbackEmail = env("DEFAULT_AGENT_EMAIL") || "chris@crump.ca";
+    const { data: fa } = await supabase.from("agents").select("name, email, brokerage").eq("email", fallbackEmail).maybeSingle();
+    agentName = String(fa?.name || "").trim();
+    agentEmail = String(fa?.email || "").trim();
+    brokerage = String((fa as any)?.brokerage || "").trim();
+  }  if (!agentName) agentName = env("DEFAULT_AGENT_NAME") || "Chris Crump";
   if (!agentEmail) agentEmail = env("DEFAULT_AGENT_EMAIL") || "chris@crump.ca";
   return { agentName, agentEmail, siteName, brokerage };
 }
