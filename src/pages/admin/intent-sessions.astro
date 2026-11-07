@@ -2228,7 +2228,7 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
       .cmp[hidden] { display:none; }
       .cmp { position:fixed; inset:0; z-index:1000; }
       #cmp .cmp-backdrop { position:absolute; inset:0; background:rgba(17,17,17,.35); }
-      #cmp .cmp-panel { position:absolute; top:0; right:0; bottom:0; width:min(560px,100%); background:#fff; display:flex; flex-direction:column; box-shadow:-12px 0 32px rgba(0,0,0,.12); }
+      #cmp .cmp-panel { position:absolute; top:0; right:0; bottom:0; width:min(860px, 92vw); background:#fff; display:flex; flex-direction:column; box-shadow:-12px 0 32px rgba(0,0,0,.12); }
       #cmp .cmp-head { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #eee; font-size:1rem; }
       #cmp .cmp-x { border:0; background:none; font-size:1.5rem; line-height:1; cursor:pointer; color:#666; }
       #cmp .cmp-body { flex:1; overflow:auto; padding:16px 20px; display:flex; flex-direction:column; gap:12px; }
@@ -2281,6 +2281,20 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
       #sent-log .cmp-hist-row { display:grid; grid-template-columns:64px 84px 1fr; gap:8px; font-size:.82rem; color:#444; padding:5px 0; border-top:1px solid #f0f0f0; }
       #sent-log .cmp-hist-row span:nth-child(2) { text-transform:capitalize; color:#1f6b60; font-weight:600; }
           #cmp .cmp-drafts.stale { opacity:.4; pointer-events:none; transition:opacity .2s; }
+          #cmp #cmp-text { min-height:360px; }
+      @media (max-width: 700px) { #cmp .cmp-panel { width:100%; } #cmp #cmp-text { min-height:240px; } }
+          /* cmp-centered-modal */
+      #cmp .cmp-panel { top:50%; left:50%; right:auto; bottom:auto; transform:translate(-50%, -50%); width:min(860px, 92vw); max-height:90vh; border-radius:12px; box-shadow:0 24px 64px rgba(0,0,0,.25); overflow:hidden; }
+      @media (max-width: 700px) { #cmp .cmp-panel { top:0; left:0; transform:none; width:100%; height:100%; max-height:none; border-radius:0; } }
+          /* cmp-homes-grid-3 */
+      #cmp .cmp-home:has(input:checked) { border-color:#1f6b60; box-shadow:inset 0 0 0 1px #1f6b60; background:#f6fbf9; }
+      @media (min-width: 701px) {
+        #cmp .cmp-homes-list { grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px; max-height:440px; }
+        #cmp .cmp-home { position:relative; display:flex; flex-direction:column; align-items:stretch; gap:6px; padding:6px; }
+        #cmp .cmp-home input[type="checkbox"] { position:absolute; top:12px; left:12px; width:18px; height:18px; z-index:1; accent-color:#1f6b60; }
+        #cmp .cmp-home img, #cmp .cmp-home-noimg { width:100%; height:120px; }
+        #cmp .cmp-home-info { padding:0 4px 4px; }
+      }
     </style>
 
     <script is:inline>
@@ -2371,21 +2385,22 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
         const picked = new Map();
         let homesLoaded = false;
         const fmtP = (p) => (p ? "$" + Math.round(p).toLocaleString("en-CA") : "");
-        function homesSentence(hasBelow) {
+        function homesSentence(hasBelow, body) {
+          const cta = (picked.size === 1 ? "\n\nWant to see it in person? Reply and I'll set up a time." : "\n\nWant to see any of these in person? Reply and I'll set up a time.");
           const hs = [...picked.values()];
           const tc = (s) => String(s || "").replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
-          const one = (h) => { const beds = h.beds ? Math.round(h.beds) + "-bed " : ""; const type = String(h.type || "home").toLowerCase().replace(/_/g, " "); const p = beds + type + " at " + h.address + (h.area ? " in " + tc(h.area) : ""); return (/^[aeiou8]/i.test(p) ? "an " : "a ") + p; };
-          if (hs.length > 3) return hasBelow ? "" : `I've also added ${hs.length} homes below that fit what you've been looking at.`;
+          const one = (h) => { const beds = h.beds ? Math.round(h.beds) + "-bed " : ""; const rt = String(h.type || "home").toLowerCase().replace(/_/g, " "); const type = ({ mobile: "mobile home", manufactured: "mobile home", "single family": "house", detached: "house", apartment: "condo" })[rt] || rt; const p = beds + type + " at " + h.address + (h.area ? " in " + tc(h.area) : ""); return (/^[aeiou8]/i.test(p) ? "an " : "a ") + p; };
+          if (hs.length > 3) return hasBelow ? "" : `I've also added ${hs.length} homes below that fit what you've been looking at.` + cta;
           const list = hs.map(one);
-          const joined = list.length > 1 ? list.slice(0, -1).join(", ") + " and " + list[list.length - 1] : list[0];
-          return (hasBelow ? "Here's what I picked: " : (hs.length === 1 ? "I've also added a home below: " : "I've also added these below: ")) + joined + ".";
+          const joined = list.map((x) => "  \u2022 " + x.replace(/^an? /, "")).join("\n");
+          return (hasBelow ? "Here's what I picked:" : (hs.length === 1 ? "I've also added a home below:" : "I've also added these below:")) + "\n" + joined + cta;
         }
         function syncHomesLine() {
           const ta = $("cmp-text");
-          let v = ta.value.replace(/\s*(?:I've also added|Here's what I picked)[^\n]*\s*$/, "");
+          let v = ta.value.replace(/^[ \t]*(?:I've also added|Here's what I picked)[^\n]*(?:\n[ \t]*\u2022[^\n]*)*(?:\s*\nWant to see (?:any of these|it) in person\?[^\n]*)?(?:\n|$)/gm, "").replace(/\n{3,}/g, "\n\n");
           const hs = [...picked.values()];
           const named = hs.some((h) => h.address && v.toLowerCase().includes(String(h.address).toLowerCase()));
-          if (v.trim() && hs.length && !named) { const t = homesSentence(/\bbelow\b/i.test(v)); if (t) v = v.replace(/\s+$/, "") + "\n\n" + t; }
+          if (v.trim() && hs.length && !named) { const t = homesSentence(/\bbelow\b/i.test(v), v); if (t) v = v.replace(/\s+$/, "") + "\n\n" + t; }
           ta.value = v;
         }
         function renderPicked() {
