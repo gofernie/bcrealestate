@@ -93,6 +93,25 @@ export const POST: APIRoute = async ({ request }) => {
       siteId = uuidOrNull(requestedSite?.id);
     }
 
+    // site-id-city-fallback
+    if (!siteId) {
+      const sessionForSite = String(body.session_id || "").trim();
+      if (sessionForSite) {
+        const { data: s } = await supabase.from("intent_sessions").select("site_id").eq("session_id", sessionForSite).maybeSingle();
+        siteId = uuidOrNull(s?.site_id);
+      }
+    }
+    if (!siteId && body.city) {
+      const reqHost = String(host || "").replace(/^www\./, "");
+      const { data: cityRows } = await supabase.from("sites").select("id, domain").eq("city", String(body.city).trim());
+      const rows = cityRows || [];
+      const norm = (d: unknown) => String(d || "").toLowerCase().replace(/^www\./, "");
+      const match =
+        rows.find((r: any) => norm(r.domain) === reqHost) ||
+        rows.find((r: any) => norm(r.domain) === "bc.realestate") ||
+        (rows.length === 1 ? rows[0] : null);
+      siteId = uuidOrNull(match?.id);
+    }
     if (!siteId) {
       return new Response(
         JSON.stringify({
