@@ -30,9 +30,11 @@ Rules:
 - Use ONLY facts present in the data. Never invent listing details, prices, statistics, rates or dates.
 - Market numbers must be aggregates from market_data. Never mention an individual sold price.
 - Never describe tracking (e.g. "I saw you viewed 41 photos"). Refer to their interests naturally ("since you've been looking at townhomes in Saanich East").
+- Never refer to homes vaguely ("a few stand out", "those", "some of the homes"). Either name a home by its address from the data, or refer to attached homes as "the homes below". Every home mentioned must be identifiable.
 - If they asked a question, answer only from the data or say you'll find out. Never guess.
 - Don't repeat the subject or angle of emails_already_sent.
-- attached_homes are NEW homes the agent picked to send; the buyer has not reacted to them yet. They appear as cards under the message. If present, BOTH drafts must mention them: one leads with the homes, the other covers its main point first and then points to the homes below. Never offer to send homes when they are already attached (e.g. "I found a few homes similar to what you've been liking - they're below"). Do not list their addresses, and never describe them as homes the buyer already loved.
+- attached_homes are NEW homes the agent picked to send; the buyer has not reacted to them yet. They appear as cards under the message. If present, BOTH drafts must mention them: one leads with the homes, the other covers its main point first and then points to the homes below. Never offer to send homes when they are already attached (e.g. "I found a few homes similar to what you've been liking - they're below"). Introduce each one briefly in a natural phrase using only the details given, e.g. "a 3-bed house at 2131 Minto Avenue in Extension" (with more than 3, summarize instead), say they're below, and never describe them as homes the buyer already loved.
+- If attached_homes is empty, nothing is attached: never say homes are attached, included, added or below.
 - Format the body with line breaks: greeting on its own line, short paragraphs separated by a blank line, and no sign-off at the end.
 - label: 2-4 words naming the angle, e.g. "Light check-in".`;
 
@@ -103,6 +105,33 @@ function stripSignoff(body: string, first: string) {
   if (lines.length && closeRe.test(lines[lines.length - 1].trim())) lines.pop();
   while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
   return lines.join("\n");
+}
+// stripPhantomHomes: with no homes attached, drop sentences that claim homes are attached/below
+function stripPhantomHomes(body: string, n: number) {
+  if (n) return body;
+  const homeWord = /\b(homes?|listings?|places|properties|ones)\b/i;
+  const attachWord = /\b(below|attached|attaching|included)\b/i;
+  return body
+    .split(/\n{2,}/)
+    .map((para) => para.split(/(?<=[.!?])\s+/).filter((s) => !(homeWord.test(s) && attachWord.test(s))).join(" "))
+    .filter((p) => p.trim())
+    .join("\n\n");
+}
+// ensureHomesDescribed: name up to 3 attached homes from real listing data if the draft doesn't
+function describeHome(h: any) {
+  const tc = (x: unknown) => String(x || "").replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+  const beds = h?.beds ? `${Math.round(Number(h.beds))}-bed ` : "";
+  const type = String(h?.type || "home").toLowerCase().replace(/_/g, " ");
+  const p = `${beds}${type} at ${h?.address}${h?.area ? ` in ${tc(h.area)}` : ""}`;
+  return (/^[aeiou8]/i.test(p) ? "an " : "a ") + p;
+}
+function ensureHomesDescribed(homes: any[], body: string) {
+  if (!homes.length || homes.length > 3) return body;
+  const lower = body.toLowerCase();
+  if (homes.some((h) => h?.address && lower.includes(String(h.address).toLowerCase()))) return body;
+  const list = homes.map(describeHome);
+  const joined = list.length > 1 ? list.slice(0, -1).join(", ") + " and " + list[list.length - 1] : list[0];
+  return body.replace(/\s+$/, "") + "\n\nHere's what I picked: " + joined + ".";
 }
 export const POST: APIRoute = async ({ request }) => {
   try {
@@ -190,12 +219,13 @@ export const POST: APIRoute = async ({ request }) => {
     if (!parsed?.drafts?.length) return json({ error: "Couldn't get drafts this time. Try Suggest again." }, 502);
     const marketBase = await siteBase(supabase, sess?.site_id || data?.site_id);
     const marketUrl = city ? `${marketBase}/${city.toLowerCase().trim().replace(/\s+/g, "-")}/market-intelligence?lsid=${encodeURIComponent(sessionId)}` : "";
+    const attachedHomes = (Array.isArray(data?.homes) ? data.homes : []).slice(0, 6);
     const homesCount = Array.isArray(data?.homes) ? Math.min(data.homes.length, 6) : 0;
     const drafts = (parsed.drafts || []).slice(0, 2).map((d: any) => ({
       label: String(d.label || "Draft"),
       type: TYPES.includes(d.type) ? d.type : (type === "auto" ? null : type),
       subject: String(d.subject || ""),
-      body: ensureHomesLine(d.type === "market" ? ensureMarketLink(stripSignoff(String(d.body || ""), agent.agentName.split(/\s+/)[0]), marketUrl, prettyCity(city)) : stripSignoff(String(d.body || ""), agent.agentName.split(/\s+/)[0]), homesCount),
+      body: ensureHomesDescribed(attachedHomes, ensureHomesLine(d.type === "market" ? ensureMarketLink(stripPhantomHomes(stripSignoff(String(d.body || ""), agent.agentName.split(/\s+/)[0]), homesCount), marketUrl, prettyCity(city)) : stripPhantomHomes(stripSignoff(String(d.body || ""), agent.agentName.split(/\s+/)[0]), homesCount), homesCount)),
     }));
     return json({ drafts });
   } catch (e: any) {

@@ -22,7 +22,19 @@ function linkOrButton(u: string) {
   const city = m[1].replace(/-/g, " ").replace(/\b\w/g, (x) => x.toUpperCase());
   return `<br><a href="${u}" style="display:inline-block;margin-top:8px;background:#1f6b60;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;padding:11px 18px;border-radius:6px">See the ${city} market report &rarr;</a>`;
 }
-const toHtml = (t: string) => escH(t).replace(/https?:\/\/[^\s<]+/g, (u) => linkOrButton(u)).replace(/\n/g, "<br>");
+// linkAddresses: turn known listing addresses in the message into links (skips text already inside links)
+function linkAddresses(html: string, links: Array<[string, string]>) {
+  const sorted = [...links].filter(([a]) => a && a.length >= 6).sort((a, b) => b[0].length - a[0].length);
+  for (const [addr, url] of sorted) {
+    const re = new RegExp(escH(addr).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+    html = html
+      .split(/(<a\b[^>]*>[\s\S]*?<\/a>)/)
+      .map((part) => (part.startsWith("<a") ? part : part.replace(re, (m) => `<a href="${escH(url)}" style="color:#1f6b60">${m}</a>`)))
+      .join("");
+  }
+  return html;
+}
+const toHtml = (t: string, links: Array<[string, string]> = []) => linkAddresses(escH(t).replace(/https?:\/\/[^\s<]+/g, (u) => linkOrButton(u)), links).replace(/\n/g, "<br>");
 
 async function agentFor(siteId?: string | null) {
   let agentName = "", agentEmail = "", siteName = "", brokerage = "";
@@ -78,6 +90,25 @@ export const POST: APIRoute = async ({ request }) => {
     const sig = [agent.agentName, agent.brokerage || env("LEAD_BROKERAGE"), agent.agentEmail].filter(Boolean).join("\n");
     const optout = `You're receiving this because you contacted ${agent.siteName || "us"} about a home. Reply "unsubscribe" and I won't email you again.`;
 
+    // address-links: attached homes, the buyer's reacted homes, and their enquiry property
+    const addrLinks: Array<[string, string]> = [];
+    try {
+      const linkBase = await siteBase(supabase, siteId);
+      const cityForLinks = String((sess as any)?.city || "");
+      if (homeIds.length) {
+        const { data: hr } = await supabase.from("listing_rows").select("*").in("id", homeIds);
+        (hr || []).map(mapListing).forEach((h) => { if (h.address && h.mls) addrLinks.push([h.address, listingUrl(linkBase, cityForLinks || h.city, h.mls, sessionId)]); });
+      }
+      const { data: rx } = await supabase.from("intent_listing_reactions").select("address, mls_number, city").eq("session_id", sessionId).limit(100);
+      (rx || []).forEach((r: any) => { const cty = String(r.city || cityForLinks); if (r.address && r.mls_number && cty) addrLinks.push([String(r.address), listingUrl(linkBase, cty, String(r.mls_number), sessionId)]); });
+      const { data: lm } = await supabase.from("intent_leads").select("message").eq("session_id", sessionId).limit(10);
+      (lm || []).forEach((l: any) => {
+        const msg = String(l.message || "");
+        const addr = (msg.match(/Property:\s*(.+)/) || [])[1];
+        const mls = (msg.match(/[?&]mls=(\d+)/) || [])[1];
+        if (addr && mls && cityForLinks) addrLinks.push([addr.trim(), listingUrl(linkBase, cityForLinks, mls, sessionId)]);
+      });
+    } catch (e) { console.error("address links failed", e); }
     // session-homes-cards
     let homesText = "", homesHtml = "";
     if (homeIds.length) {
@@ -99,7 +130,7 @@ export const POST: APIRoute = async ({ request }) => {
       }
     }
     const plain = `${text}${homesText}\n\n--\n${sig}\n\n${optout}`;
-    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1a1a1a;max-width:560px">${toHtml(text)}${homesHtml}<br><br><div style="color:#555;font-size:13px">${toHtml(sig)}</div><div style="color:#999;font-size:12px;margin-top:16px">${toHtml(optout)}</div></div>`;
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1a1a1a;max-width:560px">${toHtml(text, addrLinks)}${homesHtml}<br><br><div style="color:#555;font-size:13px">${toHtml(sig)}</div><div style="color:#999;font-size:12px;margin-top:16px">${toHtml(optout)}</div></div>`;
 
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",

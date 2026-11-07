@@ -2332,7 +2332,7 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
 
         $("cmp-suggest").addEventListener("click", async () => {
           const btn = $("cmp-suggest"); $("cmp-drafts").classList.remove("stale"); btn.disabled = true; btn.innerHTML = 'Thinking<span class="cmp-dots"><i></i><i></i><i></i></span>';
-          $("cmp-drafts").innerHTML = '<div class="cmp-hint"><strong>Two drafts on the way.</strong> Pick one, tweak it if you like, and hit Send. Keep the loop going. Return the serve.</div>'; statusEl.textContent = "";
+          $("cmp-drafts").innerHTML = '<div class="cmp-hint"><strong>Two drafts on the way.</strong> Pick one, tweak it if you like, and hit Send. Keep the loop going. Return the serve.</div>'; statusEl.textContent = (type === "homes" && !picked.size) ? "Tip: tick a few similar homes first and the drafts will introduce them." : "";
           try {
             const r = await fetch("/admin/api/session-suggest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type, data: { ...D, homes: [...picked.values()] }, stats: stats() }) });
             const j = await r.json();
@@ -2371,13 +2371,21 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
         const picked = new Map();
         let homesLoaded = false;
         const fmtP = (p) => (p ? "$" + Math.round(p).toLocaleString("en-CA") : "");
+        function homesSentence(hasBelow) {
+          const hs = [...picked.values()];
+          const tc = (s) => String(s || "").replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+          const one = (h) => { const beds = h.beds ? Math.round(h.beds) + "-bed " : ""; const type = String(h.type || "home").toLowerCase().replace(/_/g, " "); const p = beds + type + " at " + h.address + (h.area ? " in " + tc(h.area) : ""); return (/^[aeiou8]/i.test(p) ? "an " : "a ") + p; };
+          if (hs.length > 3) return hasBelow ? "" : `I've also added ${hs.length} homes below that fit what you've been looking at.`;
+          const list = hs.map(one);
+          const joined = list.length > 1 ? list.slice(0, -1).join(", ") + " and " + list[list.length - 1] : list[0];
+          return (hasBelow ? "Here's what I picked: " : (hs.length === 1 ? "I've also added a home below: " : "I've also added these below: ")) + joined + ".";
+        }
         function syncHomesLine() {
           const ta = $("cmp-text");
-          let v = ta.value.replace(/\s*I've also added (?:a home|\d+ homes) below that fits? what you've been looking at\.\s*$/, "");
-          const n = picked.size;
-          if (v.trim() && n && !/\bbelow\b/i.test(v)) {
-            v = v.replace(/\s+$/, "") + "\n\n" + (n === 1 ? "I've also added a home below that fits what you've been looking at." : `I've also added ${n} homes below that fit what you've been looking at.`);
-          }
+          let v = ta.value.replace(/\s*(?:I've also added|Here's what I picked)[^\n]*\s*$/, "");
+          const hs = [...picked.values()];
+          const named = hs.some((h) => h.address && v.toLowerCase().includes(String(h.address).toLowerCase()));
+          if (v.trim() && hs.length && !named) { const t = homesSentence(/\bbelow\b/i.test(v)); if (t) v = v.replace(/\s+$/, "") + "\n\n" + t; }
           ta.value = v;
         }
         function renderPicked() {
