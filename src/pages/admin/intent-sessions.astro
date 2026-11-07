@@ -1,4 +1,4 @@
-﻿---
+---
 import { createClient } from "@supabase/supabase-js";
 import AdminTopNav from "../../components/AdminTopNav.astro";
 
@@ -217,6 +217,7 @@ function leadRequestLabel(lead) {
     return "Question";
   }
 
+  if (lead?.source === "saved_search") return "Saved search";
   return "Buyer enquiry";
 }
 
@@ -596,6 +597,14 @@ const { data: hiddenRows } = hiddenIds.length
   ? await supabase.from("listing_rows").select("*").in("mls_number", hiddenIds)
   : { data: [] };
 const hiddenInfo = new Map((hiddenRows || []).map((row) => [String(row.mls_number), row]));
+// session-enquiry-tidy
+const leadEsc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const leadClean = (m?: string | null, q?: string | null) => String(m || "").split("\n").filter((l) => !/^\s*Criteria:/.test(l) && !(q && /^\s*Question:/.test(l))).join("\n");
+const leadLinkify = (s: string) => leadEsc(s).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener" class="lead-link">${u}</a>`);
+// session-contact-bar
+const prettyCity = (c?: string | null) => String(c || "").replace(/-/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+const latestDate = (...ds: any[]) => { const t = ds.filter(Boolean).map((d) => +new Date(d)).filter((n) => !isNaN(n)); return t.length ? new Date(Math.max(...t)).toISOString() : null; };
+const telDigits = (p?: string | null) => String(p || "").replace(/[^\d+]/g, "");
 ---
 
 <html lang="en">
@@ -1310,6 +1319,18 @@ const hiddenInfo = new Map((hiddenRows || []).map((row) => [String(row.mls_numbe
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+    
+      /* session-enquiry-tidy */
+      :global(a.lead-link) { color:#1f6b60; text-decoration:underline; text-underline-offset:2px; overflow-wrap:anywhere; }
+      :global(a.lead-link:hover) { color:#13453e; }
+    
+      /* session-contact-bar */
+      .lead-dates { display:flex; flex-wrap:wrap; gap:16px; margin-top:8px; font-size:0.78rem; color:var(--muted); }
+      .next-step { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 32px; background:#f1f7f5; border-top:1px solid #d5e7e1; border-bottom:1px solid #d5e7e1; }
+      .next-step-label { font-size:0.7rem; font-weight:800; letter-spacing:0.1em; text-transform:uppercase; color:#1f6b60; margin-bottom:3px; }
+      .next-step-text { font-weight:600; color:var(--ink, #111); }
+      .next-step .btn { flex-shrink:0; }
+      @media (max-width: 700px) { .next-step { flex-direction:column; align-items:flex-start; padding:14px 20px; } }
     </style>
   </head>
 
@@ -1418,8 +1439,8 @@ const pageSlug =
             const fillLeft = loveRange && maxAll > minAll ? ((loveRange.min - minAll) / (maxAll - minAll)) * 100 : 20;
             const fillRight = loveRange && maxAll > minAll ? ((loveRange.max - minAll) / (maxAll - minAll)) * 100 : 75;
             const score = Math.min(92, readiness + (session.lead ? 10 : 0) + (loves.length >= 3 ? 8 : 0));
-            const hasShowing = session.lead?.message?.toLowerCase().includes("showing");
-            const hasQuestion = session.lead?.message?.toLowerCase().includes("question");
+            const hasShowing = /showing/i.test(String(session.lead?.source || "")) || !!session.lead?.message?.toLowerCase().includes("showing");
+            const hasQuestion = /question/i.test(String(session.lead?.source || "")) || !!session.lead?.message?.toLowerCase().includes("question");
             const leadProperty =
               leadMessageLine(session.lead, "Property") ||
               String(session.lead?.address || "").trim();
@@ -1466,22 +1487,21 @@ const pageSlug =
                 <div class="detail-topbar">
                   <div class="detail-topbar-left">Lead Report</div>
                  <div class="detail-topbar-actions">
-                    {session.lead?.email && (
-                      <a class="btn btn-primary" href={`mailto:${session.lead.email}?subject=Showing request&body=Hi ${session.lead.name || "there"}, I'd love to arrange a showing for one of the homes you've been looking at.`}>
-                        Book a showing
-                      </a>
-                    )}
-                    {session.lead?.email && (
-                      <a class="btn" href={`mailto:${session.lead.email}?subject=Your home search&body=Hi ${session.lead.name || "there"}, I noticed you've been browsing homes in ${city} and wanted to reach out.`}>
-                        Ask a question
-                      </a>
-                    )}
-                    {!session.lead?.email && (
+                    {session.lead?.phone && <a class="btn" href={`sms:${telDigits(session.lead.phone)}`}>Text</a>}
+                    {session.lead?.phone && <a class="btn" href={`tel:${telDigits(session.lead.phone)}`}>Call</a>}
+                    {session.lead?.email && <a class="btn btn-primary" href={`mailto:${session.lead.email}?subject=${encodeURIComponent("Your home search in " + prettyCity(city))}`} data-compose="1">Email</a>}
+                    {!session.lead?.email && !session.lead?.phone && (
                       <span style="font-size:0.8rem;color:var(--muted);">No contact info captured yet</span>
                     )}
                   </div>
                 </div>
-
+                {/* composer-data */}
+                <script type="application/json" id="composer-data" is:inline set:html={JSON.stringify({
+                  session_id: session.session_id, site_id: session.site_id, lead_id: session.lead?.id || null,
+                  to: session.lead?.email || "", name: session.lead?.name || "", city, slug: session.slug,
+                  source: session.lead?.source || "", question: session.lead?.question || "", message: session.lead?.message || "",
+                  next: getNextMove(session.reactions), reactions: (session.reactions || []).slice(0, 40),
+                }).replace(/</g, "\\u003c")}></script>
                 {/* Lead header */}
                 <div class="lead-header">
                   <div class="lead-header-eyebrow">Lead Report</div>
@@ -1500,20 +1520,27 @@ const pageSlug =
                       <div class="lead-contact">
                         {session.lead?.email && <span>✉ {session.lead.email}</span>}
                         {session.lead?.phone && <span>📞 {session.lead.phone}</span>}
-                        <span>📍 {city.charAt(0).toUpperCase() + city.slice(1)}, BC</span>
+                        <span>📍 {prettyCity(city)}, BC</span>
+                      </div>
+                      <div class="lead-dates">
+                        {session.lead && <span>Captured {fmtDate(session.lead.created_at)}</span>}
+                        <span>Last active {fmtDate(latestDate(session.last_activity, session.lead?.created_at) || session.last_activity)}</span>
                       </div>
                     </div>
-                    <div class="lead-meta-right">
-                      {session.lead && <>
-                        <div>Lead captured</div>
-                        <strong>{fmtDate(session.lead.created_at)}</strong>
-                      </>}
-                      <div style="margin-top:8px;">Last active</div>
-                      <strong>{fmtDate(session.last_activity)}</strong>
-                    </div>
+                    
                   </div>
                 </div>
 
+                {/* Suggested next step */}
+                <div class="next-step">
+                  <div>
+                    <div class="next-step-label">Suggested next step</div>
+                    <div class="next-step-text">{getNextMove(session.reactions)}</div>
+                  </div>
+                  {(session.lead?.email || session.lead?.phone) && (
+                    <a class="btn btn-primary" href={session.lead?.email ? `mailto:${session.lead.email}?subject=${encodeURIComponent("Your home search in " + prettyCity(city))}` : `sms:${telDigits(session.lead?.phone)}`} data-compose="1">Follow up</a>
+                  )}
+                </div>
                 {/* Stats bar */}
                 <div class="stats-bar">
                   <div class="stat-cell">
@@ -1602,8 +1629,8 @@ const pageSlug =
                         )}
 
                         {session.lead.message && (
-                          <div style="margin-top:12px;white-space:pre-line;line-height:1.6;color:var(--muted);">
-                            {session.lead.message}
+                          <div style="margin-top:12px;white-space:pre-line;line-height:1.6;color:var(--muted);overflow-wrap:anywhere;word-break:break-word;">
+                            <Fragment set:html={leadLinkify(leadClean(session.lead.message, session.lead.question))} />
                           </div>
                         )}
                       </div>
@@ -1747,9 +1774,9 @@ const pageSlug =
                         {[
                           { label: "Session started", date: fmtDateShort(session.first_activity), done: true },
                           { label: `Viewed ${Math.min(session.reactions.length, 10)} homes`, date: fmtDateShort(session.first_activity), done: session.reactions.length >= 5 },
-                          { label: "Answered questions", date: session.lead ? fmtDateShort(session.lead.created_at) : "—", done: Boolean(session.lead) },
+                          { label: "Shared criteria", date: session.lead ? fmtDateShort(session.lead.created_at) : "—", done: Boolean(session.lead) },
                           { label: "Requested showing", date: hasShowing ? fmtDateShort(session.lead?.created_at) : "—", done: hasShowing, active: !hasShowing && Boolean(session.lead) },
-                          { label: "Last active", date: fmtDateShort(session.last_activity), done: true, active: false },
+                          { label: "Last active", date: fmtDateShort(latestDate(session.last_activity, session.lead?.created_at) || session.last_activity), done: true, active: false },
                         ].map((step) => (
                           <div class="timeline-step">
                             <div class={`timeline-dot${step.done ? " done" : step.active ? " active" : ""}`}>
@@ -1919,13 +1946,7 @@ const pageSlug =
                       {!loves.length && <div style="font-size:0.82rem;color:var(--muted);">No loved homes yet.</div>}
                     </div>
 
-                  {/* Next move */}
-                    <div class="next-move-card">
-                      <strong>Suggested Next Move</strong>
-                      {getNextMove(session.reactions)}
-                    </div>
-
-                    {/* Assign agent */}
+                  {/* Assign agent */}
                     <div class="sidebar-card">
                       <div class="sidebar-card-label">Assigned Agent</div>
                       <select
@@ -2173,6 +2194,147 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
     });
   });
 </script>
+    <div id="cmp" class="cmp" hidden>
+      <div class="cmp-backdrop" data-close></div>
+      <aside class="cmp-panel" role="dialog" aria-label="Email buyer">
+        <header class="cmp-head"><strong>Email buyer</strong><button type="button" class="cmp-x" data-close aria-label="Close">&times;</button></header>
+        <div class="cmp-body">
+          <label class="cmp-field"><span>To</span><input id="cmp-to" type="email" readonly></label>
+          <div class="cmp-chips" id="cmp-chips">
+            <button type="button" data-type="auto" class="on">Auto</button>
+            <button type="button" data-type="homes">Homes</button>
+            <button type="button" data-type="financing">Financing</button>
+            <button type="button" data-type="market">Market</button>
+            <button type="button" data-type="process">Process</button>
+            <button type="button" data-type="checkin">Check-in</button>
+          </div>
+          <button type="button" id="cmp-suggest" class="cmp-suggest">&#10022; Suggest a reply</button>
+          <div id="cmp-drafts" class="cmp-drafts"></div>
+          <label class="cmp-field"><span>Subject</span><input id="cmp-subject" type="text"></label>
+          <label class="cmp-field"><span>Message</span><textarea id="cmp-text" rows="12"></textarea></label>
+          <p class="cmp-note">Your signature and an unsubscribe line are added automatically. Replies go to your email.</p>
+          <div id="cmp-history"></div>
+        </div>
+        <footer class="cmp-foot"><span id="cmp-status"></span><button type="button" class="btn btn-primary" id="cmp-send">Send</button></footer>
+      </aside>
+    </div>
+
+    <style is:global>
+      .cmp[hidden] { display:none; }
+      .cmp { position:fixed; inset:0; z-index:1000; }
+      #cmp .cmp-backdrop { position:absolute; inset:0; background:rgba(17,17,17,.35); }
+      #cmp .cmp-panel { position:absolute; top:0; right:0; bottom:0; width:min(560px,100%); background:#fff; display:flex; flex-direction:column; box-shadow:-12px 0 32px rgba(0,0,0,.12); }
+      #cmp .cmp-head { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #eee; font-size:1rem; }
+      #cmp .cmp-x { border:0; background:none; font-size:1.5rem; line-height:1; cursor:pointer; color:#666; }
+      #cmp .cmp-body { flex:1; overflow:auto; padding:16px 20px; display:flex; flex-direction:column; gap:12px; }
+      #cmp .cmp-field { display:flex; flex-direction:column; gap:4px; font-size:.72rem; font-weight:700; color:#666; text-transform:uppercase; letter-spacing:.06em; }
+      #cmp .cmp-field input, .cmp-field textarea { font:inherit; font-size:.95rem; font-weight:400; text-transform:none; letter-spacing:0; color:#111; border:1px solid #ddd; border-radius:6px; padding:9px 11px; resize:vertical; }
+      #cmp .cmp-field input[readonly] { background:#f7f7f5; color:#555; }
+      #cmp .cmp-chips { display:flex; flex-wrap:wrap; gap:6px; }
+      #cmp .cmp-chips button { border:1px solid #ddd; background:#fff; border-radius:6px; padding:5px 11px; font-size:.8rem; font-weight:600; cursor:pointer; color:#333; }
+      #cmp .cmp-chips button.on { background:#111; color:#fff; border-color:#111; }
+      #cmp .cmp-suggest { align-self:flex-start; border:1px solid #c9e6e1; background:#e6f3f1; color:#1f6b60; border-radius:6px; padding:8px 14px; font-weight:700; font-size:.85rem; cursor:pointer; }
+      #cmp .cmp-suggest:disabled { opacity:.6; cursor:wait; }
+      #cmp .cmp-drafts { display:grid; gap:8px; }
+      #cmp .cmp-draft { text-align:left; border:1px solid #e3e3e3; background:#fafaf8; border-radius:8px; padding:10px 12px; cursor:pointer; display:flex; flex-direction:column; gap:4px; font:inherit; }
+      #cmp .cmp-draft.on, .cmp-draft:hover { border-color:#1f6b60; background:#f1f7f5; }
+      #cmp .cmp-draft-label { font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#1f6b60; }
+      #cmp .cmp-draft-sub { font-weight:700; font-size:.88rem; color:#111; }
+      #cmp .cmp-draft-body { font-size:.82rem; color:#555; white-space:pre-line; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; }
+      #cmp .cmp-note { font-size:.75rem; color:#888; margin:0; }
+      #cmp .cmp-hist-label { font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#888; margin-bottom:6px; }
+      #cmp .cmp-hist-row { display:grid; grid-template-columns:64px 84px 1fr; gap:8px; font-size:.8rem; color:#444; padding:5px 0; border-top:1px solid #f0f0f0; }
+      #cmp .cmp-foot { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px 20px; border-top:1px solid #eee; }
+      #cmp-status { font-size:.82rem; color:#666; }
+      .sent-log { padding:12px 32px; background:#fff; border-bottom:1px solid #eee; }
+    </style>
+
+    <script is:inline>
+      (() => {
+        const dataEl = document.getElementById("composer-data");
+        const cmp = document.getElementById("cmp");
+        if (!dataEl || !cmp) return;
+        let D; try { D = JSON.parse(dataEl.textContent || "{}"); } catch { return; }
+        const $ = (id) => document.getElementById(id);
+        const statusEl = $("cmp-status");
+        let type = "auto", msgType = null, drafts = [];
+        const pretty = (c) => String(c || "").replace(/-/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+        const esc = (s) => String(s || "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+        const stats = () => { const o = {}; document.querySelectorAll(".stat-cell").forEach((c) => { const l = c.querySelector(".stat-label")?.textContent?.trim(); const n = c.querySelector(".stat-num")?.textContent?.trim(); if (l) o[l] = n; }); return o; };
+
+        async function loadHistory() {
+          try {
+            const r = await fetch("/admin/api/session-send?session_id=" + encodeURIComponent(D.session_id));
+            const j = await r.json();
+            const rows = j.messages || [];
+            if (!rows.length) return;
+            const html = '<div class="cmp-hist-label">Sent to this buyer</div>' + rows.map((m) =>
+              '<div class="cmp-hist-row"><span>' + new Date(m.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
+              "</span><span>" + esc(m.message_type || "email") + "</span><span>" + esc(m.subject) + "</span></div>").join("");
+            $("cmp-history").innerHTML = html;
+            const strip = document.querySelector(".next-step");
+            if (strip) { let box = $("sent-log"); if (!box) { box = document.createElement("div"); box.id = "sent-log"; box.className = "sent-log"; strip.after(box); } box.innerHTML = html; }
+          } catch {}
+        }
+
+        function open() {
+          $("cmp-to").value = D.to || "";
+          if (!$("cmp-subject").value) $("cmp-subject").value = "Your home search in " + pretty(D.city);
+          statusEl.textContent = "";
+          cmp.hidden = false; document.body.style.overflow = "hidden";
+        }
+        function close() { cmp.hidden = true; document.body.style.overflow = ""; }
+
+        document.querySelectorAll("[data-compose]").forEach((a) => a.addEventListener("click", (e) => { if (!D.to) return; e.preventDefault(); open(); }));
+        cmp.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", close));
+        document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !cmp.hidden) close(); });
+
+        $("cmp-chips").addEventListener("click", (e) => {
+          const b = e.target.closest("button[data-type]"); if (!b) return;
+          type = b.dataset.type;
+          $("cmp-chips").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+        });
+
+        $("cmp-suggest").addEventListener("click", async () => {
+          const btn = $("cmp-suggest"); btn.disabled = true; btn.textContent = "Thinking...";
+          $("cmp-drafts").innerHTML = ""; statusEl.textContent = "";
+          try {
+            const r = await fetch("/admin/api/session-suggest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type, data: D, stats: stats() }) });
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || "Suggest failed");
+            drafts = j.drafts || [];
+            $("cmp-drafts").innerHTML = drafts.map((d, i) =>
+              '<button type="button" class="cmp-draft" data-i="' + i + '"><span class="cmp-draft-label">' + esc(d.label) +
+              '</span><span class="cmp-draft-sub">' + esc(d.subject) + '</span><span class="cmp-draft-body">' + esc(d.body) + "</span></button>").join("");
+            $("cmp-drafts").querySelectorAll(".cmp-draft").forEach((el) => el.addEventListener("click", () => {
+              const d = drafts[+el.dataset.i];
+              $("cmp-subject").value = d.subject || ""; $("cmp-text").value = d.body || "";
+              msgType = d.type || (type === "auto" ? null : type);
+              $("cmp-drafts").querySelectorAll(".cmp-draft").forEach((x) => x.classList.toggle("on", x === el));
+            }));
+          } catch (err) { statusEl.textContent = err.message; }
+          btn.disabled = false; btn.innerHTML = "&#10022; Suggest a reply";
+        });
+
+        $("cmp-send").addEventListener("click", async () => {
+          const subject = $("cmp-subject").value.trim(), body = $("cmp-text").value.trim();
+          if (!subject || !body) { statusEl.textContent = "Add a subject and message."; return; }
+          const btn = $("cmp-send"); btn.disabled = true; statusEl.textContent = "Sending...";
+          try {
+            const r = await fetch("/admin/api/session-send", { method: "POST", headers: { "content-type": "application/json" },
+              body: JSON.stringify({ session_id: D.session_id, to: D.to, subject, body, message_type: msgType || (type === "auto" ? null : type) }) });
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || "Send failed");
+            statusEl.textContent = "Sent.";
+            $("cmp-text").value = ""; $("cmp-drafts").innerHTML = ""; msgType = null;
+            await loadHistory(); setTimeout(close, 700);
+          } catch (err) { statusEl.textContent = err.message; }
+          btn.disabled = false;
+        });
+
+        loadHistory();
+      })();
+    </script>
     <script src="/look-search.js" defer is:inline></script>
 </body>
 </html>
