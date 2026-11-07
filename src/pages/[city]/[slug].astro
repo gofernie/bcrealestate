@@ -12692,7 +12692,7 @@ function __rawAddr5(v) {
           b.addEventListener("click", () => {
             const u = new URL(location.href);
             const cur = u.searchParams.getAll("area");
-            if (!cur.length) selected.forEach((v) => u.searchParams.append("area", v));
+            if (!cur.length) { /* nb-area-page-nav-v1: area pages carry the area in the path, so open the neighbour's own page with the same filters */ const segs = u.pathname.split("/").filter(Boolean); if (segs.length >= 2) { segs[segs.length - 1] = h.value.replace(/\s+/g, "-"); u.pathname = "/" + segs.join("/"); u.searchParams.delete("areaBufferKm"); u.hash = ""; location.href = u.toString(); return; } selected.forEach((v) => u.searchParams.append("area", v)); }
             if (!u.searchParams.getAll("area").includes(h.value)) u.searchParams.append("area", h.value);
             location.href = u.toString();
           });
@@ -18199,7 +18199,46 @@ html body .area-hero-visual .hero-step-details__price { white-space: nowrap; }
   window.addEventListener("resize", () => { if (findMenu()) place(); });
 })();
 </script>
-<script is:inline>/* area-search-actions-v1 */(() => { const place = () => { const row = document.querySelector(".filter-save-row"); const save = document.querySelector(".slug-save-search [data-slug-save-open]"); const native = document.querySelector(".sort-filter-select"); const dropdown = document.querySelector(".filter-dd--sort"); const typePills = document.querySelector(".property-type-pills"); if (row && save && native && dropdown) { const oldPill = native.closest(".filter-sort-pill"); if (oldPill instanceof HTMLElement) oldPill.style.display = "none"; native.style.display = "none"; row.insertBefore(dropdown, save); dropdown.style.cssText = "position:relative;display:inline-flex;min-width:0;height:40px;align-self:auto;"; const trigger = dropdown.querySelector(".filter-dd__trigger"); const label = dropdown.querySelector(".filter-dd__label"); const value = dropdown.querySelector(".filter-dd__value"); if (trigger instanceof HTMLElement) trigger.style.cssText = "width:auto;min-height:40px;padding:0 30px 0 13px;border:1px solid #d8dfdd;border-radius:999px;background:#fff;color:#355c64;font:inherit;font-size:.85rem;font-weight:700;"; if (label instanceof HTMLElement) { label.style.cssText = "display:inline;font:inherit;font-size:.85rem;font-weight:800;"; label.textContent = "Sort"; } if (value instanceof HTMLElement) value.style.cssText = "display:inline;margin:0 0 0 6px;font:inherit;font-size:.85rem;font-weight:600;color:#355c64;"; } if (row && typePills instanceof HTMLElement) { typePills.style.setProperty("display", "flex", "important"); typePills.style.setProperty("margin", "10px 0 12px", "important"); row.insertAdjacentElement("afterend", typePills); } }; if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", place, { once: true }); } else { place(); } })();</script>
+<script is:inline>/* price-pill-sync-v1: show the URL price on the price pill when the dropdown has no matching option */(() => {
+  const p = new URLSearchParams(location.search).get("price");
+  if (!p || p === "all") return;
+  const fmt = (n) => { const v = Number(n); return v >= 1000 ? (v / 1000).toFixed(1).replace(/\.0$/, "") + "M" : v + "k"; };
+  const text = p.startsWith("under-") ? "Under " + fmt(p.slice(6))
+    : p.startsWith("over-") ? "Over " + fmt(p.slice(5))
+    : /^\d+-plus$/.test(p) ? fmt(p.split("-")[0]) + "+"
+    : /^\d+-\d+$/.test(p) ? p.split("-").map(fmt).join("\u2013")
+    : "";
+  if (!text) return;
+  let tries = 0;
+  const apply = () => {
+    const v = document.querySelector(".filter-dd--price .filter-dd__value");
+    if (v) {
+      if (!/any price/i.test(v.textContent || "")) return;
+      v.textContent = text;
+      /* price-pill-style-v1: match the other active pills */
+      const ref = [...document.querySelectorAll(".filter-dd__value")].find((e) => {
+        if (e === v) return false;
+        const bg = getComputedStyle(e).backgroundColor;
+        return bg && bg !== "transparent" && !/rgba\(\s*0,\s*0,\s*0,\s*0\s*\)/.test(bg);
+      });
+      const props = ["background-color", "color", "border-radius", "padding", "font-weight", "font-size", "line-height", "display"];
+      if (ref) {
+        const cs = getComputedStyle(ref);
+        props.forEach((p) => v.style.setProperty(p, cs.getPropertyValue(p), "important"));
+      } else {
+        v.style.setProperty("background-color", "#e5eaee", "important");
+        v.style.setProperty("color", "#2d4a5a", "important");
+        v.style.setProperty("padding", "2px 8px", "important");
+        v.style.setProperty("border-radius", "6px", "important");
+        v.style.setProperty("font-weight", "700", "important");
+        v.style.setProperty("display", "inline-block", "important");
+      }
+      return;
+    }
+    if (++tries < 40) setTimeout(apply, 150);
+  };
+  apply();
+})();</script><script is:inline>/* area-search-actions-v1 */(() => { const place = () => { const row = document.querySelector(".filter-save-row"); const save = document.querySelector(".slug-save-search [data-slug-save-open]"); const native = document.querySelector(".sort-filter-select"); const dropdown = document.querySelector(".filter-dd--sort"); const typePills = document.querySelector(".property-type-pills"); if (row && save && native && dropdown) { const oldPill = native.closest(".filter-sort-pill"); if (oldPill instanceof HTMLElement) oldPill.style.display = "none"; native.style.display = "none"; row.insertBefore(dropdown, save); dropdown.style.cssText = "position:relative;display:inline-flex;min-width:0;height:40px;align-self:auto;"; const trigger = dropdown.querySelector(".filter-dd__trigger"); const label = dropdown.querySelector(".filter-dd__label"); const value = dropdown.querySelector(".filter-dd__value"); if (trigger instanceof HTMLElement) trigger.style.cssText = "width:auto;min-height:40px;padding:0 30px 0 13px;border:1px solid #d8dfdd;border-radius:999px;background:#fff;color:#355c64;font:inherit;font-size:.85rem;font-weight:700;"; if (label instanceof HTMLElement) { label.style.cssText = "display:inline;font:inherit;font-size:.85rem;font-weight:800;"; label.textContent = "Sort"; } if (value instanceof HTMLElement) value.style.cssText = "display:inline;margin:0 0 0 6px;font:inherit;font-size:.85rem;font-weight:600;color:#355c64;"; } if (row && typePills instanceof HTMLElement) { typePills.style.setProperty("display", "flex", "important"); typePills.style.setProperty("margin", "10px 0 12px", "important"); row.insertAdjacentElement("afterend", typePills); } }; if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", place, { once: true }); } else { place(); } })();</script>
 <script is:inline>
   /* final-left-search-actions-v2 */
   (() => {
