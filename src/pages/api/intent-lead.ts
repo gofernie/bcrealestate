@@ -138,8 +138,25 @@ const message = [
         status: 400,
       });
     }
+    // site-id-city-fallback
+    if (!siteId && body.city) {
+      const reqHost = String(request.headers.get("x-forwarded-host") || request.headers.get("host") || "")
+        .split(",")[0].trim().toLowerCase().replace(/:\d+$/, "").replace(/^www\./, "");
+      const { data: cityRows } = await supabase
+        .from("sites")
+        .select("id, domain")
+        .eq("city", String(body.city).trim());
+      const rows = cityRows || [];
+      const norm = (d: unknown) => String(d || "").toLowerCase().replace(/^www\./, "");
+      const match =
+        rows.find((r) => norm(r.domain) === reqHost) ||
+        rows.find((r) => norm(r.domain) === "bc.realestate") ||
+        (rows.length === 1 ? rows[0] : null);
+      siteId = match?.id || null;
+    }
+    const effectiveSessionId = sessionId || crypto.randomUUID();
     const lead = {
-      session_id: sessionId,
+      session_id: effectiveSessionId,
       intent_page_id: intentPageId,
       site_id: siteId,
       city: body.city || "",
@@ -172,12 +189,12 @@ const message = [
     }
 
     // upsert-intent-session-for-lead
-    if (sessionId) {
+    if (effectiveSessionId) {
       const { error: sessionError } = await supabase
         .from("intent_sessions")
         .upsert(
           {
-            session_id: sessionId,
+            session_id: effectiveSessionId,
             intent_page_id: intentPageId,
             site_id: siteId,
             city: body.city || "",
