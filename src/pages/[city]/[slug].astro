@@ -1,4 +1,5 @@
 ---
+import { cardArea } from "../../lib/cardArea";
 import { polygonRings, insidePolygon } from "../../lib/intentCounts";
 import { createClient } from "@supabase/supabase-js";
 import { cachedFetch } from "../../lib/cachedFetch";
@@ -11435,7 +11436,7 @@ Approximate driving times from{" "}
 {pageKind !== "area" && areaFilterOptions.length > 0 && (
   <select
     class="area-filter-select"
-    aria-label="Filter by area"
+    multiple    aria-label="Filter by area"
   >
     <option value="all" selected={filterAreas.length === 0}>
       Any area
@@ -11451,6 +11452,83 @@ Approximate driving times from{" "}
     ))}
   </select>
 )}
+<script is:inline>
+/* area-group-v1: with 2+ areas selected, group result cards under area headers in the order the areas were added */
+(() => {
+  const norm = (s) => String(s || "").toLowerCase().replace(/\u00b7/g, "").replace(/^(feru|fe|se|sw|pq|na|ob)\s*-\s*/, "").replace(/-(neighbourhood|neighborhood|area)$/, "").replace(/[^a-z]+/g, " ").trim();
+  const wanted = () => Array.from(new Set(new URLSearchParams(location.search).getAll("area").flatMap((v) => v.split(",")).map(norm).filter((v) => v && v !== "all")));
+  const findGrid = () => {
+    const kids = new Map();
+    document.querySelectorAll(".card-city").forEach((c) => {
+      let a = c;
+      for (let d = 0; d < 8 && a && a.parentElement; d++, a = a.parentElement) {
+        const p = a.parentElement;
+        if (!kids.has(p)) kids.set(p, new Set());
+        kids.get(p).add(a);
+      }
+    });
+    let best = null, n = 1;
+    kids.forEach((set, p) => { if (set.size > n) { best = p; n = set.size; } });
+    return best;
+  };
+  const isHidden = (el) => el.hidden || getComputedStyle(el).display === "none";
+  let busy = false, obs = null, raf = 0;
+  const run = () => {
+    if (busy) return;
+    const grid = findGrid();
+    if (!grid) return;
+    const want = wanted();
+    const old = Array.from(grid.querySelectorAll(":scope > .area-group-head"));
+    if (want.length < 2) { if (old.length) { busy = true; old.forEach((h) => h.remove()); busy = false; } return; }
+    const cards = Array.from(grid.children).filter((el) => !el.classList.contains("area-group-head") && el.querySelector(".card-city"));
+    if (!cards.length) return;
+    const groups = new Map(want.map((w) => [w, []]));
+    const other = [], labels = {};
+    cards.forEach((card) => {
+      const raw = (card.querySelector(".card-area")?.textContent || "").replace(/\u00b7/g, "").trim();
+      const k = norm(raw);
+      if (groups.has(k)) { groups.get(k).push(card); if (raw) labels[k] = raw; } else other.push(card);
+    });
+    const heads = new Map(old.map((h) => [h.dataset.k, h]));
+    const head = (k, label, n) => {
+      let h = heads.get(k);
+      if (!h) {
+        h = document.createElement("div");
+        h.className = "area-group-head"; h.dataset.k = k;
+        h.style.cssText = "grid-column:1/-1;flex:0 0 100%;width:100%;margin:18px 0 2px;padding-bottom:8px;border-bottom:1px solid rgba(0,0,0,.12);font-weight:800;font-size:1.05rem;";
+      }
+      const txt = label + " \u00b7 " + n + (n === 1 ? " home" : " homes");
+      if (h.textContent !== txt) h.textContent = txt;
+      heads.delete(k);
+      return h;
+    };
+    const vis = (arr) => arr.filter((c) => !isHidden(c)).length;
+    const seq = [];
+    groups.forEach((arr, k) => {
+      const n = vis(arr);
+      if (n) seq.push(head(k, labels[k] || k.replace(/\b\w/g, (c) => c.toUpperCase()), n));
+      seq.push(...arr);
+    });
+    if (other.length) { const n = vis(other); if (n) seq.push(head("__other", "Other areas", n)); seq.push(...other); }
+    const cur = Array.from(grid.children).filter((el) => el.classList.contains("area-group-head") || cards.includes(el));
+    if (!heads.size && cur.length === seq.length && cur.every((el, i) => el === seq[i])) return;
+    busy = true; if (obs) obs.disconnect();
+    const mark = document.createComment("ag");
+    grid.insertBefore(mark, cards[0]);
+    const frag = document.createDocumentFragment();
+    seq.forEach((el) => frag.appendChild(el));
+    grid.replaceChild(frag, mark);
+    heads.forEach((h) => h.remove());
+    busy = false; watch();
+  };
+  const watch = () => {
+    if (!obs) obs = new MutationObserver(() => { if (busy) return; cancelAnimationFrame(raf); raf = requestAnimationFrame(run); });
+    obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "style"] });
+  };
+  const start = () => { run(); watch(); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
+})();
+</script>
   <select class="price-filter-select" aria-label="Filter by price" data-page-min={page.price_min ?? ""} data-page-max={page.price_max ?? ""}>
     <option value="all" selected={!filterPrice || filterPrice === "all"}>
       Any Price
@@ -12077,8 +12155,8 @@ data-type={String(listing?.normalized_type || listing?.property_type || page.pro
     {formatAddress(listing.address)}
   </a>
 </div>
-  <div class="card-city">
-    {city.charAt(0).toUpperCase() + city.slice(1)}, BC
+  <div class="card-city">{cardArea(listing) && <span class="card-area">{cardArea(listing) + " \u00b7 "}</span>}
+    {city.charAt(0).toUpperCase() + city.slice(1)}
   </div>
   <div class="meta listing-meta">
   <span>{listing.beds || "-"} bd</span>
@@ -12560,7 +12638,7 @@ function __rawAddr5(v) {
         <div class="card-body">
           <div class="price">${formatPriceClient(listing.price)}</div>
           <div class="address">${fmtAddr(listing.address)}</div>
-          <div class="card-city">${cityLabel}, BC</div>
+          <div class="card-city">${(() => { const a = String(listing.normalized_area || listing.area || listing.neighborhood || listing.addressObj?.neighborhood || listing.address?.neighborhood || listing.details?.area || "").replace(/^(feru|fe|se|sw|pq|na|ob)\s*-\s*/i, "").replace(/-(neighbourhood|neighborhood|area)$/i, "").replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim(); if (!a || a.toLowerCase() === "unknown" || a.toLowerCase() === String(cityLabel).toLowerCase()) return ""; const n = a.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); return `<span class="card-area">${n} \u00b7 </span>`; })()}${cityLabel}</div>
           <div class="meta listing-meta"><span>${listing.beds || "-"} bd</span><span>${listing.baths || "-"} ba</span>${listing.sqft ? `<span>${Number(listing.sqft).toLocaleString()} sq ft</span>` : ""}${formatLotSizeClient(listing) ? `<span>Lot ${formatLotSizeClient(listing)}</span>` : ""}</div>
                   ${brokerageHtml}
         </div>
