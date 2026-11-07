@@ -15,7 +15,14 @@ const json = (body: unknown, status = 200) =>
 
 const TYPES = ["homes", "financing", "market", "process", "checkin"];
 const escH = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const toHtml = (t: string) => escH(t).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}">${u}</a>`).replace(/\n/g, "<br>");
+// linkOrButton: market intel links render as a button, other links as text links
+function linkOrButton(u: string) {
+  const m = u.match(/\/([a-z0-9-]+)\/market-intelligence/i);
+  if (!m) return `<a href="${u}">${u}</a>`;
+  const city = m[1].replace(/-/g, " ").replace(/\b\w/g, (x) => x.toUpperCase());
+  return `<br><a href="${u}" style="display:inline-block;margin-top:8px;background:#1f6b60;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;padding:11px 18px;border-radius:6px">See the ${city} market report &rarr;</a>`;
+}
+const toHtml = (t: string) => escH(t).replace(/https?:\/\/[^\s<]+/g, (u) => linkOrButton(u)).replace(/\n/g, "<br>");
 
 async function agentFor(siteId?: string | null) {
   let agentName = "", agentEmail = "", siteName = "", brokerage = "";

@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { createClient } from "@supabase/supabase-js";
+import { siteBase } from "../../../lib/sessionHomes";
 
 export const prerender = false;
 
@@ -25,14 +26,14 @@ const SYSTEM = `You write short follow-up emails from a BC real estate agent to 
 Return ONLY JSON: {"drafts":[{"label":"...","type":"homes|financing|market|process|checkin","subject":"...","body":"..."}]} with exactly 2 drafts.
 Rules:
 - Plain, warm, human. 50-120 words. No emojis, no hype, no pushy sales language.
-- Greet by first name if known. End with the agent's first name only; a signature is added separately.
+- Greet by first name if known. Don't sign off with a name or a closing; the agent's signature is added automatically.
 - Use ONLY facts present in the data. Never invent listing details, prices, statistics, rates or dates.
 - Market numbers must be aggregates from market_data. Never mention an individual sold price.
 - Never describe tracking (e.g. "I saw you viewed 41 photos"). Refer to their interests naturally ("since you've been looking at townhomes in Saanich East").
 - If they asked a question, answer only from the data or say you'll find out. Never guess.
 - Don't repeat the subject or angle of emails_already_sent.
 - attached_homes are NEW homes the agent picked to send; the buyer has not reacted to them yet. They appear as cards under the message. If present, BOTH drafts must mention them: one leads with the homes, the other covers its main point first and then points to the homes below. Never offer to send homes when they are already attached (e.g. "I found a few homes similar to what you've been liking - they're below"). Do not list their addresses, and never describe them as homes the buyer already loved.
-- Format the body with line breaks: greeting on its own line, short paragraphs separated by a blank line, and the agent's first name alone on the last line.
+- Format the body with line breaks: greeting on its own line, short paragraphs separated by a blank line, and no sign-off at the end.
 - label: 2-4 words naming the angle, e.g. "Light check-in".`;
 
 const prettyCity = (c?: string | null) => String(c || "").replace(/-/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
@@ -78,6 +79,31 @@ async function marketFor(city: string) {
   return out;
 }
 
+// ensureHomesLine: if homes are attached and the draft doesn't point to them, add one line before the sign-off
+function ensureHomesLine(body: string, n: number) {
+  if (!n || /\bbelow\b/i.test(body)) return body;
+  const line = n === 1 ? "I've also added a home below that fits what you've been looking at." : `I've also added ${n} homes below that fit what you've been looking at.`;
+  return body.replace(/\s+$/, "") + "\n\n" + line;
+}
+// ensureMarketLink: market drafts get a link to the city's market intel page before the sign-off
+function ensureMarketLink(body: string, url: string, cityName: string) {
+  if (!url || body.includes("market-intelligence")) return body;
+  const line = `You can see the full picture for ${cityName} here: ${url}`;
+  return body.replace(/\s+$/, "") + "\n\n" + line;
+}
+// stripSignoff: the signature carries the agent's name, so drop a name/closing at the end of the draft
+function stripSignoff(body: string, first: string) {
+  const closings = "thanks|thank you|cheers|best|regards|talk soon|warmly|all the best";
+  const lines = body.replace(/\s+$/, "").split("\n");
+  const esc = first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const nameRe = new RegExp(`^(?:[-\\u2013\\u2014]\\s*)?(?:(?:${closings})[,!.]?\\s*)?${esc}[.!]?$`, "i");
+  const closeRe = new RegExp(`^(?:${closings})[,!.]?$`, "i");
+  if (first && lines.length && nameRe.test(lines[lines.length - 1].trim())) lines.pop();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  if (lines.length && closeRe.test(lines[lines.length - 1].trim())) lines.pop();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  return lines.join("\n");
+}
 export const POST: APIRoute = async ({ request }) => {
   try {
     const { type: rawType, data, stats } = await request.json();
@@ -162,11 +188,14 @@ export const POST: APIRoute = async ({ request }) => {
       if (match) { try { parsed = JSON.parse(match[0]); } catch {} }
     }
     if (!parsed?.drafts?.length) return json({ error: "Couldn't get drafts this time. Try Suggest again." }, 502);
+    const marketBase = await siteBase(supabase, sess?.site_id || data?.site_id);
+    const marketUrl = city ? `${marketBase}/${city.toLowerCase().trim().replace(/\s+/g, "-")}/market-intelligence?lsid=${encodeURIComponent(sessionId)}` : "";
+    const homesCount = Array.isArray(data?.homes) ? Math.min(data.homes.length, 6) : 0;
     const drafts = (parsed.drafts || []).slice(0, 2).map((d: any) => ({
       label: String(d.label || "Draft"),
       type: TYPES.includes(d.type) ? d.type : (type === "auto" ? null : type),
       subject: String(d.subject || ""),
-      body: String(d.body || ""),
+      body: ensureHomesLine(d.type === "market" ? ensureMarketLink(stripSignoff(String(d.body || ""), agent.agentName.split(/\s+/)[0]), marketUrl, prettyCity(city)) : stripSignoff(String(d.body || ""), agent.agentName.split(/\s+/)[0]), homesCount),
     }));
     return json({ drafts });
   } catch (e: any) {
