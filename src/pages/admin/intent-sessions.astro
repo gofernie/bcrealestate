@@ -2275,6 +2275,11 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
       #cmp .cmp-dots i:nth-child(3) { animation-delay:.3s; }
       @keyframes cmp-wiggle { 0%, 60%, 100% { transform:translateY(0); opacity:.45; } 30% { transform:translateY(-4px); opacity:1; } }
       #cmp .cmp-hint { font-size:.84rem; color:#1f6b60; background:#f1f7f5; border:1px dashed #c9e6e1; border-radius:8px; padding:10px 12px; line-height:1.45; }
+          .cmp-toast { position:fixed; left:50%; bottom:24px; transform:translate(-50%, 16px); background:#111; color:#fff; padding:12px 18px; border-radius:8px; font-size:.9rem; font-weight:600; box-shadow:0 8px 24px rgba(0,0,0,.2); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:1100; }
+      .cmp-toast.on { opacity:1; transform:translate(-50%, 0); }
+      #sent-log .cmp-hist-label { font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#888; margin-bottom:6px; }
+      #sent-log .cmp-hist-row { display:grid; grid-template-columns:64px 84px 1fr; gap:8px; font-size:.82rem; color:#444; padding:5px 0; border-top:1px solid #f0f0f0; }
+      #sent-log .cmp-hist-row span:nth-child(2) { text-transform:capitalize; color:#1f6b60; font-weight:600; }
     </style>
 
     <script is:inline>
@@ -2285,6 +2290,7 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
         let D; try { D = JSON.parse(dataEl.textContent || "{}"); } catch { return; }
         const $ = (id) => document.getElementById(id);
         const statusEl = $("cmp-status");
+        const showToast = (msg) => { let t = document.getElementById("cmp-toast"); if (!t) { t = document.createElement("div"); t.id = "cmp-toast"; t.className = "cmp-toast"; t.setAttribute("role", "status"); document.body.appendChild(t); } t.textContent = msg; t.classList.add("on"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("on"), 4000); };
         let type = "auto", msgType = null, drafts = [];
         const pretty = (c) => String(c || "").replace(/-/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
         const esc = (s) => String(s || "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
@@ -2353,7 +2359,7 @@ document.getElementById("save-note-btn")?.addEventListener("click", async () => 
               body: JSON.stringify({ session_id: D.session_id, to: D.to, subject, body, homes: [...picked.keys()], message_type: msgType || (type === "auto" ? null : type) }) });
             const j = await r.json();
             if (!r.ok) throw new Error(j.error || "Send failed");
-            statusEl.textContent = "Sent.";
+            statusEl.textContent = "Sent."; showToast("\u2713 Email sent to " + D.to);
             $("cmp-text").value = ""; $("cmp-drafts").innerHTML = ""; msgType = null; picked.clear(); renderPicked();
             await loadHistory(); setTimeout(close, 700);
           } catch (err) { statusEl.textContent = err.message; }
