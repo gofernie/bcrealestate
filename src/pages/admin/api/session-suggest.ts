@@ -31,7 +31,8 @@ Rules:
 - Never describe tracking (e.g. "I saw you viewed 41 photos"). Refer to their interests naturally ("since you've been looking at townhomes in Saanich East").
 - If they asked a question, answer only from the data or say you'll find out. Never guess.
 - Don't repeat the subject or angle of emails_already_sent.
-- If attached_homes is not empty, those homes appear as cards under the message. Mention them briefly (e.g. "I've added a few homes below") instead of listing them.
+- attached_homes are NEW homes the agent picked to send; the buyer has not reacted to them yet. They appear as cards under the message. If present, BOTH drafts must mention them: one leads with the homes, the other covers its main point first and then points to the homes below. Never offer to send homes when they are already attached (e.g. "I found a few homes similar to what you've been liking - they're below"). Do not list their addresses, and never describe them as homes the buyer already loved.
+- Format the body with line breaks: greeting on its own line, short paragraphs separated by a blank line, and the agent's first name alone on the last line.
 - label: 2-4 words naming the angle, e.g. "Light check-in".`;
 
 const prettyCity = (c?: string | null) => String(c || "").replace(/-/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
