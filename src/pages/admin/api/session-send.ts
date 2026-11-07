@@ -25,6 +25,7 @@ async function agentFor(siteId?: string | null) {
       const { data: a } = await supabase.from("agents").select("name, email, brokerage").eq("id", s.agent_id).maybeSingle();
       agentName = String(a?.name || "").trim();
       agentEmail = String(a?.email || "").trim();
+      brokerage = String((a as any)?.brokerage || "").trim();
     }
   }
   if (!agentName) agentName = env("DEFAULT_AGENT_NAME") || "Chris Crump";
@@ -54,6 +55,8 @@ export const POST: APIRoute = async ({ request }) => {
     const key = env("RESEND_API_KEY");
     if (!key) return json({ error: "RESEND_API_KEY is not set" }, 500);
     const senderAddr = env("SENDER_ADDRESS") || "notify@bc.realestate";
+    const fromName = agent.agentName.replace(/["<>]/g, "").trim() || "Your agent";
+    const from = `${fromName} <${senderAddr}>`;
     const sig = [agent.agentName, agent.brokerage || env("LEAD_BROKERAGE"), agent.agentEmail].filter(Boolean).join("\n");
     const optout = `You're receiving this because you contacted ${agent.siteName || "us"} about a home. Reply "unsubscribe" and I won't email you again.`;
 
