@@ -1,3 +1,14 @@
+function shortAreaLabel__v1(label, forButton) {
+  const parts = String(label || "").split(/\s+&\s+/).map((s) => s.trim()).filter(Boolean);
+  if (parts.length <= 2) return parts.join(" & ") || String(label || "");
+  if (parts.length === 3) return parts[0] + ", " + parts[1] + " & " + parts[2];
+  return forButton ? "these areas" : "these " + parts.length + " areas";
+}
+function fitBtn__v1(b) {
+  if (!b) return;
+  b.style.height = "auto"; b.style.minHeight = "40px"; b.style.whiteSpace = "normal";
+  b.style.lineHeight = "1.25"; b.style.paddingTop = "8px"; b.style.paddingBottom = "8px";
+}
 
   (() => {
     const form = document.getElementById("home-filter-form");
@@ -264,7 +275,7 @@ function showMoreCards() {
 
       if (title) {
         title.textContent = areaLabel
-          ? `You've seen every match in ${areaLabel}`
+          ? `You've seen every match in ${shortAreaLabel__v1(areaLabel)}`
           : "You've seen every match";
       }
 
@@ -304,8 +315,7 @@ function showMoreCards() {
         neighbourhoodButton.hidden = !hasArea;
 
         if (hasArea) {
-          neighbourhoodButton.textContent =
-            `Search 1 km beyond ${areaLabel}`;
+          neighbourhoodButton.textContent = `Search 1 km beyond ${shortAreaLabel__v1(areaLabel, true)}`; fitBtn__v1(neighbourhoodButton);
         }
       }
     }
@@ -473,19 +483,18 @@ function showMoreCards() {
       if (title) {
         title.textContent = areaSearchAlreadyExpanded
           ? "You've seen every nearby match"
-          : `You've seen every match in ${areaLabel}`;
+          : `You've seen every match in ${shortAreaLabel__v1(areaLabel)}`;
       }
 
       if (copy) {
         copy.textContent = areaSearchAlreadyExpanded
-          ? `That includes all current matches in ${areaLabel} and up to 1 km beyond it.`
+          ? `That includes all current matches in ${shortAreaLabel__v1(areaLabel)} and up to 1 km beyond it.`
           : "Try a nearby area or increase your budget to see more options.";
       }
 
       if (nearbyButton) {
         nearbyButton.hidden = areaSearchAlreadyExpanded;
-        nearbyButton.textContent =
-          `Search 1 km beyond ${areaLabel}`;
+        nearbyButton.textContent = `Search 1 km beyond ${shortAreaLabel__v1(areaLabel, true)}`; fitBtn__v1(nearbyButton);
       }
 
       if (budgetButton) {

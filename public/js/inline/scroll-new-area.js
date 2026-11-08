@@ -1,7 +1,8 @@
 (() => {
   const KEY = "lastAreas:" + location.pathname;
-  const norm = (s) => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
-  const areasOf = (q) => new URLSearchParams(q).getAll("area").map(norm).filter(Boolean);
+  const norm = (s) => (s || "").toLowerCase().replace(/[-_+]/g, " ").replace(/\s+/g, " ").trim();
+  const PARAMS = ["area", "areas", "neighbourhood", "neighborhood", "hood", "subarea"];
+  const areasOf = (q) => { const u = new URLSearchParams(q); return PARAMS.flatMap((k) => u.getAll(k)).flatMap((v) => v.split(",")).map(norm).filter(Boolean); };
   const read = () => { try { return JSON.parse(sessionStorage.getItem(KEY) || "null"); } catch (e) { return null; } };
   const save = (a) => { try { sessionStorage.setItem(KEY, JSON.stringify(a)); } catch (e) {} };
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -9,8 +10,12 @@
   ["wheel", "touchstart", "keydown", "mousedown"].forEach((t) => addEventListener(t, () => { userMoved = true; }, { passive: true }));
 
   const findHead = (name) => {
-    const re = new RegExp("^" + esc(name) + "\\s*\\u00b7\\s*\\d+\\s+homes?$", "i");
+    const n = esc(name);
+    const homeRe = new RegExp("^(nearby: )?" + n + "$", "i");
     let hit = null;
+    document.querySelectorAll(".home-area-group-head").forEach((el) => { if (!hit && homeRe.test(norm(el.textContent))) hit = el; });
+    if (hit) return hit;
+    const re = new RegExp("^" + n + "\\s*\\u00b7\\s*\\d+\\s+homes?$", "i");
     document.querySelectorAll("h2,h3,h4,div,p,strong").forEach((el) => { if (re.test(norm(el.textContent))) hit = el; });
     return hit;
   };
@@ -50,4 +55,47 @@
   let last = location.search;
   setInterval(() => { if (location.search !== last) { last = location.search; run(); } }, 300);
   if (document.readyState === "complete") run(); else addEventListener("load", run);
+})();
+(() => {
+  let touched = 0, userMoved = false, known = null, timer;
+  const heads = () => [...document.querySelectorAll(".home-area-group-head")].filter((e) => !/^nearby:/i.test(e.textContent.trim()));
+  const names = () => heads().map((e) => e.textContent.trim().toLowerCase());
+  const mark = () => { touched = Date.now(); userMoved = false; };
+  addEventListener("change", mark, true);
+  addEventListener("click", (e) => { if (e.target.closest && e.target.closest('form,[role="listbox"],[role="dialog"],[class*="filter" i],[class*="search" i],[class*="dropdown" i],[class*="area" i]')) mark(); }, true);
+  ["wheel", "touchmove"].forEach((t) => addEventListener(t, () => { userMoved = true; }, { passive: true }));
+
+  const topOffset = () => {
+    let off = 0;
+    for (const el of document.body.getElementsByTagName("*")) {
+      const p = getComputedStyle(el).position;
+      if (p !== "fixed" && p !== "sticky") continue;
+      const r = el.getBoundingClientRect();
+      if (r.top < 240 && r.bottom > 0 && r.height < innerHeight / 2) off = Math.max(off, r.bottom);
+    }
+    return off;
+  };
+
+  const jumpTo = (name) => {
+    const go = () => {
+      if (userMoved) return;
+      const el = heads().find((e) => e.textContent.trim().toLowerCase() === name);
+      if (!el) return;
+      const to = () => scrollTo({ top: el.getBoundingClientRect().top + scrollY - topOffset() - 20, behavior: "auto" });
+      to(); requestAnimationFrame(to);
+    };
+    [0, 300, 800, 1500].forEach((ms) => setTimeout(go, ms));
+  };
+
+  const check = () => {
+    const cur = names();
+    if (!cur.length) return;
+    if (!known) { known = cur; return; }
+    const added = cur.filter((n) => !known.includes(n));
+    known = cur;
+    if (added.length && Date.now() - touched < 8000 && !userMoved) jumpTo(added[0]);
+  };
+
+  new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(check, 200); }).observe(document.body, { subtree: true, childList: true });
+  addEventListener("load", check);
 })();
