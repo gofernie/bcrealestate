@@ -99,3 +99,10 @@
   new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(check, 200); }).observe(document.body, { subtree: true, childList: true });
   addEventListener("load", check);
 })();
+(() => { /* hold-height-v1: keep page tall while listings swap so it can't snap to top */
+  let t;
+  const hold = () => { const h = document.documentElement.scrollHeight; if (!document.body.style.minHeight) document.body.style.minHeight = h + "px"; clearTimeout(t); t = setTimeout(() => { document.body.style.minHeight = ""; }, 5000); };
+  const inPicker = (e) => e.target && e.target.closest && e.target.closest('[data-area-menu], .area-multiselect__menu, .area-multiselect__option, .intent-controls, #home-hero-search, .filter-dd__option');
+  addEventListener("pointerdown", (e) => { if (inPicker(e)) hold(); }, true);
+  addEventListener("change", (e) => { if (inPicker(e)) hold(); }, true);
+})();
