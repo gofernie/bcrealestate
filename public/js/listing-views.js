@@ -42,6 +42,20 @@
     if (o.__arrangeHook) w.__arrangeHook = true;
     window.openSheet = w;
   }
+  document.addEventListener("click", function (e) {
+    try {
+      var b = e.target.closest && e.target.closest("button, [role=button]");
+      if (!b) return;
+      var txt = (b.textContent || "").replace(/\s+/g, " ").trim();
+      if (txt.length > 12) return;
+      var m = txt.match(/\b(Love|Like|Nope)\b/);
+      if (!m) return;
+      var name = "Listing " + m[1].toLowerCase();
+      window.__lvLastEvent = name;
+      if (window.fathom && window.fathom.trackEvent) window.fathom.trackEvent(name);
+      else console.debug("[listing-views] event not sent (no Fathom here):", name);
+    } catch (err) {}
+  }, true);
   window.addEventListener("load", hook);
   document.addEventListener("astro:page-load", hook);
 })();
