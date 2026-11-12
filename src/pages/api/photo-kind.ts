@@ -28,13 +28,13 @@ export const GET: APIRoute = async ({ url }) => {
   // Send Haiku a small copy (faster, fewer tokens); fall back to the original if the resize isn't available.
   let img: Response | null = null;
   if (!import.meta.env.DEV) img = await fetch(`${url.origin}/.netlify/images?url=${encodeURIComponent(photo)}&w=512&fm=jpg&q=70`).catch(() => null);
-  if (!img || !img.ok) img = await fetch(photo);
-  if (!img.ok) return json({ error: "Image fetch failed" }, 502);
+  if (!img || !img.ok) img = await fetch(photo).catch(() => null);
+  if (!img || !img.ok) return json({ error: "Image fetch failed" }, 502);
   const mediaType = (img.headers.get("content-type") ?? "image/jpeg").split(";")[0].trim();
   if (!OK_TYPES.includes(mediaType)) return json({ error: "Unsupported image" }, 415);
   const data = Buffer.from(await img.arrayBuffer()).toString("base64");
 
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
+  const r = await (async (...a: Parameters<typeof fetch>) => { try { return await fetch(...a); } catch { return null; } })("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
@@ -48,7 +48,7 @@ export const GET: APIRoute = async ({ url }) => {
       ] }],
     }),
   });
-  if (!r.ok) return json({ error: "Classifier failed" }, 502);
+  if (!r || !r.ok) return json({ error: "Classifier failed" }, 502);
   const out = await r.json();
   const interior = out?.content?.find((c: any) => c.type === "tool_use")?.input?.interior === true;
   await sb.from("photo_kinds").upsert({ url: photo, interior });
