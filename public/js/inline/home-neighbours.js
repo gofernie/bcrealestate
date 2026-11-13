@@ -5,7 +5,7 @@
   let map = {};
   try { map = JSON.parse(document.getElementById("area-neighbours")?.textContent || "{}"); } catch {}
   const norm = (v) => String(v || "").replace(/-/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
-  const cache = new Map();
+  const cache = new Map(), emptyKeys = new Set();
   let lastKey = "", timer = 0;
 
   const selectedAreas = (form) => {
@@ -19,7 +19,7 @@
     const footer = document.getElementById("home-search-complete");
     const form = document.getElementById("home-filter-form");
     let box = document.getElementById("home-neighbour-areas");
-    const hide = () => { if (box) box.hidden = true; lastKey = ""; };
+    const hide = () => { if (box) { box.hidden = true; box.style.display = "none"; } lastKey = ""; };
     if (!footer || footer.hidden || footer.offsetParent === null || !form) return hide();
     const picked = selectedAreas(form);
     const sel = picked.map(norm);
@@ -29,17 +29,17 @@
     if (!cands.length) return hide();
 
     const key = window.__homeLastParams + "|" + cands.map((c) => c.value).join(",");
-    if (key === lastKey && box && !box.hidden && footer.contains(box)) return;
+    if (key === lastKey && box && footer.contains(box) && (!box.hidden || emptyKeys.has(key))) return;
     lastKey = key;
 
     if (!box) {
       box = document.createElement("div");
       box.id = "home-neighbour-areas";
-      box.style.cssText = "flex-basis:100%;grid-column:1 / -1;width:100%;margin-top:16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;";
+      box.style.cssText = "flex-basis:100%;grid-column:1 / -1;width:100%;margin-top:16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;";
     }
     if (!footer.contains(box)) footer.appendChild(box);
-    box.hidden = false;
-    box.innerHTML = '<span style="flex-basis:100%;font-size:.84rem;opacity:.75;">Checking neighbouring areas...</span>';
+    if (emptyKeys.has(key)) { box.hidden = true; box.style.display = "none"; return; } box.hidden = false; box.style.display = "flex";
+    box.innerHTML = '<span data-nb-loading="1" style="flex-basis:100%;font-size:.84rem;opacity:.75;">Checking neighbouring areas...</span>'; setTimeout(function () { var s = box.querySelector('[data-nb-loading]'); if (s) { s.remove(); if (!box.children.length) box.style.display = 'none'; } }, 5000);
 
     const hyphen = picked.some((v) => v.includes("-"));
     const asFormValue = (v) => (hyphen ? v.replace(/\s+/g, "-") : v);
@@ -47,12 +47,12 @@
     const draw = (rows) => {
       if (lastKey !== key) return;
       const hits = rows.filter((r) => r.count > 0).sort((a, b) => b.count - a.count).slice(0, 5);
-      if (!hits.length) { box.hidden = true; return; }
+      if (!hits.length) { emptyKeys.add(key); box.hidden = true; box.style.display = "none"; return; } box.hidden = false; box.style.display = "flex";
       box.innerHTML = '<span style="flex-basis:100%;font-size:.84rem;opacity:.75;margin-bottom:2px;">' + (hits.length === 1 ? "Try the neighbouring area:" : "Try a neighbouring area:") + "</span>";
       hits.forEach((h) => {
         const b = document.createElement("button");
         b.type = "button";
-        b.style.cssText = "display:inline-flex;align-items:center;padding:9px 14px;border-radius:8px;font:inherit;font-weight:700;font-size:.84rem;cursor:pointer;border:1px solid currentColor;background:transparent;color:inherit;";
+        b.style.cssText = "display:inline-flex;align-items:center;padding:6px 13px;border-radius:999px;font:inherit;font-weight:700;font-size:.8rem;cursor:pointer;border:1px solid var(--accent,currentColor);background:transparent;color:var(--accent,inherit);";
         b.textContent = h.label + " (" + h.count + ")";
         b.addEventListener("click", () => {
           const multi = form.elements.storyAreas;

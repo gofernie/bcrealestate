@@ -19,6 +19,8 @@ async function main() {
   if (distErr) console.warn("District monthly stats failed:", distErr.message);
   const { error: mtnErr } = await supabase.rpc("build_months_from_monthly_stats");
   if (mtnErr) console.warn("Monthly-stats sold index failed:", mtnErr.message);
+  const { error: srErr } = await supabase.rpc("build_months_from_sale_records");
+  if (srErr) console.warn("Sale-records sold index failed:", srErr.message);
 
   const { data: comps, error } = await supabase.from("market_indexes")
     .select("ticker, name, city").is("prop_type", null).is("area_slug", null).is("parent_ticker", null);

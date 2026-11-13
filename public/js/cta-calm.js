@@ -112,13 +112,14 @@
       if (existing) { if (existing.parentElement !== host) host.appendChild(existing); return; }
       const m = (ctrl.textContent || "").match(/\bin\s+(.+)$/i);
       const chip = document.createElement("button");
-      chip.type = "button"; chip.className = "cta-calm-chip"; chip.dataset.ctaCalmChip = "1";
+      chip.type = "button"; chip.className = "cta-calm-chip"; chip.dataset.ctaCalmChip = "1"; chip.style.cssText = "display:flex!important;width:max-content!important;max-width:100%!important;flex:0 0 auto!important;align-items:center!important;margin:8px auto 0!important;padding:6px 14px!important;border-radius:999px!important;font-size:.8rem!important;font-weight:600!important;line-height:1.2!important;min-height:0!important;cursor:pointer!important;";
       chip.textContent = (m ? m[1] : el.textContent.replace(/\s*is nearby.*$/i, "")).trim();
       chip.addEventListener("click", () => ctrl.click());
       host.appendChild(chip);
     });
   }
 
+  /* cta-calm-chip-css-v1 */ if (!document.getElementById("cta-calm-chip-css")) { const st = document.createElement("style"); st.id = "cta-calm-chip-css"; st.textContent = "button.cta-calm-chip[data-cta-calm-chip]{display:flex!important;width:max-content!important;max-width:100%!important;flex:0 0 auto!important;align-items:center!important;margin:6px auto 0!important;padding:6px 14px!important;border-radius:999px!important;font-size:.8rem!important;font-weight:600!important;line-height:1.2!important;min-height:0!important;cursor:pointer!important;}"; document.head.appendChild(st); }
   let t; const sched = () => { clearTimeout(t); t = setTimeout(run, 120); };
   new MutationObserver(sched).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "style"] });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run); else run();
