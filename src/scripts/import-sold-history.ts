@@ -103,6 +103,7 @@ async function main() {
   }
   console.log(`Areas assigned: ${assigned}`);
 
+  await supabase.rpc("assign_saanich_districts");
   const { data: built, error: buildError } = await supabase.rpc("build_market_months", { p_from: "2024-10-01" });
   if (buildError) throw buildError;
   console.log(`market_months rows built: ${built}`);

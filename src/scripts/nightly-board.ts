@@ -114,6 +114,7 @@ async function main() {
     if (!data) break;
   }
 
+  await supabase.rpc("assign_saanich_districts");
   const { data: n, error } = await supabase.rpc("compute_board_asking", { p_day: today, p_backfill: false });
   if (error) throw error;
   console.log(`Today's ticks from board (${today}): ${n}`);

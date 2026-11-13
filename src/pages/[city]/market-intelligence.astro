@@ -27,6 +27,10 @@ const cityDatabaseKeys = Array.from(
   ])
 );
 
+const saanichDistrict = city === "saanich-east" ? "saanich east" : city === "saanich-west" ? "saanich west" : null;
+const listingCityKeys = saanichDistrict ? ["saanich"] : cityDatabaseKeys;
+const districtMatch = saanichDistrict ? { district: saanichDistrict } : {};
+
 const requestHost =
   Astro.request.headers.get("x-forwarded-host") ||
   Astro.request.headers.get("host") ||
@@ -79,7 +83,7 @@ const { data: listings = [], error: listingsError } =
   await supabase
     .from("listing_rows")
     .select("price, normalized_area, normalized_type, listed_at, created_at")
-    .in("normalized_city", cityDatabaseKeys)
+    .in("normalized_city", listingCityKeys).match(districtMatch)
     .eq("status", "A")
     .limit(1000);
 
@@ -1089,7 +1093,7 @@ const activeInventoryAverage = marketPulseAverage(recentRollingMonths.map((row: 
 const priorActiveInventoryAverage = marketPulseAverage(priorYearRollingMonths.map((row: any) => row.activeListings));
 const hasInventoryPulse = activeInventoryAverage != null && salesRollingAverage != null;
 /* live-inventory-ratio-v1: towns without Matrix inventory use the live active count */
-const liveActiveCount = await (async () => { if (hasInventoryPulse) return null; const { count } = await supabase.from("listing_rows").select("id", { count: "exact", head: true }).eq("status", "A").in("normalized_city", cityDatabaseKeys).neq("property_type", "Lease"); return count && count > 0 ? count : null; })();
+const liveActiveCount = await (async () => { if (hasInventoryPulse) return null; const { count } = await supabase.from("listing_rows").select("id", { count: "exact", head: true }).eq("status", "A").in("normalized_city", listingCityKeys).match(districtMatch).neq("property_type", "Lease"); return count && count > 0 ? count : null; })();
 const ratioInventory = hasInventoryPulse ? (activeInventoryAverage as number) : liveActiveCount;
 /* latest-month-ratio-v1: busy markets use the latest month (BCREA-style); small towns keep the 3-month average */
 const latestSalesCount = Number(latestMonth?.sales || 0);
@@ -1516,6 +1520,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
 });---
 
 <Layout
+  ogImage={`${import.meta.env.PUBLIC_SUPABASE_URL}/storage/v1/object/public/og/market/${city.trim().replace(/\s+/g, "-")}.png`}
   title={seoTitle}
   description={seoDescription}
   accentColor={accent}

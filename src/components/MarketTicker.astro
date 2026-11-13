@@ -24,7 +24,7 @@ async function fetchAll(build: (a: number, b: number) => any) {
 
 const { data: composites } = await supabase
   .from("market_indexes")
-  .select("ticker, name, city, lat, lng")
+  .select("ticker, name, city, lat, lng, member_cities")
   .is("prop_type", null)
   .is("area_slug", null)
   .is("parent_ticker", null);
@@ -46,7 +46,7 @@ if (comp) {
     supabase.from("market_profiles").select("city, blurb, facts").in("city", keys).limit(1),
   ]);
   profile = prof?.[0] ?? null;
-  indexes = [{ ...comp, prop_type: null, area_slug: null, sort_order: 0 }, ...(kids ?? [])];
+  indexes = [{ ...comp, prop_type: null, area_slug: null, sort_order: 0 }, ...(kids ?? [])]; if (Array.isArray(comp.member_cities) && comp.member_cities.length) indexes.push(...(composites ?? []).filter((x: any) => comp.member_cities.includes(x.city)).map((x: any) => ({ ...x, prop_type: null, area_slug: x.city, sort_order: 50 })));
 
   if (comp.lat != null) {
     const kx = Math.cos((comp.lat * Math.PI) / 180);
@@ -148,13 +148,13 @@ const facts: any[] = [
   ...(Array.isArray(profile?.facts) ? profile.facts.map((f: any) => [String(f.label), String(f.value)]) : []),
   ...(firstDay ? [["Index started", prettyDate(firstDay)]] : []),
   ...(soldFirst ? [["Sold history", `Since ${prettyMonth(soldFirst)}`]] : []),
-  ["Components", `${areaIdx.length} neighbourhoods \u00b7 ${typeIdx.length} property types`],
+  ["Components", `${areaIdx.length} ${comp?.member_cities?.length ? "markets" : "neighbourhoods"} \u00b7 ${typeIdx.length} property types`],
   ...(largest ? [["Most active", `${largest.name} (${latest(largest.ticker)?.a ?? 0} listings)`]] : []),
   ...(priciest ? [["Highest priced", `${priciest.name} \u00b7 ${fmt(latest(priciest.ticker)?.v)}`]] : []),
   ...(cheapest ? [["Most affordable", `${cheapest.name} \u00b7 ${fmt(latest(cheapest.ticker)?.v)}`]] : []),
 ];
 const indexSentence = comp
-  ? `The ${comp.ticker} index tracks asking prices across ${compLast?.a ?? 0} active residential listings in ${areaIdx.length} neighbourhoods, refreshed nightly.`
+  ? `The ${comp.ticker} index tracks asking prices across ${compLast?.a ?? 0} active residential listings in ${areaIdx.length} ${comp?.member_cities?.length ? "markets" : "neighbourhoods"}, refreshed nightly.`
   : "";
 
 const payload = JSON.stringify({ indexes, series, sold }).replace(/</g, "\\u003c");
@@ -203,7 +203,7 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
           );
         })}
 
-        <h3 class="mt-grp">Neighbourhood indexes</h3>
+        <h3 class="mt-grp">{comp.member_cities?.length ? `Markets within ${cityLabel}` : "Neighbourhood indexes"}</h3>
         
         {areaRows.map((i) => {
           const l = latest(i.ticker); const ch = change(i.ticker); const thin = (l?.a ?? 0) < 10;
