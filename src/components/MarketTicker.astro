@@ -118,9 +118,9 @@ const yearPts = (tk: string) => {
 const soldPts = (tk: string) => (sold[tk] ?? []).filter((p) => !p.t); const win = (s: any[], i: number) => s.slice(Math.max(0, i - 2), i + 1).reduce((t, p) => t + (p.k || 0), 0);
 const change = (tk: string) => {
   const s = soldPts(tk);
-  const f = s.filter((p) => !p.p); if (f.length >= 13 && win(f, f.length - 1) >= 15 && win(f, f.length - 13) >= 15) return (f[f.length - 1].v / f[f.length - 13].v - 1) * 100;
+  const f = s.filter((p) => !p.p); if (f.length >= 13 && win(f, f.length - 1) >= 30 && win(f, f.length - 13) >= 30) return (f[f.length - 1].v / f[f.length - 13].v - 1) * 100;
   const a = yearPts(tk);
-  return a.length < 2 ? null : (a[a.length - 1].v / a[0].v - 1) * 100;
+  return a.length < 2 || (a[0].a ?? 0) < 20 || (a[a.length - 1].a ?? 0) < 20 ? null : (a[a.length - 1].v / a[0].v - 1) * 100;
 };
 const spark = (tk: string) => {
   const s = soldPts(tk);
@@ -135,7 +135,7 @@ const spark = (tk: string) => {
 const byActives = (a: any, b: any) => (latest(b.ticker)?.a ?? 0) - (latest(a.ticker)?.a ?? 0);
 const areaIdx = indexes.filter((i) => i.area_slug);
 const typeIdx = indexes.filter((i) => i.prop_type);
-const areaRows = comp ? [indexes[0], ...[...areaIdx].sort(byActives)] : [];
+const areaRows = [...areaIdx].sort(byActives);
 const liquid = areaIdx.filter((i) => (latest(i.ticker)?.a ?? 0) >= 10 && latest(i.ticker)?.v != null);
 const largest = [...areaIdx].sort(byActives)[0];
 const priciest = [...liquid].sort((a, b) => latest(b.ticker).v - latest(a.ticker).v)[0];
@@ -185,17 +185,17 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
         <div class="mt-ranges">
           {ranges.map((r) => <button type="button" data-mt-range data-range={r} class={r === "1Y" ? "on" : ""}>{r}</button>)}
         </div>
-        <div class="mt-chart" data-mt-chart></div>
+        <div class="mt-chart" data-mt-chart></div><div class="mt-spread" data-mt-spread></div>
         <dl class="mt-stats" data-mt-stats></dl>
 
-        <h3 class="mt-grp">Neighbourhood indexes</h3>
+        <h3 class="mt-grp">Property-type indexes</h3>
         <div class="mt-rowhead"><span>Ticker</span><span></span><span>2Y trend</span><span>Asking</span><span>1Y</span></div>
-        {areaRows.map((i) => {
+        {(comp ? [indexes[0], ...typeIdx] : typeIdx).map((i) => {
           const l = latest(i.ticker); const ch = change(i.ticker); const thin = (l?.a ?? 0) < 10;
           return (
             <button type="button" class={`mt-row${thin ? " thin" : ""}${i.ticker === comp.ticker ? " sel" : ""}`} data-mt-row data-ticker={i.ticker}>
               <span class="mt-sym">{i.ticker}</span>
-              <span class="mt-nm">{i.ticker === comp.ticker ? "All areas" : i.name}{thin && <em class="mt-thin">thin</em>}</span>
+              <span class="mt-nm">{i.ticker === comp.ticker ? "All homes" : i.name}{thin && <em class="mt-thin">thin</em>}</span>
               <span class="mt-spark" set:html={spark(i.ticker)}></span>
               <span class="mt-num">{fmt(l?.v)}</span>
               <span class={`mt-pct${pctClass(ch)}`}>{pctText(ch)}</span>
@@ -203,13 +203,14 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
           );
         })}
 
-        <h3 class="mt-grp">Property-type indexes</h3>
-        {typeIdx.map((i) => {
+        <h3 class="mt-grp">Neighbourhood indexes</h3>
+        
+        {areaRows.map((i) => {
           const l = latest(i.ticker); const ch = change(i.ticker); const thin = (l?.a ?? 0) < 10;
           return (
-            <button type="button" class={`mt-row${thin ? " thin" : ""}`} data-mt-row data-ticker={i.ticker}>
+            <button type="button" class={`mt-row${thin ? " thin" : ""}${i.ticker === comp.ticker ? " sel" : ""}`} data-mt-row data-ticker={i.ticker}>
               <span class="mt-sym">{i.ticker}</span>
-              <span class="mt-nm">{i.name}{thin && <em class="mt-thin">thin</em>}</span>
+              <span class="mt-nm">{i.ticker === comp.ticker ? "All areas" : i.name}{thin && <em class="mt-thin">thin</em>}</span>
               <span class="mt-spark" set:html={spark(i.ticker)}></span>
               <span class="mt-num">{fmt(l?.v)}</span>
               <span class={`mt-pct${pctClass(ch)}`}>{pctText(ch)}</span>
@@ -290,7 +291,7 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
   .mt-tip{position:absolute;transform:translate(-50%,-100%);background:#fff;border:1px solid rgba(0,0,0,.1);border-radius:8px;padding:.4rem .65rem;font-size:.8rem;line-height:1.45;white-space:nowrap;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.08);z-index:2}
   .mt-tip span{opacity:.65}
   .mt-empty{height:200px;display:flex;align-items:center;justify-content:center;text-align:center;padding:0 1rem;font-size:.9rem;opacity:.6;background:rgba(0,0,0,.025);border-radius:10px}
-  .mt-recon{font-size:.72rem;opacity:.5;margin:.25rem 0 0}
+  .mt-spread{margin:.75rem 0 0;padding-top:.75rem;border-top:1px dashed rgba(0,0,0,.1)} .mt-spread:empty{display:none} .mt-spread-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:.35rem .6rem;font-size:.88rem} .mt-spread-trend{font-size:.78rem;padding:.1rem .45rem;border-radius:6px;background:rgba(0,0,0,.05)} .mt-spread-trend.narrowing{color:var(--mt-up);background:rgba(29,158,117,.1)} .mt-spread-trend.widening{color:var(--mt-down);background:rgba(192,57,43,.1)} .mt-spread-note{font-size:.75rem;opacity:.6} .mt-spread svg{width:100%;height:auto;display:block;margin-top:.25rem} .mt-spread-line{fill:none;stroke:var(--mt-accent);stroke-width:2;stroke-linejoin:round} .mt-spread-dot{fill:var(--mt-accent)} .mt-recon{font-size:.72rem;opacity:.5;margin:.25rem 0 0}
   .mt-grid{stroke:rgba(0,0,0,.06);stroke-width:1}
   .mt-base{stroke:rgba(0,0,0,.35);stroke-dasharray:2 3}
   .mt-axis{font-size:11px;fill:currentColor;opacity:.5}
@@ -408,14 +409,62 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
     const accentColor = getComputedStyle(root).getPropertyValue("--mt-accent").trim() || "#2f6f73";
     const q = (s: string) => root.querySelector<HTMLElement>(s)!;
 
-    const cutoff = () => Date.now() - RANGES[range] * DAY;
-    const askIn = () => (series[ticker] || []).filter((p) => p.v != null && time(p.d) >= cutoff()) as (Pt & { v: number })[];
+    const cutoff = () => { let c = Date.now() - RANGES[range] * DAY; const back = range === "2Y" ? 24 : range === "1Y" ? 12 : 0; if (back) { const F = (sold[ticker] || []).filter((p) => !p.t && !p.p); if (F.length > back) c = Math.min(c, time(F[F.length - 1 - back].d)); } return c; };
+    const askIn = () => { const all = (series[ticker] || []).filter((p) => p.v != null) as (Pt & { v: number })[]; const c = cutoff(); const i = all.findIndex((p) => time(p.d) >= c); return i < 0 ? [] : all.slice(Math.max(0, i - 1)); };
     const soldIn = () => (sold[ticker] || []).filter((p) => !p.t && time(p.d) >= cutoff() - 15 * DAY);
 
-    function chart() {
+    function spread() {
+      const box = root.querySelector<HTMLElement>("[data-mt-spread]");
+      if (!box) return;
+      const F = (sold[ticker] || []).filter((p) => !p.t && !p.p);
+      const askAll = (series[ticker] || []).filter((p) => p.v != null);
+      if (RANGES[range] < 182 || F.length < 2 || askAll.length < 10) { box.innerHTML = ""; return; }
+      const c = cutoff();
+      const pts: { d: string; s: number; a: number; v: number }[] = [];
+      for (const m of F) {
+        if (time(m.d) < c - 15 * DAY) continue;
+        const md = new Date(m.d + "T12:00:00");
+        const endT = new Date(md.getFullYear(), md.getMonth() + 1, 1).getTime();
+        const startT = new Date(md.getFullYear(), md.getMonth() - 2, 1).getTime();
+        const win = askAll.filter((p) => { const t = time(p.d); return t >= startT && t < endT; });
+        if (win.length < 3) continue;
+        const ask = win.reduce((t, p) => t + (p.v as number), 0) / win.length;
+        pts.push({ d: m.d, s: (ask / m.v - 1) * 100, a: ask, v: m.v });
+      }
+      if (pts.length < 2) { box.innerHTML = ""; return; }
+      const last = pts[pts.length - 1];
+      const prev = pts[Math.max(0, pts.length - 4)];
+      const delta = last.s - prev.s;
+      const trend = Math.abs(delta) < 0.5 ? "steady" : delta > 0 ? "widening" : "narrowing";
+      const askMove = (last.a / prev.a - 1) * 100, soldMove = (last.v / prev.v - 1) * 100; const arrow = trend === "steady" ? "\u2192" : trend === "widening" ? "\u2191" : "\u2193";
+      const note = trend === "widening" ? (askMove > soldMove ? "sellers asking further above what is selling" : "sale prices slipping below asking")
+        : trend === "narrowing" ? (soldMove > askMove ? "sale prices catching up to asking" : "asking prices coming down toward sales")
+        : "asking and sales moving together";
+      const W = Math.max(300, Math.round(box.clientWidth || 680));
+      const H = 90, L = 58, R = 12, T = 8, B = 18;
+      const vs = pts.map((p) => p.s);
+      const lo = Math.min(0, Math.floor(Math.min(...vs)));
+      const hi = Math.max(1, Math.ceil(Math.max(...vs)));
+      const t0 = time(pts[0].d), t1 = time(last.d);
+      const X = (t: number) => L + ((t - t0) / ((t1 - t0) || 1)) * (W - L - R);
+      const Y = (v: number) => T + (1 - (v - lo) / ((hi - lo) || 1)) * (H - T - B);
+      const line = pts.map((p) => `${X(time(p.d)).toFixed(1)},${Y(p.s).toFixed(1)}`).join(" ");
+      const dots = pts.map((p) => `<circle cx="${X(time(p.d)).toFixed(1)}" cy="${Y(p.s).toFixed(1)}" r="2.5" class="mt-spread-dot"><title>${prettyMonth(p.d)}: ${p.s.toFixed(1)}%</title></circle>`).join("");
+      const head = `<div class="mt-spread-head"><strong>Spread: asking ${last.s >= 0 ? `${last.s.toFixed(1)}% above` : `${Math.abs(last.s).toFixed(1)}% below`} sales</strong><span class="mt-spread-trend ${trend}">${arrow} ${trend}</span><span class="mt-spread-note">${note}</span></div>`;
+      box.innerHTML = head +
+        `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Spread between asking and sold index">` +
+        `<line x1="${L}" x2="${W - R}" y1="${Y(0)}" y2="${Y(0)}" class="mt-base"/>` +
+        `<text x="${L - 10}" y="${Y(0) + 4}" text-anchor="end" class="mt-axis">0%</text>` +
+        `<text x="${L - 10}" y="${Y(hi) + 4}" text-anchor="end" class="mt-axis">${hi}%</text>` +
+        `<polyline points="${line}" class="mt-spread-line"/>` + dots +
+        `<text x="${L}" y="${H - 3}" class="mt-axis">${prettyMonth(pts[0].d)}</text>` +
+        `<text x="${W - R}" y="${H - 3}" text-anchor="end" class="mt-axis">${prettyMonth(last.d)}</text></svg>`;
+    }
+
+    function chart() { spread();
       const box = q("[data-mt-chart]");
       const A = askIn();
-      const S = soldIn();
+      const S = RANGES[range] >= 182 ? soldIn() : [];
       if (A.length < 2 && S.length < 2) {
         const first = (series[ticker] || [])[0]?.d;
         box.innerHTML = `<div class="mt-empty">Chart building${first ? ` ${DASH} history starts ${prettyDate(first)}` : ""}. A new point is added every night.</div>`;
@@ -549,15 +598,15 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
       q("[data-mt-price]").textContent = fmt(last?.v);
 
       const A = askIn();
-      const S = soldIn();
+      const S = RANGES[range] >= 182 ? soldIn() : [];
       const askSpan = A.length >= 2 ? (time(A[A.length - 1].d) - time(A[0].d)) / DAY : 0;
       const useSold = S.length >= 2 && (range === "2Y" || askSpan < RANGES[range] * 0.8);
-      const P: { v: number }[] = useSold ? S : A;
+      const F = (sold[ticker] || []).filter((p) => !p.t && !p.p); const winC = (i: number) => F.slice(Math.max(0, i - 2), i + 1).reduce((t, p) => t + (p.k || 0), 0); const back = range === "2Y" ? 24 : range === "1Y" ? 12 : 0; const sp = back && F.length > back && winC(F.length - 1) >= 30 && winC(F.length - 1 - back) >= 30 ? [F[F.length - 1 - back], F[F.length - 1]] : null; const P: { v: number }[] = sp ? sp : useSold ? S : A;
       const chg = q("[data-mt-chg]");
       if (P.length >= 2) {
         const a = P[0].v, b = P[P.length - 1].v;
         const p = (b / a - 1) * 100, up = p >= 0, flat = Math.abs(p) < 0.05;
-        chg.textContent = `${flat ? "\u2192" : up ? "\u2191" : "\u2193"} ${Math.abs(p).toFixed(1)}%  ${up ? "+" : "\u2212"}${fmt(Math.abs(b - a))} ${range}${useSold ? " sold" : ""}`;
+        chg.textContent = `${flat ? "\u2192" : up ? "\u2191" : "\u2193"} ${Math.abs(p).toFixed(1)}%  ${up ? "+" : "\u2212"}${fmt(Math.abs(b - a))} ${range}${sp || useSold ? " sales" : " asking"}`;
         chg.className = `mt-chg${flat ? "" : up ? " up" : " down"}`;
       } else {
         chg.textContent = "New index";
@@ -569,7 +618,7 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
       const SA = (sold[ticker] || []).filter((p) => !p.t);
       const ls = SA[SA.length - 1];
       const lf = [...SA].reverse().find((p) => !p.p);
-      const yr = SA.slice(-12).map((p) => p.v);
+      const yr = SA.filter((p) => !p.p).slice(-12).map((p) => p.v);
       const reduced = last?.a && last?.c != null ? `${Math.round((last.c / last.a) * 100)}%` : DASH;
       const stats: [string, string][] = [
         ["Active listings", num(last?.a)],

@@ -1,0 +1,26 @@
+name: Market ticker nightly
+
+on:
+  schedule:
+    - cron: "30 11 * * *"
+  workflow_dispatch:
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PUBLIC_SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      REPLIERS_API_KEY: ${{ secrets.REPLIERS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci || npm install
+      - name: Refresh board listings and today's ticks
+        run: npx tsx src/scripts/nightly-board.ts
+      - name: Refresh recent sales and monthly sold index
+        run: npx tsx src/scripts/import-sold-history.ts "$(date -u -d "$(date -u +%Y-%m-01) -1 month" +%Y-%m-%d)"
