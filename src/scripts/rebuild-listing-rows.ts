@@ -106,7 +106,7 @@ const getCity = (listing: any, snapshot: any) =>
       snapshot?.city
   );
 
-const getLat = (listing: any) =>
+export const getLat = (listing: any) =>
   numOrNull(
     listing?.lat ||
       listing?.latitude ||
@@ -122,7 +122,7 @@ const getLat = (listing: any) =>
       listing?.raw?.map?.latitude
   );
 
-const getLng = (listing: any) =>
+export const getLng = (listing: any) =>
   numOrNull(
     listing?.lng ||
       listing?.lon ||
@@ -144,7 +144,7 @@ const getLng = (listing: any) =>
       listing?.raw?.map?.longitude
   );
 
-const normalizeType = (listing: any) => {
+export const normalizeType = (listing: any) => {
   /*
    * The MLS "style" field is the clearest signal of the
    * physical form buyers care about.
@@ -1328,7 +1328,7 @@ const getYearBuilt = (listing: any) => {
   return null;
 };
 
-const getSqft = (listing: any) => {
+export const getSqft = (listing: any) => {
   const direct =
     listing?.sqft ||
     listing?.square_feet ||
@@ -1592,7 +1592,7 @@ const getNormalizedLotSize = (listing: any) => {
   };
 };
 
-const getDescription = (listing: any) =>
+export const getDescription = (listing: any) =>
   text(
     listing?.description ||
       listing?.remarks ||

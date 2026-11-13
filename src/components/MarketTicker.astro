@@ -1,0 +1,611 @@
+---
+import { supabase } from "../lib/supabase";
+
+interface Props { city: string; accent?: string }
+const { city, accent = "#2f6f73" } = Astro.props;
+
+const slug = String(city || "").toLowerCase().trim();
+const keys = Array.from(new Set([slug, slug.replace(/-/g, " ")]));
+const cityLabel = keys[keys.length - 1].replace(/\b\w/g, (ch) => ch.toUpperCase());
+const DAY = 86400000;
+const since = (days: number) => new Date(Date.now() - days * DAY).toISOString().slice(0, 10);
+
+async function fetchAll(build: (a: number, b: number) => any) {
+  const out: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await build(from, from + 999);
+    if (error) { console.error("MarketTicker query failed:", error); break; }
+    if (!data?.length) break;
+    out.push(...data);
+    if (data.length < 1000) break;
+  }
+  return out;
+}
+
+const { data: composites } = await supabase
+  .from("market_indexes")
+  .select("ticker, name, city, lat, lng")
+  .is("prop_type", null)
+  .is("area_slug", null)
+  .is("parent_ticker", null);
+
+const comp: any = (composites ?? []).find((c: any) => keys.includes(c.city)) ?? null;
+
+let indexes: any[] = [];
+let profile: any = null;
+let peers: any[] = [];
+let ticks: any[] = [];
+let months: any[] = [];
+
+if (comp) {
+  const [{ data: kids }, { data: prof }] = await Promise.all([
+    supabase.from("market_indexes")
+      .select("ticker, name, prop_type, area_slug, sort_order")
+      .eq("parent_ticker", comp.ticker)
+      .order("sort_order"),
+    supabase.from("market_profiles").select("city, blurb, facts").in("city", keys).limit(1),
+  ]);
+  profile = prof?.[0] ?? null;
+  indexes = [{ ...comp, prop_type: null, area_slug: null, sort_order: 0 }, ...(kids ?? [])];
+
+  if (comp.lat != null) {
+    const kx = Math.cos((comp.lat * Math.PI) / 180);
+    peers = (composites ?? [])
+      .filter((c: any) => c.ticker !== comp.ticker && c.lat != null)
+      .map((c: any) => ({ ...c, dist: Math.hypot(c.lat - comp.lat, (c.lng - comp.lng) * kx) }))
+      .sort((a: any, b: any) => a.dist - b.dist)
+      .slice(0, 4);
+  }
+
+  const tickers = [...indexes.map((i) => i.ticker), ...peers.map((p) => p.ticker)];
+  const results = await Promise.all([
+    fetchAll((a, b) => supabase.from("market_ticks")
+      .select("ticker, day, ask_index, actives, new_listings, price_cuts, median_dom, off_market_7d, backfilled")
+      .in("ticker", tickers).gte("day", since(730)).order("day").order("ticker").range(a, b)),
+    fetchAll((a, b) => supabase.from("market_months")
+      .select("ticker, month, sold_index, sold_count, sale_to_list, sold_dom, thin")
+      .in("ticker", tickers).gte("month", since(800)).order("month").order("ticker").range(a, b)),
+  ]);
+  ticks = results[0];
+  months = results[1];
+}
+
+const series: Record<string, any[]> = {};
+for (const t of ticks) {
+  (series[t.ticker] ??= []).push({
+    d: t.day,
+    v: t.ask_index == null ? null : Math.round(Number(t.ask_index)),
+    a: t.actives, n: t.new_listings, c: t.price_cuts,
+    m: t.median_dom == null ? null : Math.round(Number(t.median_dom)),
+    o: t.off_market_7d,
+    b: !!t.backfilled,
+  });
+}
+
+const now = new Date();
+const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+const thisMonth = ym(now);
+const prevMonth = ym(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+const sold: Record<string, any[]> = {};
+for (const r of months) {
+  const d = String(r.month).slice(0, 10);
+  if (d >= thisMonth || r.sold_index == null) continue;
+  (sold[r.ticker] ??= []).push({
+    d,
+    v: Math.round(Number(r.sold_index)),
+    k: r.sold_count,
+    s: r.sale_to_list == null ? null : Number(r.sale_to_list),
+    m: r.sold_dom,
+    t: !!r.thin,
+    p: d === prevMonth,
+  });
+}
+
+const latest = (tk: string) => { const s = series[tk]; return s?.[s.length - 1] ?? null; };
+const fmt = (v: number | null | undefined) =>
+  v == null ? "\u2014" : v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : `$${Math.round(v / 1000)}K`;
+const prettyDate = (d: string) =>
+  new Date(d + "T12:00:00").toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" });
+const prettyMonth = (d: string) =>
+  new Date(d + "T12:00:00").toLocaleDateString("en-CA", { month: "short", year: "numeric" });
+
+const yearPts = (tk: string) => {
+  const s = (series[tk] ?? []).filter((p) => p.v != null);
+  if (!s.length) return s;
+  const cut = new Date(s[s.length - 1].d).getTime() - 365 * DAY;
+  return s.filter((p) => new Date(p.d).getTime() >= cut);
+};
+const soldPts = (tk: string) => (sold[tk] ?? []).filter((p) => !p.t); const win = (s: any[], i: number) => s.slice(Math.max(0, i - 2), i + 1).reduce((t, p) => t + (p.k || 0), 0);
+const change = (tk: string) => {
+  const s = soldPts(tk);
+  const f = s.filter((p) => !p.p); if (f.length >= 13 && win(f, f.length - 1) >= 15 && win(f, f.length - 13) >= 15) return (f[f.length - 1].v / f[f.length - 13].v - 1) * 100;
+  const a = yearPts(tk);
+  return a.length < 2 ? null : (a[a.length - 1].v / a[0].v - 1) * 100;
+};
+const spark = (tk: string) => {
+  const s = soldPts(tk);
+  const vs = s.length >= 6 ? s.map((p) => p.v) : yearPts(tk).map((p) => p.v);
+  if (vs.length < 2) return `<svg viewBox="0 0 100 24" aria-hidden="true"><line x1="0" x2="100" y1="12" y2="12" class="mt-flat"/></svg>`;
+  const mn = Math.min(...vs), mx = Math.max(...vs);
+  const up = vs[vs.length - 1] >= vs[0];
+  const pts = vs.map((v, i) => `${((i / (vs.length - 1)) * 100).toFixed(1)},${(22 - ((v - mn) / ((mx - mn) || 1)) * 20).toFixed(1)}`).join(" ");
+  return `<svg viewBox="0 0 100 24" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="${up ? "#1D9E75" : "#C0392B"}" stroke-width="1.5"/></svg>`;
+};
+
+const byActives = (a: any, b: any) => (latest(b.ticker)?.a ?? 0) - (latest(a.ticker)?.a ?? 0);
+const areaIdx = indexes.filter((i) => i.area_slug);
+const typeIdx = indexes.filter((i) => i.prop_type);
+const areaRows = comp ? [indexes[0], ...[...areaIdx].sort(byActives)] : [];
+const liquid = areaIdx.filter((i) => (latest(i.ticker)?.a ?? 0) >= 10 && latest(i.ticker)?.v != null);
+const largest = [...areaIdx].sort(byActives)[0];
+const priciest = [...liquid].sort((a, b) => latest(b.ticker).v - latest(a.ticker).v)[0];
+const cheapest = [...liquid].sort((a, b) => latest(a.ticker).v - latest(b.ticker).v)[0];
+const firstDay = comp ? series[comp.ticker]?.[0]?.d : null;
+const soldFirst = comp ? soldPts(comp.ticker)[0]?.d : null;
+const compLast = comp ? latest(comp.ticker) : null;
+
+const facts: any[] = [
+  ...(Array.isArray(profile?.facts) ? profile.facts.map((f: any) => [String(f.label), String(f.value)]) : []),
+  ...(firstDay ? [["Index started", prettyDate(firstDay)]] : []),
+  ...(soldFirst ? [["Sold history", `Since ${prettyMonth(soldFirst)}`]] : []),
+  ["Components", `${areaIdx.length} neighbourhoods \u00b7 ${typeIdx.length} property types`],
+  ...(largest ? [["Most active", `${largest.name} (${latest(largest.ticker)?.a ?? 0} listings)`]] : []),
+  ...(priciest ? [["Highest priced", `${priciest.name} \u00b7 ${fmt(latest(priciest.ticker)?.v)}`]] : []),
+  ...(cheapest ? [["Most affordable", `${cheapest.name} \u00b7 ${fmt(latest(cheapest.ticker)?.v)}`]] : []),
+];
+const indexSentence = comp
+  ? `The ${comp.ticker} index tracks asking prices across ${compLast?.a ?? 0} active residential listings in ${areaIdx.length} neighbourhoods, refreshed nightly.`
+  : "";
+
+const payload = JSON.stringify({ indexes, series, sold }).replace(/</g, "\\u003c");
+const ranges = ["1W", "1M", "6M", "1Y", "2Y"];
+const pctText = (ch: number | null) => (ch == null ? "\u2014" : `${ch >= 0 ? "+" : ""}${ch.toFixed(1)}%`);
+const pctClass = (ch: number | null) => (ch == null ? "" : ch >= 0 ? " up" : " down");
+const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intelligence`;
+---
+
+{comp && (
+  <section class="mt" style={`--mt-accent:${accent}`} data-market-ticker>
+    <p class="mt-eyebrow">Ticker view</p>
+    <h2 class="mt-title">If {cityLabel} were a stock</h2>
+
+    <div class="mt-layout">
+      <div class="mt-main">
+        <div class="mt-crumb">Market summary &rsaquo; <span data-mt-name>{comp.name}</span></div>
+        <div class="mt-head">
+          <div>
+            <span class="mt-price" data-mt-price>{fmt(compLast?.v)}</span>
+            <span class="mt-unit">CAD asking index</span>
+            <span class="mt-chg" data-mt-chg></span>
+          </div>
+          <div class="mt-tk">Ticker: <strong data-mt-ticker>{comp.ticker}</strong></div>
+        </div>
+        <p class="mt-note">Asking index from active listings, updated nightly &middot; sold index from monthly sales &middot; not an appraisal</p>
+
+        <div class="mt-ranges">
+          {ranges.map((r) => <button type="button" data-mt-range data-range={r} class={r === "1Y" ? "on" : ""}>{r}</button>)}
+        </div>
+        <div class="mt-chart" data-mt-chart></div>
+        <dl class="mt-stats" data-mt-stats></dl>
+
+        <h3 class="mt-grp">Neighbourhood indexes</h3>
+        <div class="mt-rowhead"><span>Ticker</span><span></span><span>2Y trend</span><span>Asking</span><span>1Y</span></div>
+        {areaRows.map((i) => {
+          const l = latest(i.ticker); const ch = change(i.ticker); const thin = (l?.a ?? 0) < 10;
+          return (
+            <button type="button" class={`mt-row${thin ? " thin" : ""}${i.ticker === comp.ticker ? " sel" : ""}`} data-mt-row data-ticker={i.ticker}>
+              <span class="mt-sym">{i.ticker}</span>
+              <span class="mt-nm">{i.ticker === comp.ticker ? "All areas" : i.name}{thin && <em class="mt-thin">thin</em>}</span>
+              <span class="mt-spark" set:html={spark(i.ticker)}></span>
+              <span class="mt-num">{fmt(l?.v)}</span>
+              <span class={`mt-pct${pctClass(ch)}`}>{pctText(ch)}</span>
+            </button>
+          );
+        })}
+
+        <h3 class="mt-grp">Property-type indexes</h3>
+        {typeIdx.map((i) => {
+          const l = latest(i.ticker); const ch = change(i.ticker); const thin = (l?.a ?? 0) < 10;
+          return (
+            <button type="button" class={`mt-row${thin ? " thin" : ""}`} data-mt-row data-ticker={i.ticker}>
+              <span class="mt-sym">{i.ticker}</span>
+              <span class="mt-nm">{i.name}{thin && <em class="mt-thin">thin</em>}</span>
+              <span class="mt-spark" set:html={spark(i.ticker)}></span>
+              <span class="mt-num">{fmt(l?.v)}</span>
+              <span class={`mt-pct${pctClass(ch)}`}>{pctText(ch)}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <aside class="mt-side">
+        <div class="mt-side-head">
+          <div>
+            <h3 class="mt-side-name">{cityLabel}</h3>
+            <p class="mt-side-tk">Ticker: {comp.ticker}</p>
+          </div>
+          <div class="mt-logo">{comp.ticker}</div>
+        </div>
+
+        {profile?.blurb && <p class="mt-blurb">{profile.blurb}</p>}
+        <p class="mt-blurb">{indexSentence}</p>
+
+        <dl class="mt-facts">
+          {facts.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}
+        </dl>
+
+        {peers.length > 0 && (
+          <div>
+            <h4 class="mt-side-sub">Related markets</h4>
+            <ul class="mt-peers">
+              {peers.map((p) => {
+                const l = latest(p.ticker); const ch = change(p.ticker);
+                return (
+                  <li>
+                    <a href={cityHref(p.city)}>
+                      <span class="mt-peer-tk">{p.ticker}</span>
+                      <span class="mt-peer-nm"><strong>{p.name}</strong><span>{fmt(l?.v)}</span></span>
+                      <span class={`mt-chip${pctClass(ch)}`}>{ch == null ? "New" : `${ch >= 0 ? "\u2191" : "\u2193"} ${Math.abs(ch).toFixed(1)}%`}</span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+        <p class="mt-disclaimer">Asking and sold indexes are statistical estimates, not appraisals.</p>
+      </aside>
+    </div>
+
+    <script type="application/json" is:inline data-mt-data set:html={payload}></script>
+  </section>
+)}
+
+<style is:global>
+  .mt{--mt-up:#1D9E75;--mt-down:#C0392B;width:min(1400px, calc(100% - 4rem));box-sizing:border-box;margin:4rem auto}
+  .mt-eyebrow{font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin:0 0 .75rem}
+  .mt-title{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:clamp(2.4rem,5vw,3.6rem);line-height:1;letter-spacing:-.02em;margin:0 0 2.25rem}
+  .mt-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:3.5rem;align-items:start}
+  .mt-crumb{font-size:.85rem;opacity:.7}
+  .mt-head{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-top:.4rem;flex-wrap:wrap}
+  .mt-price{font-size:2.2rem;font-weight:600;line-height:1}
+  .mt-unit{font-size:.85rem;opacity:.65;margin-left:.4rem}
+  .mt-chg{display:inline-block;margin-left:.6rem;font-size:.9rem;padding:.2rem .55rem;border-radius:6px;background:rgba(0,0,0,.05)}
+  .mt-chg.up{color:var(--mt-up);background:rgba(29,158,117,.1)}
+  .mt-chg.down{color:var(--mt-down);background:rgba(192,57,43,.1)}
+  .mt-tk{font-size:.85rem;opacity:.75}
+  .mt-note{font-size:.75rem;opacity:.55;margin:.35rem 0 0}
+  .mt-ranges{display:flex;gap:.25rem;margin:1rem 0 .25rem;border-bottom:1px solid rgba(0,0,0,.08)}
+  .mt-ranges button{background:none;border:0;padding:.4rem .75rem;font:inherit;font-size:.85rem;opacity:.65;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;color:inherit}
+  .mt-ranges button.on{opacity:1;color:var(--mt-accent);border-color:var(--mt-accent)}
+  .mt-chart{position:relative;min-height:230px;margin-top:.5rem}
+  .mt-chart svg{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y}
+  .mt-legend{display:flex;gap:1.25rem;flex-wrap:wrap;font-size:.75rem;opacity:.75;margin:.25rem 0 .25rem}
+  .mt-legend i{display:inline-block;width:18px;height:0;border-top:2px solid;vertical-align:middle;margin-right:.4rem}
+  .mt-legend i.sold{border-color:var(--mt-accent)} .mt-legend small{opacity:.7;font-size:inherit}
+  .mt-sold{fill:none;stroke:var(--mt-accent);stroke-width:2.25;stroke-linejoin:round;stroke-linecap:round}
+  .mt-sold-dot{fill:var(--mt-accent);stroke:#fff;stroke-width:1.5}
+  .mt-sold-dot.pre{fill:#fff;stroke:var(--mt-accent);stroke-width:2}
+  .mt-hover{stroke:rgba(0,0,0,.35);stroke-width:1}
+  .mt-tip{position:absolute;transform:translate(-50%,-100%);background:#fff;border:1px solid rgba(0,0,0,.1);border-radius:8px;padding:.4rem .65rem;font-size:.8rem;line-height:1.45;white-space:nowrap;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.08);z-index:2}
+  .mt-tip span{opacity:.65}
+  .mt-empty{height:200px;display:flex;align-items:center;justify-content:center;text-align:center;padding:0 1rem;font-size:.9rem;opacity:.6;background:rgba(0,0,0,.025);border-radius:10px}
+  .mt-recon{font-size:.72rem;opacity:.5;margin:.25rem 0 0}
+  .mt-grid{stroke:rgba(0,0,0,.06);stroke-width:1}
+  .mt-base{stroke:rgba(0,0,0,.35);stroke-dasharray:2 3}
+  .mt-axis{font-size:11px;fill:currentColor;opacity:.5}
+  .mt-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.25rem 1.5rem;margin:1rem 0 1.25rem}
+  .mt-stats div{display:flex;justify-content:space-between;gap:.5rem;padding:.3rem 0;border-bottom:1px solid rgba(0,0,0,.05);font-size:.88rem}
+  .mt-stats dt{opacity:.65}
+  .mt-stats dd{margin:0;font-weight:500;text-align:right}
+  .mt-grp{font-size:.8rem;opacity:.6;margin:1.25rem 0 .35rem;font-weight:500}
+  .mt-rowhead{display:grid;grid-template-columns:90px minmax(0,1fr) 90px 80px 64px;gap:.6rem;padding:0 .4rem .3rem;font-size:.72rem;opacity:.5}
+  .mt-rowhead span:nth-child(n+4){text-align:right}
+  .mt-row{display:grid;grid-template-columns:90px minmax(0,1fr) 90px 80px 64px;gap:.6rem;align-items:center;width:100%;padding:.55rem .4rem;border:0;border-top:1px solid rgba(0,0,0,.06);background:none;font:inherit;font-size:.88rem;text-align:left;cursor:pointer;color:inherit}
+  .mt-row:hover{background:rgba(0,0,0,.03)}
+  .mt-row.sel{background:color-mix(in srgb,var(--mt-accent) 10%,transparent)}
+  .mt-row.thin{opacity:.55}
+  .mt-sym{font-weight:600}
+  .mt-nm{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .mt-thin{font-style:normal;font-size:.7rem;margin-left:.4rem;padding:.05rem .35rem;border-radius:4px;background:rgba(0,0,0,.06)}
+  .mt-num,.mt-pct{text-align:right}
+  .mt-pct.up{color:var(--mt-up)}
+  .mt-pct.down{color:var(--mt-down)}
+  .mt-spark svg{width:100%;height:24px;display:block}
+  .mt-flat{stroke:rgba(0,0,0,.2);stroke-dasharray:2 3}
+  .mt-side{position:sticky;top:1.5rem;padding-left:2.5rem;border-left:1px solid rgba(0,0,0,.08)}
+  .mt-side-head{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}
+  .mt-side-name{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:2.1rem;line-height:1.05;margin:0}
+  .mt-side-tk{font-size:.85rem;opacity:.65;margin:.35rem 0 0}
+  .mt-logo{flex:0 0 56px;height:56px;border-radius:12px;display:grid;place-items:center;font-size:.8rem;font-weight:700;letter-spacing:.04em;color:var(--mt-accent);background:color-mix(in srgb,var(--mt-accent) 12%,transparent)}
+  .mt-blurb{font-size:.95rem;line-height:1.6;margin:1rem 0 0}
+  .mt-facts{margin:1.25rem 0 0;padding:.25rem 1rem;border-radius:12px;background:rgba(0,0,0,.03)}
+  .mt-facts div{display:grid;grid-template-columns:120px minmax(0,1fr);gap:.75rem;padding:.7rem 0;border-bottom:1px solid rgba(0,0,0,.05);font-size:.88rem}
+  .mt-facts div:last-child{border-bottom:0}
+  .mt-facts dt{opacity:.65}
+  .mt-facts dd{margin:0}
+  .mt-side-sub{font-size:1.05rem;font-weight:500;margin:1.75rem 0 .25rem}
+  .mt-peers{list-style:none;margin:0;padding:0}
+  .mt-peers a{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:.75rem;align-items:center;padding:.7rem 0;border-top:1px solid rgba(0,0,0,.06);color:inherit;text-decoration:none}
+  .mt-peers a:hover strong{text-decoration:underline}
+  .mt-peer-tk{font-size:.75rem;font-weight:700;opacity:.7}
+  .mt-peer-nm{display:flex;flex-direction:column;font-size:.9rem;line-height:1.3}
+  .mt-peer-nm span{font-size:.8rem;opacity:.6}
+  .mt-chip{font-size:.8rem;padding:.15rem .5rem;border-radius:6px;background:rgba(0,0,0,.05);white-space:nowrap}
+  .mt-chip.up{color:var(--mt-up);background:rgba(29,158,117,.1)}
+  .mt-chip.down{color:var(--mt-down);background:rgba(192,57,43,.1)}
+  .mt-disclaimer{font-size:.72rem;opacity:.5;margin:1.25rem 0 0}
+  @media (max-width:960px){
+    .mt{width:calc(100% - 2rem);margin:2.5rem auto}
+    .mt-layout{grid-template-columns:1fr;gap:2.5rem}
+    .mt-side{position:static;padding-left:0;border-left:0;border-top:1px solid rgba(0,0,0,.08);padding-top:2rem}
+  }
+  @media (max-width:640px){
+    .mt-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .mt-row,.mt-rowhead{grid-template-columns:72px minmax(0,1fr) 70px 56px}
+    .mt-spark,.mt-rowhead span:nth-child(3){display:none}
+  }
+</style>
+
+<script>
+  type Pt = { d: string; v: number | null; a?: number | null; n?: number | null; c?: number | null; m?: number | null; o?: number | null; b?: boolean };
+  type Sp = { d: string; v: number; k: number | null; s: number | null; m: number | null; t: boolean; p: boolean };
+  type Target = { x: number; y: number; color: string; html: string };
+
+  const RANGES: Record<string, number> = { "1W": 7, "1M": 30, "6M": 182, "1Y": 365, "2Y": 730 };
+  const DAY = 86400000;
+  const DASH = "\u2014";
+  const fmt = (v: number | null | undefined) =>
+    v == null ? DASH : v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : `$${Math.round(v / 1000)}K`;
+  const num = (v: number | null | undefined) => (v == null ? DASH : Number(v).toLocaleString());
+  const time = (d: string) => new Date(d + "T12:00:00").getTime();
+  const prettyDate = (d: string) =>
+    new Date(d + "T12:00:00").toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" });
+  const prettyMonth = (d: string) =>
+    new Date(d + "T12:00:00").toLocaleDateString("en-CA", { month: "short", year: "numeric" });
+  const shortMonth = (d: string) => new Date(d + "T12:00:00").toLocaleDateString("en-CA", { month: "short" });
+  const niceStep = (x: number) => {
+    const p = Math.pow(10, Math.floor(Math.log10(x)));
+    const f = x / p;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
+  };
+  const axisMoney = (v: number) => (v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : `$${Math.round(v / 1000)}K`);
+
+  function xTicks(t0: number, t1: number) {
+    const days = (t1 - t0) / DAY;
+    const out: { t: number; label: string }[] = [];
+    if (days <= 62) {
+      const every = Math.max(1, Math.ceil(days / 5));
+      for (let t = t0; t <= t1; t += every * DAY)
+        out.push({ t, label: new Date(t).toLocaleDateString("en-CA", { month: "short", day: "numeric" }) });
+    } else {
+      const d = new Date(t0); d.setDate(1); d.setMonth(d.getMonth() + 1); d.setHours(12, 0, 0, 0);
+      const months: number[] = [];
+      while (d.getTime() <= t1) { months.push(d.getTime()); d.setMonth(d.getMonth() + 1); }
+      const every = Math.max(1, Math.ceil(months.length / 6));
+      const multiYear = new Date(t0).getFullYear() !== new Date(t1).getFullYear();
+      months.forEach((t, i) => {
+        if (i % every !== 0) return;
+        const dt = new Date(t);
+        out.push({ t, label: dt.toLocaleDateString("en-CA", multiYear && (dt.getMonth() === 0 || i === 0) ? { month: "short", year: "numeric" } : { month: "short" }) });
+      });
+    }
+    return out;
+  }
+
+  document.querySelectorAll<HTMLElement>("[data-market-ticker]").forEach((root) => {
+    const raw = root.querySelector("[data-mt-data]")?.textContent || "{}";
+    const parsed = JSON.parse(raw) as { indexes: any[]; series: Record<string, Pt[]>; sold: Record<string, Sp[]> };
+    const indexes = parsed.indexes || [];
+    const series = parsed.series || {};
+    const sold = parsed.sold || {};
+    if (!indexes.length) return;
+
+    let ticker: string = indexes[0].ticker;
+    let range = "1Y";
+    let lastW = 0;
+    const gid = "mtg" + Math.random().toString(36).slice(2, 8);
+    const accentColor = getComputedStyle(root).getPropertyValue("--mt-accent").trim() || "#2f6f73";
+    const q = (s: string) => root.querySelector<HTMLElement>(s)!;
+
+    const cutoff = () => Date.now() - RANGES[range] * DAY;
+    const askIn = () => (series[ticker] || []).filter((p) => p.v != null && time(p.d) >= cutoff()) as (Pt & { v: number })[];
+    const soldIn = () => (sold[ticker] || []).filter((p) => !p.t && time(p.d) >= cutoff() - 15 * DAY);
+
+    function chart() {
+      const box = q("[data-mt-chart]");
+      const A = askIn();
+      const S = soldIn();
+      if (A.length < 2 && S.length < 2) {
+        const first = (series[ticker] || [])[0]?.d;
+        box.innerHTML = `<div class="mt-empty">Chart building${first ? ` ${DASH} history starts ${prettyDate(first)}` : ""}. A new point is added every night.</div>`;
+        return;
+      }
+      const W = Math.max(300, Math.round(box.clientWidth || 680));
+      lastW = W;
+      const H = W < 560 ? 230 : 300;
+      const L = 58, R = 12, T = 18, B = 30;
+      const allT = [...A.map((p) => time(p.d)), ...S.map((p) => time(p.d))];
+      const allV = [...A.map((p) => p.v), ...S.map((p) => p.v)];
+      const mn = Math.min(...allV), mx = Math.max(...allV);
+      const span = mx - mn || mx * 0.02;
+      const step = niceStep(span / 4);
+      const lo = Math.floor((mn - span * 0.06) / step) * step;
+      const hi = Math.ceil((mx + span * 0.06) / step) * step;
+      const t0 = Math.min(...allT), t1 = Math.max(...allT);
+      const X = (t: number) => L + ((t - t0) / ((t1 - t0) || 1)) * (W - L - R);
+      const Y = (v: number) => T + (1 - (v - lo) / ((hi - lo) || 1)) * (H - T - B);
+      const poly = (a: number[][]) => a.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+
+      const primary: { v: number }[] = A.length >= 2 ? A : S;
+      const up = primary[primary.length - 1].v >= primary[0].v;
+      const col = up ? "#1D9E75" : "#C0392B";
+
+      let grid = "";
+      for (let v = lo; v <= hi + step / 2; v += step)
+        grid += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" class="mt-grid"/><text x="${L - 10}" y="${Y(v) + 4}" text-anchor="end" class="mt-axis">${axisMoney(v)}</text>`;
+      let xs = "";
+      for (const tk of xTicks(t0, t1))
+        xs += `<line x1="${X(tk.t)}" x2="${X(tk.t)}" y1="${H - B}" y2="${H - B + 5}" class="mt-grid"/><text x="${X(tk.t)}" y="${H - 8}" text-anchor="middle" class="mt-axis">${tk.label}</text>`;
+
+      const targets: Target[] = [];
+      let soldSvg = "";
+      if (S.length) {
+        const sxy = S.map((p) => [X(time(p.d)), Y(p.v)]);
+        if (S.length >= 2) soldSvg += `<polyline class="mt-sold" points="${poly(sxy)}"/>`;
+        S.forEach((p, i) => {
+          const [x, y] = sxy[i];
+          soldSvg += `<circle class="mt-sold-dot${p.p ? " pre" : ""}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${p.p ? 3.5 : 2.75}"/>`;
+          targets.push({
+            x, y, color: accentColor,
+            html: `<strong>${fmt(p.v)}</strong> confirmed sales<br><span>${prettyMonth(p.d)} \u00b7 ${num(p.k)} sales${p.s != null ? ` \u00b7 ${(p.s * 100).toFixed(1)}% of list` : ""}${p.p ? " \u00b7 preliminary" : ""}</span>`,
+          });
+        });
+      }
+
+      let askSvg = "";
+      let recon = false;
+      if (A.length >= 2) {
+        const axy = A.map((p) => [X(time(p.d)), Y(p.v)]);
+        const [ex, ey] = axy[axy.length - 1];
+        askSvg += `<polygon points="${axy[0][0]},${H - B} ${poly(axy)} ${ex},${H - B}" fill="url(#${gid})"/>`;
+        const lastRecon = A.map((p) => !!p.b).lastIndexOf(true);
+        recon = lastRecon >= 0;
+        if (lastRecon >= 0 && lastRecon < axy.length - 1) {
+          askSvg += `<polyline points="${poly(axy.slice(0, lastRecon + 2))}" fill="none" stroke="${col}" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round" stroke-linecap="round"/>`;
+          askSvg += `<polyline points="${poly(axy.slice(lastRecon + 1))}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+        } else {
+          askSvg += `<polyline points="${poly(axy)}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"${recon ? ' stroke-dasharray="5 4"' : ""}/>`;
+        }
+        askSvg += `<circle cx="${ex}" cy="${ey}" r="4.5" fill="${col}" stroke="#fff" stroke-width="2"/>`;
+        A.forEach((p, i) => {
+          const [x, y] = axy[i];
+          targets.push({
+            x, y, color: col,
+            html: `<strong>${fmt(p.v)}</strong> live asking<br><span>${prettyDate(p.d)} \u00b7 ${num(p.a)} active${p.b ? " \u00b7 est." : ""}</span>`,
+          });
+        });
+      }
+
+      const baseY = Y(primary[0].v);
+      const hasPre = S.some((p) => p.p);
+      const legend = S.length && A.length >= 2
+        ? `<div class="mt-legend"><span><i style="border-color:${col}"></i>Live asking market <small>(updated nightly)</small></span><span><i class="sold"></i>Confirmed sales market <small>(monthly, 3-mo rolling)</small></span></div>`
+        : S.length
+          ? `<div class="mt-legend"><span><i class="sold"></i>Confirmed sales market <small>(monthly, 3-mo rolling)</small></span></div>`
+          : "";
+      const notes = [
+        recon ? "Dashed asking line = reconstructed weekly from listing history (approximate)." : "",
+        hasPre ? "Hollow dot = latest month, sales still being reported." : "",
+      ].filter(Boolean).join(" ");
+
+      box.innerHTML =
+        legend +
+        `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Asking and sold index chart">` +
+        `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity="0.16"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>` +
+        grid + xs +
+        `<line x1="${L}" x2="${W - R}" y1="${baseY}" y2="${baseY}" class="mt-base"/>` +
+        `<text x="${W - R}" y="${baseY - 6}" text-anchor="end" class="mt-axis">Start ${fmt(primary[0].v)}</text>` +
+        soldSvg + askSvg +
+        `<line class="mt-hover" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/>` +
+        `<circle class="mt-hdot" r="5" stroke="#fff" stroke-width="2" visibility="hidden"/>` +
+        `<rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>` +
+        `</svg><div class="mt-tip" hidden></div>` +
+        (notes ? `<p class="mt-recon">${notes}</p>` : "");
+
+      const svg = box.querySelector("svg")!;
+      const tip = box.querySelector<HTMLElement>(".mt-tip")!;
+      const hl = svg.querySelector(".mt-hover")!;
+      const hd = svg.querySelector(".mt-hdot")!;
+      const hide = () => { hl.setAttribute("visibility", "hidden"); hd.setAttribute("visibility", "hidden"); tip.hidden = true; };
+      svg.addEventListener("pointermove", (e) => {
+        const r = svg.getBoundingClientRect();
+        const s = r.width / W;
+        const x = (e.clientX - r.left) / s;
+        const y = (e.clientY - r.top) / s;
+        if (x < L - 4 || x > W - R + 4 || !targets.length) { hide(); return; }
+        let best = targets[0], bestD = Infinity;
+        for (const t of targets) {
+          const d = (t.x - x) ** 2 + ((t.y - y) * 0.35) ** 2;
+          if (d < bestD) { bestD = d; best = t; }
+        }
+        hl.setAttribute("x1", String(best.x)); hl.setAttribute("x2", String(best.x)); hl.setAttribute("visibility", "visible");
+        hd.setAttribute("cx", String(best.x)); hd.setAttribute("cy", String(best.y)); hd.setAttribute("fill", best.color); hd.setAttribute("visibility", "visible");
+        tip.innerHTML = best.html;
+        tip.hidden = false;
+        tip.style.left = `${Math.min(Math.max(best.x * s, 100), r.width - 100)}px`;
+        tip.style.top = `${Math.max(best.y * s - 14, 0)}px`;
+      });
+      svg.addEventListener("pointerleave", hide);
+    }
+
+    function render() {
+      const idx = indexes.find((i) => i.ticker === ticker);
+      const all = series[ticker] || [];
+      const last = all[all.length - 1];
+
+      q("[data-mt-name]").textContent = idx?.name ?? ticker;
+      q("[data-mt-ticker]").textContent = ticker;
+      q("[data-mt-price]").textContent = fmt(last?.v);
+
+      const A = askIn();
+      const S = soldIn();
+      const askSpan = A.length >= 2 ? (time(A[A.length - 1].d) - time(A[0].d)) / DAY : 0;
+      const useSold = S.length >= 2 && (range === "2Y" || askSpan < RANGES[range] * 0.8);
+      const P: { v: number }[] = useSold ? S : A;
+      const chg = q("[data-mt-chg]");
+      if (P.length >= 2) {
+        const a = P[0].v, b = P[P.length - 1].v;
+        const p = (b / a - 1) * 100, up = p >= 0, flat = Math.abs(p) < 0.05;
+        chg.textContent = `${flat ? "\u2192" : up ? "\u2191" : "\u2193"} ${Math.abs(p).toFixed(1)}%  ${up ? "+" : "\u2212"}${fmt(Math.abs(b - a))} ${range}${useSold ? " sold" : ""}`;
+        chg.className = `mt-chg${flat ? "" : up ? " up" : " down"}`;
+      } else {
+        chg.textContent = "New index";
+        chg.className = "mt-chg";
+      }
+
+      chart();
+
+      const SA = (sold[ticker] || []).filter((p) => !p.t);
+      const ls = SA[SA.length - 1];
+      const lf = [...SA].reverse().find((p) => !p.p);
+      const yr = SA.slice(-12).map((p) => p.v);
+      const reduced = last?.a && last?.c != null ? `${Math.round((last.c / last.a) * 100)}%` : DASH;
+      const stats: [string, string][] = [
+        ["Active listings", num(last?.a)],
+        ["New (7 days)", num(last?.n)],
+        ["Left market (7 days)", num(last?.o)],
+        ["Median days on market", num(last?.m)],
+        ["Reduced in price", reduced],
+        ["Sold index (3-mo)", ls ? `${fmt(ls.v)}${ls.p ? " (prelim.)" : ""}` : DASH],
+        ["Sale-to-list", lf?.s != null ? `${(lf.s * 100).toFixed(1)}%` : DASH],
+        [lf ? `Sales in ${shortMonth(lf.d)}` : "Sales last month", lf ? num(lf.k) : DASH],
+        ["52-wk sold range", yr.length >= 6 ? `${fmt(Math.min(...yr))} \u2013 ${fmt(Math.max(...yr))}` : "Building"],
+      ];
+      q("[data-mt-stats]").innerHTML = stats.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("");
+
+      root.querySelectorAll<HTMLElement>("[data-mt-row]").forEach((r) => r.classList.toggle("sel", r.dataset.ticker === ticker));
+      root.querySelectorAll<HTMLElement>("[data-mt-range]").forEach((b) => b.classList.toggle("on", b.dataset.range === range));
+    }
+
+    root.querySelectorAll<HTMLElement>("[data-mt-row]").forEach((r) =>
+      r.addEventListener("click", () => {
+        ticker = r.dataset.ticker!;
+        render();
+        const main = root.querySelector<HTMLElement>(".mt-main");
+        if (main && main.getBoundingClientRect().top < 0) main.scrollIntoView({ behavior: "smooth", block: "start" });
+      })
+    );
+    root.querySelectorAll<HTMLElement>("[data-mt-range]").forEach((b) =>
+      b.addEventListener("click", () => { range = b.dataset.range!; render(); })
+    );
+
+    const chartBox = q("[data-mt-chart]");
+    new ResizeObserver(() => {
+      const w = Math.round(chartBox.clientWidth);
+      if (w && Math.abs(w - lastW) > 4) chart();
+    }).observe(chartBox);
+
+    render();
+  });
+</script>
