@@ -5,53 +5,60 @@ const key = import.meta.env.FATHOM_API_KEY || process.env.FATHOM_API_KEY;
 const site = import.meta.env.FATHOM_SITE_ID || process.env.FATHOM_SITE_ID || "AGYCZBFE";
 const weeksBack = Math.min(12, Math.max(2, Number(Astro.url.searchParams.get("weeks")) || 8));
 const metric = Astro.url.searchParams.get("metric") === "visitors" ? "uniques" : "pageviews";
+const days = [1, 7].includes(Number(Astro.url.searchParams.get("days"))) ? Number(Astro.url.searchParams.get("days")) : 0;
 
 let error = "";
 let rows: any[] = [];
 let weekList: string[] = [];
 let entryRows: any[] = [];
+let cachedAt = 0;
 if (!key || !site) {
   error = "Missing FATHOM_API_KEY or FATHOM_SITE_ID environment variable.";
 } else {
+  const cacheKey = `${site}|${metric}|${weeksBack}|${days}`;
+  const cache: Map<string, any> = ((globalThis as any).__cityTrafficCache ??= new Map());
+  const hit = cache.get(cacheKey);
+  if (hit && Date.now() - hit.at < 15 * 60 * 1000 && !Astro.url.searchParams.has("fresh")) { rows = hit.rows; entryRows = hit.entryRows; weekList = hit.weekList; cachedAt = hit.at; } else {
   const DAY = 86400000;
   const now = new Date();
   const dow = (now.getUTCDay() + 6) % 7;
   const thisMonday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dow));
   const ymd = (d: Date) => d.toISOString().slice(0, 10);
-  const starts = Array.from({ length: weeksBack }, (_, i) => new Date(thisMonday.getTime() - (weeksBack - 1 - i) * 7 * DAY));
+  const todayLocal = new Date(new Date().toLocaleDateString("en-CA", { timeZone: "America/Edmonton" }) + "T00:00:00Z"); const starts = days ? Array.from({ length: days }, (_, i) => new Date(todayLocal.getTime() - (days - 1 - i) * DAY)) : Array.from({ length: weeksBack }, (_, i) => new Date(thisMonday.getTime() - (weeksBack - 1 - i) * 7 * DAY));
   weekList = starts.map(ymd);
   try {
     const fetchWeek = async (start: Date) => {
-      const end = new Date(start.getTime() + 6 * DAY);
-      const p = new URLSearchParams({ entity: "pageview", entity_id: site, aggregates: metric, field_grouping: "pathname", sort_by: metric + ":desc", timezone: "America/Edmonton", limit: "1000", date_from: ymd(start) + " 00:00:00", date_to: ymd(end) + " 23:59:59" });
+      const end = new Date(start.getTime() + (days ? 0 : 6) * DAY);
+      const p = new URLSearchParams({ entity: "pageview", entity_id: site, aggregates: "pageviews,uniques", field_grouping: "pathname", sort_by: metric + ":desc", timezone: "America/Edmonton", limit: "1000", date_from: ymd(start) + " 00:00:00", date_to: ymd(end) + " 23:59:59" });
       const r = await fetch("https://api.usefathom.com/v1/aggregations?" + p, { headers: { Authorization: `Bearer ${key}` } });
       if (!r.ok) throw new Error(`Fathom API ${r.status}: ${(await r.text()).slice(0, 300)}`);
       const data = await r.json();
       return (Array.isArray(data) ? data : []).map((row: any) => ({ ...row, date: ymd(start) }));
     };
     const results: any[] = []; for (let i = 0; i < starts.length; i += 4) results.push(...(await Promise.all(starts.slice(i, i + 4).map(fetchWeek)))); rows = results.flat(); const pE = new URLSearchParams({ entity: "pageview", entity_id: site, aggregates: "visits", field_grouping: "entry_page,referrer_hostname", sort_by: "visits:desc", timezone: "America/Edmonton", limit: "1000", date_from: ymd(starts[0]) + " 00:00:00" }); const rE = await fetch("https://api.usefathom.com/v1/aggregations?" + pE, { headers: { Authorization: `Bearer ${key}` } }); if (rE.ok) entryRows = await rE.json(); else error = `Fathom API (sources) ${rE.status}: ${(await rE.text()).slice(0, 300)}`;
-  } catch (e) { error = e instanceof Error ? e.message : String(e); }
+  } catch (e) { error = e instanceof Error ? e.message : String(e); } if (!error) cache.set(cacheKey, { at: Date.now(), rows, entryRows, weekList }); }
 }
 
 const SKIP = new Set(["admin", "api", "_astro", ".netlify"]);
+const totalsByCity = new Map<string, { views: number; visitors: number }>();
 const weekSet = new Set<string>();
 const byCity = new Map<string, Map<string, number>>();
 for (const row of Array.isArray(rows) ? rows : []) {
-  const seg = String(row.pathname || "").split("/")[1] || "(home)";
+  const seg = (() => { const s = String(row.pathname || "").split("/")[1] || ""; try { return decodeURIComponent(s).trim().toLowerCase().replace(/\s+/g, "-") || "(home)"; } catch { return s.toLowerCase() || "(home)"; } })();
   if (SKIP.has(seg)) continue;
   const wk = String(row.date || "").slice(0, 10);
   const n = Number(row[metric] || 0);
   weekSet.add(wk);
   if (!byCity.has(seg)) byCity.set(seg, new Map());
   const m = byCity.get(seg)!;
-  m.set(wk, (m.get(wk) || 0) + n);
+  m.set(wk, (m.get(wk) || 0) + n); const tt = totalsByCity.get(seg) || { views: 0, visitors: 0 }; tt.views += Number(row.pageviews || 0); tt.visitors += Number(row.uniques || 0); totalsByCity.set(seg, tt);
 }
-const weeks = weekList.length ? weekList : [...weekSet].sort();
+const allWeeks = weekList.length ? weekList : [...weekSet].sort(); const firstWithData = allWeeks.findIndex((w) => weekSet.has(w)); const weeks = firstWithData > 0 ? allWeeks.slice(firstWithData) : allWeeks;
 const SEARCH_RE = /\b(google|bing|duckduckgo|yahoo|ecosia|brave|yandex|baidu|startpage|qwant)\./i;
 const OWN_RE = /bc\.realestate/i;
 const srcByCity = new Map<string, { search: number; direct: number; other: number }>();
 for (const row of Array.isArray(entryRows) ? entryRows : []) {
-  const seg = String(row.entry_page || "").split("/")[1] || "(home)";
+  const seg = (() => { const s = String(row.entry_page || "").split("/")[1] || ""; try { return decodeURIComponent(s).trim().toLowerCase().replace(/\s+/g, "-") || "(home)"; } catch { return s.toLowerCase() || "(home)"; } })();
   if (SKIP.has(seg)) continue;
   const ref = String(row.referrer_hostname || "").trim().toLowerCase();
   const n = Number(row.visits || 0);
@@ -63,16 +70,16 @@ const cities = [...byCity.entries()].map(([city, m]) => {
   const vals = weeks.map((w) => m.get(w) || 0);
   const total = vals.reduce((a, b) => a + b, 0);
   const last = vals.at(-1) || 0, prev = vals.at(-2) || 0;
-  const change = prev ? Math.round(((last - prev) / prev) * 100) : last ? null : 0;
+  const change = vals.length < 2 ? 0 : prev ? Math.round(((last - prev) / prev) * 100) : last ? null : 0;
   const rowMax = Math.max(1, ...vals);
   const step = vals.length > 1 ? 90 / (vals.length - 1) : 0;
   const spark = vals.map((v, i) => `${(i * step).toFixed(1)},${(22 - (v / rowMax) * 19).toFixed(1)}`).join(" ");
-  const srcs = srcByCity.get(city) || { search: 0, direct: 0, other: 0 }; return { city, vals, total, change, spark, ...srcs };
+  const srcs = srcByCity.get(city) || { search: 0, direct: 0, other: 0 }; return { city, vals, total, change, spark, ...srcs, ...(totalsByCity.get(city) || { views: 0, visitors: 0 }) };
 }).sort((a, b) => b.total - a.total);
 const max = Math.max(1, ...cities.flatMap((c) => c.vals));
-const label = (w: string) => new Date(w + "T12:00:00").toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+const label = (w: string) => new Date(w + "T12:00:00").toLocaleDateString("en-CA", days ? { weekday: "short", day: "numeric" } : { month: "short", day: "numeric" });
 const pretty = (s: string) => s.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-const link = (q: Record<string, string>) => "?" + new URLSearchParams({ weeks: String(weeksBack), metric: metric === "uniques" ? "visitors" : "views", ...q });
+const link = (q: Record<string, string>) => "?" + new URLSearchParams(Object.entries({ weeks: String(weeksBack), metric: metric === "uniques" ? "visitors" : "views", days: days ? String(days) : "", ...q }).filter(([, v]) => v) as [string, string][]);
 ---
 <html lang="en">
 <head>
@@ -113,6 +120,7 @@ const link = (q: Record<string, string>) => "?" + new URLSearchParams({ weeks: S
   td.city a:hover { text-decoration: underline; }
   td.total { font-weight: 800; }
   td.src, th.src { background: #fcfcfd; color: #475467; }
+  td.search, th.search { background: #ecf7f1 !important; color: #067647 !important; font-weight: 800; } th.search { border-radius: 8px 8px 0 0; }
   .up { color: #067647; font-weight: 700; } .down { color: #b42318; font-weight: 700; } .flat { color: #98a2b3; }
   .note { margin-top: 12px; color: #98a2b3; font-size: 12px; }
 </style>
@@ -120,22 +128,22 @@ const link = (q: Record<string, string>) => "?" + new URLSearchParams({ weeks: S
 <body>
 <div class="fs-wrap"><AdminSidebar /><main class="fs-main">
   <p class="eyebrow">Analytics</p><h1>City traffic</h1>
-  <p class="fs-sub">bc.realestate · {metric === "uniques" ? "page visitors (summed across pages)" : "page views"} by city, per week · source: Fathom</p>
+  <p class="fs-sub">bc.realestate · {metric === "uniques" ? "page visitors (summed across pages)" : "page views"} by city, per week · source: Fathom{cachedAt ? <> &middot; cached {Math.max(1, Math.round((Date.now() - cachedAt) / 60000))} min ago &middot; <a href={link({ fresh: "1" })}>refresh now</a></> : null}</p>
   <div class="fs-tiles"><div class="fs-tile"><b>{cities.reduce((a, c) => a + c.total, 0).toLocaleString()}</b>{metric === "uniques" ? "page visitors" : "page views"}</div><div class="fs-tile"><b>{cities.filter((c) => c.total > 0).length}</b>sections with traffic</div><div class="fs-tile"><b>{cities.reduce((a, c) => a + (c.search || 0), 0).toLocaleString()}</b>entries from search</div><div class="fs-tile"><b>{cities.reduce((a, c) => a + (c.direct || 0), 0).toLocaleString()}</b>direct entries</div></div>
   <div class="bar">
-    <span>{[4, 8, 12].map((n) => <a class={n === weeksBack ? "on" : ""} href={link({ weeks: String(n) })}>{n} wks</a>)}</span>
+    <span>{[1, 7].map((d) => <a class={days === d ? "on" : ""} href={link({ days: String(d) })}>{d === 1 ? "1 day" : "1 wk"}</a>)}{[4, 8, 12].map((n) => <a class={!days && n === weeksBack ? "on" : ""} href={link({ weeks: String(n), days: "" })}>{n} wks</a>)}</span>
     <span><a class={metric === "pageviews" ? "on" : ""} href={link({ metric: "views" })}>Views</a> <a class={metric === "uniques" ? "on" : ""} href={link({ metric: "visitors" })}>Visitors</a></span>
   </div>
   {error ? <p class="fs-flash fs-err">{error}</p> : (
     <div class="fs-table-wrap"><table>
-      <thead><tr><th>City</th><th>Trend</th>{weeks.map((w) => <th>{label(w)}</th>)}<th class="src" title="Visits that entered on this city from a search engine">Search</th><th class="src" title="Visits with no referrer">Direct</th><th class="src" title="Social, AI tools, other sites">Other</th><th>Total</th><th>vs last wk</th></tr></thead>
+      <thead><tr><th>City</th><th>Trend</th>{weeks.map((w) => <th>{label(w)}</th>)}<th class="src search" title="Visits that entered on this city from a search engine">Search</th><th class="src" title="Visits with no referrer">Direct</th><th class="src" title="Social, AI tools, other sites">Other</th><th>Visitors</th><th>Views</th><th>{days ? "vs prev day" : "vs last wk"}</th></tr></thead>
       <tbody>
         {cities.map((c) => (
           <tr>
             <td class="city"><a href={c.city === "(home)" ? "/" : `/${c.city}/`} target="_blank">{c.city === "(home)" ? "(home)" : pretty(c.city)}</a></td>
             <td><svg width="92" height="24" viewBox="0 0 92 24"><polyline points={c.spark} fill="none" stroke="#2f6f73" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" /></svg></td>
             {c.vals.map((v) => <td style={`background: rgba(47,111,115,${(v / max * 0.5).toFixed(3)}); color: ${v / max > 0.6 ? "#fff" : "inherit"}`}>{v || ""}</td>)}
-            <td class="src">{c.search || ""}</td><td class="src">{c.direct || ""}</td><td class="src">{c.other || ""}</td><td class="total">{c.total}</td>
+            <td class="src search">{c.search || ""}</td><td class="src">{c.direct || ""}</td><td class="src">{c.other || ""}</td><td class={metric === "uniques" ? "total" : ""}>{c.visitors}</td><td class={metric === "pageviews" ? "total" : ""}>{c.views}</td>
             <td class={c.change === null ? "up" : c.change > 0 ? "up" : c.change < 0 ? "down" : "flat"}>{c.change === null ? "new" : c.change > 0 ? `+${c.change}%` : c.change < 0 ? `${c.change}%` : "–"}</td>
           </tr>
         ))}
