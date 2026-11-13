@@ -63,7 +63,7 @@ if (comp) {
       .select("ticker, day, ask_index, actives, new_listings, price_cuts, median_dom, off_market_7d, backfilled")
       .in("ticker", tickers).gte("day", since(730)).order("day").order("ticker").range(a, b)),
     fetchAll((a, b) => supabase.from("market_months")
-      .select("ticker, month, sold_index, sold_count, sale_to_list, sold_dom, thin")
+      .select("ticker, month, sold_index, sold_count, sale_to_list, sold_dom, thin, method")
       .in("ticker", tickers).gte("month", since(800)).order("month").order("ticker").range(a, b)),
   ]);
   ticks = results[0];
@@ -97,7 +97,7 @@ for (const r of months) {
     s: r.sale_to_list == null ? null : Number(r.sale_to_list),
     m: r.sold_dom,
     t: !!r.thin,
-    p: d === prevMonth,
+    p: d === prevMonth, x: r.method === "median",
   });
 }
 
@@ -418,7 +418,7 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
       if (!box) return;
       const F = (sold[ticker] || []).filter((p) => !p.t && !p.p);
       const askAll = (series[ticker] || []).filter((p) => p.v != null);
-      if (RANGES[range] < 182 || F.length < 2 || askAll.length < 10) { box.innerHTML = ""; return; }
+      if (RANGES[range] < 182 || F.length < 2 || askAll.length < 10 || F.some((p: any) => p.x)) { box.innerHTML = ""; return; }
       const c = cutoff();
       const pts: { d: string; s: number; a: number; v: number }[] = [];
       for (const m of F) {
@@ -539,13 +539,13 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
       const baseY = Y(primary[0].v);
       const hasPre = S.some((p) => p.p);
       const legend = S.length && A.length >= 2
-        ? `<div class="mt-legend"><span><i style="border-color:${col}"></i>Live asking market <small>(updated nightly)</small></span><span><i class="sold"></i>Confirmed sales market <small>(monthly, 3-mo rolling)</small></span></div>`
+        ? `<div class="mt-legend"><span><i style="border-color:${col}"></i>Live asking market <small>(updated nightly)</small></span><span><i class="sold"></i>${S.some((p: any) => p.x) ? "Confirmed sales market <small>(median sale price, 3-mo rolling)</small>" : "Confirmed sales market <small>(monthly, 3-mo rolling)</small>"}</span></div>`
         : S.length
-          ? `<div class="mt-legend"><span><i class="sold"></i>Confirmed sales market <small>(monthly, 3-mo rolling)</small></span></div>`
+          ? `<div class="mt-legend"><span><i class="sold"></i>${S.some((p: any) => p.x) ? "Confirmed sales market <small>(median sale price, 3-mo rolling)</small>" : "Confirmed sales market <small>(monthly, 3-mo rolling)</small>"}</span></div>`
           : "";
       const notes = [
         recon ? "Dashed asking line = reconstructed weekly from listing history (approximate)." : "",
-        hasPre ? "Hollow dot = latest month, sales still being reported." : "",
+        hasPre ? "Hollow dot = latest month, sales still being reported." : "", S.some((p: any) => p.x) ? "Sales line is the median sale price (not size-adjusted), so it is not a like-for-like comparison with the asking index." : "",
       ].filter(Boolean).join(" ");
 
       box.innerHTML =
