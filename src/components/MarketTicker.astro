@@ -178,7 +178,7 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
             <span class="mt-unit">CAD asking index</span>
             <span class="mt-chg" data-mt-chg></span>
           </div>
-          <div class="mt-tk">Ticker: <strong data-mt-ticker>{comp.ticker}</strong></div>
+          <div class="mt-tk" style="font-size:1.05rem;">BCRE: <strong data-mt-ticker>{comp.ticker}</strong></div>
         </div>
         <p class="mt-note">Asking index from active listings, updated nightly &middot; sold index from monthly sales &middot; not an appraisal</p>
 
@@ -223,7 +223,7 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
         <div class="mt-side-head">
           <div>
             <h3 class="mt-side-name">{cityLabel}</h3>
-            <p class="mt-side-tk">Ticker: {comp.ticker}</p>
+            <p class="mt-side-tk">BCRE: {comp.ticker}</p>
           </div>
           <div class="mt-logo">{comp.ticker}</div>
         </div>
@@ -410,7 +410,7 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
     const q = (s: string) => root.querySelector<HTMLElement>(s)!;
 
     const cutoff = () => { let c = Date.now() - RANGES[range] * DAY; const back = range === "2Y" ? 24 : range === "1Y" ? 12 : 0; if (back) { const F = (sold[ticker] || []).filter((p) => !p.t && !p.p); if (F.length > back) c = Math.min(c, time(F[F.length - 1 - back].d)); } return c; };
-    const askIn = () => { const all = (series[ticker] || []).filter((p) => p.v != null) as (Pt & { v: number })[]; const c = cutoff(); const i = all.findIndex((p) => time(p.d) >= c); return i < 0 ? [] : all.slice(Math.max(0, i - 1)); };
+    const askIn = () => { const all = (series[ticker] || []).filter((p) => p.v != null) as (Pt & { v: number })[]; const sIn = RANGES[range] >= 182 ? soldIn() : []; const c = Math.min(cutoff(), ...sIn.map((p) => time(p.d))); const i = all.findIndex((p) => time(p.d) >= c); return i < 0 ? [] : all.slice(Math.max(0, i - 1)); };
     const soldIn = () => (sold[ticker] || []).filter((p) => !p.t && time(p.d) >= cutoff() - 15 * DAY);
 
     function spread() {
@@ -521,10 +521,10 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
         const lastRecon = A.map((p) => !!p.b).lastIndexOf(true);
         recon = lastRecon >= 0;
         if (lastRecon >= 0 && lastRecon < axy.length - 1) {
-          askSvg += `<polyline points="${poly(axy.slice(0, lastRecon + 2))}" fill="none" stroke="${col}" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round" stroke-linecap="round"/>`;
+          askSvg += `<polyline points="${poly(axy.slice(0, lastRecon + 2))}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
           askSvg += `<polyline points="${poly(axy.slice(lastRecon + 1))}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
         } else {
-          askSvg += `<polyline points="${poly(axy)}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"${recon ? ' stroke-dasharray="5 4"' : ""}/>`;
+          askSvg += `<polyline points="${poly(axy)}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
         }
         askSvg += `<circle cx="${ex}" cy="${ey}" r="4.5" fill="${col}" stroke="#fff" stroke-width="2"/>`;
         A.forEach((p, i) => {
@@ -544,14 +544,14 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
           ? `<div class="mt-legend"><span><i class="sold"></i>${S.some((p: any) => p.x) ? "Confirmed sales market <small>(median sale price, 3-mo rolling)</small>" : "Confirmed sales market <small>(monthly, 3-mo rolling)</small>"}</span></div>`
           : "";
       const notes = [
-        recon ? "Dashed asking line = reconstructed weekly from listing history (approximate)." : "",
+        recon ? "Earlier asking history is reconstructed weekly from listing records (approximate)." : "",
         hasPre ? "Hollow dot = latest month, sales still being reported." : "", S.some((p: any) => p.x) ? "Sales line is the median sale price (not size-adjusted), so it is not a like-for-like comparison with the asking index." : "",
       ].filter(Boolean).join(" ");
 
       box.innerHTML =
         legend +
         `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Asking and sold index chart">` +
-        `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity="0.16"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>` +
+        `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity="0.11"/><stop offset="0.65" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>` +
         grid + xs +
         `<line x1="${L}" x2="${W - R}" y1="${baseY}" y2="${baseY}" class="mt-base"/>` +
         `<text x="${W - R}" y="${baseY - 6}" text-anchor="end" class="mt-axis">Start ${fmt(primary[0].v)}</text>` +

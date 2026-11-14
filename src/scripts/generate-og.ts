@@ -64,7 +64,7 @@ async function main() {
   <rect width="1200" height="630" fill="#ffffff"/>
   <rect x="0" y="0" width="1200" height="10" fill="${col}"/>
   <text x="70" y="95" font-family="DejaVu Sans, Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="4" fill="#374151">IF ${esc(cityTitle.toUpperCase())} WERE A STOCK</text>
-  <text x="70" y="175" font-family="DejaVu Sans, Arial, sans-serif" font-size="56" font-weight="700" fill="#111827">${esc(comp.ticker)}</text>
+  <text x="70" y="175" font-family="DejaVu Sans, Arial, sans-serif" font-size="56" font-weight="700" fill="#111827">BCRE: ${esc(comp.ticker)}</text>
   <text x="70" y="215" font-family="DejaVu Sans, Arial, sans-serif" font-size="26" fill="#6b7280">${esc(comp.name)}</text>
   <text x="70" y="330" font-family="DejaVu Sans, Arial, sans-serif" font-size="110" font-weight="700" fill="#111827">${fmt(Number(last.ask_index))}</text>
   <text x="70" y="372" font-family="DejaVu Sans, Arial, sans-serif" font-size="24" fill="#6b7280">CAD asking index</text>
@@ -82,7 +82,7 @@ async function main() {
   <rect width="1080" height="1080" fill="#ffffff"/>
   <rect x="0" y="0" width="1080" height="14" fill="${col}"/>
   <text x="80" y="118" ${F} font-size="28" font-weight="700" letter-spacing="4" fill="#374151">IF ${esc(cityTitle.toUpperCase())} WERE A STOCK</text>
-  <text x="80" y="210" ${F} font-size="76" font-weight="700" fill="#111827">${esc(comp.ticker)}</text>
+  <text x="80" y="210" ${F} font-size="76" font-weight="700" fill="#111827">BCRE: ${esc(comp.ticker)}</text>
   <text x="80" y="258" ${F} font-size="30" fill="#6b7280">${esc(comp.name)}</text>
   <text x="80" y="398" ${F} font-size="132" font-weight="700" fill="#111827">${fmt(Number(last.ask_index))}</text>
   <text x="80" y="446" ${F} font-size="28" fill="#6b7280">CAD asking index</text>

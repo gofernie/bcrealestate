@@ -1457,7 +1457,11 @@ try {
     islandList = list as any[];
     if (i >= 0) islandRank = { rank: i + 1, total: list.length, deals: Number(list[i].sold || 0), name: String(list[i].market_name) };
   }
-} catch {}/* seo-fresh-v1 */ const pageModified = new Date().toISOString().slice(0, 10);
+} catch {}/* week-tone-v1 */
+const weekTyp = activeListingsRollingAverage ? Math.round((activeListingsRollingAverage as number) * 12 / 52) : 0;
+const weekRatio = weekTyp ? Number(newThisWeek) / weekTyp : null;
+const weekTone = weekRatio == null ? null : weekRatio < 0.85 ? { c: "#b0413e", t: "\u2193 Quieter than usual" } : weekRatio > 1.15 ? { c: "#1d8a5b", t: "\u2191 Busier than usual" } : { c: "#5b6b7a", t: "About a typical week" };
+/* seo-fresh-v1 */ const pageModified = new Date().toISOString().slice(0, 10);
 const marketSeoSchema = {
   "@context": "https://schema.org",
   "@graph": [
@@ -1607,7 +1611,14 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
     class="market-page"
     style={`--market-hero-image:url("${marketHeroImage}")`}
   >
-    <section class="market-hero">
+    <!-- hero-compact-v1 -->
+<style is:global>
+  .market-hero { min-height: 0 !important; height: auto !important; padding-top: 64px !important; padding-bottom: 56px !important; }
+  .market-hero > * { min-height: 0 !important; }
+  .market-hero h1 { font-size: clamp(2.2rem, 4.6vw, 3.6rem) !important; line-height: 1.02 !important; margin-bottom: 14px !important; }
+  @media (max-width: 760px) { .market-hero { padding-top: 40px !important; padding-bottom: 36px !important; } }
+</style>
+<section class="market-hero">
       <div>
         <p class="eyebrow">Market intelligence</p>
         <h1>See the {cityLabel} market more clearly.</h1>
@@ -1628,25 +1639,25 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
       <article>
         <span>Active listings</span>
         <strong>{activeListings.toLocaleString()}</strong>
-        <small>Currently available</small>
+        <small>{monthsOfSupply != null ? (<><b style={`color:${monthsOfSupply > 8.3 ? "#2f6f9f" : monthsOfSupply < 5 ? "#c0612b" : "#5b6b7a"};font-weight:700;`}>{monthsOfSupply.toFixed(1)} months</b> of supply at today's sales pace</>) : "Currently available"}</small>
       </article>
 
       <article>
         <span>New this week</span>
         <strong>{newThisWeek.toLocaleString()}</strong>
-        <small>Listed in the last 7 days</small>
+        {weekTone ? (<small><b style={`color:${weekTone.c};font-weight:700;`}>{weekTone.t}</b> · typical is about {weekTyp}</small>) : (<small>Listed in the last 7 days</small>)}
       </article>
 
       <article>
         <span>Median price</span>
         <strong>{medianPrice ? formatPrice(medianPrice) : "—"}</strong>
-        <small>Median active asking price</small>
+        <small>Half of listings ask less</small>
       </article>
 
       <article>
         <span>Neighbourhoods</span>
         <strong>{Object.keys(areaMap).length.toLocaleString()}</strong>
-        <small>With active inventory</small>
+        <small>Each tracked as its own index below</small>
       </article>
     </section>
 
@@ -1694,7 +1705,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
               >
                 <div style="min-width:0;">
                   <span
-                    style="display:block;min-height:34px;margin-bottom:7px;color:var(--market-muted);font-size:.68rem;font-weight:850;letter-spacing:.08em;line-height:1.25;text-transform:uppercase;"
+                    style="display:block;min-height:34px;margin-bottom:7px;color:var(--market-muted);font-size:.95rem;font-weight:850;letter-spacing:.08em;line-height:1.25;text-transform:uppercase;"
                   >{pulseSupplyLabel}</span>
 
                   <strong
@@ -1722,7 +1733,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
                       : "Year-over-year comparison unavailable"}
 
                     <small
-                      style="display:block;margin-top:3px;color:var(--market-muted);font-size:.72rem;font-weight:400;line-height:1.3;"
+                      style="display:block;margin-top:3px;color:var(--market-muted);font-size:1rem;font-weight:400;line-height:1.35;"
                     >
                       vs. the same 3-month period last year
                     </small>
@@ -1733,7 +1744,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
                   style="min-width:0;padding-left:16px;border-left:1px solid var(--market-line);"
                 >
                   <span
-                    style="display:block;min-height:34px;margin-bottom:7px;color:var(--market-muted);font-size:.68rem;font-weight:850;letter-spacing:.08em;line-height:1.25;text-transform:uppercase;"
+                    style="display:block;min-height:34px;margin-bottom:7px;color:var(--market-muted);font-size:.95rem;font-weight:850;letter-spacing:.08em;line-height:1.25;text-transform:uppercase;"
                   >
                     Average sales / month
                   </span>
@@ -1765,7 +1776,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
                       : "Year-over-year comparison unavailable"}
 
                     <small
-                      style="display:block;margin-top:3px;color:var(--market-muted);font-size:.72rem;font-weight:400;line-height:1.3;"
+                      style="display:block;margin-top:3px;color:var(--market-muted);font-size:1rem;font-weight:400;line-height:1.35;"
                     >
                       vs. the same 3-month period last year
                     </small>
@@ -3015,7 +3026,19 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
     align-content: center !important;
     border: 0 !important;
   }
-</style><!-- market-reads-v1 -->
+</style><!-- pulse-gauge-labels-v1 --><style is:global>.market-balance__scale span{font-size:.85rem !important;}</style><!-- pulse-arrow-v4 -->
+<style is:global>
+  @keyframes arrowPulse { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.5); } }
+</style>
+<script is:inline>
+  (() => {
+    const arrows = [...document.querySelectorAll('.market-pulse b[aria-hidden="true"][style*="999px"]')].slice(0, 2);
+    if (!arrows.length || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const play = () => arrows.forEach((b, i) => { b.style.transformOrigin = 'center'; b.style.animation = `arrowPulse 1.1s ease-in-out ${0.4 + i * 1.6}s 1`; });
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { play(); io.disconnect(); } }, { threshold: 0.5 });
+    io.observe(arrows[0]);
+  })();
+</script><!-- market-reads-v1 -->
 <style is:global>
   .market-pulse__read {
     order: -1;
