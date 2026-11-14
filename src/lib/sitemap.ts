@@ -49,6 +49,9 @@ export async function pageEntries(host: string = PRIMARY): Promise<Entry[]> {
   if (areasResult.error) console.error("Sitemap areas query failed:", areasResult.error);
   const corePages = ["", "areas", "searches", "homes", "condos", "townhomes", "mobile-homes", "land"];
   for (const city of cities) for (const page of corePages) add(page ? `${base}/${city}/${page}` : `${base}/${city}/`);
+  /* market-intel-sitemap-v1 */ const today = new Date().toISOString().slice(0, 10);
+  for (const city of cities) add(`${base}/${city}/market-intelligence`, today);
+  if (host === PRIMARY) add(`${base}/greater-victoria/market-intelligence`, today);
   for (const page of pagesResult.data || []) {
     const city = slugify(page.city), slug = slugify(page.slug);
     if (city && slug && cities.includes(city)) add(`${base}/${city}/${slug}`, page.updated_at ? String(page.updated_at).slice(0, 10) : undefined);
