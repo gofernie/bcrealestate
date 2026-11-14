@@ -23,6 +23,7 @@ const monthsToBackfill = Number(
   process.argv[3] || 24
 );
 
+let boardFilter = process.env.BOARD_ID || null;
 const delay = (milliseconds) =>
   new Promise((resolve) =>
     setTimeout(resolve, milliseconds)
@@ -71,12 +72,22 @@ function average(values) {
 
 function applyCommonFilters(params) {
   params.set("city", city);
+  if (boardFilter) params.set("boardId", boardFilter);
   params.set("type", "sale");
   params.append("class", "Residential");
   params.append("class", "Condo");
 }
 
 async function requestListings(params) {
+  let last;
+  for (let a = 0; a < 6; a++) {
+    try { return await requestListingsOnce(new URLSearchParams(params)); }
+    catch (e) { last = e; const wait = 2000 * (a + 1); console.warn(`  retry ${a + 1} in ${wait / 1000}s: ${String(e.message).slice(0, 120)}`); await delay(wait); }
+  }
+  throw last;
+}
+
+async function requestListingsOnce(params) {
   applyCommonFilters(params);
 
   const response = await fetch(
@@ -237,7 +248,19 @@ async function getMonthlySales(startDate, endDate) {
 
 const now = new Date();
 
+if (!boardFilter) {
+  for (const b of ["25", "86"]) {
+    boardFilter = b;
+    const pp = new URLSearchParams(); pp.set("status", "A"); pp.set("resultsPerPage", "1"); pp.set("listings", "false");
+    const jj = await requestListings(pp).catch(() => ({}));
+    if (Number(jj.count || 0) > 0) break;
+    boardFilter = null;
+  }
+}
+console.log(`Board for ${city}: ${boardFilter || "all"}`);
+
 const lastSettledMonth = new Date(Date.UTC(
+
   now.getUTCFullYear(),
   now.getUTCMonth() - Number(process.env.SETTLE_LAG ?? 1),
   1

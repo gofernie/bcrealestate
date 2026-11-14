@@ -14,5 +14,6 @@ let ok = 0; const failed = [];
 for (const c of cities) {
   const r = spawnSync(process.execPath, ["scripts/backfill-market-monthly-stats.mjs", title(c), months], { stdio: "inherit", env: process.env });
   if (r.status === 0) ok++; else failed.push(c);
+  await new Promise((res) => setTimeout(res, 2000));
 }
 console.log(`Monthly stats refreshed: ${ok}/${cities.length}${failed.length ? "  failed: " + failed.join(", ") : ""}`);

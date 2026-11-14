@@ -10,10 +10,12 @@ const supabase = createClient(
   import.meta.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+const { data: latestSnap } = await supabase.from("market_metrics_public").select("snapshot_date").order("snapshot_date", { ascending: false }).limit(1);
+const snapDate = latestSnap?.[0]?.snapshot_date || "2026-07-01";
 const { data: metrics = [], error } = await supabase
   .from("market_metrics_public")
   .select("*")
-  .eq("snapshot_date", "2026-07-01")
+  .eq("snapshot_date", snapDate)
   .order("activity_index", { ascending: false });
 
 const totals = metrics.reduce(
@@ -37,7 +39,7 @@ const slowMarkets = [...metrics].slice(-5).reverse();
     <section class="hero">
       <p class="eyebrow">Market Intelligence</p>
       <h1>Vancouver Island Market Pulse</h1>
-      <p>Weekly market activity based on active, pending, sold, expired, cancelled, and withdrawn listings.</p>
+      <p>As of {snapDate}: pending deals per active listing, with sales and failed listings over the last 7 days.</p>
     </section>
 
     {error && <p class="error">Error loading market metrics.</p>}
@@ -45,7 +47,7 @@ const slowMarkets = [...metrics].slice(-5).reverse();
     <section class="stats">
       <article><span>Active</span><strong>{totals.active}</strong></article>
       <article><span>Pending</span><strong>{totals.pending}</strong></article>
-      <article><span>Sold</span><strong>{totals.sold}</strong></article>
+      <article><span>New deals (7d)</span><strong>{totals.sold}</strong></article>
       <article><span>Failed</span><strong>{totals.failed}</strong></article>
     </section>
 
@@ -80,7 +82,7 @@ const slowMarkets = [...metrics].slice(-5).reverse();
               <th>Market</th>
               <th>Active</th>
               <th>Pending</th>
-              <th>Sold</th>
+              <th>New deals (7d)</th>
               <th>Failed</th>
               <th>Activity</th>
             </tr>

@@ -1098,7 +1098,8 @@ const liveActiveCount = await (async () => { if (hasInventoryPulse) return null;
 const ratioInventory = hasInventoryPulse ? (activeInventoryAverage as number) : liveActiveCount;
 /* latest-month-ratio-v1: busy markets use the latest month (BCREA-style); small towns keep the 3-month average */
 const latestSalesCount = Number(latestMonth?.sales || 0);
-const useLatestMonth = latestSalesCount >= 40;
+/* prelim-ratio-v1: a still-filling month never drives the verdict */ const latestIsPrelim = (() => { const m = String((latestMonth as any)?.month || "").slice(0, 10); const d = new Date(); return m === new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)).toISOString().slice(0, 10); })();
+const useLatestMonth = latestSalesCount >= 40 && !latestIsPrelim;
 const ratioSales = useLatestMonth ? latestSalesCount : (salesRollingAverage as number | null);
 const ratioActive = useLatestMonth && hasInventoryPulse && Number(latestMonth?.activeListings || 0) > 0 ? Number(latestMonth.activeListings) : ratioInventory;
 const salesToActive = ratioActive != null && ratioActive > 0 && ratioSales != null && ratioSales > 0 ? (ratioSales / ratioActive) * 100 : null;
@@ -1441,7 +1442,22 @@ const canonicalUrl =
 const socialImage =
   site?.hero_image_url || (site as any)?.featured_listing_images?.hero || (site as any)?.featured_listing_images?.card || "https://images.unsplash.com/photo-1542903660-eedba2cda473?auto=format&fit=crop&w=1200&q=72";
 
-/* seo-fresh-v1 */ const pageModified = new Date().toISOString().slice(0, 10);
+/* island-rank-v1 */
+const RANK_ALIAS: Record<string, string> = { courtenay: "Comox Valley", comox: "Comox Valley", cumberland: "Comox Valley", "comox-valley": "Comox Valley", parksville: "Parksville / Qualicum", "qualicum-beach": "Parksville / Qualicum", "nanoose-bay": "Parksville / Qualicum", "french-creek": "Parksville / Qualicum", "saanich-east": "Saanich", "saanich-west": "Saanich", "mill-bay": "Malahat / Mill Bay", "shawnigan-lake": "Malahat / Mill Bay", "cobble-hill": "Malahat / Mill Bay", "port-hardy": "North Island", "port-mcneill": "North Island", "salt-spring-island": "Gulf Islands", "gabriola-island": "Gulf Islands" };
+let islandRank: { rank: number; total: number; deals: number; name: string } | null = null;
+let islandList: any[] = [];
+try {
+  const { data: snap } = await supabase.from("market_metrics_public").select("snapshot_date").order("snapshot_date", { ascending: false }).limit(1);
+  const sd = snap?.[0]?.snapshot_date;
+  if (sd && sd !== "2026-07-01") {
+    const { data: mm } = await supabase.from("market_metrics_public").select("market_name, activity_index, sold").eq("snapshot_date", sd).order("activity_index", { ascending: false });
+    const list = (mm || []).filter((r: any) => r.activity_index != null);
+    const want = String(RANK_ALIAS[city] || cityLabel).toLowerCase();
+    const i = list.findIndex((r: any) => String(r.market_name).toLowerCase() === want);
+    islandList = list as any[];
+    if (i >= 0) islandRank = { rank: i + 1, total: list.length, deals: Number(list[i].sold || 0), name: String(list[i].market_name) };
+  }
+} catch {}/* seo-fresh-v1 */ const pageModified = new Date().toISOString().slice(0, 10);
 const marketSeoSchema = {
   "@context": "https://schema.org",
   "@graph": [
@@ -1779,7 +1795,17 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
       if (/tilt\w* toward sellers/i.test(h)) return "Balanced, with an edge to sellers: well-priced homes still move quickly.";
       return "Fair deals both ways: pricing right matters more than timing.";
     })()}
-  </span>
+  </span>{islandRank && (<details data-island-rank style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(0,0,0,.09);font-size:.82rem;line-height:1.45;letter-spacing:0;text-transform:none;">
+  <summary style="cursor:pointer;font-weight:500;opacity:.85;">{(islandRank as any).rank === 1 ? "The most active" : `#${(islandRank as any).rank} most active`} of {(islandRank as any).total} Island markets this week{String((islandRank as any).name).toLowerCase() !== String(cityLabel).toLowerCase() ? ` (${(islandRank as any).name})` : ""} · {(islandRank as any).deals} new {(islandRank as any).deals === 1 ? "deal" : "deals"} in the last 7 days <span style="text-decoration:underline;opacity:.7;white-space:nowrap;">See all</span></summary>
+  <ol style="margin:10px 0 0;padding:0;list-style:none;display:grid;gap:2px;">
+    {islandList.map((r: any, idx: number) => { const me = String(r.market_name).toLowerCase() === String((islandRank as any).name).toLowerCase(); return (
+      <li style={`display:flex;justify-content:space-between;gap:10px;padding:3px 8px;border-radius:6px;${me ? "background:rgba(0,0,0,.08);font-weight:700;" : ""}`}>
+        <span>{idx + 1}. {r.market_name}</span>
+        <span style="font-variant-numeric:tabular-nums;opacity:.75;">{Math.round(Number(r.activity_index) * 100)}%</span>
+      </li>); })}
+  </ol>
+  <span style="display:block;margin-top:8px;font-size:.72rem;opacity:.6;">Pending deals as a share of active listings. Updated nightly.</span>
+</details>)}
 </aside>
    <div class="market-pulse__story">
               
