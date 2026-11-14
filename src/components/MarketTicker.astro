@@ -165,9 +165,19 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
 ---
 
 {comp && (
-  <section class="mt" style={`--mt-accent:${accent}`} data-market-ticker>
-    <p class="mt-eyebrow">Ticker view</p>
-    <h2 class="mt-title">If {cityLabel} were a stock</h2>
+  <style is:global>
+  /* ticker-tip-v1 */
+  .mt-tk[data-tip] { position: relative; cursor: help; outline: none; }
+  .mt-tk[data-tip]:hover::after, .mt-tk[data-tip]:focus::after {
+    content: attr(data-tip); position: absolute; right: 0; top: calc(100% + 10px); width: 320px;
+    white-space: pre-line; padding: 16px 18px; border-radius: 12px; background: #1f2a37; color: #fff;
+    font-size: .98rem; font-weight: 400; line-height: 1.5; letter-spacing: 0; text-align: left;
+    box-shadow: 0 10px 30px rgba(0,0,0,.18); z-index: 30;
+  }
+</style>
+<section class="mt" style={`--mt-accent:${accent}`} data-market-ticker>
+    <p class="mt-eyebrow">Price index · updated nightly</p>
+    <h2 class="mt-title">{cityLabel}, indexed.</h2>
 
     <div class="mt-layout">
       <div class="mt-main">
@@ -178,7 +188,7 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
             <span class="mt-unit">CAD asking index</span>
             <span class="mt-chg" data-mt-chg></span>
           </div>
-          <div class="mt-tk" style="font-size:1.05rem;">BCRE: <strong data-mt-ticker>{comp.ticker}</strong></div>
+          <div class="mt-tk" tabindex="0" data-city={cityLabel} data-tip={`${cityLabel}'s housing market, run like a fund: every home for sale is a holding. Its sector indexes, by home type and neighbourhood, are below \u2193`} style="font-size:1.2rem;display:inline-flex;align-items:center;gap:.3em;padding:.45em 1em;border:1px solid color-mix(in srgb, var(--mt-accent) 35%, transparent);background:color-mix(in srgb, var(--mt-accent) 8%, white);border-radius:999px;letter-spacing:.02em;align-self:flex-start;white-space:nowrap;">BCRE: <strong data-mt-ticker>{comp.ticker}</strong></div>
         </div>
         <p class="mt-note">Asking index from active listings, updated nightly &middot; sold index from monthly sales &middot; not an appraisal</p>
 
@@ -260,6 +270,29 @@ const cityHref = (c: string) => `/${c.trim().replace(/\s+/g, "-")}/market-intell
 
     <script type="application/json" is:inline data-mt-data set:html={payload}></script>
   </section>
+<script is:inline>
+  /* ticker-tip-title-v1 */
+  (() => {
+    const run = () => {
+      const root = document.querySelector('[data-market-ticker]'); const pill = root && root.querySelector('.mt-tk');
+      if (!pill || pill.dataset.tipInit) return; pill.dataset.tipInit = '1';
+      const base = pill.dataset.tip || ''; const city = pill.dataset.city || '';
+      const upd = () => {
+        const sym = (pill.textContent || '').replace(/^.*?:\s*/, '').trim();
+        const sel = root.querySelector('.mt-row.sel');
+        const name = sel && sel.children[1] ? sel.children[1].textContent.trim() : '';
+        const title = name ? `${sym} \u00b7 ${name}` : sym;
+        pill.dataset.tip = sym.includes('.')
+          ? `${title}\nOne sector of ${city}'s housing market, tracked like a fund. Pick another sector below \u2193`
+          : `${title}\n${base}`;
+      };
+      new MutationObserver(upd).observe(pill, { childList: true, characterData: true, subtree: true });
+      new MutationObserver(upd).observe(root, { attributes: true, subtree: true, attributeFilter: ['class'] });
+      upd();
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+  })();
+</script>
 )}
 
 <style is:global>

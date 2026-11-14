@@ -1461,6 +1461,7 @@ try {
 const weekTyp = activeListingsRollingAverage ? Math.round((activeListingsRollingAverage as number) * 12 / 52) : 0;
 const weekRatio = weekTyp ? Number(newThisWeek) / weekTyp : null;
 const weekTone = weekRatio == null ? null : weekRatio < 0.85 ? { c: "#b0413e", t: "\u2193 Quieter than usual" } : weekRatio > 1.15 ? { c: "#1d8a5b", t: "\u2191 Busier than usual" } : { c: "#5b6b7a", t: "About a typical week" };
+/* price-cols-v1 */ const priceBandTotal = priceBands.reduce((s: number, b: any) => s + Number(b.count || 0), 0) || 1;
 /* seo-fresh-v1 */ const pageModified = new Date().toISOString().slice(0, 10);
 const marketSeoSchema = {
   "@context": "https://schema.org",
@@ -1539,7 +1540,15 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
   const slice = { ...t, len, offset: -donutAcc, share: donutTotal ? Math.round((t.count / donutTotal) * 100) : 0, tone: [100, 72, 52, 36, 24, 16][i] ?? 14 };
   donutAcc += len;
   return slice;
-});---
+});
+/* type-ladder-v1 */
+const ladder = [...donutSlices].filter((s: any) => s.count > 0).sort((a: any, b: any) => (a.medianPrice || Infinity) - (b.medianPrice || Infinity));
+const ladderMaxCount = Math.max(1, ...ladder.map((s: any) => s.count));
+const ladderTop: any = [...donutSlices].sort((a: any, b: any) => b.count - a.count)[0];
+const ladderCheap = ladder.filter((s: any) => s.medianPrice > 0 && s.type !== ladderTop?.type && !/land|lot/i.test(String(s.label))).slice(0, 2);
+const ladderHeadline = ladderTop ? `${ladderTop.share >= 45 && ladderTop.share <= 55 ? "Half" : `${ladderTop.share}%`} of what's for sale is ${String(ladderTop.label).toLowerCase()}${ladderTop.medianPrice ? `, at a ${formatPrice(ladderTop.medianPrice)} median` : ""}.` : "What's for sale, by type.";
+const ladderSub = ladderCheap.length ? `The cheapest ways in: ${ladderCheap.map((s: any) => `${String(s.label).toLowerCase()} (${formatPrice(s.medianPrice)})`).join(" and ")}.` : "";
+---
 
 <Layout
   ogImage={`${import.meta.env.PUBLIC_SUPABASE_URL}/storage/v1/object/public/og/market/${city.trim().replace(/\s+/g, "-")}.png`}
@@ -1663,7 +1672,401 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
 
     
 
-    <section data-pulse-lead style="width:min(1400px, calc(100% - 4rem));margin:28px auto 8px;">
+    <!-- narrative-copy-v1 -->
+<style is:global>
+  .market-section__read p:not(.market-section__read-label),
+  .market-pulse__read > p:not(.market-pulse__eyebrow),
+  .market-pulse__story p,
+  .section-heading p:not(.eyebrow) {
+    font-size: 1.05rem !important;
+    line-height: 1.62 !important;
+  }
+</style><!-- pulse-styles-early-copy-v1 -->
+<!-- pulse-top-align-v2-early -->
+<style is:global>
+  .market-pulse { align-items: start !important; }
+  .market-pulse > :not(.market-pulse__read) { align-self: start !important; padding-top: 30px !important; }
+</style>
+<style is:global>
+            .market-pulse {
+              display: grid;
+              grid-template-columns: minmax(0, 1.55fr) minmax(290px, 1fr);
+              gap: 42px;
+              align-items: end;
+              margin-top: 30px;
+              padding: 30px 32px;
+              border-left: 4px solid var(--accent, #258fd0);
+              background: linear-gradient(
+                90deg,
+                color-mix(in srgb, var(--accent, #258fd0) 8%, transparent),
+                transparent 72%
+              );
+            }
+
+            .market-pulse__eyebrow {
+              margin: 0 0 10px;
+              color: var(--accent, #258fd0);
+              font-size: .7rem;
+              font-weight: 850;
+              letter-spacing: .12em;
+              text-transform: uppercase;
+            }
+
+            .market-pulse h3 {
+              margin: 0;
+              color: var(--market-text);
+              font-family: var(--f-display, Georgia, serif);
+              font-size: clamp(1.8rem, 3vw, 2.55rem);
+              font-weight: 500;
+              letter-spacing: -.035em;
+              line-height: 1.05;
+            }
+
+            .market-pulse__story > p:last-child {
+              max-width: 660px;
+              margin: 14px 0 0;
+              color: var(--market-muted);
+              font-size: 1rem;
+              line-height: 1.65;
+            }
+
+            .market-pulse__story > p:last-child strong {
+              color: var(--market-text);
+              font-weight: 750;
+            }
+
+            .market-pulse__facts {
+              display: grid;
+              grid-template-columns: 1fr;
+              gap: 16px;
+              margin: 0;
+              padding: 0 0 0 30px;
+              border-left: 1px solid var(--market-line);
+            }
+
+            .market-pulse__facts div {
+              display: grid;
+              gap: 4px;
+            }
+
+            .market-pulse__facts dt {
+              color: var(--market-muted);
+              font-size: .67rem;
+              font-weight: 850;
+              letter-spacing: .1em;
+              text-transform: uppercase;
+            }
+
+            .market-pulse__facts dd {
+              margin: 0;
+              color: var(--market-text);
+              font-family: var(--f-display, Georgia, serif);
+              font-size: 1.42rem;
+              font-weight: 500;
+            }
+
+            @media (max-width: 720px) {
+              .market-pulse {
+                grid-template-columns: 1fr;
+                gap: 25px;
+                padding: 26px 22px;
+              }
+
+              .market-pulse__facts {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 12px;
+                padding: 20px 0 0;
+                border-top: 1px solid var(--market-line);
+                border-left: 0;
+              }
+
+              .market-pulse__facts dd {
+                font-size: 1.18rem;
+              }
+            }
+          </style>
+<style is:global>
+  .market-pulse__comparison {
+    display: grid;
+    grid-template-columns: 23px minmax(0, 1fr);
+    column-gap: 7px;
+    align-items: center;
+    margin-top: 12px;
+  }
+
+  .market-pulse__comparison b {
+    grid-row: span 2;
+    display: grid;
+    width: 23px;
+    height: 23px;
+    place-items: center;
+    border-radius: 999px;
+    font-size: 1.05rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .market-pulse__comparison span {
+    color: var(--market-text);
+    font-size: .78rem;
+    font-weight: 850;
+    letter-spacing: .01em;
+    line-height: 1.12;
+  }
+
+  .market-pulse__comparison small {
+    margin-top: 2px;
+    color: var(--market-muted);
+    font-size: .67rem;
+    line-height: 1.25;
+  }
+
+  .market-pulse__comparison.is-up b {
+    color: var(--accent, #258fd0);
+    background: rgba(37, 143, 208, .13);
+  }
+
+  .market-pulse__comparison.is-down b {
+    color: #a65353;
+    background: rgba(166, 83, 83, .12);
+  }
+</style>
+<style is:global>
+  .market-pulse__comparison {
+    grid-template-columns: 34px minmax(0, 1fr) !important;
+    column-gap: 10px !important;
+    margin-top: 14px !important;
+  }
+
+  .market-pulse__comparison b {
+    width: 34px !important;
+    height: 34px !important;
+    font-size: 1.35rem !important;
+  }
+
+  .market-pulse__comparison span {
+    font-size: .98rem !important;
+    line-height: 1.16 !important;
+  }
+
+  .market-pulse__comparison small {
+    margin-top: 3px !important;
+    font-size: .78rem !important;
+    line-height: 1.3 !important;
+  }
+</style>
+<style is:global>
+  .market-pulse {
+    grid-template-columns: minmax(240px, .78fr) minmax(0, 1.6fr) !important;
+  }
+
+  .market-pulse__read {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    order: 0 !important;
+    min-width: 0 !important;
+  }
+
+  .market-pulse__story {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    order: 0 !important;
+    min-width: 0 !important;
+  }
+
+  @media (max-width: 720px) {
+    .market-pulse {
+      grid-template-columns: 1fr !important;
+    }
+
+    .market-pulse__read {
+      grid-column: 1 !important;
+      grid-row: 1 !important;
+    }
+
+    .market-pulse__story {
+      grid-column: 1 !important;
+      grid-row: 2 !important;
+    }
+  }
+</style>
+<style is:global>
+  .market-pulse { background: none !important; }
+  .market-pulse > .market-pulse__story { align-self: start !important; padding-top: 30px !important; }
+  .market-pulse > .market-pulse__read {
+    background: color-mix(in srgb, var(--accent, #258fd0) 11%, #ffffff) !important;
+    border-radius: 14px !important;
+    padding: 30px 30px !important;
+    align-self: stretch !important; margin-left: 22px !important;
+    align-content: center !important;
+    border: 0 !important;
+  }
+</style>
+<style is:global>.market-balance__scale span{font-size:.85rem !important;}</style>
+<style is:global>
+  .market-pulse__read {
+    order: -1;
+    display: grid;
+    align-content: center;
+    min-width: 0;
+    padding-right: 30px;
+  }
+
+  .market-pulse__read h3 {
+    margin: 0;
+    color: var(--market-text);
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(2rem, 3.3vw, 3.15rem);
+    font-weight: 500;
+    letter-spacing: -.045em;
+    line-height: .98;
+  }
+
+  .market-pulse__read > p:not(.market-pulse__eyebrow) {
+    max-width: 510px;
+    margin: 16px 0 0;
+    color: var(--market-muted);
+    font-size: .98rem;
+    line-height: 1.58;
+  }
+
+  .market-pulse__evidence {
+    display: block;
+    margin-top: 18px;
+    color: var(--accent, #258fd0);
+    font-size: .73rem;
+    font-weight: 850;
+    letter-spacing: .07em;
+    line-height: 1.4;
+    text-transform: uppercase;
+  }
+
+  .market-section__read {
+    max-width: 760px;
+    margin: 24px 0 0;
+    padding: 19px 22px 20px;
+    border-left: 3px solid var(--accent, #258fd0);
+    background: linear-gradient(
+      90deg,
+      rgba(37, 143, 208, .08),
+      rgba(37, 143, 208, 0)
+    );
+  }
+
+  .market-section__read-label {
+    margin: 0 0 8px;
+    color: var(--accent, #258fd0);
+    font-size: .68rem;
+    font-weight: 850;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+
+  .market-section__read h3 {
+    margin: 0;
+    color: var(--market-text);
+    font-family: var(--f-display, Georgia, serif);
+    font-size: clamp(1.45rem, 2.1vw, 2rem);
+    font-weight: 500;
+    letter-spacing: -.03em;
+    line-height: 1.08;
+  }
+
+  .market-section__read > p:last-child {
+    margin: 10px 0 0;
+    color: var(--market-muted);
+    font-size: .92rem;
+    line-height: 1.58;
+  }
+
+  .market-section__read strong {
+    color: var(--market-text);
+    font-weight: 800;
+  }
+
+  .island-comparison__read {
+    max-width: none;
+    margin-bottom: 24px;
+  }
+
+  @media (max-width: 720px) {
+    .market-pulse__read {
+      padding-right: 0;
+    }
+
+    .market-section__read {
+      margin-top: 18px;
+      padding: 17px 18px;
+    }
+  }
+</style>
+<style is:global>
+  @media (max-width: 720px) {
+    .market-pulse {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      margin: 30px 0 0 !important;
+      padding: 24px 20px 22px !important;
+      gap: 24px !important;
+      box-sizing: border-box !important;
+    }
+
+    .market-pulse__read,
+    .market-pulse__story {
+      grid-column: 1 !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      box-sizing: border-box !important;
+    }
+
+    .market-pulse__read {
+      grid-row: 1 !important;
+      order: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+    }
+
+    .market-pulse__story {
+      grid-row: 2 !important;
+      order: 0 !important;
+      padding: 20px 0 0 !important;
+      border-top: 1px solid var(--market-line) !important;
+    }
+
+    .market-pulse__number {
+      gap: 14px !important;
+      margin: 14px 0 0 !important;
+    }
+
+    .market-pulse__read h3 {
+      font-size: clamp(2rem, 9vw, 2.65rem) !important;
+    }
+  }
+</style>
+<style is:global>
+  @media (max-width: 720px) {
+    .market-pulse__story > h3 {
+      margin-top: 24px !important;
+    }
+  }
+.type-breakdown__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; margin-top: 20px; }
+.type-breakdown__card { padding: 16px; border: 1px solid var(--market-line); border-radius: 8px; }
+.type-breakdown__label { margin: 0 0 8px; color: var(--market-muted); font-size: .68rem; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.type-breakdown__main { display: flex; align-items: baseline; gap: 8px; }
+.type-breakdown__price { color: var(--market-text); font-family: var(--f-display, Georgia, serif); font-size: 1.5rem; font-weight: 500; letter-spacing: -.03em; }
+.type-breakdown__badge { flex-shrink: 0; padding: 3px 8px; border-radius: 4px; font-size: .82rem; font-weight: 850; letter-spacing: .02em; }
+.type-breakdown__badge.is-up { color: #3a7d5a; background: rgba(58,125,90,.1); }
+.type-breakdown__badge.is-down { color: #a65353; background: rgba(166,83,83,.1); }
+.type-breakdown__bar-wrap { height: 3px; margin: 6px 0 2px; background: var(--market-line); border-radius: 2px; overflow: hidden; }
+.type-breakdown__bar { height: 100%; border-radius: 2px; background: var(--market-muted); }
+.type-breakdown__bar.is-up { background: #3a7d5a; }
+.type-breakdown__bar.is-down { background: #a65353; }
+.type-breakdown__count { margin: 4px 0 0; color: var(--market-muted); font-size: .7rem; }
+.type-breakdown__note { margin: 0 0 4px; color: var(--market-muted); font-size: .85rem; }
+</style>
+<section data-pulse-lead style="width:min(1400px, calc(100% - 4rem));margin:28px auto 8px;">
 <div
   class="market-pulse"
   style="display:grid;grid-template-columns:minmax(255px,.75fr) minmax(0,1.5fr);gap:34px;align-items:stretch;"
@@ -1673,7 +2076,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
 
   <h3>{marketPulseRead.headline}</h3>
 
-  <p>{marketPulseRead.detail}</p>
+  <p style="font-size:1.05rem !important;line-height:1.62 !important;">{marketPulseRead.detail}</p>
 
   <span class="market-pulse__evidence">
     {/* who-benefits-v1 */ salesToActive == null ? marketPulseRead.evidence : (() => {
@@ -2094,8 +2497,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
             the median single-family sold price moved{" "}
             <strong>
               {medianPriceChange > 0 ? "+" : ""}
-              {medianPriceChange.toFixed(1)}%
-            </strong>.
+              {medianPriceChange.toFixed(1)}%</strong>.
             {" "}That is useful market context, but it does not mean every
             individual home changed by the same amount.
           </p>
@@ -2245,35 +2647,28 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
             ?.label || "the available price bands"}.
         </h3>
 
-        <p>
+        <p style="font-size:1.05rem !important;line-height:1.62 !important;">
           That band contains{" "}
           <strong>
             {([...priceBands]
               .sort((a, b) => b.count - a.count)[0]
-              ?.count || 0).toLocaleString()} listings
-          </strong>.
+              ?.count || 0).toLocaleString()} listings</strong>.
           {" "}This shows where supply is concentrated right now—not which
           price point has the strongest buyer demand.
         </p>
       </aside>
-      <div class="price-chart">
-        {priceBands.map((band) => (
-          <a href={band.href} class:list={["price-row", { "is-top": band.count > 0 && band.count === maxPriceBandCount }]}>
-            <span>{band.label}</span>
-
-            <div class="price-row__track">
-              <i
-                style={`--bar-width:${Math.max(
-                  (band.count / maxPriceBandCount) * 100,
-                  band.count ? 4 : 0
-                )}%`}
-              ></i>
-            </div>
-
-            <strong>{band.count.toLocaleString()}</strong>
-          </a>
-        ))}
-      </div>
+      <div class="price-cols">
+  {priceBands.map((band) => (
+    <a href={band.href} class:list={["price-col", { "is-top": band.count > 0 && band.count === maxPriceBandCount }]}>
+      <span class="price-col__val">
+        <strong>{band.count.toLocaleString()}</strong>
+        <em>{Math.round((band.count / priceBandTotal) * 100)}%</em>
+      </span>
+      <span class="price-col__bar" style={`height:${Math.max(band.count ? 6 : 0, Math.round((band.count / maxPriceBandCount) * 170))}px`}></span>
+      <span class="price-col__label">{band.label}</span>
+    </a>
+  ))}
+</div>
     </section>
 
     <section class="market-section">
@@ -2286,66 +2681,19 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
 
       <aside class="market-section__read">
         <p class="market-section__read-label">What this means</p>
-
-        <h3>
-          {[...typeStats]
-            .sort((a, b) => b.count - a.count)[0]
-            ?.label || "The leading property type"} sets the inventory tone.
-        </h3>
-
-        <p>
-          It represents the largest share of homes available today.
-          {" "}The lower median entry point is{" "}
-          <strong>
-            {[...typeStats]
-              .filter((item) => item.medianPrice > 0)
-              .sort((a, b) => a.medianPrice - b.medianPrice)[0]
-              ?.label || "shown in the cards above"}
-          </strong>,
-          {" "}which helps frame where buyers may find a different budget
-          starting point.
-        </p>
+        <h3>{ladderHeadline}</h3>
+        {ladderSub && (<p style="font-size:1.05rem !important;line-height:1.62 !important;">{ladderSub} Rows run from lowest to highest median asking price.</p>)}
       </aside>
-      <div class="type-donut">
-        <svg class="type-donut__chart" width="300" height="300" viewBox="0 0 180 180" role="img" aria-label="Share of active listings by property type">
-          <g transform="rotate(-90 90 90)">
-            <circle cx="90" cy="90" r="70" fill="none" stroke-width="22" style="stroke:var(--market-line)" />
-            {donutSlices.map((s, i) => (<circle class="type-donut__slice" data-idx={i} cx="90" cy="90" r="70" fill="none" stroke-width="22"
-                stroke-dasharray={`${Math.max(s.len - 1.5, 0.5)} ${donutCirc}`}
-                stroke-dashoffset={s.offset}
-                style={`stroke:color-mix(in srgb, var(--accent, #633a98) ${s.tone}%, #eef1f4)`}>
-                <title>{`${s.label}: ${s.count} (${s.share}%)`}</title>
-              </circle>
-            ))}
-          </g>
-          <text x="90" y="88" text-anchor="middle" class="type-donut__total">{donutTotal.toLocaleString()}</text>
-          <text x="90" y="108" text-anchor="middle" class="type-donut__caption">ACTIVE</text>
-        </svg>
-        <ul class="type-donut__legend">
-          {donutSlices.map((s, i) => (<li><a data-idx={i} data-label={s.label} data-share={`${s.share}%`} href={TYPE_NAV_PAGE[s.type] ? `/${city}/${TYPE_NAV_PAGE[s.type]}` : `/${city}?type=${encodeURIComponent(s.type)}`}>
-                <i style={`background:color-mix(in srgb, var(--accent, #633a98) ${s.tone}%, #eef1f4)`}></i>
-                <span class="type-donut__name">{s.label}</span>
-                <strong>{s.count.toLocaleString()}</strong>
-                <span class="type-donut__share">{s.share}%</span>
-                <span class="type-donut__median">{s.medianPrice ? `${formatPrice(s.medianPrice)} median` : ""}</span>
-              </a>
-            </li>
-          ))}
-        </ul>
-        <script is:inline>
-          document.querySelectorAll('.type-donut').forEach((d) => {
-            const total = d.querySelector('.type-donut__total'), cap = d.querySelector('.type-donut__caption');
-            const t0 = total.textContent, c0 = cap.textContent;
-            const slices = [...d.querySelectorAll('.type-donut__slice')], rows = [...d.querySelectorAll('.type-donut__legend a')];
-            const on = (i) => { const r = rows[i]; if (!r) return; d.classList.add('is-focus');
-              slices.forEach((s, k) => s.classList.toggle('is-on', k === i)); rows.forEach((x, k) => x.classList.toggle('is-on', k === i));
-              total.textContent = r.dataset.share; cap.textContent = (r.dataset.label || '').toUpperCase(); };
-            const off = () => { d.classList.remove('is-focus'); slices.concat(rows).forEach((x) => x.classList.remove('is-on')); total.textContent = t0; cap.textContent = c0; };
-            slices.concat(rows).forEach((el) => { const i = Number(el.dataset.idx);
-              el.addEventListener('mouseenter', () => on(i)); el.addEventListener('mouseleave', off);
-              el.addEventListener('focus', () => on(i)); el.addEventListener('blur', off); });
-          });
-        </script>
+      <div class="type-ladder" style="margin-top:22px;border-top:1px solid var(--market-line, rgba(0,0,0,.1));">
+        {ladder.map((s: any) => (
+          <a class="type-ladder__row" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:14px 6px;border-bottom:1px solid var(--market-line, rgba(0,0,0,.1));text-decoration:none;color:inherit;" href={TYPE_NAV_PAGE[s.type] ? `/${city}/${TYPE_NAV_PAGE[s.type]}` : `/${city}?type=${encodeURIComponent(s.type)}`}>
+            <span class="type-ladder__name" style="flex:1 1 160px;font-weight:600;font-size:1rem;">{s.label}</span>
+            <strong class="type-ladder__price" style="flex:0 0 110px;font-family:var(--f-display, Georgia, serif);font-size:1.55rem;font-weight:500;color:var(--market-text, #111);">{s.medianPrice ? formatPrice(s.medianPrice) : "-"}</strong>
+            <span class="type-ladder__bar" style="flex:2 1 220px;height:12px;background:var(--market-line, #eef1f4);border-radius:999px;overflow:hidden;"><i style={`display:block;height:100%;background:var(--accent, #2f4a68);opacity:.8;border-radius:999px;width:${Math.max(4, Math.round((s.count / ladderMaxCount) * 100))}%`}></i></span>
+            <span class="type-ladder__count" style="flex:0 0 110px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;">{s.count.toLocaleString()} <em style="font-style:normal;font-weight:400;color:var(--market-muted, #666);">· {s.share}%</em></span>
+          </a>
+        ))}
+        <p class="type-ladder__note" style="margin:12px 0 0;font-size:.82rem;color:var(--market-muted, #666);">Median asking price; the bar shows how many are for sale. {donutTotal.toLocaleString()} residential listings. Commercial and other types aren't included.</p>
       </div>
     </section>
 
@@ -2421,8 +2769,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
             <strong>
               {nearbyMarketComparisons.filter(
                 (market: any) => market.classification === "Slowing Down"
-              ).length} are slowing down
-            </strong>.
+              ).length} are slowing down</strong>.
             {" "}Use the table to compare direction, then look at each market's
             sample size and local inventory before drawing a conclusion.
           </p>
@@ -2665,8 +3012,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
             <strong>
               {otherMarketComparisons.filter(
                 (market: any) => market.classification === "Slowing Down"
-              ).length} are slowing down
-            </strong>.
+              ).length} are slowing down</strong>.
             {" "}Use the table to compare direction, then look at each market's
             sample size and local inventory before drawing a conclusion.
           </p>
@@ -3017,7 +3363,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
 <!-- market-pulse-darker-v1 -->
 <style is:global>
   .market-pulse { background: none !important; }
-  .market-pulse > .market-pulse__story { align-self: center !important; }
+  .market-pulse > .market-pulse__story { align-self: start !important; padding-top: 30px !important; }
   .market-pulse > .market-pulse__read {
     background: color-mix(in srgb, var(--accent, #258fd0) 11%, #ffffff) !important;
     border-radius: 14px !important;
@@ -3028,7 +3374,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
   }
 </style><!-- pulse-gauge-labels-v1 --><style is:global>.market-balance__scale span{font-size:.85rem !important;}</style><!-- pulse-arrow-v4 -->
 <style is:global>
-  @keyframes arrowPulse { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.5); } }
+  @keyframes arrowPulse { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.5); background-color: color-mix(in srgb, currentColor 32%, white); box-shadow: 0 0 0 7px color-mix(in srgb, currentColor 16%, transparent); } }
 </style>
 <script is:inline>
   (() => {
@@ -3038,7 +3384,38 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
     const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { play(); io.disconnect(); } }, { threshold: 0.5 });
     io.observe(arrows[0]);
   })();
-</script><!-- market-reads-v1 -->
+</script><!-- pulse-top-align-v2 -->
+<style is:global>
+  .market-pulse { align-items: start !important; }
+  .market-pulse > :not(.market-pulse__read) { align-self: start !important; padding-top: 30px !important; }
+</style><!-- price-cols-css-v1 -->
+<style is:global>
+  .price-cols { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; align-items: end; margin-top: 24px; padding-bottom: 4px; }
+  .price-col { display: flex; flex-direction: column; justify-content: flex-end; height: 270px; text-decoration: none; color: inherit; }
+  .price-col__val { display: flex; flex-direction: column; align-items: center; margin-bottom: 8px; line-height: 1.15; }
+  .price-col__val strong { font-size: 1.3rem; color: var(--market-text, #111); }
+  .price-col__val em { font-style: normal; font-size: .88rem; color: var(--market-muted, #666); }
+  .price-col__bar { display: block; border-radius: 8px 8px 3px 3px; background: #cdd5df; transition: filter .15s; }
+  .price-col.is-top .price-col__bar { background: var(--accent, #2f4a68); }
+  .price-col:hover .price-col__bar { filter: brightness(.9); }
+  .price-col__label { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--market-line, rgba(0,0,0,.1)); text-align: center; font-size: .9rem; color: var(--market-muted, #666); }
+  .price-col.is-top .price-col__label { color: var(--market-text, #111); font-weight: 700; }
+  @media (max-width: 640px) { .price-cols { gap: 6px; } .price-col { height: 220px; } .price-col__val strong { font-size: 1.05rem; } .price-col__label { font-size: .74rem; } }
+</style>
+<!-- type-ladder-css-v1 -->
+<style is:global>
+  .type-ladder { margin-top: 22px; border-top: 1px solid var(--market-line, rgba(0,0,0,.1)); }
+  .type-ladder__row { display: grid; grid-template-columns: minmax(150px, 1.2fr) 120px minmax(0, 2.4fr) 120px; align-items: center; gap: 18px; padding: 14px 6px; border-bottom: 1px solid var(--market-line, rgba(0,0,0,.1)); text-decoration: none; color: inherit; }
+  .type-ladder__row:hover { background: color-mix(in srgb, var(--accent, #2f4a68) 5%, transparent); }
+  .type-ladder__name { font-weight: 600; font-size: 1rem; }
+  .type-ladder__price { font-family: var(--f-display, Georgia, serif); font-size: 1.55rem; font-weight: 500; color: var(--market-text, #111); }
+  .type-ladder__bar { height: 12px; background: var(--market-line, #eef1f4); border-radius: 999px; overflow: hidden; }
+  .type-ladder__bar i { display: block; height: 100%; background: var(--accent, #2f4a68); border-radius: 999px; opacity: .8; }
+  .type-ladder__count { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .type-ladder__count em { font-style: normal; font-weight: 400; color: var(--market-muted, #666); }
+  .type-ladder__note { margin: 12px 0 0; font-size: .82rem; color: var(--market-muted, #666); }
+  @media (max-width: 700px) { .type-ladder__row { grid-template-columns: 1fr auto; gap: 6px 12px; } .type-ladder__bar { grid-column: 1 / -1; } .type-ladder__count { text-align: left; } }
+</style><!-- market-reads-v1 -->
 <style is:global>
   .market-pulse__read {
     order: -1;
