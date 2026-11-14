@@ -62,6 +62,24 @@ async function purgeAfterAdminSave(pathname: string, referer: string) {
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const { pathname, search } = context.url;
+  // streetindex-host-v1: streetindex.io serves /streetindex pages (same MarketTicker as bc.realestate)
+  {
+    const reqHost = context.url.hostname.replace(/^www\./, "").toLowerCase();
+    const isLocalReq = reqHost === "localhost" || reqHost === "127.0.0.1";
+    const onSI = reqHost === "streetindex.io" || (isLocalReq && context.url.searchParams.get("siteDomain") === "streetindex.io");
+    const p = pathname.replace(/\/+$/, "") || "/";
+    if (!onSI && (p === "/streetindex" || p.startsWith("/streetindex/"))) return new Response("Not found", { status: 404 });
+    if (onSI && !p.startsWith("/streetindex") && !/^\/(api|_astro|_image|js|css|images|img|fonts)(\/|$)/.test(p) && !/\.[a-z0-9]{2,5}$/i.test(p)) {
+      const parts = p.split("/").filter(Boolean);
+      if (parts.length > 1) return new Response(null, { status: 301, headers: { Location: `/${parts[0]}/${isLocalReq ? "?siteDomain=streetindex.io" : ""}` } });
+      const res = await next((parts.length ? `/streetindex/${parts[0]}` : "/streetindex") + search);
+      res.headers.set("Cache-Control", "public, max-age=0, must-revalidate");
+      res.headers.set("Netlify-CDN-Cache-Control", "public, durable, s-maxage=43200, stale-while-revalidate=604800");
+      res.headers.set("Netlify-Vary", "query=siteDomain");
+      res.headers.set("Netlify-Cache-Tag", "all-pages,host-streetindex-io" + (parts[0] ? ",city-" + parts[0] : ""));
+      return res;
+    }
+  }
   // nanaimomobiles-guard-v1: nanaimomobiles.com only serves its own pages; everything else 301s to the same path on bc.realestate
   {
     const reqHost = context.url.hostname.replace(/^www\./, "").toLowerCase();

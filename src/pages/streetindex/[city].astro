@@ -1,0 +1,19 @@
+---
+import StreetIndexLayout from "../../layouts/StreetIndexLayout.astro";
+import MarketTicker from "../../components/MarketTicker.astro";
+import { supabase } from "../../lib/supabase";
+export const prerender = false;
+const city = String(Astro.params.city || "").toLowerCase();
+const q = Astro.url.searchParams.get("siteDomain") === "streetindex.io" ? "?siteDomain=streetindex.io" : "";
+const { data: comp } = await supabase.from("market_indexes").select("ticker, name, city")
+  .in("city", [city, city.replace(/-/g, " ")]).is("prop_type", null).is("area_slug", null).is("parent_ticker", null).limit(1).maybeSingle();
+if (!comp) return Astro.redirect(`/${q}`, 302);
+const label = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+---
+<StreetIndexLayout title={`${label} housing market index (${comp.ticker}) | StreetIndex`} description={`${label}'s housing market read like a stock: the ${comp.ticker} asking index, confirmed sales and sector indexes by home type and neighbourhood, updated nightly.`} q={q}>
+  <MarketTicker city={city} accent="#2f4a68" peerBase="root" linkSuffix={q} />
+  <div class="si-wrap si-cta">
+    <a href={`https://bc.realestate/${city}/`}>Browse {label} homes on bc.realestate →</a>
+    <a href={`https://bc.realestate/${city}/market-intelligence`}>Full {label} market report →</a>
+  </div>
+</StreetIndexLayout>
