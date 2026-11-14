@@ -76,6 +76,29 @@ async function main() {
   <text x="70" y="585" font-family="DejaVu Sans, Arial, sans-serif" font-size="22" fill="#9ca3af">bc.realestate \u00b7 Market Intel \u00b7 statistical index, not an appraisal</text>
 </svg>`;
 
+    /* square-card-v1 */
+    const F = `font-family="DejaVu Sans, Arial, sans-serif"`;
+    const sqSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <rect width="1080" height="1080" fill="#ffffff"/>
+  <rect x="0" y="0" width="1080" height="14" fill="${col}"/>
+  <text x="80" y="118" ${F} font-size="28" font-weight="700" letter-spacing="4" fill="#374151">IF ${esc(cityTitle.toUpperCase())} WERE A STOCK</text>
+  <text x="80" y="210" ${F} font-size="76" font-weight="700" fill="#111827">${esc(comp.ticker)}</text>
+  <text x="80" y="258" ${F} font-size="30" fill="#6b7280">${esc(comp.name)}</text>
+  <text x="80" y="398" ${F} font-size="132" font-weight="700" fill="#111827">${fmt(Number(last.ask_index))}</text>
+  <text x="80" y="446" ${F} font-size="28" fill="#6b7280">CAD asking index</text>
+  <rect x="80" y="478" width="${Math.max(260, chip.length * 20)}" height="66" rx="12" fill="${col}" fill-opacity="0.12"/>
+  <text x="104" y="523" ${F} font-size="34" font-weight="700" fill="${col}">${esc(chip)}</text>
+  <line x1="80" y1="910" x2="1000" y2="910" stroke="#e5e7eb" stroke-width="2"/>
+  ${soldVals.length >= 2 ? `<polyline points="${poly(soldVals, 80, 1000, 600, 900, lo, hi)}" fill="none" stroke="#2f6f73" stroke-width="6" stroke-linejoin="round"/>` : ""}
+  <polyline points="${poly(askVals, 80, 1000, 600, 900, lo, hi)}" fill="none" stroke="${col}" stroke-width="6" stroke-linejoin="round" stroke-dasharray="${ask.length > 60 ? "0" : "12 8"}"/>
+  <text x="80" y="958" ${F} font-size="24" fill="#6b7280">${soldVals.length >= 2 ? "\u2014 asking   \u2014 sales" : "\u2014 asking"}  \u00b7  past year</text>
+  <text x="80" y="1030" ${F} font-size="24" fill="#9ca3af">bc.realestate \u00b7 Market Intel \u00b7 statistical index, not an appraisal</text>
+</svg>`;
+    try {
+      const sqPng = new Resvg(sqSvg, { fitTo: { mode: "width", value: 1080 }, font: { loadSystemFonts: true, defaultFontFamily: "DejaVu Sans" } }).render().asPng();
+      const { error: sqErr } = await supabase.storage.from("og").upload(`market/${slugOf(comp.city)}-square.png`, sqPng, { upsert: true, contentType: "image/png", cacheControl: "3600" });
+      if (sqErr) console.warn(`${comp.ticker}: square upload failed - ${sqErr.message}`);
+    } catch (e) { console.warn(`${comp.ticker}: square render failed`, e); }
     const png = new Resvg(svg, { fitTo: { mode: "width", value: 1200 }, font: { loadSystemFonts: true, defaultFontFamily: "DejaVu Sans" } }).render().asPng();
     const { error: upErr } = await supabase.storage.from("og").upload(`market/${slugOf(comp.city)}.png`, png, { upsert: true, contentType: "image/png", cacheControl: "3600" });
     if (upErr) { console.warn(`${comp.ticker}: upload failed - ${upErr.message}`); continue; }

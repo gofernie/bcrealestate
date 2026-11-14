@@ -5,6 +5,7 @@ import SiteNav from "../../components/SiteNav.astro";
 import { getSite } from "../../lib/getSite";
 import { getNavIntentPages } from "../../lib/getNavIntentPages";
 import MarketTicker from "../../components/MarketTicker.astro";
+import MarketShare from "../../components/MarketShare.astro";
 
 
 const supabase = createClient(
@@ -1041,7 +1042,7 @@ const daysOnMarketContext =
     ? ""
     : Math.abs(daysOnMarketYoYChange) < 0.5
       ? "about the same as the same period last year"
-      : `${Math.abs(daysOnMarketYoYChange).toFixed(0)} days ${
+      : `${Math.abs(daysOnMarketYoYChange).toFixed(0)} ${Number(Math.abs(daysOnMarketYoYChange).toFixed(0)) === 1 ? "day" : "days"} ${
           daysOnMarketYoYChange > 0
             ? "slower"
             : "faster"
@@ -1642,6 +1643,7 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
     </section>
 
     <MarketTicker city={city} accent={accent} />
+<MarketShare city={city} accent={accent} />
 
 <section class="market-section market-trend">
       <div class="section-heading">
@@ -1761,20 +1763,25 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
   style="display:grid;grid-template-columns:minmax(255px,.75fr) minmax(0,1.5fr);gap:34px;align-items:stretch;"
 >
             <aside class="market-pulse__read">
-  <p class="market-pulse__eyebrow">Market read</p>
+  <div data-pulse-left style="margin:0 0 22px;padding-bottom:18px;border-bottom:1px solid rgba(0,0,0,.09);"><span data-pulse-date style="display:block;margin-top:0;font-size:1.02rem;font-weight:700;letter-spacing:0;text-transform:none;line-height:1.1;color:inherit;">{monthlyHistory.at(-1)?.month ? new Intl.DateTimeFormat("en-CA", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${monthlyHistory.at(-1)?.month}T00:00:00Z`)) : ""}</span>{(() => { const m = String(monthlyHistory.at(-1)?.month || "").slice(0, 10); const d = new Date(); const prev = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)).toISOString().slice(0, 10); return m === prev; })() && (<span data-pulse-prelim style="display:block;margin-top:4px;font-size:.74rem;font-weight:500;letter-spacing:0;text-transform:none;font-style:italic;opacity:.7;">Preliminary: sales reported after month end are added nightly.</span>)}</div><p class="market-pulse__eyebrow">Market read</p>
 
   <h3>{marketPulseRead.headline}</h3>
 
   <p>{marketPulseRead.detail}</p>
 
   <span class="market-pulse__evidence">
-    {marketPulseRead.evidence}
+    {/* who-benefits-v1 */ salesToActive == null ? marketPulseRead.evidence : (() => {
+      const h = String(marketPulseRead.headline || "");
+      if (/buyers? (have|hold)/i.test(h)) return "Good time to buy: room to negotiate on price and conditions.";
+      if (/sellers? (have|hold)/i.test(h)) return "Good time to sell: well-priced homes are drawing strong interest.";
+      if (/tilt\w* toward buyers/i.test(h)) return "Balanced, with an edge to buyers: there's room to negotiate on the right home.";
+      if (/tilt\w* toward sellers/i.test(h)) return "Balanced, with an edge to sellers: well-priced homes still move quickly.";
+      return "Fair deals both ways: pricing right matters more than timing.";
+    })()}
   </span>
 </aside>
    <div class="market-pulse__story">
-              <p class="market-pulse__eyebrow">
-                Market pulse · {monthlyHistory.at(-1)?.label}
-              </p>
+              
 
                                           <div
                 class="market-pulse__number"
@@ -2964,7 +2971,19 @@ const donutSlices = donutTypes.map((t: any, i: number) => {
     }
   }
 </style>
-<!-- market-reads-v1 -->
+<!-- market-pulse-darker-v1 -->
+<style is:global>
+  .market-pulse { background: none !important; }
+  .market-pulse > .market-pulse__story { align-self: center !important; }
+  .market-pulse > .market-pulse__read {
+    background: color-mix(in srgb, var(--accent, #258fd0) 11%, #ffffff) !important;
+    border-radius: 14px !important;
+    padding: 30px 30px !important;
+    align-self: stretch !important; margin-left: 22px !important;
+    align-content: center !important;
+    border: 0 !important;
+  }
+</style><!-- market-reads-v1 -->
 <style is:global>
   .market-pulse__read {
     order: -1;

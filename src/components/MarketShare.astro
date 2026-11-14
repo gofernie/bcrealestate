@@ -1,0 +1,88 @@
+---
+interface Props { city: string; accent?: string }
+const { city, accent = "#1f5f4a" } = Astro.props;
+const label = city.split("-").map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(" ");
+const base = String(import.meta.env.PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
+const day = new Date().toISOString().slice(0, 10);
+const img = `${base}/storage/v1/object/public/og/market/${city}.png?d=${day}`;
+const sq = `${base}/storage/v1/object/public/og/market/${city}-square.png?d=${day}`;
+const pageUrl = new URL(Astro.url.pathname, Astro.url.origin).href;
+const title = `${label} market ticker`;
+const text = `${label} real estate, read like a stock: live asking vs. confirmed sales, by area and property type.`;
+---
+<section class="ms" data-ms data-img={img} data-sq={sq} data-url={pageUrl} data-title={title} data-text={text} data-file={`${city}-market-ticker.png`} style={`--ms-accent:${accent}`}>
+  <div class="ms-card">
+    <a class="ms-thumb" href={img} target="_blank" rel="noopener">
+      <img src={img} alt={`${label} market ticker card`} width="1200" height="630" loading="lazy" onerror="this.closest('[data-ms]').style.display='none'" />
+    </a>
+    <div class="ms-body">
+      <p class="ms-eyebrow">Share card</p>
+      <h3 class="ms-title">Share the {label} market</h3>
+      <p class="ms-copy">A snapshot of today's ticker, refreshed nightly. Post it, text it, or drop it in a newsletter. The link opens this page with the live numbers.</p>
+      <div class="ms-actions">
+        <button type="button" class="ms-btn ms-primary" data-ms-share>Share</button>
+        <button type="button" class="ms-btn" data-ms-download>Download image</button>
+        <button type="button" class="ms-btn" data-ms-copy>Copy link</button>
+      </div>
+      <div class="ms-social">
+        <a data-ms-fb target="_blank" rel="noopener">Facebook</a>
+        <a data-ms-li target="_blank" rel="noopener">LinkedIn</a>
+        <a data-ms-x target="_blank" rel="noopener">X</a>
+        <a data-ms-mail>Email</a>
+      </div>
+      <p class="ms-status" data-ms-status aria-live="polite"></p>
+    </div>
+  </div>
+</section>
+
+<script>
+  document.querySelectorAll<HTMLElement>("[data-ms]").forEach((el) => {
+    const { img = "", sq = "", url = "", title = "", text = "", file = "market.png" } = el.dataset;
+    const q = (s: string) => el.querySelector(s) as HTMLElement;
+    const e = encodeURIComponent;
+    let timer = 0;
+    const status = (m: string) => { const s = q("[data-ms-status]"); s.textContent = m; clearTimeout(timer); timer = window.setTimeout(() => (s.textContent = ""), 2500); };
+    (q("[data-ms-fb]") as HTMLAnchorElement).href = "https://www.facebook.com/sharer/sharer.php?u=" + e(url);
+    (q("[data-ms-li]") as HTMLAnchorElement).href = "https://www.linkedin.com/sharing/share-offsite/?url=" + e(url);
+    (q("[data-ms-x]") as HTMLAnchorElement).href = "https://twitter.com/intent/tweet?url=" + e(url) + "&text=" + e(text);
+    (q("[data-ms-mail]") as HTMLAnchorElement).href = "mailto:?subject=" + e(title) + "&body=" + e(text + "\n\n" + url);
+    let blob: Blob | null = null;
+    const getBlob = async () => { if (blob) return blob; let r = sq ? await fetch(sq).catch(() => null) : null; if (!r || !r.ok) r = await fetch(img); return (blob = await r.blob()); };
+    const copy = () => navigator.clipboard.writeText(url).then(() => status("Link copied")).catch(() => status("Couldn't copy - " + url));
+    q("[data-ms-copy]").addEventListener("click", copy);
+    q("[data-ms-download]").addEventListener("click", async () => {
+      try {
+        const b = await getBlob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(b); a.download = file; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        status("Image downloaded");
+      } catch { window.open(img, "_blank"); }
+    });
+    q("[data-ms-share]").addEventListener("click", async () => {
+      try {
+        const b = await getBlob();
+        const f = new File([b], file, { type: "image/png" });
+        if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title, text: text + " " + url }); return; }
+        if (navigator.share) { await navigator.share({ title, text, url }); return; }
+      } catch (err) { if ((err as Error)?.name === "AbortError") return; }
+      copy();
+    });
+  });
+</script>
+
+<style>
+  .ms { width: min(1400px, calc(100% - 4rem)); margin: 28px auto; }
+  .ms-card { display: grid; grid-template-columns: minmax(0, 460px) minmax(0, 1fr); gap: 28px; align-items: center; padding: 22px; border: 1px solid rgba(0,0,0,.1); border-radius: 14px; background: #fff; }
+  .ms-thumb img { display: block; width: 100%; height: auto; border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.12); }
+  .ms-eyebrow { margin: 0 0 6px; font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; color: var(--ms-accent); }
+  .ms-title { margin: 0 0 8px; font-family: Georgia, "Times New Roman", serif; font-size: 1.6rem; font-weight: 600; }
+  .ms-copy { margin: 0 0 16px; opacity: .75; font-size: .92rem; line-height: 1.5; max-width: 52ch; }
+  .ms-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .ms-btn { padding: 9px 16px; border-radius: 999px; border: 1px solid var(--ms-accent); background: transparent; color: var(--ms-accent); font: inherit; font-weight: 700; font-size: .85rem; cursor: pointer; }
+  .ms-primary { background: var(--ms-accent); color: #fff; }
+  .ms-social { display: flex; flex-wrap: wrap; gap: 14px; }
+  .ms-social a { font-size: .82rem; font-weight: 600; color: var(--ms-accent); text-decoration: underline; cursor: pointer; }
+  .ms-status { min-height: 1.2em; margin: 10px 0 0; font-size: .8rem; opacity: .7; }
+  @media (max-width: 760px) { .ms { width: calc(100% - 2rem); } .ms-card { grid-template-columns: 1fr; } }
+</style>

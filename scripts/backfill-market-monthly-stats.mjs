@@ -114,6 +114,40 @@ async function getNewListingCount(startDate, endDate) {
   return Number(body.count || 0);
 }
 
+/* extraStats-v1 */
+function extraStats(list) {
+  const DAY = 86400000;
+  const doms = list.map((l) => {
+    const d = Number(l.daysOnMarket);
+    if (l.daysOnMarket != null && Number.isFinite(d) && d >= 0) return d;
+    const a = Date.parse(l.listDate), b = Date.parse(l.soldDate);
+    return Number.isFinite(a) && Number.isFinite(b) && b >= a ? Math.round((b - a) / DAY) : NaN;
+  }).filter((d) => Number.isFinite(d) && d >= 0).sort((a, b) => a - b);
+  const n = doms.length;
+  const medDom = !n ? null : n % 2 ? doms[(n - 1) / 2] : (doms[n / 2 - 1] + doms[n / 2]) / 2;
+  const sfh = list.filter((l) => {
+    const t = String(l.details?.style || "");
+    return /single|detached|house/i.test(t) && !/semi|duplex|row|town|condo|apartment|mobile|manufactured|strata/i.test(t);
+  }).map((l) => Number(l.soldPrice || 0)).filter((p) => p > 0);
+  return { medianDaysOnMarket: medDom, medianSfhSoldPrice: median(sfh) };
+}
+
+async function getActiveAtEnd(endDate) {
+  try {
+    const next = new Date(Date.parse(endDate + "T00:00:00Z") + 86400000).toISOString().slice(0, 10);
+    const a = new URLSearchParams();
+    a.set("status", "A"); a.set("maxListDate", endDate); a.set("resultsPerPage", "1"); a.set("listings", "false");
+    const u = new URLSearchParams();
+    u.set("status", "U"); u.set("maxListDate", endDate); u.set("minUnavailableDate", next); u.set("resultsPerPage", "1"); u.set("listings", "false");
+    const ra = await requestListings(a);
+    const ru = await requestListings(u);
+    return Number(ra.count || 0) + Number(ru.count || 0);
+  } catch (e) {
+    console.warn("active count failed:", e.message);
+    return null;
+  }
+}
+
 async function getMonthlySales(startDate, endDate) {
   const firstParams = new URLSearchParams();
 
@@ -125,7 +159,7 @@ async function getMonthlySales(startDate, endDate) {
   firstParams.set("pageNum", "1");
   firstParams.set(
     "fields",
-    "mlsNumber,soldDate,soldPrice,listPrice"
+    "mlsNumber,soldDate,soldPrice,listPrice,listDate,daysOnMarket,details.propertyType,details.style,class"
   );
 
   const firstBody = await requestListings(firstParams);
@@ -193,7 +227,7 @@ async function getMonthlySales(startDate, endDate) {
     .filter((ratio) => ratio > 0);
 
   return {
-    sales: uniqueSales.length,
+    sales: uniqueSales.length, ...extraStats(uniqueSales),
     medianSoldPrice: median(soldPrices),
     averageSoldPrice: average(soldPrices),
     averageSaleToListRatio:
@@ -205,7 +239,7 @@ const now = new Date();
 
 const lastSettledMonth = new Date(Date.UTC(
   now.getUTCFullYear(),
-  now.getUTCMonth() - 2,
+  now.getUTCMonth() - Number(process.env.SETTLE_LAG ?? 1),
   1
 ));
 
@@ -237,10 +271,10 @@ for (
 
   console.log(`Fetching ${startDate}...`);
 
-  const [newListings, salesData] =
+  const [newListings, salesData, activeAtEnd] =
     await Promise.all([
       getNewListingCount(startDate, endDate),
-      getMonthlySales(startDate, endDate)
+      getMonthlySales(startDate, endDate), getActiveAtEnd(endDate)
     ]);
 
   const row = {
@@ -262,7 +296,7 @@ for (
         : Number(
             salesData.averageSaleToListRatio.toFixed(2)
           ),
-    source: "repliers",
+    ...(salesData.medianDaysOnMarket != null ? { median_days_on_market: Math.round(salesData.medianDaysOnMarket) } : {}), ...(salesData.medianSfhSoldPrice != null ? { median_single_family_sold_price: Math.round(salesData.medianSfhSoldPrice) } : {}),
     refreshed_at: new Date().toISOString()
   };
 
@@ -281,7 +315,7 @@ for (
   console.log({
     month: startDate.slice(0, 7),
     newListings: row.new_listings,
-    sales: row.sales,
+    sales: row.sales, dom: row.median_days_on_market, sfhMedian: row.median_single_family_sold_price, active: row.active_listings,
     medianSoldPrice: row.median_sold_price,
     saleToList:
       row.average_sale_to_list_ratio
