@@ -157,6 +157,18 @@ const indexSentence = comp
   ? `The ${comp.ticker} index tracks asking prices across ${compLast?.a ?? 0} active residential listings in ${areaIdx.length} ${comp?.member_cities?.length ? "markets" : "neighbourhoods"}, refreshed nightly.`
   : "";
 
+/* related-news-v1 */
+const { data: newsRows } = comp ? await supabase.from("market_news").select("title, url, source, published_at").eq("city", comp.city).order("published_at", { ascending: false }).limit(6) : { data: [] as any[] };
+const news = (newsRows ?? []) as any[];
+const newsDate = (d: string) => new Date(d).toLocaleDateString("en-CA", { month: "short", day: "numeric", timeZone: "America/Vancouver" });
+const cardSpark = (tk: string) => {
+  const vs = yearPts(tk).map((p) => p.v);
+  if (vs.length < 2) return "";
+  const mn = Math.min(...vs), mx = Math.max(...vs), up = vs[vs.length - 1] >= vs[0], col = up ? "#1D9E75" : "#C0392B";
+  const pts = vs.map((v, i) => `${((i / (vs.length - 1)) * 160).toFixed(1)},${(38 - ((v - mn) / ((mx - mn) || 1)) * 30).toFixed(1)}`).join(" ");
+  const by = (38 - ((vs[0] - mn) / ((mx - mn) || 1)) * 30).toFixed(1);
+  return `<svg viewBox="0 0 160 42" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,42 ${pts} 160,42" fill="${col}" fill-opacity=".12"/><line x1="0" x2="160" y1="${by}" y2="${by}" stroke="rgba(0,0,0,.35)" stroke-dasharray="2 3"/><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.6"/></svg>`;
+};
 const payload = JSON.stringify({ indexes, series, sold }).replace(/</g, "\\u003c");
 const ranges = ["1W", "1M", "6M", "1Y", "2Y"];
 const pctText = (ch: number | null) => (ch == null ? "\u2014" : `${ch >= 0 ? "+" : ""}${ch.toFixed(1)}%`);
@@ -174,6 +186,28 @@ const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/
     font-size: .98rem; font-weight: 400; line-height: 1.5; letter-spacing: 0; text-align: left;
     box-shadow: 0 10px 30px rgba(0,0,0,.18); z-index: 30;
   }
+</style>
+<style is:global>
+  /* related-news-css-v1 */
+  .mt-sec { font-size: 1.35rem; font-weight: 600; margin: 2.25rem 0 .9rem; }
+  .mt-rel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+  .mt-rel-card { display: flex; flex-direction: column; gap: 3px; padding: 12px 12px 0; border-radius: 12px; background: #f4f6f8; color: inherit; text-decoration: none; overflow: hidden; transition: background .15s; }
+  .mt-rel-card:hover { background: #e9edf1; }
+  .mt-rel-tk { font-size: .75rem; font-weight: 600; opacity: .6; letter-spacing: .02em; }
+  .mt-rel-nm { font-size: 1rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mt-rel-px { font-size: .82rem; opacity: .65; }
+  .mt-rel-ch { font-size: 1.05rem; font-weight: 600; margin-top: 4px; }
+  .mt-rel-ch small { font-size: .72rem; font-weight: 500; opacity: .6; }
+  .mt-rel-ch.flat { color: #6b7280; font-size: .9rem; } .mt-rel-ch.up { color: #1D9E75; } .mt-rel-ch.down { color: #C0392B; }
+  .mt-rel-spark { display: block; margin: 6px -12px 0; height: 42px; }
+  .mt-rel-spark svg { display: block; width: 100%; height: 42px; }
+  .mt-news-sub { font-size: .85rem; opacity: .6; margin: -.5rem 0 .9rem; }
+  .mt-news-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 28px; }
+  .mt-news-item { display: flex; flex-direction: column; gap: 4px; color: inherit; text-decoration: none; }
+  .mt-news-item:hover .mt-news-title { text-decoration: underline; }
+  .mt-news-meta { font-size: .8rem; opacity: .6; }
+  .mt-news-title { font-size: 1rem; font-weight: 500; line-height: 1.4; }
+  @media (max-width: 640px) { .mt-news-grid { grid-template-columns: 1fr; } }
 </style>
 <section class="mt" style={`--mt-accent:${accent}`} data-market-ticker>
     <p class="mt-eyebrow">Price index · updated nightly</p>
@@ -227,7 +261,35 @@ const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/
             </button>
           );
         })}
-      </div>
+              {peers.length > 0 && (
+          <div class="mt-rel">
+            <h3 class="mt-sec">Related markets</h3>
+            <div class="mt-rel-grid">
+              {peers.map((p) => { const l = latest(p.ticker); const ch = change(p.ticker); return (
+                <a class="mt-rel-card" href={cityHref(p.city)}>
+                  <span class="mt-rel-tk">{p.ticker}</span>
+                  <strong class="mt-rel-nm">{p.name}</strong>
+                  <span class="mt-rel-px">{fmt(l?.v)}</span>
+                  <span class={`mt-rel-ch${ch == null || Math.abs(ch) > 15 ? " flat" : ch >= 0 ? " up" : " down"}`}>{ch == null ? "New" : Math.abs(ch) > 15 ? "volatile" : `${ch >= 0 ? "+" : ""}${ch.toFixed(2)}% ${ch >= 0 ? "\u2191" : "\u2193"}`}<small> 1Y</small></span>
+                  <span class="mt-rel-spark" set:html={cardSpark(p.ticker)}></span>
+                </a>); })}
+            </div>
+          </div>
+        )}
+        {news.length > 0 && (
+          <div class="mt-news">
+            <h3 class="mt-sec">News stories</h3>
+            <p class="mt-news-sub">From local and national news sources</p>
+            <div class="mt-news-grid">
+              {news.map((n) => (
+                <a class="mt-news-item" href={n.url} target="_blank" rel="noopener nofollow">
+                  <span class="mt-news-meta">{n.source}{n.published_at ? ` \u00b7 ${newsDate(n.published_at)}` : ""}</span>
+                  <span class="mt-news-title">{n.title}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}</div>
 
       <aside class="mt-side">
         <div class="mt-side-head">
@@ -245,25 +307,7 @@ const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/
           {facts.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}
         </dl>
 
-        {peers.length > 0 && (
-          <div>
-            <h4 class="mt-side-sub">Related markets</h4>
-            <ul class="mt-peers">
-              {peers.map((p) => {
-                const l = latest(p.ticker); const ch = change(p.ticker);
-                return (
-                  <li>
-                    <a href={cityHref(p.city)}>
-                      <span class="mt-peer-tk">{p.ticker}</span>
-                      <span class="mt-peer-nm"><strong>{p.name}</strong><span>{fmt(l?.v)}</span></span>
-                      {ch != null && Math.abs(ch) > 15 ? <span class="mt-chip mt-vol" title={`${pctText(ch)} over 1 year - small market, likely mix noise`}>volatile</span> : <span class={`mt-chip${pctClass(ch)}`}>{ch == null ? "New" : `${ch >= 0 ? "\u2191" : "\u2193"} ${Math.abs(ch).toFixed(1)}%`}</span>}
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
+        
         <p class="mt-disclaimer">Asking and sold indexes are statistical estimates, not appraisals.</p>
       </aside>
     </div>
