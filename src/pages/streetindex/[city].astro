@@ -9,11 +9,88 @@ const { data: comp } = await supabase.from("market_indexes").select("ticker, nam
   .in("city", [city, city.replace(/-/g, " ")]).is("prop_type", null).is("area_slug", null).is("parent_ticker", null).limit(1).maybeSingle();
 if (!comp) return Astro.redirect(`/${q}`, 302);
 const label = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+/* si-hero-v1: live numbers for the hero */
+const [{ data: lastTick }, { data: monthRows }, { count: areaCount }] = await Promise.all([
+  supabase.from("market_ticks").select("day, ask_index, actives").eq("ticker", comp.ticker).not("ask_index", "is", null).order("day", { ascending: false }).limit(1).maybeSingle(),
+  supabase.from("market_months").select("month, sold_index, thin").eq("ticker", comp.ticker).not("sold_index", "is", null).order("month"),
+  supabase.from("market_indexes").select("ticker", { count: "exact", head: true }).eq("parent_ticker", comp.ticker).not("area_slug", "is", null),
+]);
+const now = new Date();
+const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+const prevMonth = ym(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+const sold = (monthRows ?? []).filter((m: any) => !m.thin && String(m.month).slice(0, 10) < prevMonth).map((m: any) => ({ d: String(m.month).slice(0, 10), v: Number(m.sold_index) }));
+const chg1y = sold.length >= 13 ? (sold[sold.length - 1].v / sold[sold.length - 13].v - 1) * 100 : null;
+const soldSince = sold[0]?.d ? new Date(sold[0].d + "T12:00:00").getFullYear() : null;
+const years = soldSince ? now.getFullYear() - soldSince : 0;
+const ask = lastTick?.ask_index != null ? Number(lastTick.ask_index) : null;
+const fmt = (v: number | null) => (v == null ? "—" : v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : `$${Math.round(v / 1000)}K`);
+const asOf = lastTick?.day ? new Date(String(lastTick.day) + "T12:00:00").toLocaleDateString("en-CA", { month: "short", day: "numeric" }) : "";
+const up = (chg1y ?? 0) >= 0;
+const spark = (() => {
+  const vs = sold.map((p) => p.v);
+  if (vs.length < 6) return "";
+  const W = 300, H = 70, mn = Math.min(...vs), mx = Math.max(...vs);
+  const pts = vs.map((v, i) => `${((i / (vs.length - 1)) * W).toFixed(1)},${(H - 4 - ((v - mn) / ((mx - mn) || 1)) * (H - 10)).toFixed(1)}`).join(" ");
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,${H} ${pts} ${W},${H}" fill="#2f4a68" fill-opacity=".08"/><polyline points="${pts}" fill="none" stroke="#2f4a68" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
+})();
 ---
 <StreetIndexLayout title={`${label} housing market index (${comp.ticker}) | StreetIndex`} description={`${label}'s housing market read like a stock: the ${comp.ticker} asking index, confirmed sales and sector indexes by home type and neighbourhood, updated nightly.`} q={q}>
-  <MarketTicker city={city} accent="#2f4a68" peerBase="root" linkSuffix={q} />
+  <section class="si-wrap si-hero">
+    <div class="si-hero__text">
+      <p class="si-hero__eyebrow">StreetIndex &middot; B.C. housing markets</p>
+      <h1>{label}, indexed.</h1>
+      <p class="si-hero__lede">Every home for sale in {label}, read like a stock: a nightly asking index, confirmed monthly sales{years >= 3 ? ` back to ${soldSince}` : ""}, and its own index for each neighbourhood and home type.</p>
+      <ul class="si-hero__facts">
+        {lastTick?.actives != null && <li><strong>{Number(lastTick.actives).toLocaleString()}</strong> active listings</li>}
+        {areaCount ? <li><strong>{areaCount}</strong> neighbourhoods</li> : null}
+        {years >= 3 && <li><strong>{years}</strong> years of sales</li>}
+      </ul>
+    </div>
+    <a class="si-card" href="#market" aria-label={`${comp.ticker} index chart`}>
+      <span class="si-card__tk">BCRE: <strong>{comp.ticker}</strong></span>
+      <span class="si-card__px">{fmt(ask)}</span>
+      <span class="si-card__sub">CAD asking index{asOf ? ` · ${asOf}` : ""}</span>
+      {chg1y != null && <span class={`si-card__chg ${up ? "up" : "down"}`}>{up ? "▲" : "▼"} {Math.abs(chg1y).toFixed(1)}% <small>1Y sales</small></span>}
+      {spark && <span class="si-card__spark" set:html={spark}></span>}
+      {spark && <span class="si-card__note">Confirmed sales{soldSince ? `, ${soldSince}–today` : ""}</span>}
+    </a>
+  </section>
+  <div id="market"><MarketTicker city={city} accent="#2f4a68" peerBase="root" linkSuffix={q} /></div>
   <div class="si-wrap si-cta">
     <a href={`https://bc.realestate/${city}/`}>Browse {label} homes on bc.realestate →</a>
     <a href={`https://bc.realestate/${city}/market-intelligence`}>Full {label} market report →</a>
   </div>
 </StreetIndexLayout>
+
+<style>
+  .si-hero { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 48px; align-items: center; padding: 28px 0 8px; }
+  .si-hero__eyebrow { margin: 0 0 14px; font-size: .78rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #2f4a68; }
+  .si-hero h1 { margin: 0; font-family: "Instrument Serif", Georgia, serif; font-weight: 400; font-size: clamp(3rem, 7vw, 5.4rem); line-height: 1; letter-spacing: .005em; color: #191922; }
+  .si-hero__lede { max-width: 56ch; margin: 18px 0 0; font-size: 1.12rem; line-height: 1.55; color: #4b5563; }
+  .si-hero__facts { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 0; padding: 0; list-style: none; }
+  .si-hero__facts li { padding: 7px 14px; border-radius: 999px; background: #f1f4f7; font-size: .9rem; color: #4b5563; }
+  .si-hero__facts strong { color: #191922; }
+  .si-card { display: flex; flex-direction: column; padding: 22px 22px 16px; border: 1px solid #e3e6ea; border-radius: 16px; background: #fff; box-shadow: 0 10px 30px rgba(47, 74, 104, .08); color: inherit; text-decoration: none; transition: box-shadow .2s, transform .2s; }
+  .si-card:hover { box-shadow: 0 14px 36px rgba(47, 74, 104, .14); transform: translateY(-2px); }
+  .si-card__tk { font-size: .9rem; color: #6b7280; letter-spacing: .02em; }
+  .si-card__tk strong { color: #191922; }
+  .si-card__px { margin-top: 6px; font-size: 2.8rem; font-weight: 700; line-height: 1; letter-spacing: -.02em; color: #191922; }
+  .si-card__sub { margin-top: 6px; font-size: .82rem; color: #6b7280; }
+  .si-card__chg { align-self: flex-start; margin-top: 12px; padding: 4px 10px; border-radius: 8px; font-size: .95rem; font-weight: 700; }
+  .si-card__chg small { font-weight: 500; opacity: .75; }
+  .si-card__chg.up { color: #1D9E75; background: rgba(29, 158, 117, .1); }
+  .si-card__chg.down { color: #C0392B; background: rgba(192, 57, 43, .1); }
+  .si-card__spark { display: block; margin: 16px -4px 0; height: 70px; }
+  .si-card__spark :global(svg) { display: block; width: 100%; height: 70px; }
+  .si-card__note { margin-top: 6px; font-size: .74rem; color: #9ca3af; }
+  /* hero carries the H1, so drop the chart's duplicate heading and the gap above it */
+  #market :global(.mt) { margin-top: 2.25rem; }
+  #market :global(.mt-eyebrow), #market :global(.mt-title) { display: none; }
+  @media (max-width: 860px) {
+    .si-hero { grid-template-columns: 1fr; gap: 26px; padding-top: 8px; }
+    .si-hero__lede { font-size: 1rem; }
+    .si-card__px { font-size: 2.4rem; }
+    #market :global(.mt) { margin-top: 1.5rem; }
+  }
+</style>
