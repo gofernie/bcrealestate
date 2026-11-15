@@ -61,10 +61,10 @@ if (comp) {
   const results = await Promise.all([
     fetchAll((a, b) => supabase.from("market_ticks")
       .select("ticker, day, ask_index, actives, new_listings, price_cuts, median_dom, off_market_7d, backfilled")
-      .in("ticker", tickers).gte("day", since(730)).order("day").order("ticker").range(a, b)),
+      .in("ticker", tickers).gte("day", since(3800)).order("day").order("ticker").range(a, b)),
     fetchAll((a, b) => supabase.from("market_months")
       .select("ticker, month, sold_index, sold_count, sale_to_list, sold_dom, thin, method")
-      .in("ticker", tickers).gte("month", since(800)).order("month").order("ticker").range(a, b)),
+      .in("ticker", tickers).gte("month", since(3800)).order("month").order("ticker").range(a, b)),
   ]);
   ticks = results[0];
   months = results[1];
@@ -170,7 +170,7 @@ const cardSpark = (tk: string) => {
   return `<svg viewBox="0 0 160 42" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,42 ${pts} 160,42" fill="${col}" fill-opacity=".12"/><line x1="0" x2="160" y1="${by}" y2="${by}" stroke="rgba(0,0,0,.35)" stroke-dasharray="2 3"/><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.6"/></svg>`;
 };
 const payload = JSON.stringify({ indexes, series, sold }).replace(/</g, "\\u003c");
-const ranges = ["1W", "1M", "6M", "1Y", "2Y"];
+const ranges = ["1W", "1M", "6M", "1Y", "2Y", "5Y", "10Y"];
 const pctText = (ch: number | null) => (ch == null ? "\u2014" : `${ch >= 0 ? "+" : ""}${ch.toFixed(1)}%`);
 const pctClass = (ch: number | null) => (ch == null ? "" : ch >= 0 ? " up" : " down");
 const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/g, "-")}/${linkSuffix}` : `/${c.trim().replace(/\s+/g, "-")}/market-intelligence`;
@@ -430,7 +430,7 @@ const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/
   type Sp = { d: string; v: number; k: number | null; s: number | null; m: number | null; t: boolean; p: boolean };
   type Target = { x: number; y: number; color: string; html: string };
 
-  const RANGES: Record<string, number> = { "1W": 7, "1M": 30, "6M": 182, "1Y": 365, "2Y": 730 };
+  const RANGES: Record<string, number> = { "1W": 7, "1M": 30, "6M": 182, "1Y": 365, "2Y": 730, "5Y": 1826, "10Y": 3653 };
   const DAY = 86400000;
   const DASH = "\u2014";
   const fmt = (v: number | null | undefined) =>
@@ -457,7 +457,7 @@ const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/
       for (let t = t0; t <= t1; t += every * DAY)
         out.push({ t, label: new Date(t).toLocaleDateString("en-CA", { month: "short", day: "numeric" }) });
     } else {
-      const d = new Date(t0); d.setDate(1); d.setMonth(d.getMonth() + 1); d.setHours(12, 0, 0, 0);
+      if (days > 1100) { const y0 = new Date(t0).getFullYear() + 1, y1 = new Date(t1).getFullYear(), ev = Math.max(1, Math.ceil((y1 - y0 + 1) / 6)); for (let y = y0; y <= y1; y += ev) out.push({ t: new Date(y, 0, 1, 12).getTime(), label: String(y) }); return out; } const d = new Date(t0); d.setDate(1); d.setMonth(d.getMonth() + 1); d.setHours(12, 0, 0, 0);
       const months: number[] = [];
       while (d.getTime() <= t1) { months.push(d.getTime()); d.setMonth(d.getMonth() + 1); }
       const every = Math.max(1, Math.ceil(months.length / 6));
@@ -486,7 +486,7 @@ const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/
     const accentColor = getComputedStyle(root).getPropertyValue("--mt-accent").trim() || "#2f6f73";
     const q = (s: string) => root.querySelector<HTMLElement>(s)!;
 
-    const cutoff = () => { let c = Date.now() - RANGES[range] * DAY; const back = range === "2Y" ? 24 : range === "1Y" ? 12 : 0; if (back) { const F = (sold[ticker] || []).filter((p) => !p.t && !p.p); if (F.length > back) c = Math.min(c, time(F[F.length - 1 - back].d)); } return c; };
+    const cutoff = () => { let c = Date.now() - RANGES[range] * DAY; const back = (({ "10Y": 120, "5Y": 60, "2Y": 24, "1Y": 12 } as Record<string, number>)[range] || 0); if (back) { const F = (sold[ticker] || []).filter((p) => !p.t && !p.p); if (F.length > back) c = Math.min(c, time(F[F.length - 1 - back].d)); } return c; };
     const askIn = () => { const all = (series[ticker] || []).filter((p) => p.v != null) as (Pt & { v: number })[]; const sIn = RANGES[range] >= 182 ? soldIn() : []; const c = Math.min(cutoff(), ...sIn.map((p) => time(p.d))); const i = all.findIndex((p) => time(p.d) >= c); return i < 0 ? [] : all.slice(Math.max(0, i - 1)); };
     const soldIn = () => (sold[ticker] || []).filter((p) => !p.t && time(p.d) >= cutoff() - 15 * DAY);
 
@@ -563,7 +563,7 @@ const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/
       const Y = (v: number) => T + (1 - (v - lo) / ((hi - lo) || 1)) * (H - T - B);
       const poly = (a: number[][]) => a.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
 
-      const primary: { v: number }[] = A.length >= 2 ? A : S;
+      const primary: { v: number }[] = A.length >= 2 && (RANGES[range] < 1800 || S.length < 2) ? A : S;
       const up = primary[primary.length - 1].v >= primary[0].v;
       const col = up ? "#1D9E75" : "#C0392B";
 
@@ -575,13 +575,13 @@ const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/
         xs += `<line x1="${X(tk.t)}" x2="${X(tk.t)}" y1="${H - B}" y2="${H - B + 5}" class="mt-grid"/><text x="${X(tk.t)}" y="${H - 8}" text-anchor="middle" class="mt-axis">${tk.label}</text>`;
 
       const targets: Target[] = [];
-      const Fc = (sold[ticker] || []).filter((p) => !p.t && !p.p); const bk = range === "2Y" ? 24 : range === "1Y" ? 12 : 0; const wsum = (a: number, b: number) => Fc.slice(Math.max(0, a), b).reduce((t, p) => t + (p.k || 0), 0); const cmp: string[] = bk && Fc.length > bk && wsum(Fc.length - 3, Fc.length) >= 30 && wsum(Fc.length - 3 - bk, Fc.length - bk) >= 30 ? [Fc[Fc.length - 1 - bk].d, Fc[Fc.length - 1].d] : []; let soldSvg = "";
+      const Fc = (sold[ticker] || []).filter((p) => !p.t && !p.p); const bk = (({ "10Y": 120, "5Y": 60, "2Y": 24, "1Y": 12 } as Record<string, number>)[range] || 0); const wsum = (a: number, b: number) => Fc.slice(Math.max(0, a), b).reduce((t, p) => t + (p.k || 0), 0); const cmp: string[] = bk && Fc.length > bk && wsum(Fc.length - 3, Fc.length) >= 30 && wsum(Fc.length - 3 - bk, Fc.length - bk) >= 30 ? [Fc[Fc.length - 1 - bk].d, Fc[Fc.length - 1].d] : []; let soldSvg = "";
       if (S.length) {
         const sxy = S.map((p) => [X(time(p.d)), Y(p.v)]);
         if (S.length >= 2) soldSvg += `<polyline class="mt-sold" points="${poly(sxy)}"/>`;
         S.forEach((p, i) => {
           const [x, y] = sxy[i];
-          soldSvg += `<circle class="mt-sold-dot${p.p ? " pre" : ""}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${p.p ? 3.5 : 2.75}"/>`;
+          if (S.length <= 40 || p.p) soldSvg += `<circle class="mt-sold-dot${p.p ? " pre" : ""}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${p.p ? 3.5 : 2.75}"/>`;
           targets.push({
             x, y, color: accentColor,
             html: `<strong>${fmt(p.v)}</strong> confirmed sales<br><span>${prettyMonth(p.d)} \u00b7 ${num(p.k)} sales${p.s != null ? ` \u00b7 ${(p.s * 100).toFixed(1)}% of list` : ""}${p.p ? " \u00b7 preliminary" : ""}</span>`,
@@ -677,8 +677,8 @@ const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/
       const A = askIn();
       const S = RANGES[range] >= 182 ? soldIn() : [];
       const askSpan = A.length >= 2 ? (time(A[A.length - 1].d) - time(A[0].d)) / DAY : 0;
-      const useSold = S.length >= 2 && (range === "2Y" || askSpan < RANGES[range] * 0.8);
-      const F = (sold[ticker] || []).filter((p) => !p.t && !p.p); const winC = (i: number) => F.slice(Math.max(0, i - 2), i + 1).reduce((t, p) => t + (p.k || 0), 0); const back = range === "2Y" ? 24 : range === "1Y" ? 12 : 0; const sp = back && F.length > back && winC(F.length - 1) >= 30 && winC(F.length - 1 - back) >= 30 ? [F[F.length - 1 - back], F[F.length - 1]] : null; const P: { v: number }[] = sp ? sp : useSold ? S : A;
+      const useSold = S.length >= 2 && (RANGES[range] >= 730 || askSpan < RANGES[range] * 0.8);
+      const F = (sold[ticker] || []).filter((p) => !p.t && !p.p); const winC = (i: number) => F.slice(Math.max(0, i - 2), i + 1).reduce((t, p) => t + (p.k || 0), 0); const back = (({ "10Y": 120, "5Y": 60, "2Y": 24, "1Y": 12 } as Record<string, number>)[range] || 0); const sp = back && F.length > back && winC(F.length - 1) >= 30 && winC(F.length - 1 - back) >= 30 ? [F[F.length - 1 - back], F[F.length - 1]] : null; const P: { v: number }[] = sp ? sp : useSold ? S : A;
       const chg = q("[data-mt-chg]");
       if (P.length >= 2) {
         const a = P[0].v, b = P[P.length - 1].v;
