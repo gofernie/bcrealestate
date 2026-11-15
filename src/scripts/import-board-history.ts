@@ -115,7 +115,7 @@ async function main() {
   }
   console.log(`Areas assigned: ${assigned}`);
 
-  const { error: delError } = await supabase.from("market_ticks").delete().eq("backfilled", true);
+  const { error: delError } = await supabase.from("market_ticks").delete().eq("backfilled", true).gte("day", BACKFILL_FROM);
   if (delError) throw delError;
 
   const days: string[] = [];
