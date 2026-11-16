@@ -46,9 +46,9 @@ async function main() {
     let change: number | null = null, basis = "";
     const win = (i: number) => sold.slice(Math.max(0, i - 2), i + 1).reduce((t: number, p: any) => t + (p.sold_count || 0), 0);
     if (sold.length >= 13 && win(sold.length - 1) >= 30 && win(sold.length - 13) >= 30) {
-      change = (sold[sold.length - 1].sold_index / sold[sold.length - 13].sold_index - 1) * 100; basis = "1Y sales";
+      change = (sold[sold.length - 1].sold_index / sold[sold.length - 13].sold_index - 1) * 100; basis = "past year \u00b7 sales";
     } else if ((ask[0].actives ?? 0) >= 20 && (last.actives ?? 0) >= 20) {
-      change = (last.ask_index / ask[0].ask_index - 1) * 100; basis = "1Y asking";
+      const base = [...ask].reverse().find((t: any) => new Date(t.day).getTime() <= new Date(last.day).getTime() - 365 * DAY) ?? ask[0]; change = (last.ask_index / base.ask_index - 1) * 100; basis = "past year \u00b7 asking";
     }
     const up = (change ?? 0) >= 0;
     const col = change == null ? "#6b7280" : up ? "#1D9E75" : "#C0392B";

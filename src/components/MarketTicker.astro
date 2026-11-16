@@ -258,6 +258,14 @@ const tape = [
 </script>
     <p class="mt-eyebrow">Price index · updated nightly</p>
     <h2 class="mt-title">{cityLabel}, indexed.</h2>
+    <div class="mt-intro">
+      <p class="mt-intro-lead">What if {cityLabel}&rsquo;s housing market traded like a stock?</p>
+      <div class="mt-intro-grid">
+        <p><strong>One number for the whole market.</strong> The S&amp;P 500 doesn&rsquo;t report the &ldquo;median stock&rdquo;. It follows a basket of companies, so it moves when the market moves. This does the same for homes, with every active listing in {cityLabel} as a holding.</p>
+        <p><strong>Sectors, like a fund.</strong> Every neighbourhood and home type gets its own ticker{areaRows[0] ? `, like ${areaRows[0].ticker} for ${areaRows[0].name}` : ""}. Compare them side by side, or watch the week&rsquo;s moves scroll past above.</p>
+        <p><strong>Updated nightly, checked against sales.</strong> Asking prices are re-read every night. Confirmed sales arrive monthly, so you can see the gap between what sellers ask and what buyers actually pay.</p>
+      </div>
+    </div>
 
     <div class="mt-layout">
       <div class="mt-main">
@@ -412,6 +420,14 @@ const tape = [
   .mt-tape-it em.up{color:var(--mt-up)} .mt-tape-it em.down{color:var(--mt-down)} .mt-tape-it em.flat{color:#6b7682}
   @keyframes mt-tape{to{transform:translateX(-50%)}}
   @media (prefers-reduced-motion:reduce){.mt-tape{overflow-x:auto}.mt-tape-track{animation:none}}
+  .mt-title + .mt-intro{margin-top:-1.1rem}
+  .mt-intro{margin:0 0 2.25rem;padding:1.2rem 1.4rem 1.3rem;border-radius:14px;border-left:3px solid var(--mt-accent);background:color-mix(in srgb,var(--mt-accent) 5%,white)}
+  .mt-intro-lead{margin:0 0 .85rem;font-family:"Instrument Serif",Georgia,serif;font-size:clamp(1.3rem,2.2vw,1.65rem);line-height:1.2}
+  .mt-intro-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.4rem}
+  .mt-intro-grid p{margin:0;font-size:.92rem;line-height:1.55;color:#3b4652}
+  .mt-intro-grid strong{display:block;margin-bottom:.25rem;color:#1a1f24}
+  @media (max-width:820px){.mt-intro-grid{grid-template-columns:1fr;gap:.9rem}}
+  .mt-main{scroll-margin-top:96px}
   .mt{--mt-up:#1D9E75;--mt-down:#C0392B;width:min(1400px, calc(100% - 4rem));box-sizing:border-box;margin:4rem auto}
   .mt-eyebrow{font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin:0 0 .75rem}
   .mt-title{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:clamp(2.4rem,5vw,3.6rem);line-height:1.02;letter-spacing:.005em;margin:0 0 2.25rem}
@@ -512,6 +528,8 @@ const tape = [
     v == null ? DASH : v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : `$${Math.round(v / 1000)}K`;
   const num = (v: number | null | undefined) => (v == null ? DASH : Number(v).toLocaleString());
   const time = (d: string) => new Date(d + "T12:00:00").getTime();
+  /* monotone-curve-v1: smooth line through every point without overshooting */
+  const mono = (P: number[][]) => { const n = P.length; const f = (v: number) => v.toFixed(1); if (n < 3) return n ? "M" + P.map(([x, y]) => `${f(x)},${f(y)}`).join(" L") : ""; const dx: number[] = [], m: number[] = []; for (let i = 0; i < n - 1; i++) { dx[i] = P[i + 1][0] - P[i][0]; m[i] = dx[i] ? (P[i + 1][1] - P[i][1]) / dx[i] : 0; } const tg: number[] = [m[0]]; for (let i = 1; i < n - 1; i++) tg[i] = m[i - 1] * m[i] <= 0 ? 0 : (3 * (dx[i - 1] + dx[i])) / ((2 * dx[i] + dx[i - 1]) / m[i - 1] + (dx[i] + 2 * dx[i - 1]) / m[i]); tg[n - 1] = m[n - 2]; let d = `M${f(P[0][0])},${f(P[0][1])}`; for (let i = 0; i < n - 1; i++) { const h = dx[i] / 3; d += ` C${f(P[i][0] + h)},${f(P[i][1] + tg[i] * h)} ${f(P[i + 1][0] - h)},${f(P[i + 1][1] - tg[i + 1] * h)} ${f(P[i + 1][0])},${f(P[i + 1][1])}`; } return d; };
   const prettyDate = (d: string) =>
     new Date(d + "T12:00:00").toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" });
   const prettyMonth = (d: string) =>
@@ -639,7 +657,7 @@ const tape = [
         `<line x1="${L}" x2="${W - R}" y1="${Y(0)}" y2="${Y(0)}" class="mt-base"/>` +
         `<text x="${L - 10}" y="${Y(0) + 4}" text-anchor="end" class="mt-axis">0%</text>` +
         `<text x="${L - 10}" y="${Y(hi) + 4}" text-anchor="end" class="mt-axis">${hi}%</text>` +
-        `<defs><linearGradient id="mtSpreadFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--mt-accent);stop-opacity:.11"/><stop offset="0.65" style="stop-color:var(--mt-accent);stop-opacity:0"/></linearGradient></defs>` + `<polygon points="${X(t0).toFixed(1)},${Y(lo).toFixed(1)} ${line} ${X(t1).toFixed(1)},${Y(lo).toFixed(1)}" fill="url(#mtSpreadFade)"/>` + `<polyline points="${line}" class="mt-spread-line" style="stroke-width:2.5"/>` + `<circle cx="${X(t1).toFixed(1)}" cy="${Y(last.s).toFixed(1)}" r="4" style="fill:var(--mt-accent)" stroke="#fff" stroke-width="2"><title>${prettyMonth(last.d)}: ${last.s.toFixed(1)}%</title></circle>` +
+        `<defs><linearGradient id="mtSpreadFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--mt-accent);stop-opacity:.11"/><stop offset="0.65" style="stop-color:var(--mt-accent);stop-opacity:0"/></linearGradient></defs>` + `<path d="${mono(pts.map((p) => [X(time(p.d)), Y(p.s)]))} L${X(t1).toFixed(1)},${Y(lo).toFixed(1)} L${X(t0).toFixed(1)},${Y(lo).toFixed(1)} Z" fill="url(#mtSpreadFade)"/>` + `<path d="${mono(pts.map((p) => [X(time(p.d)), Y(p.s)]))}" class="mt-spread-line" style="stroke-width:2.5;fill:none"/>` + `<circle cx="${X(t1).toFixed(1)}" cy="${Y(last.s).toFixed(1)}" r="4" style="fill:var(--mt-accent)" stroke="#fff" stroke-width="2"><title>${prettyMonth(last.d)}: ${last.s.toFixed(1)}%</title></circle>` +
         `<text x="${L}" y="${H - 3}" class="mt-axis">${prettyMonth(pts[0].d)}</text>` +
         `<text x="${W - R}" y="${H - 3}" text-anchor="end" class="mt-axis">${prettyMonth(last.d)}</text></svg>`;
     }
@@ -684,7 +702,7 @@ const tape = [
       const Fc = (sold[ticker] || []).filter((p) => !p.t && !p.p); const bk = (({ "10Y": 120, "5Y": 60, "2Y": 24, "1Y": 12 } as Record<string, number>)[range] || 0); const wsum = (a: number, b: number) => Fc.slice(Math.max(0, a), b).reduce((t, p) => t + (p.k || 0), 0); const cmp: string[] = bk && Fc.length > bk && wsum(Fc.length - 3, Fc.length) >= 30 && wsum(Fc.length - 3 - bk, Fc.length - bk) >= 30 ? [Fc[Fc.length - 1 - bk].d, Fc[Fc.length - 1].d] : []; let soldSvg = "";
       if (S.length) {
         const sxy = S.map((p) => [X(time(p.d)), Y(p.v)]);
-        if (S.length >= 2) soldSvg += `<polyline class="mt-sold" points="${poly(sxy)}"/>`;
+        if (S.length >= 2) soldSvg += `<path class="mt-sold" d="${mono(sxy)}"/>`;
         S.forEach((p, i) => {
           const [x, y] = sxy[i];
           if (S.length <= 40 || p.p) soldSvg += `<circle class="mt-sold-dot${p.p ? " pre" : ""}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${p.p ? 3.5 : 2.75}"/>`;
@@ -785,10 +803,10 @@ const tape = [
       const askSpan = A.length >= 2 ? (time(A[A.length - 1].d) - time(A[0].d)) / DAY : 0;
       const useSold = S.length >= 2 && (RANGES[range] >= 730 || askSpan < RANGES[range] * 0.8);
       const F = (sold[ticker] || []).filter((p) => !p.t && !p.p); const winC = (i: number) => F.slice(Math.max(0, i - 2), i + 1).reduce((t, p) => t + (p.k || 0), 0); const back = (({ "10Y": 120, "5Y": 60, "2Y": 24, "1Y": 12 } as Record<string, number>)[range] || 0); const sp = back && F.length > back && winC(F.length - 1) >= 30 && winC(F.length - 1 - back) >= 30 ? [F[F.length - 1 - back], F[F.length - 1]] : null; const P: { v: number }[] = A.length >= 2 ? A : sp ? sp : S;
-      /* daily-move-v1 */ { const dayEl = q("[data-mt-day]"); const root = dayEl?.closest("[data-market-ticker]") as HTMLElement | null; if (root && !root.dataset.pickWired) { root.dataset.pickWired = "1"; root.querySelectorAll("[data-mt-range]").forEach((b) => b.addEventListener("click", () => root.classList.add("mt-picked"))); } const all = (series[ticker] || []).filter((p: any) => p.v != null) as any[]; if (dayEl && all.length >= 2) { const y = all[all.length - 2], n = all[all.length - 1]; const d = n.v - y.v, pct = (n.v / y.v - 1) * 100, flat = Math.abs(pct) < 0.01; const gap = Math.round((time(n.d) - time(y.d)) / DAY); const money = (x: number) => (x >= 1000 ? `$${(x / 1000).toFixed(1)}K` : `$${Math.round(x)}`); dayEl.textContent = `${flat ? "\u2192" : d > 0 ? "\u25B2" : "\u25BC"} ${d >= 0 ? "+" : "\u2212"}${money(Math.abs(d))} (${Math.abs(pct).toFixed(2)}%) ${gap > 1 ? `since ${new Date(time(y.d)).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}` : "today"}`; dayEl.className = `mt-chg mt-day${flat ? "" : d > 0 ? " up" : " down"}`; dayEl.title = `Change since the previous nightly reading (${y.d})`; dayEl.hidden = false; } else if (dayEl) { dayEl.hidden = true; root?.classList.add("mt-picked"); } }
-      const chg = q("[data-mt-chg]");
+      /* daily-move-v1 */ { const dayEl = q("[data-mt-day]"); const root = dayEl?.closest("[data-market-ticker]") as HTMLElement | null; if (root && !root.dataset.pickWired) { root.dataset.pickWired = "1"; root.querySelectorAll("[data-mt-range]").forEach((b) => b.addEventListener("click", () => root.classList.add("mt-picked"))); } const all = (series[ticker] || []).filter((p: any) => p.v != null) as any[]; if (dayEl && all.length >= 2) { const n = all[all.length - 1]; const wk = time(n.d) - 7 * DAY; const y = [...all].reverse().find((p: any) => time(p.d) <= wk) ?? all[0]; const d = n.v - y.v, pct = (n.v / y.v - 1) * 100, flat = Math.abs(pct) < 0.01; const gap = Math.round((time(n.d) - time(y.d)) / DAY); const money = (x: number) => (x >= 1000 ? `$${(x / 1000).toFixed(1)}K` : `$${Math.round(x)}`); dayEl.textContent = flat ? "\u2192 No change, past week" : `${d > 0 ? "\u25B2" : "\u25BC"} ${d >= 0 ? "+" : "\u2212"}${money(Math.abs(d))} (${Math.abs(pct).toFixed(2)}%) ${gap >= 6 ? "past week" : `since ${new Date(time(y.d)).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}`}`; dayEl.className = `mt-chg mt-day${flat ? "" : d > 0 ? " up" : " down"}`; dayEl.title = `Change since ${y.d}`; dayEl.hidden = false; } else if (dayEl) { dayEl.hidden = true; root?.classList.add("mt-picked"); } }
+      const chg = q("[data-mt-chg]"); chg.style.display = range === "1W" ? "none" : "";
       if (P.length >= 2) {
-        const a = P[0].v, b = P[P.length - 1].v;
+        const b = P[P.length - 1].v; const a = P === (A as any) ? (((A as any[]).filter((p: any) => time(p.d) <= time((A as any[])[A.length - 1].d) - RANGES[range] * DAY).pop()) ?? A[0]).v : P[0].v;
         const p = (b / a - 1) * 100, up = p >= 0, flat = Math.abs(p) < 0.05;
         chg.textContent = `${flat ? "\u2192" : up ? "\u2191" : "\u2193"} ${Math.abs(p).toFixed(1)}%  ${up ? "+" : "\u2212"}${fmt(Math.abs(b - a))} ${range}${P === (A as any) ? " asking" : " sales"}`;
         chg.className = `mt-chg${flat ? "" : up ? " up" : " down"}`;
@@ -841,7 +859,7 @@ const tape = [
 
     root.querySelectorAll<HTMLElement>("[data-mt-row]").forEach((r) =>
       r.addEventListener("click", () => {
-        ticker = r.dataset.ticker!;
+        ticker = r.dataset.ticker!; range = "1Y";
         render();
         const main = root.querySelector<HTMLElement>(".mt-main");
         if (main && main.getBoundingClientRect().top < 0) main.scrollIntoView({ behavior: "smooth", block: "start" });
