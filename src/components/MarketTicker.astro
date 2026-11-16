@@ -2,8 +2,8 @@
 import { supabase } from "../lib/supabase";
 import { yoyChange } from "../lib/marketChange";
 
-interface Props { city: string; accent?: string; peerBase?: "intel" | "root"; linkSuffix?: string; tape?: boolean }
-const { city, accent = "#2f6f73", peerBase = "intel", linkSuffix = "", tape: showTape = true } = Astro.props;
+interface Props { city: string; accent?: string; peerBase?: "intel" | "root"; linkSuffix?: string; tape?: boolean; browseBase?: string }
+const { city, accent = "#2f6f73", peerBase = "intel", linkSuffix = "", tape: showTape = true, browseBase = "" } = Astro.props;
 
 const slug = String(city || "").toLowerCase().trim();
 const keys = Array.from(new Set([slug, slug.replace(/-/g, " ")]));
@@ -281,6 +281,7 @@ const tape = [
           <div class="mt-tk" tabindex="0" data-city={cityLabel} data-tip={`${cityLabel}'s housing market, run like a fund: every home for sale is a holding. Its sector indexes, by home type and neighbourhood, are below \u2193`} style="font-size:1.2rem;display:inline-flex;align-items:center;gap:.3em;padding:.45em 1em;border:1px solid color-mix(in srgb, var(--mt-accent) 35%, transparent);background:color-mix(in srgb, var(--mt-accent) 8%, white);border-radius:999px;letter-spacing:.02em;align-self:flex-start;white-space:nowrap;">BCRE: <strong data-mt-ticker>{comp.ticker}</strong></div>
         </div>
         <p class="mt-note">Asking index from active listings, updated nightly &middot; sold index from monthly sales &middot; not an appraisal</p>
+        <p class="mt-browse"><a data-mt-browse data-base={browseBase} data-city-slug={slug.replace(/\s+/g, "-")} data-city-label={cityLabel} href={`${browseBase}/${slug.replace(/\s+/g, "-")}/`}>Browse {cityLabel} homes{browseBase ? " on bc.realestate" : ""} &rarr;</a></p>
         <details class="mt-how">
           <summary data-mt-how-sum>It&rsquo;s an index, not a median price &middot; how it works</summary>
           <p class="mt-how-lead"><strong>Think of it as an index fund for {cityLabel} homes.</strong> <span data-mt-how-leadbody>The S&amp;P 500 doesn&rsquo;t report the &ldquo;median stock&rdquo;. It follows a basket, so it moves when the market moves, not when the mix changes. This index works the same way: every active listing is a holding, priced per square foot and scaled to one standard home. When it rises, comparable homes are asking more. It doesn&rsquo;t rise just because bigger homes came on the market.</span></p>
@@ -448,7 +449,7 @@ const tape = [
   @keyframes mt-chg-in{from{transform:scale(.92);opacity:0}to{transform:none;opacity:1}}
   [data-market-ticker]:not(.mt-picked) [data-mt-chg]{display:none}
   .mt-tk{font-size:.85rem;opacity:.75}
-  .mt-note{font-size:.75rem;opacity:.55;margin:.35rem 0 0}
+  .mt-note{font-size:.75rem;opacity:.55;margin:.35rem 0 0} .mt-browse{margin:.9rem 0 1.1rem} .mt-browse a{display:inline-flex;align-items:center;gap:.4em;padding:.6rem 1.15rem;border-radius:999px;background:var(--mt-accent);color:#fff;font-size:.92rem;font-weight:600;text-decoration:none;box-shadow:0 4px 14px color-mix(in srgb,var(--mt-accent) 25%,transparent);transition:transform .15s ease,box-shadow .15s ease} .mt-browse a:hover{transform:translateY(-1px);box-shadow:0 6px 18px color-mix(in srgb,var(--mt-accent) 35%,transparent)}
   .mt-ranges{display:flex;gap:.25rem;margin:1rem 0 .25rem;border-bottom:1px solid rgba(0,0,0,.08)}
   .mt-ranges button{background:none;border:0;padding:.4rem .75rem;font:inherit;font-size:.85rem;opacity:.65;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;color:inherit}
   .mt-ranges button.on{opacity:1;color:var(--mt-accent);border-color:var(--mt-accent)}
@@ -799,7 +800,7 @@ const tape = [
       const all = series[ticker] || [];
       const last = all[all.length - 1];
 
-      q("[data-mt-name]").textContent = idx?.name ?? ticker;
+      q("[data-mt-name]").textContent = idx?.name ?? ticker; /* browse-link-v1 */ { const bl = root.querySelector<HTMLAnchorElement>("[data-mt-browse]"); if (bl) { const ix: any = indexes.find((i: any) => i.ticker === ticker) || {}; const base = bl.dataset.base || ""; const cs = bl.dataset.citySlug || ""; const cl = bl.dataset.cityLabel || ""; const on = base ? " on bc.realestate" : ""; const sfx = (ticker.split(".")[1] || "").replace(/\d+$/, ""); const tr = ({ SFH: ["homes", "houses"], CON: ["condos", "condos"], TWN: ["townhomes", "townhomes"], MOB: ["mobile-homes", "mobile homes"], LND: ["land", "land"] } as any)[sfx]; const sl = (s: string) => String(s).trim().toLowerCase().replace(/\s+/g, "-"); let href = `${base}/${cs}/`, txt = `Browse ${cl} homes${on} \u2192`; if (ix.prop_type && tr) { href = `${base}/${cs}/${tr[0]}`; txt = `Browse ${cl} ${tr[1]}${on} \u2192`; } else if (ix.area_slug && ix.ticker !== indexes[0].ticker) { const member = Array.isArray((indexes[0] as any).member_cities) && (indexes[0] as any).member_cities.includes(ix.area_slug); href = member ? `${base}/${sl(ix.area_slug)}/` : `${base}/${cs}/${sl(ix.area_slug)}`; txt = `Browse ${ix.name} homes${on} \u2192`; } bl.href = href; bl.textContent = txt; document.querySelectorAll<HTMLAnchorElement>("[data-mt-browse-mirror]").forEach((m) => { m.href = href; m.textContent = txt; m.hidden = href === `${base}/${cs}/`; }); } }
       q("[data-mt-ticker]").textContent = ticker;
       q("[data-mt-price]").textContent = fmt(last?.v);
 
