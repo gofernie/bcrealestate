@@ -66,6 +66,9 @@ hero_image_url: clean(form.get("hero_image_url")) || null,
 nav_label: clean(form.get("nav_label")) || null,
 intro_copy: clean(form.get("intro_copy")),
       neighbourhood_copy: clean(form.get("neighbourhood_copy")) || null,
+      show_buyer_guidance: form.get("show_buyer_guidance") === "on",
+      buyer_guide_heading: clean(form.get("buyer_guide_heading")) || null,
+      buyer_guide_copy: clean(form.get("buyer_guide_copy")) || null,
       seo_heading: clean(form.get("seo_heading")) || null,
   seo_title: clean(form.get("seo_title")),
       meta_description: clean(form.get("meta_description")) || null,
@@ -603,6 +606,7 @@ select {
         <div class="field">
           <label>Intro copy</label>
           <textarea name="intro_copy" required>{page.intro_copy || ""}</textarea>
+          <label style="display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:6px;"><input type="checkbox" name="show_buyer_guidance" checked={page.show_buyer_guidance !== false} style="width:auto;" /> Show "What buyers should know" section</label>
           <label>Neighbourhood copy <span style="font-weight:400;color:var(--muted);">&mdash;&quot;What buyers should know&quot; body text</span></label>
           {pairedGuide ? (
             <>
@@ -614,6 +618,12 @@ select {
           )}
         </div>
 
+      <div class="field">
+          <label>Buyer's guide heading <span style="font-weight:400;color:var(--muted);">&mdash; long section above "Keep looking"</span></label>
+          <input name="buyer_guide_heading" value={page.buyer_guide_heading || ""} placeholder="Buying acreage around Nanaimo" />
+          <label>Buyer's guide copy <span style="font-weight:400;color:var(--muted);">&mdash; blank line between paragraphs, **bold** for lead-ins</span></label>
+          <textarea name="buyer_guide_copy" rows="14">{page.buyer_guide_copy || ""}</textarea>
+        </div>
       <div class="field">
           <label>Eyebrow label <span style="font-weight:400;color:var(--muted);">— small text above h1</span></label>
           <input name="eyebrow" value={page.eyebrow || ""} placeholder="Nanaimo Intent Search" />
@@ -829,57 +839,45 @@ select {
     charCount.style.color = len > 160 ? "#b42318" : len >= 140 ? "#b45309" : "var(--muted)";
   });
 
-  autofillBtn?.addEventListener("click", () => {
-    const heading = document.querySelector("[name='hero_heading']")?.value || "";
-    const city = (document.querySelector("[name='city']")?.value || "Nanaimo")
-      .replace(/\b\w/g, c => c.toUpperCase());
-    const type = document.querySelector("[name='property_type']:checked")?.value || "";
-    const priceMax = document.querySelector("[name='price_max']")?.value || "";
-    const priceMin = document.querySelector("[name='price_min']")?.value || "";
-
-    const typeLabel = type === "house" ? "homes" : type === "condo" ? "condos" :
-      type === "townhouse" ? "townhomes" : type === "land" ? "land" : "properties";
-
-    const priceLabel = priceMax
-      ? ` under $${Number(priceMax).toLocaleString()}`
-      : priceMin
-      ? ` over $${Number(priceMin).toLocaleString()}`
-      : "";
-
-    const subject =
-      heading.trim() ||
-      `${city} ${typeLabel}${priceLabel}`;
-
-    const detail =
-      /lakefront/i.test(subject)
-        ? "lakefront details"
-        : /riverfront/i.test(subject)
-        ? "riverfront details"
-        : /oceanfront/i.test(subject)
-        ? "oceanfront details"
-        : /waterfront/i.test(subject)
-        ? "waterfront details"
-        : /ocean[\s-]?view/i.test(subject)
-        ? "ocean-view features"
-        : /suite/i.test(subject)
-        ? "suite details"
-        : /walkab/i.test(subject)
-        ? "nearby amenities"
-        : "property details";
-
-    const saleSubject =
-      /\bfor sale\b/i.test(subject)
-        ? subject
-        : `${subject} for sale`;
-
-    const text =
-      `Explore ${saleSubject}. View current MLS® listings with photos, ${detail}, maps and prices, and find a property that fits your needs.`;
-
-    if (metaField) {
-      metaField.value = text.slice(0, 160);
-      const len = metaField.value.length;
-      charCount.textContent = `${len} / 160`;
-      charCount.style.color = len > 160 ? "#b42318" : len >= 140 ? "#b45309" : "var(--muted)";
+  autofillBtn?.addEventListener("click", async () => {
+    const form = autofillBtn.closest("form");
+    if (!form) return;
+    const fd = new FormData(form);
+    const val = (n) => String(fd.get(n) || "").trim();
+    const payload = {
+      slug: val("slug"), city: val("city"), area: val("area"), hero_heading: val("hero_heading"),
+      property_type: fd.getAll("property_type").map(String), features: fd.getAll("features").map(String),
+      price_min: val("price_min"), price_max: val("price_max"), beds_min: val("beds_min"),
+      min_lot_sqft: val("min_lot_sqft"), view_type: val("view_type"), lifestyle_angle: val("lifestyle_angle"),
+      include_buyer_guide: !!form.querySelector("[name='buyer_guide_copy']"),
+    };
+    const label = autofillBtn.textContent;
+    autofillBtn.disabled = true;
+    autofillBtn.textContent = "Writing...";
+    try {
+      document.getElementById("autofill-error")?.remove();
+      const res = await fetch("/admin/api/intent-autofill", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      const out = await res.json();
+      if (!res.ok || !out.copy) throw new Error(out.error || "Auto-fill failed");
+      const keys = ["intro_copy", "neighbourhood_copy", "buyer_guide_heading", "buyer_guide_copy", "eyebrow", "hero_heading", "seo_heading", "seo_title", "meta_description"];
+      for (const k of keys) {
+        const el = form.querySelector(`[name='${k}']`);
+        const v = out.copy[k];
+        if (!el || typeof v !== "string" || !v.trim() || el.readOnly) continue;
+        el.value = v.trim();
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      autofillBtn.textContent = "Done - review, then save";
+      setTimeout(() => { autofillBtn.textContent = label; }, 4000);
+    } catch (err) {
+      autofillBtn.textContent = label;
+      console.error(err);
+      const note = document.getElementById("autofill-error") || Object.assign(document.createElement("p"), { id: "autofill-error" });
+      note.style.cssText = "margin:.4rem 0 0;font-size:.85rem;color:#b42318;";
+      note.textContent = String(err.message || err);
+      autofillBtn.parentElement?.after(note);
+    } finally {
+      autofillBtn.disabled = false;
     }
   });
 </script>

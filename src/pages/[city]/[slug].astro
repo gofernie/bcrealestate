@@ -11311,12 +11311,13 @@ Approximate driving times from{" "}
   id="dynamic-results-heading"
   data-fixed-type-label={isDedicatedTypePage ? dedicatedTypeLabel : ""}
   data-page-area={page.area || ""}
+  data-search-label={pageKind === "intent" ? String(page.hero_heading || "").replace(/\|/g, " ").replace(new RegExp(titleCase(String(city || "").split("-").join(" ")), "i"), "").replace(/\s+/g, " ").trim() : ""}
   style="margin:0;font-family:var(--serif);font-size:clamp(1.2rem,2vw,1.6rem);font-weight:500;letter-spacing:-0.02em;"
 >
   {isDedicatedTypePage
     ? `${titleCase(city)} ${dedicatedTypeLabel}`
     : pageKind === "intent"
-      ? `${listingCount} ${page.hero_heading || `${titleCase(city)} Homes`}`
+      ? `${listingCount} ${String(page.hero_heading || "").replace(/\|/g, " ").replace(new RegExp(titleCase(String(city || "").split("-").join(" ")), "i"), "").replace(/\s+/g, " ").trim() || "Listings"} for Sale in ${titleCase(String(city || "").split("-").join(" "))}`
       : [
           titleCase(city),
           page.area ? titleCase(page.area) : "",
@@ -11336,7 +11337,7 @@ Approximate driving times from{" "}
 
 {
     pageKind === "intent" &&
-    String(page.neighbourhood_copy || "").trim() && (
+    page.show_buyer_guidance !== false && String(page.neighbourhood_copy || "").trim() && (
       <section
         class="intent-top-guide"
         aria-labelledby="intent-top-guide-heading"
@@ -11363,7 +11364,7 @@ Approximate driving times from{" "}
               .split(/\n\n|\r\n\r\n/)
               .filter((paragraph) => paragraph.trim())
               .map((paragraph) => (
-                <p>{paragraph.trim()}</p>
+                <p set:html={paragraph.trim().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\*\*(.+?)\*\*/g, "<strong style=\"color:var(--ink,#1a1a1a);font-weight:700;\">$1</strong>")} />
               ))
           }
         </div>
@@ -13088,6 +13089,26 @@ function __rawAddr5(v) {
     }
   })();
 </script>
+{pageKind === "intent" && String(page?.buyer_guide_copy || "").trim() && (
+  <section class="intent-top-guide intent-bottom-guide" aria-labelledby="intent-bottom-guide-heading">
+    <p class="intent-top-guide__eyebrow">Buyer's guide</p>
+    <h2 id="intent-bottom-guide-heading">{String(page?.buyer_guide_heading || "").trim() || `Buying in ${titleCase(String(city || "").split("-").join(" "))}`}</h2>
+    <div class="intent-top-guide__copy intent-bottom-guide__copy">
+      {String(page?.buyer_guide_copy || "")
+        .split(/\r?\n\s*\r?\n/)
+        .filter((p) => p.trim())
+        .map((p) => (
+          <p set:html={p.trim().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\r?\n/g, "<br>")} />
+        ))}
+    </div>
+  </section>
+)}
+<style is:global>
+  .intent-bottom-guide { margin: 48px 0 40px; }
+  .intent-bottom-guide__copy { max-width: 820px; }
+  .intent-bottom-guide__copy p + p { margin-top: 16px; }
+  .intent-bottom-guide__copy strong { color: var(--ink, #1a1a1a); font-weight: 700; }
+</style>
 {!hybridGuide && <RelatedIntentCards city={city} pages={relatedIntentPagesRaw || []} inventory={navRowsAll} currentType={effectivePropertyType} currentArea={page?.area || ""} />}
 {hybridGuide && (
   <script is:inline>

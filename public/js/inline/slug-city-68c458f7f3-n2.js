@@ -251,6 +251,7 @@ function updateResultsHeading(filters, resultCount) {
     document.getElementById("dynamic-results-heading");
 
   if (!heading) return;
+  if (heading.dataset.initialType === undefined) heading.dataset.initialType = String(filters.type || "all");
 
   const cityLabel = jsTitleCase(
     document.querySelector("[data-city]")
@@ -288,6 +289,8 @@ function updateResultsHeading(filters, resultCount) {
 
   if (fixedTypeLabel) {
     pluralTypeLabel = fixedTypeLabel.toLowerCase();
+  } else if (String(heading.dataset.searchLabel || "").trim() && (String(filters.type || "all") === "all" || String(filters.type || "all") === heading.dataset.initialType)) {
+    pluralTypeLabel = String(heading.dataset.searchLabel).trim();
   } else {
     pluralTypeLabel =
       filters.type === "condo"
@@ -319,11 +322,11 @@ function updateResultsHeading(filters, resultCount) {
 
   const typeLabel =
     Number(resultCount) === 1
-      ? singularTypeLabel
+      ? (!fixedTypeLabel && String(heading.dataset.searchLabel || "").trim() && (String(filters.type || "all") === "all" || String(filters.type || "all") === heading.dataset.initialType) ? pluralTypeLabel.replace(/ies\b/, "y").replace(/s\b/, "") : singularTypeLabel)
       : pluralTypeLabel;
 
   heading.textContent =
-    `${resultCount} ${typeLabel} for sale in ${String(locationLabel || "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`;
+    `${resultCount} ${/[A-Z]/.test(typeLabel) ? typeLabel : typeLabel.replace(/\b\w/g, (c) => c.toUpperCase())} for Sale in ${String(locationLabel || "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`;
 }
 function submitFilters() {
   const filters = getCurrentFilters();
