@@ -1,6 +1,8 @@
 ---
 import StreetIndexLayout from "../../layouts/StreetIndexLayout.astro";
 import { supabase } from "../../lib/supabase";
+import TickerTape from "../../components/TickerTape.astro";
+import { yoyChange } from "../../lib/marketChange";
 export const prerender = false;
 const q = Astro.url.searchParams.get("siteDomain") === "streetindex.io" ? "?siteDomain=streetindex.io" : "";
 const { data: comps } = await supabase.from("market_indexes").select("ticker, name, city")
@@ -10,10 +12,20 @@ const since = new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10);
 const { data: ticks } = tickers.length ? await supabase.from("market_ticks").select("ticker, day, ask_index").in("ticker", tickers).gte("day", since).order("day", { ascending: false }) : { data: [] };
 const lastBy = new Map<string, number>();
 for (const t of ticks || []) if (!lastBy.has(t.ticker) && t.ask_index) lastBy.set(t.ticker, Number(t.ask_index));
+const dayStr = (d: number) => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
+const pick = (p: any) => (tickers.length ? p : Promise.resolve({ data: [] as any[] }));
+const [{ data: moRows }, { data: yaRows }, { data: nowRows }] = await Promise.all([
+  pick(supabase.from("market_months").select("ticker, month, sold_index, sold_count, thin").in("ticker", tickers).gte("month", dayStr(460))),
+  pick(supabase.from("market_ticks").select("ticker, day, ask_index, actives").in("ticker", tickers).gte("day", dayStr(366)).lte("day", dayStr(356))),
+  pick(supabase.from("market_ticks").select("ticker, day, ask_index, actives").in("ticker", tickers).gte("day", since)),
+]);
+const by = (rows: any[] | null, tk: string) => (rows || []).filter((r: any) => r.ticker === tk);
+const yoyOf = (tk: string) => { const r = yoyChange(by(moRows, tk), [...by(yaRows, tk), ...by(nowRows, tk)]); return r ? { chg: r.chg, win: r.basis === "sales" ? "1Y sales" : "1Y asking" } : { chg: null, win: "" }; };
 const fmt = (v?: number) => (v == null ? "—" : v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : `$${Math.round(v / 1000)}K`);
-const markets = (comps || []).map((c: any) => ({ ...c, slug: String(c.city).trim().replace(/\s+/g, "-"), label: String(c.city).replace(/\b\w/g, (ch: string) => ch.toUpperCase()), ask: lastBy.get(c.ticker) }));
+const markets = (comps || []).map((c: any) => ({ ...c, slug: String(c.city).trim().replace(/\s+/g, "-"), label: String(c.city).replace(/\b\w/g, (ch: string) => ch.toUpperCase()), ask: lastBy.get(c.ticker), ...yoyOf(c.ticker) }));
 ---
 <StreetIndexLayout title="StreetIndex: B.C. housing markets, indexed" q={q}>
+  <TickerTape slot="ticker" items={markets.map((m: any) => ({ name: m.label, code: m.ticker, value: m.ask, change: m.chg, win: m.win, href: `/${m.slug}/${q}` }))} />
   <section class="si-wrap">
     <p style="font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin:0 0 .75rem;">Housing market indexes · updated nightly</p>
     <h1 style="font-family:'Instrument Serif',Georgia,serif;font-weight:400;font-size:clamp(2.6rem,6vw,4.4rem);line-height:1;letter-spacing:-.02em;margin:0 0 1.5rem;">B.C. housing markets, indexed.</h1>
@@ -22,7 +34,7 @@ const markets = (comps || []).map((c: any) => ({ ...c, slug: String(c.city).trim
       {markets.map((m: any) => (
         <a href={`/${m.slug}/${q}`} data-name={m.label.toLowerCase()} style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border:1px solid #e3e6ea;border-radius:12px;text-decoration:none;color:inherit;">
           <span><strong style="display:block;">{m.label}</strong><span style="font-size:.8rem;color:#666;">BCRE: {m.ticker}</span></span>
-          <span style="font-weight:600;font-variant-numeric:tabular-nums;">{fmt(m.ask)}</span>
+          <span style="text-align:right;"><span style="display:block;font-weight:600;font-variant-numeric:tabular-nums;">{fmt(m.ask)}</span>{m.chg != null && <span style={`display:block;margin-top:2px;font-size:.76rem;font-weight:600;font-variant-numeric:tabular-nums;color:${m.chg > 0.05 ? "#1a7f4b" : m.chg < -0.05 ? "#b42318" : "#8a8f96"}`}>{m.chg > 0.05 ? "\u25B2" : m.chg < -0.05 ? "\u25BC" : "\u2013"} {Math.abs(m.chg).toFixed(1)}% <span style="color:#8a8f96;font-weight:500;">{m.win}</span></span>}</span>
         </a>
       ))}
     </div>

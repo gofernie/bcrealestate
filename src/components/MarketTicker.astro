@@ -1,8 +1,9 @@
 ---
 import { supabase } from "../lib/supabase";
+import { yoyChange } from "../lib/marketChange";
 
-interface Props { city: string; accent?: string; peerBase?: "intel" | "root"; linkSuffix?: string }
-const { city, accent = "#2f6f73", peerBase = "intel", linkSuffix = "" } = Astro.props;
+interface Props { city: string; accent?: string; peerBase?: "intel" | "root"; linkSuffix?: string; tape?: boolean }
+const { city, accent = "#2f6f73", peerBase = "intel", linkSuffix = "", tape: showTape = true } = Astro.props;
 
 const slug = String(city || "").toLowerCase().trim();
 const keys = Array.from(new Set([slug, slug.replace(/-/g, " ")]));
@@ -116,7 +117,8 @@ const yearPts = (tk: string) => {
   return s.filter((p) => new Date(p.d).getTime() >= cut);
 };
 const soldPts = (tk: string) => (sold[tk] ?? []).filter((p) => !p.t); const win = (s: any[], i: number) => s.slice(Math.max(0, i - 2), i + 1).reduce((t, p) => t + (p.k || 0), 0);
-const change = (tk: string) => {
+const change = (tk: string) => { const r = yoyChange(months.filter((m: any) => m.ticker === tk), ticks.filter((t: any) => t.ticker === tk)); return r ? r.chg : null; };
+const changeOld = (tk: string) => {
   const s = soldPts(tk);
   const f = s.filter((p) => !p.p); if (f.length >= 13 && win(f, f.length - 1) >= 30 && win(f, f.length - 13) >= 30) return (f[f.length - 1].v / f[f.length - 13].v - 1) * 100;
   const a = yearPts(tk);
@@ -227,8 +229,8 @@ const tape = [
   .mt-how-fine { color: #6b7682 !important; font-size: .82rem; }
   .mt-how[open] { background: color-mix(in srgb, var(--mt-accent) 6%, white); border-radius: 10px; padding: .7rem .9rem .3rem; }
 </style>
-<section class="mt" style={`--mt-accent:${accent}`} data-market-ticker>
-    {tape.length > 2 && (
+<section class="mt mt-picked" style={`--mt-accent:${accent}`} data-market-ticker>
+    {showTape && tape.length > 2 && (
   <div class="mt-tape" aria-label="Index moves over the past week" style={`--mt-tape-dur:${Math.max(30, tape.length * 4)}s`}>
     <div class="mt-tape-track">
       {[0, 1].map((k) => (
@@ -262,7 +264,7 @@ const tape = [
       <p class="mt-intro-lead">What if {cityLabel}&rsquo;s housing market traded like a stock?</p>
       <div class="mt-intro-grid">
         <p><strong>One number for the whole market.</strong> The S&amp;P 500 doesn&rsquo;t report the &ldquo;median stock&rdquo;. It follows a basket of companies, so it moves when the market moves. This does the same for homes, with every active listing in {cityLabel} as a holding.</p>
-        <p><strong>Sectors, like a fund.</strong> Every neighbourhood and home type gets its own ticker{areaRows[0] ? `, like ${areaRows[0].ticker} for ${areaRows[0].name}` : ""}. Compare them side by side, or watch the week&rsquo;s moves scroll past above.</p>
+        <p><strong>Sectors, like a fund.</strong> Every neighbourhood and home type gets its own ticker{areaRows[0] ? `, like ${areaRows[0].ticker} for ${areaRows[0].name}` : ""}. Compare them side by side{showTape && <>, or watch the week&rsquo;s moves scroll past above</>}.</p>
         <p><strong>Updated nightly, checked against sales.</strong> Asking prices are re-read every night. Confirmed sales arrive monthly, so you can see the gap between what sellers ask and what buyers actually pay.</p>
       </div>
     </div>
@@ -805,13 +807,13 @@ const tape = [
       const S = RANGES[range] >= 182 ? soldIn() : [];
       const askSpan = A.length >= 2 ? (time(A[A.length - 1].d) - time(A[0].d)) / DAY : 0;
       const useSold = S.length >= 2 && (RANGES[range] >= 730 || askSpan < RANGES[range] * 0.8);
-      const F = (sold[ticker] || []).filter((p) => !p.t && !p.p); const winC = (i: number) => F.slice(Math.max(0, i - 2), i + 1).reduce((t, p) => t + (p.k || 0), 0); const back = (({ "10Y": 120, "5Y": 60, "2Y": 24, "1Y": 12 } as Record<string, number>)[range] || 0); const sp = back && F.length > back && winC(F.length - 1) >= 30 && winC(F.length - 1 - back) >= 30 ? [F[F.length - 1 - back], F[F.length - 1]] : null; const P: { v: number }[] = A.length >= 2 ? A : sp ? sp : S;
-      /* daily-move-v1 */ { const dayEl = q("[data-mt-day]"); const root = dayEl?.closest("[data-market-ticker]") as HTMLElement | null; if (root && !root.dataset.pickWired) { root.dataset.pickWired = "1"; root.querySelectorAll("[data-mt-range]").forEach((b) => b.addEventListener("click", () => root.classList.add("mt-picked"))); } const all = (series[ticker] || []).filter((p: any) => p.v != null) as any[]; if (dayEl && all.length >= 2) { const n = all[all.length - 1]; const wk = time(n.d) - 7 * DAY; const y = [...all].reverse().find((p: any) => time(p.d) <= wk) ?? all[0]; const d = n.v - y.v, pct = (n.v / y.v - 1) * 100, flat = Math.abs(pct) < 0.01; const gap = Math.round((time(n.d) - time(y.d)) / DAY); const money = (x: number) => (x >= 1000 ? `$${(x / 1000).toFixed(1)}K` : `$${Math.round(x)}`); dayEl.textContent = flat ? "\u2192 No change, past week" : `${d > 0 ? "\u25B2" : "\u25BC"} ${d >= 0 ? "+" : "\u2212"}${money(Math.abs(d))} (${Math.abs(pct).toFixed(2)}%) ${gap >= 6 ? "past week" : `since ${new Date(time(y.d)).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}`}`; dayEl.className = `mt-chg mt-day${flat ? "" : d > 0 ? " up" : " down"}`; dayEl.title = `Change since ${y.d}`; dayEl.hidden = false; } else if (dayEl) { dayEl.hidden = true; root?.classList.add("mt-picked"); } }
+      const F = (sold[ticker] || []).filter((p) => !p.t && !p.p); const winC = (i: number) => F.slice(Math.max(0, i - 2), i + 1).reduce((t, p) => t + (p.k || 0), 0); const back = (({ "10Y": 120, "5Y": 60, "2Y": 24, "1Y": 12 } as Record<string, number>)[range] || 0); const sp = back && F.length > back && winC(F.length - 1) >= 30 && winC(F.length - 1 - back) >= 30 ? [F[F.length - 1 - back], F[F.length - 1]] : null; const P: { v: number }[] = sp ? sp : A.length >= 2 ? A : S;
+      /* daily-move-v1 */ { const dayEl = q("[data-mt-day]"); const root = dayEl?.closest("[data-market-ticker]") as HTMLElement | null; if (root && !root.dataset.pickWired) { root.dataset.pickWired = "1"; root.querySelectorAll("[data-mt-range]").forEach((b) => b.addEventListener("click", () => root.classList.add("mt-picked"))); } const all = (series[ticker] || []).filter((p: any) => p.v != null) as any[]; if (dayEl && all.length >= 2) { const n = all[all.length - 1]; const wk = time(n.d) - 7 * DAY; const y = [...all].reverse().find((p: any) => time(p.d) <= wk) ?? all[0]; const d = n.v - y.v, pct = (n.v / y.v - 1) * 100, flat = Math.abs(pct) < 0.01; const gap = Math.round((time(n.d) - time(y.d)) / DAY); const money = (x: number) => (x >= 1000 ? `$${(x / 1000).toFixed(1)}K` : `$${Math.round(x)}`); dayEl.innerHTML = flat ? "\u2192 No change in <strong>asking</strong>, past week" : `${d > 0 ? "\u25B2" : "\u25BC"} ${d >= 0 ? "+" : "\u2212"}${money(Math.abs(d))} (${Math.abs(pct).toFixed(2)}%) ${gap >= 6 ? "past week <strong>asking</strong>" : `since ${new Date(time(y.d)).toLocaleDateString("en-CA", { month: "short", day: "numeric" })} <strong>asking</strong>`}`; dayEl.className = `mt-chg mt-day${flat ? "" : d > 0 ? " up" : " down"}`; dayEl.title = `Change since ${y.d}`; dayEl.hidden = false; } else if (dayEl) { dayEl.hidden = true; root?.classList.add("mt-picked"); } }
       const chg = q("[data-mt-chg]"); chg.style.display = range === "1W" ? "none" : "";
       if (P.length >= 2) {
         const b = P[P.length - 1].v; const a = P === (A as any) ? (((A as any[]).filter((p: any) => time(p.d) <= time((A as any[])[A.length - 1].d) - RANGES[range] * DAY).pop()) ?? A[0]).v : P[0].v;
         const p = (b / a - 1) * 100, up = p >= 0, flat = Math.abs(p) < 0.05;
-        chg.textContent = `${flat ? "\u2192" : up ? "\u2191" : "\u2193"} ${Math.abs(p).toFixed(1)}%  ${up ? "+" : "\u2212"}${fmt(Math.abs(b - a))} ${range}${P === (A as any) ? " asking" : " sales"}`;
+        chg.textContent = `${flat ? "\u2192" : up ? "\u2191" : "\u2193"} ${Math.abs(p).toFixed(1)}%  ${up ? "+" : "\u2212"}${fmt(Math.abs(b - a))} ${range}${P === (A as any) ? " asking" : ` sales \u00b7 ${fmt(b)}`}`;
         chg.className = `mt-chg${flat ? "" : up ? " up" : " down"}`;
       } else {
         chg.textContent = "New index";
@@ -824,7 +826,7 @@ const tape = [
         const ref = hx.ref_sqft ?? (({ SFH: 1800, CON: 850, TWN: 1300, MOB: 1100 } as any)[sfx] ?? (sfx && sfx !== "LND" ? 1500 : null));
         const kind = ({ SFH: "house", CON: "condo", TWN: "townhome", MOB: "mobile home" } as any)[sfx] || "home";
         const n = ref ? Number(ref).toLocaleString("en-CA") : "";
-        const set = (s: string, h: string) => { const e = root.querySelector(s); if (e) e.innerHTML = h; };
+        const set = (s: string, h: string) => { const e = root.querySelector(s); if (e) e.innerHTML = (s === "[data-mt-how-sum]" ? "" : " ") + h; };
         set("[data-mt-how-sum]", ref ? "It&rsquo;s an index, not a median price &middot; how it works" : "How this index works");
         set("[data-mt-how-leadbody]", ref
           ? `The S&amp;P 500 doesn&rsquo;t report the &ldquo;median stock&rdquo;. It follows a basket, so it moves when the market moves, not when the mix changes. This index works the same way: every active listing is a holding, priced per square foot and scaled to one standard ${n} sq ft ${kind}. When it rises, comparable homes are asking more. It doesn&rsquo;t rise just because bigger homes came on the market.`

@@ -2,6 +2,7 @@
 import StreetIndexLayout from "../../layouts/StreetIndexLayout.astro";
 import MarketTicker from "../../components/MarketTicker.astro";
 import { supabase } from "../../lib/supabase";
+import { yoyChange } from "../../lib/marketChange";
 export const prerender = false;
 const city = String(Astro.params.city || "").toLowerCase();
 const q = Astro.url.searchParams.get("siteDomain") === "streetindex.io" ? "?siteDomain=streetindex.io" : "";
@@ -11,16 +12,17 @@ if (!comp) return Astro.redirect(`/${q}`, 302);
 const label = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 /* si-hero-v1: live numbers for the hero */
-const [{ data: lastTick }, { data: monthRows }, { count: areaCount }] = await Promise.all([
+const [{ data: lastTick }, { data: monthRows }, { count: areaCount }, { data: yaTicks }] = await Promise.all([
   supabase.from("market_ticks").select("day, ask_index, actives").eq("ticker", comp.ticker).not("ask_index", "is", null).order("day", { ascending: false }).limit(1).maybeSingle(),
-  supabase.from("market_months").select("month, sold_index, thin").eq("ticker", comp.ticker).not("sold_index", "is", null).order("month"),
+  supabase.from("market_months").select("month, sold_index, sold_count, thin").eq("ticker", comp.ticker).not("sold_index", "is", null).order("month"),
   supabase.from("market_indexes").select("ticker", { count: "exact", head: true }).eq("parent_ticker", comp.ticker).not("area_slug", "is", null),
+  supabase.from("market_ticks").select("day, ask_index, actives").eq("ticker", comp.ticker).gte("day", new Date(Date.now() - 366 * 864e5).toISOString().slice(0, 10)).lte("day", new Date(Date.now() - 356 * 864e5).toISOString().slice(0, 10)).order("day"),
 ]);
 const now = new Date();
 const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 const prevMonth = ym(new Date(now.getFullYear(), now.getMonth() - 1, 1));
 const sold = (monthRows ?? []).filter((m: any) => !m.thin && String(m.month).slice(0, 10) < prevMonth).map((m: any) => ({ d: String(m.month).slice(0, 10), v: Number(m.sold_index) }));
-const chg1y = sold.length >= 13 ? (sold[sold.length - 1].v / sold[sold.length - 13].v - 1) * 100 : null;
+const yoy = yoyChange(monthRows ?? [], [...(yaTicks ?? []), ...(lastTick ? [lastTick] : [])]); const chg1y = yoy ? yoy.chg : null;
 const soldSince = sold[0]?.d ? new Date(sold[0].d + "T12:00:00").getFullYear() : null;
 const years = soldSince ? now.getFullYear() - soldSince : 0;
 const ask = lastTick?.ask_index != null ? Number(lastTick.ask_index) : null;
@@ -51,12 +53,12 @@ const spark = (() => {
       <span class="si-card__tk">BCRE: <strong>{comp.ticker}</strong></span>
       <span class="si-card__px">{fmt(ask)}</span>
       <span class="si-card__sub">CAD asking index{asOf ? ` · ${asOf}` : ""}</span>
-      {chg1y != null && <span class={`si-card__chg ${up ? "up" : "down"}`}>{up ? "▲" : "▼"} {Math.abs(chg1y).toFixed(1)}% <small>1Y sales</small></span>}
+      {chg1y != null && <span class={`si-card__chg ${up ? "up" : "down"}`}>{up ? "▲" : "▼"} {Math.abs(chg1y).toFixed(1)}% <small>1Y {yoy?.basis === "asking" ? "asking" : `sales${sold.length ? ` · ${fmt(sold[sold.length - 1].v)}` : ""}`}</small></span>}
       {spark && <span class="si-card__spark" set:html={spark}></span>}
       {spark && <span class="si-card__note">Confirmed sales{soldSince ? `, ${soldSince}–today` : ""}</span>}
     </a>
   </section>
-  <div id="market"><MarketTicker city={city} accent="#2f4a68" peerBase="root" linkSuffix={q} /></div>
+  <div id="market"><MarketTicker tape={false} city={city} accent="#2f4a68" peerBase="root" linkSuffix={q} /></div>
   <div class="si-wrap si-cta">
     <a href={`https://bc.realestate/${city}/`}>Browse {label} homes on bc.realestate →</a>
     <a href={`https://bc.realestate/${city}/market-intelligence`}>Full {label} market report →</a>

@@ -1,0 +1,44 @@
+---
+interface Item { name: string; code: string; value?: number; change?: number | null; win?: string; href?: string }
+const { items = [], accent = "#2f4a68" } = Astro.props as { items: Item[]; accent?: string };
+const fmt = (v: number) => (v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : `$${Math.round(v / 1e3)}K`);
+const rows = items.filter((i) => i && i.value);
+---
+{rows.length > 0 && (
+<div class="tt" aria-label="Market index ticker" style={`--tt-accent:${accent};--tt-dur:${Math.max(30, rows.length * 4)}s`}>
+  <div class="tt-track">
+    {[0, 1].map((k) => (
+      <div class="tt-set" aria-hidden={k === 1 ? "true" : undefined}>
+        {rows.map((x) => {
+          const c = x.change ?? null;
+          const cls = c == null || Math.abs(c) < 0.01 ? "flat" : c > 0 ? "up" : "down";
+          return (
+            <a class="tt-it" href={x.href} tabindex={k === 1 ? -1 : undefined}>
+              <b>{x.code}</b><i class="tt-nm">{x.name}</i><span>{fmt(x.value!)}</span>
+              <em class={cls}>{c == null ? "\u2014" : `${cls === "flat" ? "\u25A0" : cls === "up" ? "\u25B2" : "\u25BC"} ${Math.abs(c).toFixed(2)}%`}{x.win && <small class="tt-per"> {x.win}</small>}</em>
+            </a>
+          );
+        })}
+      </div>
+    ))}
+  </div>
+</div>
+)}
+<style is:global>
+  .tt{overflow:hidden;border-bottom:1px solid rgba(0,0,0,.08);-webkit-mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent);mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
+  .tt-track{display:flex;width:max-content;animation:tt-scroll var(--tt-dur,60s) linear infinite}
+  .tt:hover .tt-track,.tt:focus-within .tt-track{animation-play-state:paused}
+  .tt-set{display:flex}
+  .tt-it{position:relative;display:inline-flex;align-items:baseline;gap:.45em;padding:.6rem 1.15rem;font-size:.86rem;border-right:1px solid rgba(0,0,0,.06);color:inherit;text-decoration:none;white-space:nowrap;font-variant-numeric:tabular-nums;transition:background-color .2s ease,box-shadow .2s ease}
+  .tt-it:hover,.tt-it:focus-visible{background:color-mix(in srgb,var(--tt-accent) 9%,white);box-shadow:inset 0 -2px 0 var(--tt-accent);outline:none}
+  .tt-it:focus-visible{box-shadow:inset 0 0 0 2px var(--tt-accent)}
+  .tt-it b{font-weight:700;letter-spacing:.03em;transition:color .2s ease}
+  .tt-it:hover b,.tt-it:focus-visible b{color:var(--tt-accent)}
+  .tt-nm{font-style:normal;font-weight:500;color:#5b6570;white-space:nowrap}
+  .tt-it:hover .tt-nm,.tt-it:focus-visible .tt-nm{color:#191922}
+  .tt-it em{font-style:normal;font-weight:600}
+  .tt-per{color:#8a939c;font-weight:500;font-size:.78em}
+  .tt-it em.up{color:#1D9E75} .tt-it em.down{color:#C0392B} .tt-it em.flat{color:#6b7682}
+  @keyframes tt-scroll{to{transform:translateX(-50%)}}
+  @media (prefers-reduced-motion:reduce){.tt{overflow-x:auto}.tt-track{animation:none}}
+</style>
