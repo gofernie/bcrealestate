@@ -174,6 +174,12 @@ const ranges = ["1W", "1M", "6M", "1Y", "2Y", "5Y", "10Y"];
 const pctText = (ch: number | null) => (ch == null ? "\u2014" : `${ch >= 0 ? "+" : ""}${ch.toFixed(1)}%`);
 const pctClass = (ch: number | null) => (ch == null ? "" : ch >= 0 ? " up" : " down");
 const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/g, "-")}/${linkSuffix}` : `/${c.trim().replace(/\s+/g, "-")}/market-intelligence`;
+/* ticker-tape-v1 */
+const dayMove = (tk: string) => { const s = (series[tk] ?? []).filter((p) => p.v != null); if (s.length < 2) return null; const last = s[s.length - 1]; const cut = new Date(last.d + "T12:00:00").getTime() - 7 * DAY; const base = [...s].reverse().find((p) => new Date(p.d + "T12:00:00").getTime() <= cut) ?? s[0]; return (last.v / base.v - 1) * 100; };
+const tape = [
+  ...indexes.filter((i) => i.ticker === comp?.ticker || (latest(i.ticker)?.a ?? 0) >= 10),
+  ...peers.filter((p) => (latest(p.ticker)?.a ?? 0) >= 10).map((p) => ({ ...p, href: cityHref(p.city) })),
+].map((i: any) => ({ tk: i.ticker, name: i.name, v: latest(i.ticker)?.v, d: dayMove(i.ticker), href: i.href || null })).filter((x) => x.v != null);
 ---
 
 {comp && (
@@ -222,6 +228,34 @@ const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/
   .mt-how[open] { background: color-mix(in srgb, var(--mt-accent) 6%, white); border-radius: 10px; padding: .7rem .9rem .3rem; }
 </style>
 <section class="mt" style={`--mt-accent:${accent}`} data-market-ticker>
+    {tape.length > 2 && (
+  <div class="mt-tape" aria-label="Index moves over the past week" style={`--mt-tape-dur:${Math.max(30, tape.length * 4)}s`}>
+    <div class="mt-tape-track">
+      {[0, 1].map((k) => (
+        <div class="mt-tape-set" aria-hidden={k === 1 ? "true" : undefined}>
+          {tape.map((x) => {
+            const Tag = x.href ? "a" : "button";
+            const cls = x.d == null || Math.abs(x.d) < 0.01 ? "flat" : x.d > 0 ? "up" : "down";
+            return (
+              <Tag class="mt-tape-it" href={x.href || undefined} type={x.href ? undefined : "button"} data-mt-tape={x.href ? undefined : x.tk} title={x.name} tabindex={k === 1 ? -1 : undefined}>
+                <b>{x.tk}</b><i class="mt-tape-nm">{x.name}</i><span>{fmt(x.v)}</span>
+                <em class={cls}>{x.d == null ? "\u2014" : `${cls === "flat" ? "\u25A0" : cls === "up" ? "\u25B2" : "\u25BC"} ${Math.abs(x.d).toFixed(2)}%`}<small class="mt-tape-per"> 1W</small></em>
+              </Tag>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+<script>
+  document.querySelectorAll<HTMLElement>("[data-mt-tape]").forEach((b) => b.addEventListener("click", () => {
+    const r = document.querySelector<HTMLElement>(`[data-mt-row][data-ticker="${b.dataset.mtTape}"]`);
+    if (!r) return;
+    r.click();
+    document.querySelector<HTMLElement>("[data-market-ticker] .mt-main")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }));
+</script>
     <p class="mt-eyebrow">Price index · updated nightly</p>
     <h2 class="mt-title">{cityLabel}, indexed.</h2>
 
@@ -232,7 +266,7 @@ const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/
           <div>
             <span class="mt-price" data-mt-price>{fmt(compLast?.v)}</span>
             <span class="mt-unit">CAD asking index</span>
-            <span class="mt-chg" data-mt-chg></span>
+            <span class="mt-chg mt-day" data-mt-day hidden></span><span class="mt-chg" data-mt-chg></span>
           </div>
           <div class="mt-tk" tabindex="0" data-city={cityLabel} data-tip={`${cityLabel}'s housing market, run like a fund: every home for sale is a holding. Its sector indexes, by home type and neighbourhood, are below \u2193`} style="font-size:1.2rem;display:inline-flex;align-items:center;gap:.3em;padding:.45em 1em;border:1px solid color-mix(in srgb, var(--mt-accent) 35%, transparent);background:color-mix(in srgb, var(--mt-accent) 8%, white);border-radius:999px;letter-spacing:.02em;align-self:flex-start;white-space:nowrap;">BCRE: <strong data-mt-ticker>{comp.ticker}</strong></div>
         </div>
@@ -360,6 +394,24 @@ const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/
 )}
 
 <style is:global>
+  .mt-tape{overflow:hidden;border-top:1px solid rgba(0,0,0,.08);border-bottom:1px solid rgba(0,0,0,.08);margin:0 0 1.6rem;-webkit-mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent);mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
+  .mt-tape-track{display:flex;width:max-content;animation:mt-tape var(--mt-tape-dur,60s) linear infinite}
+  .mt-tape:hover .mt-tape-track,.mt-tape:focus-within .mt-tape-track{animation-play-state:paused}
+  .mt-tape-set{display:flex}
+  .mt-tape-it{display:inline-flex;align-items:baseline;gap:.45em;padding:.6rem 1.15rem;font:inherit;font-size:.86rem;background:none;border:0;border-right:1px solid rgba(0,0,0,.06);color:inherit;text-decoration:none;cursor:pointer;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .mt-tape-it{position:relative;transition:background-color .2s ease,box-shadow .2s ease}
+  .mt-tape-it:hover,.mt-tape-it:focus-visible{background:color-mix(in srgb,var(--mt-accent) 9%,white);box-shadow:inset 0 -2px 0 var(--mt-accent);outline:none}
+  .mt-tape-it:focus-visible{box-shadow:inset 0 0 0 2px var(--mt-accent)}
+  .mt-tape-it b{transition:color .2s ease}
+  .mt-tape-it:hover b,.mt-tape-it:focus-visible b{color:var(--mt-accent)}
+  .mt-tape-nm{font-style:normal;color:#5b6570;max-width:0;opacity:0;overflow:hidden;white-space:nowrap;transition:max-width .3s ease,opacity .2s ease}
+  .mt-tape-it:hover .mt-tape-nm,.mt-tape-it:focus-visible .mt-tape-nm{max-width:14em;opacity:1}
+  .mt-tape-it b{font-weight:700;letter-spacing:.03em}
+  .mt-tape-it em{font-style:normal;font-weight:600}
+  .mt-tape-per{color:#8a939c;font-weight:500;font-size:.78em}
+  .mt-tape-it em.up{color:var(--mt-up)} .mt-tape-it em.down{color:var(--mt-down)} .mt-tape-it em.flat{color:#6b7682}
+  @keyframes mt-tape{to{transform:translateX(-50%)}}
+  @media (prefers-reduced-motion:reduce){.mt-tape{overflow-x:auto}.mt-tape-track{animation:none}}
   .mt{--mt-up:#1D9E75;--mt-down:#C0392B;width:min(1400px, calc(100% - 4rem));box-sizing:border-box;margin:4rem auto}
   .mt-eyebrow{font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin:0 0 .75rem}
   .mt-title{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:clamp(2.4rem,5vw,3.6rem);line-height:1.02;letter-spacing:.005em;margin:0 0 2.25rem}
@@ -371,6 +423,9 @@ const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/
   .mt-chg{display:inline-block;margin-left:.6rem;font-size:.9rem;padding:.2rem .55rem;border-radius:6px;background:rgba(0,0,0,.05)}
   .mt-chg.up{color:var(--mt-up);background:rgba(29,158,117,.1)}
   .mt-chg.down{color:var(--mt-down);background:rgba(192,57,43,.1)}
+  .mt-chg.mt-day{margin-left:.6rem}
+  .mt-chg.mt-day + .mt-chg{margin-left:.35rem;font-size:.82rem}
+  [data-market-ticker]:not(.mt-picked) [data-mt-chg]{display:none}
   .mt-tk{font-size:.85rem;opacity:.75}
   .mt-note{font-size:.75rem;opacity:.55;margin:.35rem 0 0}
   .mt-ranges{display:flex;gap:.25rem;margin:1rem 0 .25rem;border-bottom:1px solid rgba(0,0,0,.08)}
@@ -730,6 +785,7 @@ const cityHref = (c: string) => peerBase === "root" ? `/${c.trim().replace(/\s+/
       const askSpan = A.length >= 2 ? (time(A[A.length - 1].d) - time(A[0].d)) / DAY : 0;
       const useSold = S.length >= 2 && (RANGES[range] >= 730 || askSpan < RANGES[range] * 0.8);
       const F = (sold[ticker] || []).filter((p) => !p.t && !p.p); const winC = (i: number) => F.slice(Math.max(0, i - 2), i + 1).reduce((t, p) => t + (p.k || 0), 0); const back = (({ "10Y": 120, "5Y": 60, "2Y": 24, "1Y": 12 } as Record<string, number>)[range] || 0); const sp = back && F.length > back && winC(F.length - 1) >= 30 && winC(F.length - 1 - back) >= 30 ? [F[F.length - 1 - back], F[F.length - 1]] : null; const P: { v: number }[] = A.length >= 2 ? A : sp ? sp : S;
+      /* daily-move-v1 */ { const dayEl = q("[data-mt-day]"); const root = dayEl?.closest("[data-market-ticker]") as HTMLElement | null; if (root && !root.dataset.pickWired) { root.dataset.pickWired = "1"; root.querySelectorAll("[data-mt-range]").forEach((b) => b.addEventListener("click", () => root.classList.add("mt-picked"))); } const all = (series[ticker] || []).filter((p: any) => p.v != null) as any[]; if (dayEl && all.length >= 2) { const y = all[all.length - 2], n = all[all.length - 1]; const d = n.v - y.v, pct = (n.v / y.v - 1) * 100, flat = Math.abs(pct) < 0.01; const gap = Math.round((time(n.d) - time(y.d)) / DAY); const money = (x: number) => (x >= 1000 ? `$${(x / 1000).toFixed(1)}K` : `$${Math.round(x)}`); dayEl.textContent = `${flat ? "\u2192" : d > 0 ? "\u25B2" : "\u25BC"} ${d >= 0 ? "+" : "\u2212"}${money(Math.abs(d))} (${Math.abs(pct).toFixed(2)}%) ${gap > 1 ? `since ${new Date(time(y.d)).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}` : "today"}`; dayEl.className = `mt-chg mt-day${flat ? "" : d > 0 ? " up" : " down"}`; dayEl.title = `Change since the previous nightly reading (${y.d})`; dayEl.hidden = false; } else if (dayEl) { dayEl.hidden = true; root?.classList.add("mt-picked"); } }
       const chg = q("[data-mt-chg]");
       if (P.length >= 2) {
         const a = P[0].v, b = P[P.length - 1].v;
