@@ -13,9 +13,10 @@ const { data: ticks } = tickers.length ? await supabase.from("market_ticks").sel
 const lastBy = new Map<string, number>();
 for (const t of ticks || []) if (!lastBy.has(t.ticker) && t.ask_index) lastBy.set(t.ticker, Number(t.ask_index));
 const dayStr = (d: number) => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
+const pullAll = async (build: (a: number, b: number) => any) => { const out: any[] = []; for (let from = 0; ; from += 1000) { const { data, error } = await build(from, from + 999); if (error || !data?.length) break; out.push(...data); if (data.length < 1000) break; } return { data: out }; };
 const pick = (p: any) => (tickers.length ? p : Promise.resolve({ data: [] as any[] }));
 const [{ data: moRows }, { data: yaRows }, { data: nowRows }] = await Promise.all([
-  pick(supabase.from("market_months").select("ticker, month, sold_index, sold_count, thin").in("ticker", tickers).gte("month", dayStr(460))),
+  pick(pullAll((a: number, b: number) => supabase.from("market_months").select("ticker, month, sold_index, sold_count, thin").in("ticker", tickers).gte("month", dayStr(800)).order("month").order("ticker").range(a, b))),
   pick(supabase.from("market_ticks").select("ticker, day, ask_index, actives").in("ticker", tickers).gte("day", dayStr(366)).lte("day", dayStr(356))),
   pick(supabase.from("market_ticks").select("ticker, day, ask_index, actives").in("ticker", tickers).gte("day", since)),
 ]);
