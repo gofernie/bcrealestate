@@ -1037,7 +1037,7 @@ function getInterruptorVariant() {
   return variants[nextIndex];
 }
 
-const selectedInterruptorVariant =
+const selectedInterruptorVariant = "save"; /* all-interrupters-save-v2 */ const originalInterruptorVariant =
   getInterruptorVariant();
 
 /* EDUCATION_FIRST_DISCOVERY_CLIENT_V1 */
@@ -1167,7 +1167,7 @@ function getInterruptorConfig(variant) {
     },
   };
 
-  return configs[variant] || configs.fact;
+  { const f = configs.fact; return { ...f, description: (f.description ? f.description + " " : "") + "Save this search and we'll send you new matches as soon as they list.", buttonLabel: "Save this search", action: openSaveSearchFromInterruptor, showChips: false }; }
 }
 
 function escapeInterruptorHtml(value) {
