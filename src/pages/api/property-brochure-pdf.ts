@@ -231,6 +231,7 @@ export const POST: APIRoute = async ({ request }) => {
     const pale = rgb(0.955, 0.965, 0.96);
     const white = rgb(1, 1, 1);
     const agent = await getAgentForSite(siteRow);
+    const realAgent = agent && !/bc\.realestate/i.test(String((agent as any).name || "")) ? agent : null;
     const requestedAccent = printable(body?.accentColor);
     const accent = hexColor(
       /^#[0-9a-f]{6}$/i.test(requestedAccent)
@@ -249,7 +250,7 @@ export const POST: APIRoute = async ({ request }) => {
     const agentName = first(
       agent,
       ["name", "agent_name", "realtor_name", "owner_name"],
-      first(siteRow, ["agent_name", "realtor_name", "owner_name"], "Chris Crump")
+      first(realAgent, ["name"], first(siteRow, ["agent_name", "realtor_name", "owner_name"], "Chris Crump"))
     );
     const brokerage = first(
       agent,
@@ -259,12 +260,12 @@ export const POST: APIRoute = async ({ request }) => {
     const phone = first(
       agent,
       ["phone", "agent_phone", "contact_phone"],
-      first(siteRow, ["agent_phone", "phone", "contact_phone"], "250-619-0390")
+      first(realAgent, ["phone"], first(siteRow, ["agent_phone", "phone", "contact_phone"], "250-619-0390"))
     );
     const email = first(
       agent,
       ["email", "agent_email", "contact_email"],
-      first(siteRow, ["agent_email", "email", "contact_email"], "chris@crump.ca")
+      first(realAgent, ["email"], first(siteRow, ["agent_email", "email", "contact_email"], "chris@crump.ca"))
     );
     const siteName = siteId ? first(siteRow, ["site_name"], `${titleCase(city)} Homes`) : `${titleCase(city)} Homes`;
     const agentPhotoUrl = safeUrl(
@@ -280,7 +281,7 @@ export const POST: APIRoute = async ({ request }) => {
           "headshot_cutout_url",
           "cutout_url"
         ],
-        first(siteRow, ["agent_photo", "agent_photo_url", "headshot", "headshot_url"])
+        first(realAgent, ["photo_url"], first(siteRow, ["agent_photo", "agent_photo_url", "headshot", "headshot_url"]))
       )
     );
     const logoUrl = safeUrl(first(siteRow, ["brand_logo", "brand_logo_url", "logo", "logo_url"]));

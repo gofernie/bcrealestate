@@ -1,4 +1,4 @@
-﻿---
+---
 import AdminSidebar from "../../../../components/AdminSidebar.astro";
 
 // Slug is resolved in the client script from ?slug=
@@ -946,6 +946,23 @@ const siteId = String(Astro.params.id || "");
                     class="agent-photo-editor__status"
                     id="agentPhotoStatus"
                   ></div>
+                </div>
+              </div>
+
+              <div class="agent-photo-editor">
+                <div class="agent-photo-editor__preview" style="background:#fff">
+                  <div class="agent-photo-editor__placeholder" id="siteLogoPlaceholder">LOGO</div>
+                  <img id="siteLogoPreview" alt="Logo preview" hidden style="object-fit:contain;padding:8px;background:#fff" />
+                </div>
+                <div class="agent-photo-editor__content">
+                  <strong>Site logo</strong>
+                  <p>Shows in the header instead of the site name. A wide PNG or SVG with a transparent background works best.</p>
+                  <label class="agent-photo-drop" id="siteLogoDrop" for="siteLogoInput">
+                    <span id="siteLogoDropLabel">Drop logo here or click to browse</span>
+                  </label>
+                  <input id="siteLogoInput" type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" hidden />
+                  <button type="button" class="btn btn--ghost" id="siteLogoRemove" hidden style="margin-top:8px">Remove logo</button>
+                  <div class="agent-photo-editor__status" id="siteLogoStatus"></div>
                 </div>
               </div>
 
@@ -2688,6 +2705,56 @@ loadPage();
 
   loadExisting();
 })();</script>
+<script is:inline>/* site-logo-upload-ui-v1 */
+(() => {
+  const input = document.getElementById("siteLogoInput");
+  const drop = document.getElementById("siteLogoDrop");
+  const preview = document.getElementById("siteLogoPreview");
+  const placeholder = document.getElementById("siteLogoPlaceholder");
+  const status = document.getElementById("siteLogoStatus");
+  const label = document.getElementById("siteLogoDropLabel");
+  const remove = document.getElementById("siteLogoRemove");
+  if (!input || !drop || !preview || !placeholder || !status) return;
+  const siteId = window.location.pathname.split("/").filter(Boolean)[2] || "";
+  const show = (src) => { preview.hidden = !src; placeholder.hidden = !!src; if (src) preview.src = src; else preview.removeAttribute("src"); if (remove) remove.hidden = !src; };
+  const setStatus = (m, t) => { status.textContent = m; status.classList.remove("is-success", "is-error"); if (t) status.classList.add(t); };
+  const load = async () => {
+    try {
+      const r = await fetch("/api/admin/site-logo?siteId=" + encodeURIComponent(siteId));
+      const d = await r.json();
+      if (r.ok && d.logo_url) { show(d.logo_url); if (label) label.textContent = "Replace logo"; }
+    } catch {}
+  };
+  const upload = async (file) => {
+    if (!(file instanceof File)) return;
+    if (!file.type.startsWith("image/") || file.size > 2 * 1024 * 1024) { setStatus("Choose a PNG, SVG, WebP or JPG smaller than 2 MB.", "is-error"); return; }
+    show(URL.createObjectURL(file)); setStatus("Uploading...");
+    const fd = new FormData(); fd.append("siteId", siteId); fd.append("logo", file);
+    try {
+      const r = await fetch("/api/admin/site-logo", { method: "POST", body: fd });
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || "Could not upload logo.");
+      show(d.logo_url); setStatus("Logo saved. It now replaces the site name in the header.", "is-success");
+      if (label) label.textContent = "Replace logo";
+    } catch (e) { setStatus(e.message || "Could not upload logo.", "is-error"); }
+  };
+  input.addEventListener("change", () => upload(input.files && input.files[0]));
+  ["dragenter", "dragover"].forEach((n) => drop.addEventListener(n, (e) => { e.preventDefault(); drop.classList.add("is-dragging"); }));
+  ["dragleave", "drop"].forEach((n) => drop.addEventListener(n, (e) => { e.preventDefault(); drop.classList.remove("is-dragging"); }));
+  drop.addEventListener("drop", (e) => { const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) upload(f); });
+  if (remove) remove.addEventListener("click", async () => {
+    setStatus("Removing...");
+    try {
+      const r = await fetch("/api/admin/site-logo?siteId=" + encodeURIComponent(siteId), { method: "DELETE" });
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || "Could not remove logo.");
+      show(""); setStatus("Logo removed. The site name shows again.", "is-success");
+      if (label) label.textContent = "Drop logo here or click to browse";
+    } catch (e) { setStatus(e.message, "is-error"); }
+  });
+  load();
+})();
+</script>
 
 <script is:inline>
 /* featured-listing-photo-picker-v3 */

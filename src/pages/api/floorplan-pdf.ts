@@ -86,15 +86,16 @@ export const POST: APIRoute = async ({ request }) => {
       : rgb(0.086, 0.49, 0.31);
 
     const agent = await getAgentForSite(siteRow);
-    const agentName = first(siteRow, ["agent_name", "realtor_name", "owner_name"], "Chris Crump");
+    const realAgent = agent && !/bc\.realestate/i.test(String((agent as any).name || "")) ? agent : null;
+    const agentName = first(realAgent, ["name"], first(siteRow, ["agent_name", "realtor_name", "owner_name"], "Chris Crump"));
     const brokerage = first(
       agent,
       ["brokerage"],
       first(siteRow, ["brokerage", "brokerage_name", "company_name"])
     );
-    const phone = first(siteRow, ["agent_phone", "phone", "contact_phone"]);
-    const email = first(siteRow, ["agent_email", "email", "contact_email"]);
-    const agentPhotoUrl = safeUrl(first(siteRow, ["agent_photo", "agent_photo_url", "headshot", "headshot_url"]));
+    const phone = first(realAgent, ["phone"], first(siteRow, ["agent_phone", "phone", "contact_phone"]));
+    const email = first(realAgent, ["email"], first(siteRow, ["agent_email", "email", "contact_email"]));
+    const agentPhotoUrl = safeUrl(first(realAgent, ["photo_url"], first(siteRow, ["agent_photo", "agent_photo_url", "headshot", "headshot_url"])));
     const logoUrl = safeUrl(first(siteRow, ["brand_logo", "brand_logo_url", "logo", "logo_url"]));
     const siteName = first(siteRow, ["site_name"], city ? `${city} real estate` : "BC Real Estate");
 

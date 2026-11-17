@@ -177,7 +177,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
-  const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/") || pathname === "/api/buyers" || pathname.startsWith("/api/buyers/") || pathname === "/api/buyer-detail";
+  const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/") || pathname.startsWith("/api/admin/") || pathname === "/api/buyers" || pathname.startsWith("/api/buyers/") || pathname === "/api/buyer-detail";
   const isWrite = context.request.method !== "GET" && context.request.method !== "HEAD";
   const referer = context.request.headers.get("referer") || "";
 
