@@ -1,4 +1,4 @@
-﻿import type { APIRoute } from "astro";
+import type { APIRoute } from "astro";
 import { createClient } from "@supabase/supabase-js";
 import { randomBytes } from "node:crypto";
 import twilio from "twilio";
@@ -128,7 +128,7 @@ export const POST: APIRoute = async ({ request, url }) => {
   const action = clean(body.action, 20);
   const member = memberOf(body.member);
   if (!member) return json({ ok: false, error: "Missing member." }, 400);
-  const brand = brandFor(url.hostname);
+  const brand = brandFor(url.hostname.replace(/\.localhost$/, ".bc.realestate"));
 
   // ---- Invite a partner ----
   if (action === "invite") {
@@ -149,7 +149,7 @@ export const POST: APIRoute = async ({ request, url }) => {
       .from("search_pairs")
       .insert({
         code,
-        site_domain: url.hostname,
+        site_domain: url.hostname.replace(/\.localhost$/, ".bc.realestate"),
         a_member: member,
         a_name: name,
         a_phone: me,
@@ -262,7 +262,7 @@ export const POST: APIRoute = async ({ request, url }) => {
       if (agent) {
         await sms(
           agent,
-          `Couple match on ${url.hostname}: ${pair.a_name || "Buyer"} + ${pair.b_name || "partner"} both loved ${label}${price ? ` (${money(price)})` : ""}.\n${pair.a_phone} / ${pair.b_phone}\n${listingUrl}`
+          `Couple match on ${url.hostname.replace(/\.localhost$/, ".bc.realestate")}: ${pair.a_name || "Buyer"} + ${pair.b_name || "partner"} both loved ${label}${price ? ` (${money(price)})` : ""}.\n${pair.a_phone} / ${pair.b_phone}\n${listingUrl}`
         );
       }
       await db.from("pair_matches").update({ notified_at: new Date().toISOString() }).eq("pair_id", pair.id).eq("listing_id", listingId);

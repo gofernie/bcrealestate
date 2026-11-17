@@ -38,8 +38,8 @@ async function checkedUrl(value: string): Promise<URL> {
   const url = new URL(value);
 
   if (
-    url.hostname === "images.unsplash.com" ||
-    url.hostname === "plus.unsplash.com"
+    url.hostname.replace(/\.localhost$/, ".bc.realestate") === "images.unsplash.com" ||
+    url.hostname.replace(/\.localhost$/, ".bc.realestate") === "plus.unsplash.com"
   ) {
     url.searchParams.delete("auto");
     url.searchParams.delete("h");
@@ -53,10 +53,10 @@ async function checkedUrl(value: string): Promise<URL> {
     url.protocol !== "https:" ||
     url.username || url.password ||
     (url.port && url.port !== "443") ||
-    url.hostname.endsWith(".local")
+    url.hostname.replace(/\.localhost$/, ".bc.realestate").endsWith(".local")
   ) throw new Error("Use a public HTTPS image URL.");
 
-  const addresses = await lookup(url.hostname, { all: true });
+  const addresses = await lookup(url.hostname.replace(/\.localhost$/, ".bc.realestate"), { all: true });
   if (!addresses.length || addresses.some(({ address }) => !publicAddress(address))) {
     throw new Error("This image host is not public.");
   }

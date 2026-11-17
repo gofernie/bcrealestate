@@ -3,7 +3,7 @@ import type { APIRoute } from "astro";
 export const prerender = false;
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-const isMaster = (url: URL) => ["bc.realestate", "localhost", "127.0.0.1"].includes(url.hostname.replace(/^www\./, ""));
+const isMaster = (url: URL) => ["bc.realestate", "localhost", "127.0.0.1"].includes(url.hostname.replace(/\.localhost$/, ".bc.realestate").replace(/^www\./, ""));
 const decode = (s: string) => String(s || "").replace(/&amp;/g, "&").replace(/&#0?39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&nbsp;/g, " ").replace(/&#8211;|&#8212;/g, "-").trim();
 const BROKERAGES = ["RE/MAX", "Royal LePage", "Coldwell Banker", "Century 21", "eXp Realty", "Real Broker", "Real Brokerage", "460 Realty", "Sutton", "Engel & V", "Macdonald Realty", "Oakwyn", "Rennie", "Sotheby", "Pemberton Holmes", "Newport Realty", "Stonehaus", "Unison", "Fair Realty", "Exit Realty", "HomeLife", "Remax"];
 

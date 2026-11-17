@@ -18,7 +18,7 @@ const cleanHost = (h: unknown) => String(h || "").trim().toLowerCase().replace(/
 
 /* sitemap-host-v1: each domain's sitemap lists only its own sites' pages. On localhost, ?host= picks a domain to preview. */
 export function hostFrom(url: URL): string {
-  const h = cleanHost(url.hostname);
+  const h = cleanHost(url.hostname.replace(/\.localhost$/, ".bc.realestate"));
   if (h === "localhost" || h === "127.0.0.1") return cleanHost(url.searchParams.get("host") || PRIMARY);
   return h;
 }

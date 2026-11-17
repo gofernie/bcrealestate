@@ -7,7 +7,7 @@ const TEMPLATE_SITE_ID = "5e501142-4f44-4128-bc20-9360fcd49ebc"; // tammygalvin.
 const ROOT = "bc.realestate";
 const env = (k: string) => String((import.meta.env as any)[k] || (globalThis as any).process?.env?.[k] || "").trim();
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-const isMaster = (url: URL) => ["bc.realestate", "localhost", "127.0.0.1"].includes(url.hostname.replace(/^www\./, ""));
+const isMaster = (url: URL) => ["bc.realestate", "localhost", "127.0.0.1"].includes(url.hostname.replace(/\.localhost$/, ".bc.realestate").replace(/^www\./, ""));
 const db = () => createClient(env("PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
 
 export const POST: APIRoute = async ({ request, url }) => {

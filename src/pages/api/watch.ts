@@ -1,4 +1,4 @@
-﻿import type { APIRoute } from "astro";
+import type { APIRoute } from "astro";
 import { createClient } from "@supabase/supabase-js";
 import twilio from "twilio";
 
@@ -43,7 +43,7 @@ export const POST: APIRoute = async ({ request, url }) => {
     {
       phone,
       listing_id: listingId,
-      site_domain: url.hostname,
+      site_domain: url.hostname.replace(/\.localhost$/, ".bc.realestate"),
       address,
       last_price: price,
       last_status: status,
@@ -63,7 +63,7 @@ export const POST: APIRoute = async ({ request, url }) => {
       await twilio(import.meta.env.TWILIO_ACCOUNT_SID, import.meta.env.TWILIO_AUTH_TOKEN).messages.create({
         from: import.meta.env.TWILIO_FROM_NUMBER,
         to: phone,
-        body: `You're watching ${address || "this home"} on ${url.hostname}. We'll text you if the price drops or the status changes.\n${listingUrl}\nReply STOP to cancel.`,
+        body: `You're watching ${address || "this home"} on ${url.hostname.replace(/\.localhost$/, ".bc.realestate")}. We'll text you if the price drops or the status changes.\n${listingUrl}\nReply STOP to cancel.`,
       });
     } catch (e) {
       console.error("[watch] confirmation SMS failed", e);

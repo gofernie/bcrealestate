@@ -64,7 +64,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const { pathname, search } = context.url;
   // streetindex-host-v1: streetindex.io serves /streetindex pages (same MarketTicker as bc.realestate)
   {
-    const reqHost = context.url.hostname.replace(/^www\./, "").toLowerCase();
+    const reqHost = context.url.hostname.replace(/\.localhost$/, ".bc.realestate").replace(/^www\./, "").toLowerCase();
     const isLocalReq = reqHost === "localhost" || reqHost === "127.0.0.1";
     const onSI = reqHost === "streetindex.io" || (isLocalReq && context.url.searchParams.get("siteDomain") === "streetindex.io");
     const p = pathname.replace(/\/+$/, "") || "/";
@@ -82,7 +82,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
   // nanaimomobiles-guard-v1: nanaimomobiles.com only serves its own pages; everything else 301s to the same path on bc.realestate
   {
-    const reqHost = context.url.hostname.replace(/^www\./, "").toLowerCase();
+    const reqHost = context.url.hostname.replace(/\.localhost$/, ".bc.realestate").replace(/^www\./, "").toLowerCase();
     const isLocalReq = reqHost === "localhost" || reqHost === "127.0.0.1";
     const onNanaimoMobiles =
       reqHost === "nanaimomobiles.com" ||
@@ -136,7 +136,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   // agent-city-guard-v1: agent sites only serve their own markets; other city paths go to the primary city
   {
-    const reqHost = context.url.hostname.replace(/^www\./, "").toLowerCase();
+    const reqHost = context.url.hostname.replace(/\.localhost$/, ".bc.realestate").replace(/^www\./, "").toLowerCase();
     const isLocalReq = reqHost === "localhost" || reqHost === "127.0.0.1";
     const siteHost = isLocalReq
       ? (context.url.searchParams.get("siteDomain") || "").replace(/^www\./, "").toLowerCase()
@@ -157,7 +157,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   // agent-city-guard-v2: /explore?city=X on agent sites stays inside the agent's markets
   {
-    const reqHost = context.url.hostname.replace(/^www\./, "").toLowerCase();
+    const reqHost = context.url.hostname.replace(/\.localhost$/, ".bc.realestate").replace(/^www\./, "").toLowerCase();
     const isLocalReq = reqHost === "localhost" || reqHost === "127.0.0.1";
     const siteHost = isLocalReq
       ? (context.url.searchParams.get("siteDomain") || "").replace(/^www\./, "").toLowerCase()
@@ -198,7 +198,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
       if (context.request.method === "GET" && cacheableApi && response.status === 200 && apiType.includes("json") && !response.headers.has("set-cookie")) { /* cdn-cache-api-v2: apply even when the API sets its own short Cache-Control */
         if (!response.headers.has("cache-control")) response.headers.set("Cache-Control", "public, max-age=0, must-revalidate");
         response.headers.set("Netlify-CDN-Cache-Control", pathname.startsWith("/api/listing-detail") ? "public, durable, s-maxage=3600, stale-while-revalidate=86400" : "public, durable, s-maxage=43200, stale-while-revalidate=604800");
-        const apiHostTag = "host-" + tagSafe(context.url.hostname.replace(/^www\./, ""));
+        const apiHostTag = "host-" + tagSafe(context.url.hostname.replace(/\.localhost$/, ".bc.realestate").replace(/^www\./, ""));
         const apiCity = tagSafe(context.url.searchParams.get("city") || context.url.searchParams.get("market") || ""); response.headers.set("Netlify-Cache-Tag", ["all-pages", apiHostTag, "api", apiCity ? "city-" + apiCity : ""].filter(Boolean).join(","));
       }
     } catch {}
@@ -209,7 +209,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
       if (context.request.method === "GET" && !perVisitor && response.status === 200 && type.includes("text/html") && !response.headers.has("set-cookie")) { /* cdn-cache-v2: tag pages that set their own cache headers too, so admin purges reach them */
         if (!response.headers.has("cache-control")) response.headers.set("Cache-Control", "public, max-age=0, must-revalidate");
         if (!response.headers.has("netlify-cdn-cache-control")) response.headers.set("Netlify-CDN-Cache-Control", "public, durable, s-maxage=43200, stale-while-revalidate=604800");
-        const hostTag = "host-" + tagSafe(context.url.hostname.replace(/^www\./, ""));
+        const hostTag = "host-" + tagSafe(context.url.hostname.replace(/\.localhost$/, ".bc.realestate").replace(/^www\./, ""));
         const seg = segs[0] ? `${hostTag}-${tagSafe(segs[0])}` : "";
         /* cache-key-v1: only query params the server reads change the cached page (gone/action/utm/junk ignored; listing_id ignored on city roots, handled in the browser) */ if (!response.headers.has("netlify-vary")) { const VARY_KEYS = ["age55","agent","agent_id","area","area_slug","areaBufferKm","areas","baths","beds","bedsMode","city","countOnly","days","district","domain","error","exclude","expanded","facets","fourSameFloor","fresh","from","gv_rewrite","gv_slug","id","kind","lat","limit","listing_id","listing_mls","lng","lsid","markers","market","maxDistKm","maxPrice","metric","minLotSqft","minPrice","minSqft","minYear","mls","msg","name","new","oceanViews","offset","otherPark","page","pageCity","petsAllowed","planMode","price","primaryOnMain","published","q","radius","return","returnTo","root_rewrite","s","sent","session","session_id","shortlist","shortlistSlug","show","site","site_id","siteDomain","siteId","slug","sort","status","style","threeSameFloor","token","type","url","viewType","waterfeature","waterfront","waterfrontType","weeks"]; const isCityRoot = pathname === "/" || /^\/[^/]+\/?$/.test(pathname); const varyKeys = isCityRoot ? VARY_KEYS.filter((k) => k !== "listing_id" && k !== "mls" && k !== "listing_mls") : VARY_KEYS; response.headers.set("Netlify-Vary", "query=" + varyKeys.join("|")); } response.headers.set("Netlify-Cache-Tag", ["all-pages", hostTag, seg, segs[0] ? "city-" + tagSafe(segs[0]) : ""].filter(Boolean).join(","));
       }
