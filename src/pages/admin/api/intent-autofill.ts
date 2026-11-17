@@ -91,7 +91,7 @@ hero_heading: the H1, 2-4 words in title case, no trailing punctuation, e.g. "${
 intro_copy: 90-120 words under the H1, 3-4 sentences; a specific picture of what this search covers (where, what kinds of properties, the range of options) and one practical thing a buyer should compare or check
 neighbourhood_copy: the "What buyers should know" section, 110-160 words. One opening paragraph, then 3-5 short paragraphs that each start with a bold lead-in like **Water and septic.** Paragraphs separated by a blank line. Practical due diligence specific to this kind of property in this area.
 seo_heading: the H2 for that section, under 60 characters, e.g. "Buying acreage around ${page.city}"
-${wantGuide ? `buyer_guide_heading: under 60 characters, different from seo_heading
+${false ? `buyer_guide_heading: under 60 characters, different from seo_heading
 buyer_guide_copy: a longer buyer's guide, 280-380 words. One opening paragraph, then 5-7 paragraphs each starting with a bold lead-in like **Septic.** and a short closing paragraph. Paragraphs separated by a blank line. Must add detail beyond neighbourhood_copy, not repeat it.
 ` : ""}seo_title: browser tab title, 45-60 characters, main keyword first, e.g. "${page.city} Acreages for Sale | Homes on 1+ Acre"
 meta_description: 140-158 characters, includes the main keyword and "for sale", ends with a reason to click
@@ -100,32 +100,55 @@ ${JSON.stringify(page, null, 2)}
 LISTING_FACTS:
 ${JSON.stringify(facts, null, 2)}`;
 
-    const keys = ["eyebrow", "hero_heading", "intro_copy", "neighbourhood_copy", "seo_heading", ...(wantGuide ? ["buyer_guide_heading", "buyer_guide_copy"] : []), "seo_title", "meta_description"];
-    const tool = {
-      name: "save_page_copy",
-      description: "Save the finished copy for the page.",
-      input_schema: { type: "object", properties: Object.fromEntries(keys.map((k) => [k, { type: "string" }])), required: keys },
+    const guidePrompt = `Write a buyer's guide for one search page on a BC real estate website. The page lists homes for sale that match PAGE. Another section on the same page already covers property-level due diligence (the house itself, water, septic, zoning basics), so focus on the buying process for this kind of property in this area: financing and insurance quirks, timing and seasonality, offers and subjects, local permits and approvals, ongoing costs, and what to line up before viewing.
+Rules:
+- Use LISTING_FACTS only for rounded price ranges (e.g. $850K, $1.2M) and area names. Never quote listing counts. If LISTING_FACTS is null, don't mention prices.
+- Do not invent statistics, trends, forecasts, schools, businesses or brokerages.
+- No demographic language about who should live there.
+- Plain, local, practical tone. Canadian spelling. No hype words (stunning, nestled, dream, gem, paradise, boasts).
+Return ONLY JSON with these keys:
+buyer_guide_heading: under 60 characters
+buyer_guide_copy: 280-380 words. One opening paragraph, then 5-7 paragraphs each starting with a bold lead-in like **Financing.** and a short closing paragraph. Paragraphs separated by a blank line.
+PAGE:
+${JSON.stringify(page, null, 2)}
+LISTING_FACTS:
+${JSON.stringify(facts, null, 2)}`;
+
+    const ask = async (text: string, keys: string[]) => {
+      const tool = {
+        name: "save_page_copy",
+        description: "Save the finished copy for the page.",
+        input_schema: { type: "object", properties: Object.fromEntries(keys.map((k) => [k, { type: "string" }])), required: keys },
+      };
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({
+          model: env("COPY_MODEL") || "claude-sonnet-5-5",
+          max_tokens: 4000,
+          tools: [tool],
+          tool_choice: { type: "tool", name: "save_page_copy" },
+          messages: [{ role: "user", content: text + "\n\nSave the copy with the save_page_copy tool." }],
+        }),
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(`Anthropic ${r.status}: ${body?.error?.message || "request failed"}`);
+      let out: any = (body.content || []).find((c: any) => c.type === "tool_use")?.input;
+      if (!out) {
+        const tx = (body.content || []).map((c: any) => c.text || "").join("");
+        const s = tx.indexOf("{"), e = tx.lastIndexOf("}");
+        if (s < 0 || e < s) throw new Error(`No copy in the reply (stop_reason: ${body.stop_reason}). ${tx.slice(0, 200)}`);
+        out = JSON.parse(tx.slice(s, e + 1));
+      }
+      return out;
     };
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({
-        model: env("COPY_MODEL") || "claude-sonnet-5-5",
-        max_tokens: 16000,
-        tools: [tool],
-        tool_choice: { type: "auto" },
-        messages: [{ role: "user", content: prompt + "\n\nSave the copy with the save_page_copy tool." }],
-      }),
-    });
-    const body = await r.json();
-    if (!r.ok) return json({ error: `Anthropic ${r.status}: ${body?.error?.message || "request failed"}` }, 502);
-    let copy: any = (body.content || []).find((c: any) => c.type === "tool_use")?.input;
-    if (!copy) {
-      const text = (body.content || []).map((c: any) => c.text || "").join("");
-      const s = text.indexOf("{"), e = text.lastIndexOf("}");
-      if (s < 0 || e < s) return json({ error: `No copy in the reply (stop_reason: ${body.stop_reason}). ${text.slice(0, 200)}` }, 502);
-      copy = JSON.parse(text.slice(s, e + 1));
-    }
+
+    const mainKeys = ["eyebrow", "hero_heading", "intro_copy", "neighbourhood_copy", "seo_heading", "seo_title", "meta_description"];
+    const [main, guide] = await Promise.all([
+      ask(prompt, mainKeys),
+      wantGuide ? ask(guidePrompt, ["buyer_guide_heading", "buyer_guide_copy"]) : Promise.resolve({}),
+    ]);
+    const copy = { ...main, ...guide };
     return json({ ok: true, copy, facts });
   } catch (err: any) {
     return json({ error: err?.message || "Auto-fill failed" }, 500);
