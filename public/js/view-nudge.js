@@ -20,7 +20,7 @@
   const num = (v) => { const n = Number(String(v || "").replace(/[^0-9.]/g, "")); return isFinite(n) && n > 0 ? n : 0; };
   const pick = (d, ...keys) => { for (const k of keys) { const v = d && d[k]; if (v && String(v).trim()) return String(v).trim(); } return ""; };
   const NONCITY = ["explore", "listings", "shortlists", "my-searches", ""];
-  const pathCity = () => { const s = location.pathname.split("/").filter(Boolean)[0] || ""; return NONCITY.includes(s) ? "" : s; };
+  const pathCity = () => { const s = ((location.pathname.split("/").filter(Boolean)[0]) || ((document.querySelector('meta[name="locus-city"]') || {}).content) || "") || ""; return NONCITY.includes(s) ? "" : s; };
   const slugify = (s) => String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
   // Mark done if they use Watch or Search together

@@ -372,7 +372,7 @@
         if (u.origin === location.origin && p.endsWith('/' + page)) return p;
       } catch (e) {}
     }
-    const seg = location.pathname.split('/').filter(Boolean)[0] || '';
+    const seg = ((location.pathname.split("/").filter(Boolean)[0]) || ((document.querySelector('meta[name="locus-city"]') || {}).content) || "") || '';
     return (seg ? '/' + seg : '') + '/' + page;
   }
   window.__lsPagePath = pagePath;

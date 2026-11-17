@@ -19,7 +19,7 @@
     const typeLabel = TYPE_LABELS[type] || "homes";
     const areaSel = form?.elements?.area;
     const areaText = areaSel && areaSel.value ? areaSel.options[areaSel.selectedIndex]?.textContent : "";
-    const area = tc(areaText) || tc(location.pathname.split("/").filter(Boolean)[0] || "");
+    const area = tc(areaText) || tc(((location.pathname.split("/").filter(Boolean)[0]) || ((document.querySelector('meta[name="locus-city"]') || {}).content) || "") || "");
     const n = Number(String(document.getElementById("results-count")?.textContent || "").replace(/\D/g, "")) || 0;
     const ret = document.querySelector(".gv-return-link");
     const parentName = ret ? String(ret.textContent || "").replace(/^[^A-Za-z]*All\s+/, "").trim() : "";

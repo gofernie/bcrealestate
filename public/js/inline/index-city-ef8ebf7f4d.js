@@ -175,7 +175,7 @@
 
       const city =
         document.querySelector("[data-city]")?.dataset.city ||
-        window.location.pathname.split("/").filter(Boolean)[0] ||
+        ((location.pathname.split("/").filter(Boolean)[0]) || ((document.querySelector('meta[name="locus-city"]') || {}).content) || "") ||
         "nanaimo";
 
       const selectedType = String(

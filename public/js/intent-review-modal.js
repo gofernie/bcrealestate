@@ -3064,7 +3064,7 @@ async function openListingDeepLink() {
 
     const data = response.ok ? await response.json().catch(() => ({})) : {};
     const listing = data?.listing;
-    if (!listing) { const c = location.pathname.split("/").filter(Boolean)[0]; if (c) location.replace("/" + c + "/listing/" + encodeURIComponent(requestedId)); return; }
+    if (!listing) { const c = ((location.pathname.split("/").filter(Boolean)[0]) || ((document.querySelector('meta[name="locus-city"]') || {}).content) || ""); if (c) location.replace("/" + c + "/listing/" + encodeURIComponent(requestedId)); return; }
 
     if (!listing) return;
 
@@ -7429,7 +7429,7 @@ window.__lsStyleChip = (() => {
     document.head.appendChild(st);
   }
 
-  const seg = () => location.pathname.split('/').filter(Boolean)[0] || '';
+  const seg = () => ((location.pathname.split("/").filter(Boolean)[0]) || ((document.querySelector('meta[name="locus-city"]') || {}).content) || "") || '';
   // Page paths come from the site's own nav links (works on agent sites with other URL shapes).
   const pagePath = (page) => {
     if (window.__lsPagePath) return window.__lsPagePath(page);
