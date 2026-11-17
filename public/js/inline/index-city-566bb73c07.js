@@ -5,7 +5,7 @@
     if (!(output instanceof HTMLElement)) return;
 
     const cityFromPage = document.querySelector("[data-city]")?.dataset.city;
-    const cityFromPath = window.location.pathname
+    const cityFromPath = (window.__locusPath||location.pathname)
       .split("/")
       .filter(Boolean)[0];
 

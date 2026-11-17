@@ -17,7 +17,7 @@
   ].join("");
   document.head.appendChild(style);
 
-  const typeWord = () => { const p = new URLSearchParams(location.search).get("type") || ""; const seg = location.pathname.split("/").filter(Boolean)[1] || ""; const s = (p || (/^(homes|townhomes|condos|mobile-homes|mobile|land|lots|lot-land|lots-land)$/i.test(seg) ? seg : "")).toLowerCase(); if (/town/.test(s)) return "townhomes"; if (/condo/.test(s)) return "condos"; if (/mobile|manufactured/.test(s)) return "mobile homes"; if (/land|lot/.test(s)) return "lots"; if (/house|home/.test(s)) return "homes"; return "listings"; };
+  const typeWord = () => { const p = new URLSearchParams(location.search).get("type") || ""; const seg = (window.__locusPath||location.pathname).split("/").filter(Boolean)[1] || ""; const s = (p || (/^(homes|townhomes|condos|mobile-homes|mobile|land|lots|lot-land|lots-land)$/i.test(seg) ? seg : "")).toLowerCase(); if (/town/.test(s)) return "townhomes"; if (/condo/.test(s)) return "condos"; if (/mobile|manufactured/.test(s)) return "mobile homes"; if (/land|lot/.test(s)) return "lots"; if (/house|home/.test(s)) return "homes"; return "listings"; };
   const visible = (el) => !!el && el.getClientRects().length > 0;
   const climb = (el, test, max) => { let n = el; for (let i = 0; n && n !== document.body && i < max; i++, n = n.parentElement) { if (test(n)) return n; } return null; };
   const textEls = (re) => {
@@ -79,7 +79,7 @@
         const row = (label, items) => { if (!items.length) return; const r = document.createElement("div"); r.className = "cta-calm-row"; const s = document.createElement("span"); s.textContent = label; r.appendChild(s); items.forEach(([txt, href]) => { const a = document.createElement("a"); a.className = "cta-calm-chip"; a.href = href; a.textContent = txt; r.appendChild(a); }); box.appendChild(r); };
         row("Widen your search:", widen);
         
-        const pm = /^(\d+)-(\d+)$/.exec(sp.get("price") || ""); const segs = location.pathname.split("/").filter(Boolean);
+        const pm = /^(\d+)-(\d+)$/.exec(sp.get("price") || ""); const segs = (window.__locusPath||location.pathname).split("/").filter(Boolean);
         if (pm && segs.length >= 2) {
           const lo = +pm[1], hi = +pm[2], nhi = hi + Math.max(50, hi - lo);
           const tmap = { homes: "house", townhomes: "townhouse", condos: "condo", "mobile-homes": "mobile", land: "land", lots: "land", "lot-land": "land", "lots-land": "land" };
