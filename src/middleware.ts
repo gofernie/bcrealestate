@@ -145,11 +145,16 @@ export const onRequest = defineMiddleware(async (context, next) => {
       const map = await getSiteCityMap();
       const site = map.byDomain.get(siteHost);
       const seg = tagSafe(segs[0]);
+      /* agent-root-home-v1: the main city lives at "/" on agent sites; /{primary}/ 301s home (index.astro rewrites "/" back with root_rewrite=1) */
+      if (site && site.primary && segs.length === 1 && seg === site.primary && context.request.method === "GET" && context.url.searchParams.get("root_rewrite") !== "1") {
+        const qs = context.url.searchParams.toString();
+        return new Response(null, { status: 301, headers: { Location: "/" + (qs ? "?" + qs : ""), "Cache-Control": "no-store" } });
+      }
       if (site && site.primary && map.allCities.has(seg) && !site.cities.has(seg)) {
         const q = isLocalReq ? `?siteDomain=${encodeURIComponent(siteHost)}` : "";
         return new Response(null, {
           status: 302,
-          headers: { Location: `/${site.primary}/${q}`, "Cache-Control": "no-store" },
+          headers: { Location: isLocalReq ? `/${site.primary}/${q}` : "/", "Cache-Control": "no-store" },
         });
       }
     }

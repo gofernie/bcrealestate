@@ -175,6 +175,8 @@ export const POST: APIRoute = async ({ request }) => {
           .replace(/^-+|-+$/g, ""),
         label: String(market?.label || "").trim().slice(0, 80),
         imageUrl: String(market?.imageUrl || "").trim().slice(0, 1000),
+        featuredMls: String(market?.featuredMls || market?.featured_mls || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 20),
+        images: { hero: String(market?.images?.hero || '').slice(0, 1000), card: String(market?.images?.card || '').slice(0, 1000) },
       }))
       .filter((market: any) => market.city)
       .slice(0, 3);

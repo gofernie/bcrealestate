@@ -688,6 +688,9 @@ const clientPrimaryCity = String(siteRow?.city || routeCity)
   .replace(/[^a-z0-9]+/g, "-")
   .replace(/^-+|-+$/g, "");
 
+const normMarketSlug = (v: any) => String(v || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+const isSecondaryMarketPage = (() => { const rc = normMarketSlug(routeCity); const pc = normMarketSlug(siteRow?.primary_city || siteRow?.city); return !!rc && !!pc && rc !== pc && (Array.isArray(siteRow?.secondary_markets) ? siteRow.secondary_markets : []).some((x: any) => normMarketSlug(x?.city) === rc); })();
+const secondaryFeaturedMls = isSecondaryMarketPage ? String(((Array.isArray(siteRow?.secondary_markets) ? siteRow.secondary_markets : []).find((x: any) => normMarketSlug(x?.city) === normMarketSlug(routeCity)) || {}).featuredMls || "").trim() : "";
 const configuredMarkets = [
   {
     city: clientPrimaryCity,
@@ -2457,14 +2460,14 @@ const firstListingImage = (value: any): string => {
 };
 
 const featuredListingMls = String(
-  siteRow?.featured_listing_mls || ""
+  (isSecondaryMarketPage ? secondaryFeaturedMls : (siteRow?.featured_listing_mls || ""))
 ).trim();
 
 let featuredListingImages: Record<string, unknown> = {};
 
 try {
   const rawFeaturedListingImages =
-    siteRow?.featured_listing_images;
+    (isSecondaryMarketPage ? (((Array.isArray(siteRow?.secondary_markets) ? siteRow.secondary_markets : []).find((x: any) => normMarketSlug(x?.city) === normMarketSlug(routeCity)) || {}).images || null) : siteRow?.featured_listing_images);
 
   featuredListingImages =
     typeof rawFeaturedListingImages === "string"
@@ -2477,11 +2480,11 @@ try {
   featuredListingImages = {};
 }
 
-const featuredHeroImage = firstListingImage(
+let featuredHeroImage = firstListingImage(
   featuredListingImages.hero
 );
 
-const selectedFeaturedCardImage = firstListingImage(
+let selectedFeaturedCardImage = firstListingImage(
   featuredListingImages.card
 );
 
@@ -2515,7 +2518,18 @@ if (featuredListingMls) {
     null;
 }
 
-const featuredListing =
+
+/* secondary-featured-images-v1: extra markets have no saved featured images, so use the listing's own photos */
+if (isSecondaryMarketPage && selectedFeaturedListing) {
+  const L: any = selectedFeaturedListing;
+  const pool: any[] = [];
+  for (const k of ["photos", "images", "image_urls", "photo_urls", "media", "photo_url", "image_url", "primary_photo", "thumbnail_url"]) { const v = L?.[k]; if (Array.isArray(v)) pool.push(...v); else if (v) pool.push(v); }
+  const urls = pool.map((v: any) => firstListingImage(v)).filter(Boolean);
+  if (!selectedFeaturedCardImage) selectedFeaturedCardImage = urls[0] || "";
+  if (!featuredHeroImage) featuredHeroImage = urls[1] || urls[0] || "";
+} else if (isSecondaryMarketPage && featuredListingMls) {
+  console.warn("Secondary market featured listing not found:", featuredListingMls);
+}const featuredListing =
   selectedFeaturedListing ||
   listings.find((listing: any) =>
     firstListingImage(
@@ -4408,7 +4422,7 @@ setInterval(place,2000);if(document.readyState==="loading")document.addEventList
 
 
 
-<div class="locus-home-agent-strip-top locus-home-agent-strip-top--desktop" style="transform: translateY(-80px); margin: 42px auto -86px !important;">
+<script is:inline>/* agent-card-pin-v1: agent card always sits right under Popular searches */(function(){function target(){var hcs=document.querySelector(".hero-collections-strip");if(hcs&&hcs.offsetParent!==null&&!hcs.closest("footer"))return hcs;var lab=[].find.call(document.querySelectorAll("body *"),function(el){return el.children.length===0&&!el.closest("footer")&&/^\s*popular searches/i.test(el.textContent||"")&&el.offsetParent!==null;});if(lab){var box=lab.closest(".hero-collections-strip");if(!box){for(var x=lab.parentElement;x&&x!==document.body;x=x.parentElement){var bg=getComputedStyle(x).backgroundColor;if(bg&&bg!=="rgba(0, 0, 0, 0)"&&bg!=="transparent"&&x.offsetWidth>500){box=x;break;}}}if(box)return box;}var f=document.getElementById("home-hero-search");return f?(f.closest("section,form")||f):null;}function pin(){var d=document.querySelector(".locus-home-agent-strip-top--desktop"),m=document.querySelector(".locus-home-agent-strip-top--mobile"),t=target();if(!t||(!d&&!m))return;var a=t;[d,m].forEach(function(s){if(s&&a.nextElementSibling!==s){a.after(s);}if(s)a=s;});}[400,1200,2500].forEach(function(ms){setTimeout(pin,ms);});})();</script><div class="locus-home-agent-strip-top locus-home-agent-strip-top--desktop" style="transform: translateY(-80px); margin: 42px auto -86px !important;">
   <AgentBrandStrip
     site={siteRow || site}
     city={routeCity}

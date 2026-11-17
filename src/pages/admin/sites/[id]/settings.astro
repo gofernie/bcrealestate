@@ -1432,12 +1432,7 @@ const siteId = String(Astro.params.id || "");
                   </div>
 
                   <div class="field">
-                    <label>Card image URL</label>
-                    <input
-                      type="url"
-                      name={`secondaryMarket${num}ImageUrl`}
-                      placeholder="https://images.example.com/market.jpg"
-                    />
+                    <label>Featured listing (MLS #)</label><input type="text" inputmode="numeric" name={`secondaryMarket${num}FeaturedMls`} placeholder="e.g. 1047842 - leave blank to use the city hero banner" /><input type="hidden" name={`secondaryMarket${num}Images`} value="{}" /><div style="margin-top:10px;"><button type="button" class="btn btn--ghost" data-market-photos={String(num)}>Load listing photos</button><p class="hint" data-market-photo-hint={String(num)}></p><div data-market-photo-grid={String(num)} style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:10px;"></div></div>
                   </div>
                 </div>
               ))}
@@ -1888,8 +1883,7 @@ merged.agentContactCopy =
           form.elements[`secondaryMarket${num}Label`].value =
             market.label || "";
 
-          form.elements[`secondaryMarket${num}ImageUrl`].value =
-            market.imageUrl || market.image_url || "";
+          form.elements[`secondaryMarket${num}FeaturedMls`].value = market.featuredMls || market.featured_mls || ""; form.elements[`secondaryMarket${num}Images`].value = JSON.stringify(market.images && typeof market.images === "object" ? market.images : {});
         });
 
         customColours = Array.isArray(merged.savedColours)
@@ -1940,14 +1934,14 @@ if (typeof window.seedAccentColour === "function")
           .map(num => ({
             city: nv(data[`secondaryMarket${num}City`]),
             label: String(data[`secondaryMarket${num}Label`] || "").trim(),
-            imageUrl: String(data[`secondaryMarket${num}ImageUrl`] || "").trim()
+            imageUrl: "", featuredMls: String(data[`secondaryMarket${num}FeaturedMls`] || "").replace(/[^A-Za-z0-9]/g, ""), images: (() => { try { const v = JSON.parse(data[`secondaryMarket${num}Images`] || "{}"); return v && typeof v === "object" ? { hero: String(v.hero || ""), card: String(v.card || "") } : {}; } catch { return {}; } })()
           }))
           .filter(market => market.city);
 
         [1, 2, 3].forEach(num => {
           delete data[`secondaryMarket${num}City`];
           delete data[`secondaryMarket${num}Label`];
-          delete data[`secondaryMarket${num}ImageUrl`];
+          delete data[`secondaryMarket${num}FeaturedMls`]; delete data[`secondaryMarket${num}Images`];
         });
 
         data.groups = [1,2,3,4].map(num => {
@@ -2894,7 +2888,62 @@ loadPage();
   });
 })();
 </script>
-  <script src="/look-search.js" defer is:inline></script>
+  <script is:inline>
+/* market-photo-picker-v1 */
+(() => {
+  const form = document.querySelector("form");
+  const siteId = decodeURIComponent(location.pathname.split("/").filter(Boolean).at(-2) || "");
+  document.querySelectorAll("[data-market-photos]").forEach((btn) => {
+    const num = btn.getAttribute("data-market-photos");
+    const mlsInput = document.querySelector(`input[name="secondaryMarket${num}FeaturedMls"]`);
+    const sel = document.querySelector(`input[name="secondaryMarket${num}Images"]`);
+    const grid = document.querySelector(`[data-market-photo-grid="${num}"]`);
+    const hint = document.querySelector(`[data-market-photo-hint="${num}"]`);
+    if (!mlsInput || !sel || !grid) return;
+    let photos = [];
+    const read = () => { try { const v = JSON.parse(sel.value || "{}"); return v && typeof v === "object" ? v : {}; } catch { return {}; } };
+    const status = () => { const s = read(); if (hint && !photos.length) hint.textContent = (s.hero || s.card) ? "Photos chosen: " + [s.hero ? "hero" : "", s.card ? "card" : ""].filter(Boolean).join(" + ") + ". Load listing photos to change." : ""; };
+    const render = () => {
+      const s = read();
+      grid.replaceChildren();
+      photos.forEach((url, i) => {
+        const card = document.createElement("div");
+        card.style.cssText = "border:1px solid #d8d3ca;border-radius:10px;overflow:hidden;background:#fff;";
+        const img = document.createElement("img");
+        img.src = url; img.alt = "Listing photo " + (i + 1); img.loading = "lazy";
+        img.style.cssText = "display:block;width:100%;height:104px;object-fit:cover;";
+        const actions = document.createElement("div");
+        actions.style.cssText = "display:flex;flex-wrap:wrap;gap:5px;padding:7px;";
+        [["hero", "Use as hero", "Hero selected"], ["card", "Use on card", "Card selected"]].forEach(([key, label, on]) => {
+          const b = document.createElement("button");
+          b.type = "button"; b.className = "btn btn--ghost"; b.style.cssText = "font-size:12px;padding:6px 8px;";
+          b.textContent = s[key] === url ? on : label;
+          b.addEventListener("click", () => { sel.value = JSON.stringify({ ...read(), [key]: url }); render(); });
+          actions.append(b);
+        });
+        card.append(img, actions);
+        grid.append(card);
+      });
+    };
+    btn.addEventListener("click", async () => {
+      const mls = mlsInput.value.trim();
+      if (!mls) { if (hint) hint.textContent = "Enter an MLS number first."; return; }
+      btn.disabled = true; btn.textContent = "Loading...";
+      try {
+        const r = await fetch(`/api/site-settings?id=${encodeURIComponent(siteId)}&listing_mls=${encodeURIComponent(mls)}`);
+        const d = await r.json();
+        if (!r.ok || !d?.ok || !Array.isArray(d.images) || !d.images.length) throw new Error(d?.error || "No listing photos were found.");
+        photos = d.images.filter((u) => /^https?:\/\/\S+$/i.test(String(u || "")));
+        if (hint) hint.textContent = "Choose Hero and Card images, then click Save changes.";
+        render();
+      } catch (e) { if (hint) hint.textContent = e?.message || "Could not load listing photos."; }
+      finally { btn.disabled = false; btn.textContent = "Load listing photos"; }
+    });
+    mlsInput.addEventListener("change", () => { photos = []; grid.replaceChildren(); sel.value = "{}"; status(); });
+    setTimeout(status, 1500);
+  });
+})();
+</script><script src="/look-search.js" defer is:inline></script>
 </body>
 </html>
 
