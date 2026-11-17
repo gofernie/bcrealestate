@@ -41,7 +41,7 @@
     userMoved = false;
     const go = () => {
       if (userMoved) return;
-      const heads = added.map(findHead).filter(Boolean);
+      const heads = prev.length ? added.map(findHead).filter(Boolean) : [document.getElementById("homepage-listings")].filter(Boolean);
       if (!heads.length) return;
       heads.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
       const el = heads[0];
@@ -90,7 +90,7 @@
   const check = () => {
     const cur = names();
     if (!cur.length) return;
-    if (!known) { known = cur; return; }
+    if (!known || !known.length) { known = cur; return; }
     const added = cur.filter((n) => !known.includes(n));
     known = cur;
     if (added.length && Date.now() - touched < 8000 && !userMoved) jumpTo(added[0]);
