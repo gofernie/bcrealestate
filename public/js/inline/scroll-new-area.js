@@ -35,7 +35,7 @@
     const cur = areasOf(location.search);
     const prev = read();
     save(cur);
-    if (!prev) return;
+    if (!prev || !prev.length || cur.length < 2) return;
     const added = cur.filter((a) => !prev.includes(a));
     if (!added.length) return;
     userMoved = false;
@@ -90,7 +90,7 @@
   const check = () => {
     const cur = names();
     if (!cur.length) return;
-    if (!known) { known = cur; return; }
+    if (!known || cur.length < 2) { known = cur; return; }
     const added = cur.filter((n) => !known.includes(n));
     known = cur;
     if (added.length && Date.now() - touched < 8000 && !userMoved) jumpTo(added[0]);
