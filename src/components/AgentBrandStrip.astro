@@ -88,6 +88,14 @@ const introBackground = first(
   site?.agent_intro_background_url
 );
 
+const servedMarkets = (Array.isArray(site?.secondary_markets) ? site.secondary_markets : [])
+  .map((m: any) => {
+    const c = String(typeof m === "string" ? m : m?.city || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const label = String((typeof m === "object" && m?.label) || c.replace(/-/g, " ").replace(/\b\w/g, (x: string) => x.toUpperCase())).trim();
+    return { city: c, label, href: `/${c}/` };
+  })
+  .filter((m: any) => m.city && m.city !== String(city || "").trim().toLowerCase().replace(/\s+/g, "-"))
+  .slice(0, 3);
 const cityLabel = String(city || "nanaimo")
   .replace(/-/g, " ")
   .replace(/\b\w/g, (character) => character.toUpperCase());
@@ -147,6 +155,12 @@ const initials = String(
       {isIntro && (
         <p class="agent-brand-strip__intro-copy">
           {isPlatformGuide ? platformIntro : introCopy}
+        </p>
+      )}
+      {isIntro && servedMarkets.length > 0 && (
+        <p class="agent-brand-strip__markets">
+          <span>Also serving</span>
+          {servedMarkets.map((m: any) => <a href={m.href}>{m.label}</a>)}
         </p>
       )}
     </div>
@@ -1554,4 +1568,12 @@ const initials = String(
         rgba(0,0,0,.97) 80%, #000 90%) !important;
     }
   }
+</style>
+<style is:global>
+  /* agent-strip-markets-v1 */
+  .agent-brand-strip__markets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 14px 0 0; font-size: .85rem; }
+  .agent-brand-strip__markets span { margin-right: 4px; font-size: .72rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--accent, #2f6f73); }
+  .agent-brand-strip__markets a { padding: 4px 11px; border-radius: 999px; border: 1px solid rgba(16, 24, 40, .14); background: #fff; color: #101828; font-weight: 600; text-decoration: none; transition: border-color .15s, color .15s; }
+  .agent-brand-strip__markets a:hover { border-color: var(--accent, #2f6f73); color: var(--accent, #2f6f73); }
+  body:has(.agent-brand-strip__markets) .locus-market-strip { display: none !important; }
 </style>
