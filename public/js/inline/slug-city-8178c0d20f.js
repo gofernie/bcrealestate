@@ -1167,7 +1167,7 @@ function getInterruptorConfig(variant) {
     },
   };
 
-  { const f = configs.fact; return { ...f, description: (f.description ? f.description + " " : "") + "Save this search and we'll send you new matches as soon as they list.", buttonLabel: "Save this search", action: openSaveSearchFromInterruptor, showChips: false }; }
+  { return { kicker: "Save this search", title: "Like these homes?", description: "Save this search and we'll send you new listings that match as soon as they hit the market.", buttonLabel: "Save this search", action: openSaveSearchFromInterruptor, showChips: false }; } /* all-interrupters-save-v3 */
 }
 
 function escapeInterruptorHtml(value) {
