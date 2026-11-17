@@ -127,7 +127,7 @@ ${JSON.stringify(facts, null, 2)}`;
           model: env("COPY_MODEL") || "claude-sonnet-5-5",
           max_tokens: 4000,
           tools: [tool],
-          tool_choice: { type: "tool", name: "save_page_copy" },
+          tool_choice: { type: "auto" },
           messages: [{ role: "user", content: text + "\n\nSave the copy with the save_page_copy tool." }],
         }),
       });
