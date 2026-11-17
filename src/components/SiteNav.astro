@@ -337,18 +337,49 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
   { label: "Park Directory", href: "/mobile-home-parks-in-nanaimo" },
   { label: "55+ Communities", href: "/mobile-home-parks-in-nanaimo?age=55-plus" },
 ];
+const agentLogoHome = (() => { const h = Astro.url.hostname.replace(/^www\./, "").replace(/\.localhost$/, ".bc.realestate").toLowerCase(); return !!h && h !== "bc.realestate" && h !== "localhost" && h !== "127.0.0.1" && !h.endsWith(".netlify.app"); })();
 const siteLogoUrl = await (async () => { try { const { createClient } = await import("@supabase/supabase-js"); const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }); const h = Astro.url.hostname.replace(/\.localhost$/, ".bc.realestate").replace(/^www\./, "").replace(/\.localhost$/, ".bc.realestate"); const { data } = await sb.from("sites").select("logo_url").eq("domain", h).not("logo_url", "is", null).limit(1); return String(data?.[0]?.logo_url || "").trim(); } catch { return ""; } })();
+const agentAreas: any[] = await (async () => {
+  if (!agentLogoHome) return [];
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+    const h = Astro.url.hostname.replace(/^www\./, "").replace(/\.localhost$/, ".bc.realestate").toLowerCase();
+    const { data } = await sb.from("sites").select("primary_city, city, secondary_markets").eq("domain", h).limit(1);
+    const r: any = data?.[0];
+    if (!r) return [];
+    const norm = (v: any) => String(v || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const tc = (s: string) => s.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    const primary = norm(r.primary_city || r.city);
+    const list: any[] = primary ? [{ slug: primary, label: tc(primary), href: "/" }] : [];
+    (Array.isArray(r.secondary_markets) ? r.secondary_markets : []).forEach((m: any) => {
+      const s = norm(typeof m === "string" ? m : m?.city);
+      if (s && s !== primary && !list.some((x) => x.slug === s)) list.push({ slug: s, label: String((typeof m === "object" && m?.label) || tc(s)), href: `/${s}/` });
+    });
+    return list;
+  } catch { return []; }
+})();
+const currentAreaSlug = String(city || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+const currentAreaLabel = String((agentAreas.find((a: any) => a.slug === currentAreaSlug) || agentAreas[0] || {}).label || "");
 ---
 
 <nav class="site-nav">
   <div class="shell site-nav__inner">
    <a
     class="site-nav__brand"
-    href={isNanaimoMobilesSite ? "/" : `/${slugify(city)}/`}
+    href={isNanaimoMobilesSite || agentLogoHome ? "/" : `/${slugify(city)}/`}
     aria-label={`${navBrandLabel} home`}
   >
     {siteLogoUrl ? <img class="site-nav__logo" src={siteLogoUrl} alt={navBrandLabel} /> : navBrandLabel}
   </a>
+  {agentAreas.length > 1 && (
+    <details class="site-nav__area-switch">
+      <summary>{currentAreaLabel}<span aria-hidden="true">&#9662;</span></summary>
+      <div class="site-nav__area-menu">
+        {agentAreas.map((a: any) => <a href={a.href} class:list={{ active: a.slug === currentAreaSlug }}>{a.label}</a>)}
+      </div>
+    </details>
+  )}
 
     <button
       class="site-nav__toggle"
@@ -1471,3 +1502,16 @@ const siteLogoUrl = await (async () => { try { const { createClient } = await im
   .site-nav__brand .site-nav__logo { display: block; height: auto; width: auto; max-height: 40px; max-width: 220px; object-fit: contain; }
   @media (max-width: 760px) { .site-nav__brand .site-nav__logo { max-height: 32px; max-width: 170px; } }
 </style>
+<style is:global>
+  /* agent-area-switch-v1 */
+  .site-nav__area-switch { position: relative; margin: 0 auto 0 14px; }
+  .site-nav__area-switch summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid rgba(16, 24, 40, .14); border-radius: 999px; background: #fff; color: #101828; font-size: .88rem; font-weight: 700; white-space: nowrap; }
+  .site-nav__area-switch summary::-webkit-details-marker { display: none; }
+  .site-nav__area-switch summary span { font-size: .75em; opacity: .6; }
+  .site-nav__area-menu { position: absolute; top: calc(100% + 8px); left: 0; z-index: 1001; display: flex; flex-direction: column; min-width: 180px; padding: 6px; background: #fff; border: 1px solid rgba(16, 24, 40, .1); border-radius: 12px; box-shadow: 0 18px 40px -18px rgba(0, 0, 0, .35); }
+  .site-nav__area-menu a { padding: 9px 12px; border-radius: 8px; color: #101828; font-size: .92rem; font-weight: 600; text-decoration: none; }
+  .site-nav__area-menu a:hover { background: #f2f4f7; }
+  .site-nav__area-menu a.active { color: var(--accent, #2f6f73); background: var(--accent-soft, #eef2f6); }
+  @media (max-width: 760px) { .site-nav__area-switch { margin-left: 8px; } .site-nav__area-switch summary { padding: 5px 10px; font-size: .82rem; } }
+</style>
+<script is:inline>/* agent-area-switch-v1 */document.addEventListener("click",function(e){document.querySelectorAll(".site-nav__area-switch[open]").forEach(function(d){if(!d.contains(e.target))d.removeAttribute("open");});});</script>
