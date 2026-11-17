@@ -11,14 +11,14 @@ let error = "";
 let rows: any[] = [];
 let weekList: string[] = [];
 let entryRows: any[] = [];
-let cachedAt = 0;
+let cachedAt = 0; let agentRows: any[] = []; let agentEntries: any[] = [];
 if (!key || !site) {
   error = "Missing FATHOM_API_KEY or FATHOM_SITE_ID environment variable.";
 } else {
-  const cacheKey = `${site}|${metric}|${weeksBack}|${days}`;
+  const cacheKey = `${site}|${metric}|${weeksBack}|${days}|v2`;
   const cache: Map<string, any> = ((globalThis as any).__cityTrafficCache ??= new Map());
   const hit = cache.get(cacheKey);
-  if (hit && Date.now() - hit.at < 15 * 60 * 1000 && !Astro.url.searchParams.has("fresh")) { rows = hit.rows; entryRows = hit.entryRows; weekList = hit.weekList; cachedAt = hit.at; } else {
+  if (hit && Date.now() - hit.at < 15 * 60 * 1000 && !Astro.url.searchParams.has("fresh")) { rows = hit.rows; entryRows = hit.entryRows; weekList = hit.weekList; cachedAt = hit.at; agentRows = hit.agentRows || []; agentEntries = hit.agentEntries || []; } else {
   const DAY = 86400000;
   const now = new Date();
   const dow = (now.getUTCDay() + 6) % 7;
@@ -29,21 +29,34 @@ if (!key || !site) {
   try {
     const fetchWeek = async (start: Date) => {
       const end = new Date(start.getTime() + (days ? 0 : 6) * DAY);
-      const p = new URLSearchParams({ entity: "pageview", entity_id: site, aggregates: "pageviews,uniques", field_grouping: "pathname", sort_by: metric + ":desc", timezone: "America/Edmonton", limit: "1000", date_from: ymd(start) + " 00:00:00", date_to: ymd(end) + " 23:59:59" });
+      const p = new URLSearchParams({ entity: "pageview", entity_id: site, aggregates: "pageviews,uniques", field_grouping: "hostname,pathname", sort_by: metric + ":desc", timezone: "America/Edmonton", limit: "1000", date_from: ymd(start) + " 00:00:00", date_to: ymd(end) + " 23:59:59" });
       const r = await fetch("https://api.usefathom.com/v1/aggregations?" + p, { headers: { Authorization: `Bearer ${key}` } });
       if (!r.ok) throw new Error(`Fathom API ${r.status}: ${(await r.text()).slice(0, 300)}`);
       const data = await r.json();
       return (Array.isArray(data) ? data : []).map((row: any) => ({ ...row, date: ymd(start) }));
     };
-    const results: any[] = []; for (let i = 0; i < starts.length; i += 4) results.push(...(await Promise.all(starts.slice(i, i + 4).map(fetchWeek)))); rows = results.flat(); const pE = new URLSearchParams({ entity: "pageview", entity_id: site, aggregates: "visits", field_grouping: "entry_page,referrer_hostname", sort_by: "visits:desc", timezone: "America/Edmonton", limit: "1000", date_from: ymd(starts[0]) + " 00:00:00" }); const rE = await fetch("https://api.usefathom.com/v1/aggregations?" + pE, { headers: { Authorization: `Bearer ${key}` } }); if (rE.ok) entryRows = await rE.json(); else error = `Fathom API (sources) ${rE.status}: ${(await rE.text()).slice(0, 300)}`;
-  } catch (e) { error = e instanceof Error ? e.message : String(e); } if (!error) cache.set(cacheKey, { at: Date.now(), rows, entryRows, weekList }); }
+    const results: any[] = []; for (let i = 0; i < starts.length; i += 4) results.push(...(await Promise.all(starts.slice(i, i + 4).map(fetchWeek)))); rows = results.flat(); const pE = new URLSearchParams({ entity: "pageview", entity_id: site, aggregates: "visits", field_grouping: "hostname,entry_page,referrer_hostname", sort_by: "visits:desc", timezone: "America/Edmonton", limit: "1000", date_from: ymd(starts[0]) + " 00:00:00" }); const rE = await fetch("https://api.usefathom.com/v1/aggregations?" + pE, { headers: { Authorization: `Bearer ${key}` } }); if (rE.ok) entryRows = await rE.json(); else error = `Fathom API (sources) ${rE.status}: ${(await rE.text()).slice(0, 300)}`;
+    const AGENT_SITES = [site, "BIJPUDPH", "AXSVRXTN"];
+    const endDay = days ? starts[starts.length - 1] : new Date(starts[starts.length - 1].getTime() + 6 * DAY);
+    for (const sid of AGENT_SITES) {
+      const pa = new URLSearchParams({ entity: "pageview", entity_id: sid, aggregates: "pageviews,uniques", field_grouping: "hostname", date_grouping: "day", sort_by: "pageviews:desc", timezone: "America/Edmonton", limit: "1000", date_from: ymd(starts[0]) + " 00:00:00", date_to: ymd(endDay) + " 23:59:59" });
+      const ra = await fetch("https://api.usefathom.com/v1/aggregations?" + pa, { headers: { Authorization: `Bearer ${key}` } });
+      if (ra.ok) { const d = await ra.json(); if (Array.isArray(d)) agentRows.push(...d); }
+      const pb = new URLSearchParams({ entity: "pageview", entity_id: sid, aggregates: "visits", field_grouping: "hostname,referrer_hostname", sort_by: "visits:desc", timezone: "America/Edmonton", limit: "1000", date_from: ymd(starts[0]) + " 00:00:00" });
+      const rb = await fetch("https://api.usefathom.com/v1/aggregations?" + pb, { headers: { Authorization: `Bearer ${key}` } });
+      if (rb.ok) { const d = await rb.json(); if (Array.isArray(d)) agentEntries.push(...d); }
+    }
+  } catch (e) { error = e instanceof Error ? e.message : String(e); } if (!error) cache.set(cacheKey, { at: Date.now(), rows, entryRows, weekList, agentRows, agentEntries }); }
 }
 
+const MAIN_HOST = "bc.realestate";
+const normHost = (h: any) => String(h || "").toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/[\/:].*$/, "");
+const isMainHost = (h: any) => { const n = normHost(h); return !n || n === MAIN_HOST; };
 const SKIP = new Set(["admin", "api", "_astro", ".netlify"]);
 const totalsByCity = new Map<string, { views: number; visitors: number }>();
 const weekSet = new Set<string>();
 const byCity = new Map<string, Map<string, number>>();
-for (const row of Array.isArray(rows) ? rows : []) {
+for (const row of Array.isArray(rows) ? rows : []) { if (!isMainHost(row.hostname)) continue;
   const seg = (() => { const s = String(row.pathname || "").split("/")[1] || ""; try { return decodeURIComponent(s).trim().toLowerCase().replace(/\s+/g, "-") || "(home)"; } catch { return s.toLowerCase() || "(home)"; } })();
   if (SKIP.has(seg)) continue;
   const wk = String(row.date || "").slice(0, 10);
@@ -57,7 +70,7 @@ const allWeeks = weekList.length ? weekList : [...weekSet].sort(); const firstWi
 const SEARCH_RE = /\b(google|bing|duckduckgo|yahoo|ecosia|brave|yandex|baidu|startpage|qwant)\./i;
 const OWN_RE = /bc\.realestate/i;
 const srcByCity = new Map<string, { search: number; direct: number; other: number }>();
-for (const row of Array.isArray(entryRows) ? entryRows : []) {
+for (const row of Array.isArray(entryRows) ? entryRows : []) { if (!isMainHost(row.hostname)) continue;
   const seg = (() => { const s = String(row.entry_page || "").split("/")[1] || ""; try { return decodeURIComponent(s).trim().toLowerCase().replace(/\s+/g, "-") || "(home)"; } catch { return s.toLowerCase() || "(home)"; } })();
   if (SKIP.has(seg)) continue;
   const ref = String(row.referrer_hostname || "").trim().toLowerCase();
@@ -76,6 +89,29 @@ const cities = [...byCity.entries()].map(([city, m]) => {
   const spark = vals.map((v, i) => `${(i * step).toFixed(1)},${(22 - (v / rowMax) * 19).toFixed(1)}`).join(" ");
   const srcs = srcByCity.get(city) || { search: 0, direct: 0, other: 0 }; return { city, vals, total, change, spark, ...srcs, ...(totalsByCity.get(city) || { views: 0, visitors: 0 }) };
 }).sort((a, b) => b.total - a.total);
+const bucketOf = (d: any) => { const ds = String(d || "").slice(0, 10); let b = ""; for (const w of weeks) if (w <= ds) b = w; return b; };
+const agentMap = new Map<string, { m: Map<string, number>; views: number; visitors: number; search: number; direct: number; other: number }>();
+for (const row of agentRows) {
+  const h = normHost(row.hostname); if (!h || h === MAIN_HOST || /^(localhost|127\.)|netlify/.test(h)) continue;
+  const b = bucketOf(row.date); if (!b) continue;
+  if (!agentMap.has(h)) agentMap.set(h, { m: new Map(), views: 0, visitors: 0, search: 0, direct: 0, other: 0 });
+  const a = agentMap.get(h)!; a.m.set(b, (a.m.get(b) || 0) + Number(row[metric] || 0)); a.views += Number(row.pageviews || 0); a.visitors += Number(row.uniques || 0);
+}
+for (const row of agentEntries) {
+  const h = normHost(row.hostname); const a = agentMap.get(h); if (!a) continue;
+  const ref = normHost(row.referrer_hostname); const n = Number(row.visits || 0);
+  if (!ref || ref === h || ref === MAIN_HOST || ref.endsWith("." + MAIN_HOST)) a.direct += n; else if (SEARCH_RE.test(ref)) a.search += n; else a.other += n;
+}
+const agents = [...agentMap.entries()].map(([host, a]) => {
+  const vals = weeks.map((w) => a.m.get(w) || 0);
+  const total = vals.reduce((x, y) => x + y, 0);
+  const last = vals.at(-1) || 0, prev = vals.at(-2) || 0;
+  const change = vals.length < 2 ? 0 : prev ? Math.round(((last - prev) / prev) * 100) : last ? null : 0;
+  const rowMax = Math.max(1, ...vals); const step = vals.length > 1 ? 90 / (vals.length - 1) : 0;
+  const spark = vals.map((v, i) => `${(i * step).toFixed(1)},${(22 - (v / rowMax) * 19).toFixed(1)}`).join(" ");
+  return { host, vals, total, change, spark, views: a.views, visitors: a.visitors, search: a.search, direct: a.direct, other: a.other };
+}).sort((x, y) => y.total - x.total);
+const agentMax = Math.max(1, ...agents.flatMap((c) => c.vals));
 const max = Math.max(1, ...cities.flatMap((c) => c.vals));
 const label = (w: string) => new Date(w + "T12:00:00").toLocaleDateString("en-CA", days ? { weekday: "short", day: "numeric" } : { month: "short", day: "numeric" });
 const pretty = (s: string) => s.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -122,6 +158,7 @@ const link = (q: Record<string, string>) => "?" + new URLSearchParams(Object.ent
   td.src, th.src { background: #fcfcfd; color: #475467; }
   td.search, th.search { background: #ecf7f1 !important; color: #067647 !important; font-weight: 800; } th.search { border-radius: 8px 8px 0 0; }
   .up { color: #067647; font-weight: 700; } .down { color: #b42318; font-weight: 700; } .flat { color: #98a2b3; }
+  .fs-h2 { margin: 40px 0 14px; font-size: 1.5rem; letter-spacing: -.02em; }
   .note { margin-top: 12px; color: #98a2b3; font-size: 12px; }
 </style>
 </head>
@@ -150,6 +187,26 @@ const link = (q: Record<string, string>) => "?" + new URLSearchParams(Object.ent
       </tbody>
     </table></div>
   )}
+  {!error && agents.length > 0 && (
+    <>
+    <h2 class="fs-h2">Agent sites</h2>
+    <div class="fs-table-wrap"><table class="agent-table">
+      <thead><tr><th>Site</th><th>Trend</th>{weeks.map((w) => <th>{label(w)}</th>)}<th class="src search">Search</th><th class="src">Direct</th><th class="src">Other</th><th>Visitors</th><th>Views</th><th>{days ? "vs prev day" : "vs last wk"}</th></tr></thead>
+      <tbody>
+        {agents.map((c) => (
+          <tr>
+            <td class="city"><a href={`https://${c.host}/`} target="_blank">{c.host}</a></td>
+            <td><svg width="92" height="24" viewBox="0 0 92 24"><polyline points={c.spark} fill="none" stroke="#2f6f73" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" /></svg></td>
+            {c.vals.map((v) => <td style={`background: rgba(47,111,115,${(v / agentMax * 0.5).toFixed(3)}); color: ${v / agentMax > 0.6 ? "#fff" : "inherit"}`}>{v || ""}</td>)}
+            <td class="src search">{c.search || ""}</td><td class="src">{c.direct || ""}</td><td class="src">{c.other || ""}</td><td class={metric === "uniques" ? "total" : ""}>{c.visitors}</td><td class={metric === "pageviews" ? "total" : ""}>{c.views}</td>
+            <td class={c.change === null ? "up" : c.change > 0 ? "up" : c.change < 0 ? "down" : "flat"}>{c.change === null ? "new" : c.change > 0 ? `+${c.change}%` : c.change < 0 ? `${c.change}%` : "-"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table></div>
+    </>
+  )}
+  {!error && agents.length === 0 && <p class="note">No agent-site traffic in this period yet.</p>}
   <p class="note">Search / Direct / Other count visits that <em>entered</em> the site on that city, totalled over the whole period shown. The last column is the current week, so it's partial until Sunday. "vs last wk" compares the current partial week to the previous full week.</p>
 <script is:inline>
 (() => {
@@ -183,6 +240,14 @@ const link = (q: Record<string, string>) => "?" + new URLSearchParams(Object.ent
   });
 })();
 </script>
-</main></div>
+<script is:inline>
+(() => {
+  const table = document.querySelector("table.agent-table"); if (!table) return;
+  const tbody = table.tBodies[0]; const ths = [...table.tHead.rows[0].cells];
+  const val = (td) => { const t = (td?.textContent || "").trim(); if (t === "new") return 1e9; const n = parseFloat(t.replace(/[^\d.-]/g, "")); if (!isNaN(n) && !/[a-z]/i.test(t)) return n; return /[a-z(]/i.test(t) ? t.toLowerCase() : 0; };
+  let state = { col: -1, dir: 1 };
+  ths.forEach((th, i) => { if (i === 1) return; th.addEventListener("click", () => { state = { col: i, dir: state.col === i ? -state.dir : (i === 0 ? 1 : -1) }; const rows = [...tbody.rows]; rows.sort((a, b) => { const x = val(a.cells[i]), y = val(b.cells[i]); if (typeof x === "string" || typeof y === "string") return String(x).localeCompare(String(y)) * state.dir; return (x - y) * state.dir; }); rows.forEach((r) => tbody.appendChild(r)); ths.forEach((h) => h.removeAttribute("data-dir")); th.setAttribute("data-dir", state.dir > 0 ? "asc" : "desc"); }); });
+})();
+</script></main></div>
 </body>
 </html>
