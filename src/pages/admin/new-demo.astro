@@ -1,0 +1,139 @@
+---
+import AdminSidebar from "../../components/AdminSidebar.astro";
+import { createClient } from "@supabase/supabase-js";
+export const prerender = false;
+const host = Astro.url.hostname.replace(/^www\./, "");
+if (!["bc.realestate", "localhost", "127.0.0.1"].includes(host)) return Astro.redirect("/admin");
+const env = (k: string) => String((import.meta.env as any)[k] || (globalThis as any).process?.env?.[k] || "").trim();
+const sb = createClient(env("PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
+const { data: cityRows } = await sb.from("sites").select("city").eq("domain", "bc.realestate");
+const cities = [...new Set((cityRows || []).map((r: any) => String(r.city || "").toLowerCase()).filter(Boolean))].sort();
+const { data: demoRows } = await sb.from("sites").select("id, domain, city, created_at, secondary_markets").ilike("domain", "%.bc.realestate").order("created_at", { ascending: false });
+const demos = demoRows || [];
+const pretty = (s: string) => String(s || "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+---
+<html lang="en">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><meta name="robots" content="noindex" />
+<title>New agent demo</title>
+<style>
+  .nd-wrap { display: block; min-height: 100vh; background: #f6f6f4; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #101828; }
+  .nd-main { max-width: 980px; margin: 0 auto; padding: 40px 20px 80px; }
+  .eyebrow { margin: 0 0 8px; font-size: .78rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #667085; }
+  .nd-main h1 { margin: 0 0 24px; font-size: clamp(2rem, 4vw, 3rem); letter-spacing: -.04em; }
+  .nd-main h2 { margin: 40px 0 12px; font-size: 1.3rem; }
+  .card { background: #fff; border: 1px solid #eaecf0; border-radius: 18px; padding: 24px; box-shadow: 0 14px 40px rgba(16,24,40,.06); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+  .full { grid-column: 1 / -1; }
+  .card label.f { display: block; font-size: .8rem; font-weight: 700; color: #475467; margin-bottom: 5px; }
+  .card input[type=text], .card input[type=email], .card input[type=url], .card select { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #d0d5dd; border-radius: 10px; font: inherit; font-size: .95rem; background: #fff; }
+  .inline { display: flex; gap: 8px; align-items: center; }
+  .btn { font: inherit; font-weight: 700; font-size: .9rem; padding: 10px 16px; border-radius: 10px; border: 1px solid #101828; background: #101828; color: #fff; cursor: pointer; white-space: nowrap; }
+  .btn.ghost { background: #fff; color: #101828; border-color: #d0d5dd; }
+  .btn:disabled { opacity: .6; cursor: default; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips label { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid #d0d5dd; border-radius: 999px; font-size: .88rem; font-weight: 600; cursor: pointer; background: #fff; }
+  .photo { display: flex; gap: 14px; align-items: center; }
+  .photo img { flex: 0 0 64px; width: 64px; height: 64px; border-radius: 50%; object-fit: cover; background: #eef0f3; }
+  .hint { font-size: .8rem; color: #98a2b3; margin-top: 4px; }
+  .msg { margin-top: 16px; padding: 12px 14px; border-radius: 12px; font-size: .92rem; display: none; }
+  .msg.ok { display: block; background: #e8f4ec; border: 1px solid #b7dcc3; }
+  .msg.err { display: block; background: #fdecec; border: 1px solid #f2b8b8; }
+  .nd-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  .nd-table td, .nd-table th { padding: 10px 8px; border-top: 1px solid #f2f4f7; text-align: left; }
+  .nd-table th { color: #667085; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; border-top: 0; }
+  .nd-table a { color: #101828; font-weight: 700; }
+  @media (max-width: 700px) { .row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="nd-wrap"><AdminSidebar /><main class="nd-main">
+  <p class="eyebrow">Locus</p><h1>New agent demo</h1>
+  <form id="nd" class="card" autocomplete="off">
+    <div class="row">
+      <div class="full">
+        <label class="f">Agent's current website (optional)</label>
+        <div class="inline"><input type="url" name="source_url" placeholder="https://..." /><button type="button" class="btn ghost" id="nd-fetch">Fill from site</button></div>
+        <div class="hint">Pulls name, photo, phone, email and brokerage where it can find them. Check each field before creating.</div>
+      </div>
+      <div><label class="f">Name</label><input type="text" name="agent_name" required /></div>
+      <div><label class="f">Subdomain</label><div class="inline"><input type="text" name="slug" required /><span style="color:#667085">.bc.realestate</span></div></div>
+      <div><label class="f">Title</label><input type="text" name="agent_title" value="REALTOR&reg;" /></div>
+      <div><label class="f">Brokerage</label><input type="text" name="brokerage" /></div>
+      <div><label class="f">Phone</label><input type="text" name="phone" /></div>
+      <div><label class="f">Email</label><input type="email" name="email" /></div>
+      <div class="full"><label class="f">Photo URL</label><div class="photo"><img id="nd-photo" alt="" /><input type="url" name="photo_url" /></div></div>
+      <div><label class="f">Main city</label><select name="city" required><option value="">Choose</option>{cities.map((c) => <option value={c}>{pretty(c)}</option>)}</select></div>
+      <div><label class="f">Accent colour</label><input type="color" name="accent_color" value="#37a8cd" /></div>
+      <div class="full"><label class="f">Also serves</label><div class="chips">{cities.map((c) => <label><input type="checkbox" name="extra" value={c} /> {pretty(c)}</label>)}</div></div>
+    </div>
+    <div style="margin-top:20px"><button class="btn" type="submit">Create demo</button></div>
+    <div class="msg" id="nd-msg"></div>
+  </form>
+
+  <h2>Demos</h2>
+  <div class="card">
+    {demos.length ? (
+      <table class="nd-table">
+        <thead><tr><th>Site</th><th>Cities</th><th>Created</th><th></th></tr></thead>
+        <tbody>
+          {demos.map((d: any) => (
+            <tr>
+              <td><a href={`https://${d.domain}/${d.city}/`} target="_blank">{d.domain}</a></td>
+              <td>{[d.city, ...((d.secondary_markets || []).map((m: any) => m?.city))].filter(Boolean).map(pretty).join(", ")}</td>
+              <td>{String(d.created_at || "").slice(0, 10)}</td>
+              <td style="text-align:right"><button type="button" class="btn ghost" style="padding:5px 10px;font-size:.8rem" data-del={d.id} data-domain={d.domain}>Delete</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    ) : <p style="margin:0;color:#667085">No demos yet.</p>}
+  </div>
+</main></div>
+<script is:inline>
+(() => {
+  const f = document.getElementById("nd"); const msg = document.getElementById("nd-msg"); const img = document.getElementById("nd-photo");
+  const el = (n) => f.elements.namedItem(n);
+  const show = (t, ok, html) => { msg.className = "msg " + (ok ? "ok" : "err"); if (html) msg.innerHTML = t; else msg.textContent = t; };
+  const slugify = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "");
+  let slugTouched = false;
+  el("slug").addEventListener("input", () => { slugTouched = true; });
+  el("agent_name").addEventListener("input", () => { if (!slugTouched) el("slug").value = slugify(el("agent_name").value); });
+  const pv = () => { img.src = el("photo_url").value || ""; };
+  el("photo_url").addEventListener("input", pv);
+  el("city").addEventListener("change", () => { f.querySelectorAll('input[name="extra"]').forEach((cb) => { const main = cb.value === el("city").value; if (main) cb.checked = false; cb.disabled = main; cb.parentElement.style.opacity = main ? ".4" : ""; }); });
+  document.getElementById("nd-fetch").addEventListener("click", async (e) => {
+    const b = e.currentTarget; const url = el("source_url").value.trim();
+    if (!url) return show("Paste their website first.", false);
+    b.disabled = true; b.textContent = "Fetching...";
+    try {
+      const r = await fetch("/admin/api/demo-scrape", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || "Fetch failed");
+      const map = { agent_name: d.name, phone: d.phone, email: d.email, brokerage: d.brokerage, photo_url: d.photo_url };
+      const got = [];
+      for (const [k, v] of Object.entries(map)) if (v && !el(k).value) { el(k).value = v; got.push(k.replace("agent_", "").replace("_url", "")); }
+      if (!slugTouched) el("slug").value = slugify(el("agent_name").value); pv();
+      show(got.length ? "Filled: " + got.join(", ") + ". Check each field." : "Couldn't find anything useful on that page.", !!got.length);
+    } catch (err) { show(err.message, false); } finally { b.disabled = false; b.textContent = "Fill from site"; }
+  });
+  f.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = { name: el("agent_name").value.trim(), slug: el("slug").value.trim(), title: el("agent_title").value.trim(), brokerage: el("brokerage").value.trim(), phone: el("phone").value.trim(), email: el("email").value.trim(), photo_url: el("photo_url").value.trim(), city: el("city").value, accent_color: el("accent_color").value, extras: [...f.querySelectorAll('input[name="extra"]:checked')].map((c) => c.value) };
+    const btn = f.querySelector('button[type="submit"]'); btn.disabled = true; btn.textContent = "Creating...";
+    try {
+      const r = await fetch("/admin/api/create-demo", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || "Create failed");
+      show('Demo ready: <a href="' + d.url + '" target="_blank">' + d.url + '</a> <button type="button" class="btn ghost" id="nd-copy" style="padding:4px 10px;margin-left:8px;font-size:.8rem">Copy link</button>', true, true);
+      document.getElementById("nd-copy").onclick = (ev) => { navigator.clipboard.writeText(d.url); ev.currentTarget.textContent = "Copied"; };
+    } catch (err) { show(err.message, false); } finally { btn.disabled = false; btn.textContent = "Create demo"; }
+  });
+  document.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", async () => {
+    if (!confirm("Delete " + b.dataset.domain + "? This removes the site and its agent record.")) return;
+    const r = await fetch("/admin/api/create-demo", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: b.dataset.del }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) b.closest("tr").remove(); else alert(d.error || "Delete failed");
+  }));
+})();
+</script>
+</body>
+</html>
