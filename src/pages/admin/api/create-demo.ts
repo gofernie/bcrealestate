@@ -28,7 +28,11 @@ export const POST: APIRoute = async ({ request, url }) => {
     const { data: tpl, error: tErr } = await sb.from("sites").select("*").eq("id", TEMPLATE_SITE_ID).single();
     if (tErr || !tpl) return json({ error: "Template site not found. " + (tErr?.message || "") }, 500);
 
-    const { data: agent, error: aErr } = await sb.from("agents").insert({
+    const { data: au, error: uErr } = await sb.auth.admin.createUser({ email: `${slug}@demo.bc.realestate`, email_confirm: true, user_metadata: { demo: true, name } });
+    if (uErr || !au?.user) return json({ error: "Login account create failed: " + (uErr?.message || "") }, 500);
+    const authId = au.user.id;
+
+    const { data: agent, error: aErr } = await sb.from("agents").upsert({ id: authId,
       name,
       email: b.email || null,
       domain,
@@ -37,7 +41,7 @@ export const POST: APIRoute = async ({ request, url }) => {
       phone: b.phone || null,
       photo_url: b.photo_url || null,
     }).select("id").single();
-    if (aErr || !agent) return json({ error: "Agent insert failed: " + (aErr?.message || "") }, 500);
+    if (aErr || !agent) { await sb.auth.admin.deleteUser(authId); return json({ error: "Agent insert failed: " + (aErr?.message || "") }, 500); }
 
     const extras = (Array.isArray(b.extras) ? b.extras : []).map((c: any) => String(c).toLowerCase()).filter((c: string) => c && c !== city);
     const row: any = { ...tpl };
@@ -48,20 +52,20 @@ export const POST: APIRoute = async ({ request, url }) => {
       domain,
       city,
       primary_city: city,
-      site_name: `${name} Real Estate`,
+      site_name: /\b(realty|real estate|homes|group|properties|team)\b/i.test(name) ? name : `${name} Real Estate`,
       accent_color: /^#[0-9a-f]{6}$/i.test(String(b.accent_color || "")) ? b.accent_color : tpl.accent_color,
       hero_eyebrow: `Curated by ${name}`,
       secondary_markets: extras.map((c: string) => ({ city: c, label: "", imageUrl: "" })),
       agent_intro_background_url: null,
       featured_listing_mls: null,
-      featured_listing_images: null,
+      featured_listing_images: {},
       hero_image_url: null,
       primary_area: null,
     });
 
     const { data: site, error: sErr } = await sb.from("sites").insert(row).select("id").single();
     if (sErr || !site) {
-      await sb.from("agents").delete().eq("id", agent.id);
+      await sb.from("agents").delete().eq("id", agent.id); await sb.auth.admin.deleteUser(authId);
       return json({ error: "Site insert failed: " + (sErr?.message || "") }, 500);
     }
     return json({ ok: true, id: site.id, url: `https://${domain}/${city}/` });
@@ -83,7 +87,7 @@ export const DELETE: APIRoute = async ({ request, url }) => {
     if (error) return json({ error: error.message }, 500);
     if (s.agent_id) {
       const { data: other } = await sb.from("sites").select("id").eq("agent_id", s.agent_id).limit(1);
-      if (!other?.length) await sb.from("agents").delete().eq("id", s.agent_id);
+      if (!other?.length) { await sb.from("agents").delete().eq("id", s.agent_id); const { data: u } = await sb.auth.admin.getUserById(s.agent_id); if (String(u?.user?.email || "").endsWith("@demo.bc.realestate")) await sb.auth.admin.deleteUser(s.agent_id); }
     }
     return json({ ok: true });
   } catch (e: any) {
