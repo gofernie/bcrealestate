@@ -65,12 +65,66 @@ export async function writeGuide(env: GuideEnv, title: string, city: string, not
   return { md, truncated };
 }
 
+const AGENT_PROMPTS: [string, string][] = [
+  ["love", "What I love about it"],
+  ["who", "Who it suits, and who should look elsewhere"],
+  ["local", "Local spots worth knowing"],
+  ["story", "A client story"],
+  ["miss", "What buyers usually miss"],
+  ["friend", "What I'd tell a friend moving here"],
+  ["winter", "What it's like in winter or the off-season"],
+  ["money", "What your money gets you here"],
+  ["saturday", "A typical Saturday"],
+  ["surprised", "What surprised me or my clients"],
+  ["downsides", "The downsides nobody mentions"],
+  ["pockets", "Favourite streets and pockets"],
+  ["around", "Getting around: commute, groceries, schools"],
+];
+
+export async function writeAgentGuide(env: GuideEnv, title: string, city: string, answers: Record<string, any>, related?: { href: string; label: string } | null, notes = "", photos: any[] = []) {
+  const key = env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error("No ANTHROPIC_API_KEY");
+  if (!title.trim()) throw new Error("Add a title first");
+  const cityName = String(city || "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const filled = AGENT_PROMPTS.filter(([k]) => String(answers?.[k] || "").trim());
+  const fus = Array.isArray(answers?.followups) ? answers.followups.filter((f: any) => String(f?.q || "").trim() && String(f?.a || "").trim()) : [];
+  if (!filled.length && !fus.length) throw new Error("Answer at least one question first");
+  const qa = [...filled.map(([k, label]) => `### ${label}\n${String(answers[k]).trim()}`), ...fus.map((f: any) => `### ${String(f.q).trim()}\n${String(f.a).trim()}`)].join("\n\n");
+  const prompt = [
+    `You are helping a local real estate agent in ${cityName}, British Columbia turn their own answers into a guide for their website, titled "${title}".`,
+    `Write in the first person, as the agent. Keep their voice, opinions and phrasing; fix grammar, tighten and organise. Output Markdown only: no preamble, no notes, no H1 (the title renders separately).`,
+    `Use ONLY what is in the agent's answers below. Do not add facts, places, prices, statistics, schools, businesses or claims that are not in the answers, and do not research anything. Include every point the agent made; do not drop any of their content. The answers may be dictated: remove filler words, repeated points (say each thing once, in the section where it fits best) and dictation slips (for example "period" or "end of sentence" spoken aloud), and skip any fragment you cannot make sense of rather than guessing. If the answers are thin, write a shorter guide rather than padding it.`,
+    `Structure: an opening paragraph with no heading, then "##" sections that group related answers naturally, each with a short heading in the agent's voice. Follow-up answers belong with the topic they expand on. Use **bold** sparingly. Keep it under about 1,200 words.`,
+    related ? `End with this line on its own: [${related.label} \u2192](${related.href})` : "",
+    `Only use this Markdown: ## and ### headings, paragraphs, "- " and "1. " lists, **bold**, *italic*, [links](url).`,
+    notes ? `Author notes, follow these:\n${notes}` : "",
+    photos.length ? `Place each of these photos exactly once, on its own line, right after the paragraph it best fits, using this exact form: ![caption](url). Use the caption exactly as given. Do not add any other images.\n${photos.map((p: any) => `- ![${String(p.caption || p.alt || title).replace(/[\[\]]/g, "")}](${p.url})`).join("\n")}` : "",
+    `The agent's answers:\n\n${qa}`,
+  ].filter(Boolean).join("\n\n");
+  const model = env.GUIDE_MODEL || "claude-sonnet-5-5";
+  const out: any = await callClaude(key, { model, max_tokens: 4000, messages: [{ role: "user", content: prompt }] });
+  let md = (out?.content || []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim();
+  const start = md.indexOf("## "); const firstPara = md.search(/\S/);
+  if (start > 0 && firstPara < 0) md = md.slice(start);
+  for (const p of photos) if (p?.url && !md.includes(p.url)) md += `\n\n![${String(p.caption || p.alt || title).replace(/[\[\]]/g, "")}](${p.url})`;
+  if (related && !md.includes(related.href)) md += `\n\n[${related.label} \u2192](${related.href})`;
+  return { md, truncated: out?.stop_reason === "max_tokens" };
+}
 export async function runGuideJob(env: GuideEnv, id: string, notes = "", titleOverride = "") {
   const db = guideDb(env);
   try {
     const { data } = await db.from("guide_pages").select("*").eq("id", id).maybeSingle();
     if (!data) throw new Error("Guide not found");
-    const { md, truncated } = await writeGuide(env, titleOverride || data.title || "", data.city || data.city_slug || "", notes);
+    const __answers = data.agent_answers && typeof data.agent_answers === "object" ? data.agent_answers : null;
+    const __hasAnswers = !!__answers && Object.values(__answers).some((v: any) => String(v || "").trim());
+    let __related: { href: string; label: string } | null = null;
+    if (__hasAnswers && data.related_intent_slug) {
+      const { data: ip } = await db.from("intent_pages").select("slug,card_title,nav_label,hero_heading").eq("slug", data.related_intent_slug).eq("site_id", data.site_id).limit(1).maybeSingle();
+      if (ip) __related = { href: `/${data.city}/${ip.slug}`, label: `See ${String(ip.card_title || ip.nav_label || ip.hero_heading || "homes").trim()} for sale` };
+    }
+    const { md, truncated } = __hasAnswers
+      ? await writeAgentGuide(env, titleOverride || data.title || "", data.city || "", __answers, __related, notes, Array.isArray(data.photos) ? data.photos.filter((p: any) => p && p.url) : [])
+      : await writeGuide(env, titleOverride || data.title || "", data.city || data.city_slug || "", notes);
     if (!md) throw new Error("The draft came back empty");
     await db.from("guide_pages").update({ ai_status: "done", ai_draft: md, ai_error: truncated ? "May be cut off" : null }).eq("id", id);
   } catch (e: any) {

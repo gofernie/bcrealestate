@@ -1186,6 +1186,17 @@ const canonicalUrl = isNanaimoMobilesSite
 
 const heroLogoUrl = String((site as any)?.logo_url || "").trim() || await (async () => { try { const { createClient } = await import("@supabase/supabase-js"); const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }); const h = Astro.url.hostname.replace(/^www\./, "").replace(/\.localhost$/, ".bc.realestate"); const { data } = await sb.from("sites").select("logo_url").eq("domain", h).not("logo_url", "is", null).limit(1); return String(data?.[0]?.logo_url || "").trim(); } catch { return ""; } })();
 const heroLogoInvert = await (async () => { const v = (site as any)?.hero_logo_invert; if (typeof v === "boolean") return v; try { const { createClient } = await import("@supabase/supabase-js"); const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }); const h = Astro.url.hostname.replace(/^www\./, "").replace(/\.localhost$/, ".bc.realestate"); const { data } = await sb.from("sites").select("hero_logo_invert").eq("domain", h).limit(1); return data?.[0]?.hero_logo_invert !== false; } catch { return true; } })();
+let __agentGuides = [];
+try {
+  if (site?.id) {
+    const { createClient: __gc } = await import("@supabase/supabase-js");
+    const __gsb = __gc(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
+    const __gl = /localhost|127\.0\.0\.1/.test(Astro.url.hostname);
+    const { data: __gd } = await __gsb.from("guide_pages").select("city,slug,title,meta_description,hero_image_url,updated_at").eq("site_id", site.id).in("status", __gl ? ["live", "draft"] : ["live"]).order("updated_at", { ascending: false }).limit(6);
+    __agentGuides = (__gd || []).map((g) => ({ ...g, thumb: String(g.hero_image_url || "").replace(/-lg\.webp$/, "-sm.webp"), href: `/${g.city}/guides/${g.slug}` }));
+  }
+} catch {}
+const __guidesHeading = String(site?.site_name || "").trim() ? `Local guides from ${String(site.site_name).trim()}` : "Local guides";
 const homepageHeroKicker = isNanaimoMobilesSite
   ? "Nanaimo mobile home real estate"
   : `${cityName} Real Estate`;
@@ -5744,6 +5755,25 @@ setInterval(place,2000);if(document.readyState==="loading")document.addEventList
 
 </section>
 <LocalNews city={routeCity} />
+{__agentGuides.length > 0 && (
+  <section id="local-guides" style="width:100%;margin:0 0 58px;padding:0;scroll-margin-top:90px;">
+    <p style="font-size:.78rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent,#2f6f73);margin:0 0 6px;">Local guides</p>
+    <h2 style="font-family:'Instrument Serif',serif;font-weight:400;font-size:clamp(1.8rem,3.5vw,2.6rem);line-height:1.1;margin:0 0 22px;">{__guidesHeading}</h2>
+    <a href={`/${routeCity}/guides`} style="display:inline-block;margin:-8px 0 22px;font-weight:600;color:var(--accent,#2f6f73);text-decoration:none;">See all guides &rarr;</a>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:22px;">
+      {__agentGuides.map((g) => (
+        <a href={g.href} style="display:block;text-decoration:none;color:inherit;background:#fff;border:1px solid #e4e0d8;border-radius:14px;overflow:hidden;">
+          {g.thumb ? <img src={g.thumb} alt="" loading="lazy" decoding="async" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover;" /> : <div style="aspect-ratio:16/9;background:color-mix(in srgb, var(--accent,#2f6f73) 14%, white);"></div>}
+          <div style="padding:16px 18px 18px;">
+            <div style="font-weight:700;font-size:1.05rem;line-height:1.3;margin:0 0 6px;">{g.title}</div>
+            {g.meta_description && <div style="font-size:.9rem;color:#5b6660;line-height:1.45;">{g.meta_description}</div>}
+            <div style="margin-top:10px;font-weight:600;color:var(--accent,#2f6f73);font-size:.9rem;">Read the guide &rarr;</div>
+          </div>
+        </a>
+      ))}
+    </div>
+  </section>
+)}
 
 
 {isNanaimoMobilesSite && <MobileParksHome />}

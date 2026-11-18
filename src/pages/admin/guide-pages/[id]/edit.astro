@@ -39,6 +39,10 @@ if (Astro.request.method === "POST") {
       template: clean(form.get("template")) || "custom",
       status: clean(form.get("status")) || "draft",
       neighbourhood_copy: clean(form.get("neighbourhood_copy")) || null,
+      topic: clean(form.get("topic")) || null,
+      related_intent_slug: clean(form.get("related_intent_slug")) || null,
+      photos: (() => { try { const p = JSON.parse(clean(form.get("photos_json")) || "null"); return Array.isArray(p) ? p : undefined; } catch { return undefined; } })(),
+      agent_answers: (() => { const a = Object.fromEntries(["love","who","local","story","miss","friend","winter","money","saturday","surprised","downsides","pockets","around"].map((k) => [k, clean(form.get("ans_" + k)) || ""])); const fu = []; for (let i = 0; i < 20; i++) { const q = clean(form.get("fu_q_" + i)); if (q) fu.push({ q, a: clean(form.get("fu_a_" + i)) || "" }); } if (fu.length) a.followups = fu; return Object.values(a).some((v) => Array.isArray(v) ? v.length : Boolean(v)) ? a : null; })(),
       section_blocks: sectionBlocks,
       updated_at: new Date().toISOString(),
     })
@@ -58,6 +62,40 @@ const { data: page } = await supabase
   .single();
 
 if (!page) return Astro.redirect("/admin/intent-pages");
+const __agbTopics = [
+  ["", "Custom (write your own title)"],
+  ["why-love", "Why I love living in [neighbourhood]"],
+  ["tell-buyers", "What I tell buyers moving to [town]"],
+  ["living-on", "Living on [lake / waterfront]"],
+  ["retirees", "[Town] for retirees: my honest take"],
+  ["families", "[Neighbourhood] for families"],
+  ["first-time", "First-time buyers in [town]: my advice"],
+];
+const __agbQuestions = [
+  ["love", "What do you love about it?", "The things you'd point out on a drive through."],
+  ["who", "Who is it perfect for, and who should look elsewhere?", "Be honest. It builds trust."],
+  ["local", "Name a street, spot or shop locals know.", "The details only a local would mention."],
+  ["story", "A client story (no names).", "What happened, what you learned."],
+  ["miss", "What do buyers usually miss?", "Water, noise, slopes, strata quirks, commute..."],
+  ["friend", "What would you tell a friend moving here?", "Your straight-talk advice."],
+];
+const __agbExtra = [
+  ["winter", "What's it like in winter or the off-season?", "Snow, rain, quiet season, what changes."],
+  ["money", "What does your money get you here, in your experience?", "Rough ranges and trade-offs you've seen."],
+  ["saturday", "What's a typical Saturday like?", "Morning to evening, the way locals do it."],
+  ["surprised", "What surprised you or your clients about living here?", "Good or bad."],
+  ["downsides", "What are the downsides nobody mentions?", "Honesty here builds the most trust."],
+  ["pockets", "Which streets or pockets do you like most, and why?", "Name them and say what sets them apart."],
+  ["around", "How do people get around: commute, groceries, schools?", "From your own experience."],
+];
+let __siteName = ""; let __isAgentGuide = !!(page?.agent_answers);
+let __relatedOptions = [];
+try {
+  const { createClient: __cc } = await import("@supabase/supabase-js");
+  const __sb = __cc(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
+  if (page?.site_id) { const { data: __s } = await __sb.from("sites").select("domain,site_name").eq("id", page.site_id).maybeSingle(); __siteName = String(__s?.site_name || "").trim(); if (__s?.domain && !/^(www\.)?bc\.realestate$/.test(__s.domain)) __isAgentGuide = true; }
+  if (page?.site_id) { const { data } = await __sb.from("intent_pages").select("slug,card_title,nav_label,hero_heading").eq("site_id", page.site_id).order("slug"); __relatedOptions = data || []; }
+} catch {}
 ---
 <!doctype html>
 <html lang="en">
@@ -164,8 +202,257 @@ if (!page) return Astro.redirect("/admin/intent-pages");
       <option value="vs-canmore" selected={page.template === "vs-canmore"}>Fernie vs Canmore</option>
     </select>
 
-    <label>Body copy <span style="font-weight:400;color:#888">� main guide text, supports paragraph breaks</span></label>
+    <!-- agent-guide-builder:start -->
+<fieldset id="agb" data-city={page?.city || ""} data-agent={__siteName} style="border:1px solid #d9e2dc;border-radius:10px;padding:1rem 1.1rem;margin:0 0 1.4rem;background:#f7faf8;">
+  <legend style="font-weight:700;padding:0 .4rem;">Agent guide builder</legend>
+  <p style="margin:.2rem 0 .9rem;font-size:.88rem;color:#555;line-height:1.45;">Guides are what can rank on Google. Write what only you know: real experience, opinions, local detail. The AI only tidies your words into a guide. It adds nothing of its own. Tip: use the mic on your phone keyboard and just talk.</p>
+  <label>Topic</label>
+  <div style="display:flex;gap:.5rem;align-items:center;">
+    <select name="topic" id="agb-topic" style="flex:1;">
+      {__agbTopics.map(([v, l]) => <option value={v} selected={(page?.topic || "") === v}>{l}</option>)}
+    </select>
+    <button type="button" id="agb-use-topic">Use as title</button>
+  </div>
+  {__agbQuestions.map(([k, q, hint]) => (
+    <>
+      <label style="margin-top:.8rem;">{q}</label>
+      <textarea name={"ans_" + k} rows="3" class="agb-ans" placeholder={hint}>{(page?.agent_answers && page.agent_answers[k]) || ""}</textarea>
+    </>
+  ))}
+  <details style="margin-top:1rem;" open={__agbExtra.some(([k]) => page?.agent_answers && page.agent_answers[k])}>
+    <summary style="cursor:pointer;font-weight:600;">More questions (optional)</summary>
+    {__agbExtra.map(([k, q, hint]) => (
+      <>
+        <label style="margin-top:.8rem;">{q}</label>
+        <textarea name={"ans_" + k} rows="3" class="agb-ans" placeholder={hint}>{(page?.agent_answers && page.agent_answers[k]) || ""}</textarea>
+      </>
+    ))}
+  </details>
+  <div style="margin-top:1.1rem;padding-top:.9rem;border-top:1px dashed #cfd9d3;">
+    <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;">
+      <button type="button" id="agb-fu-btn">Suggest follow-up questions</button>
+      <span id="agb-fu-status" style="font-size:.85rem;color:#777;">The AI reads your answers and asks for more detail.</span>
+    </div>
+    <div id="agb-fu-list">
+      {((page?.agent_answers && Array.isArray(page.agent_answers.followups)) ? page.agent_answers.followups : []).map((f, i) => (
+        <div class="agb-fu">
+          <label style="margin-top:.8rem;">{f.q}</label>
+          <input type="hidden" name={"fu_q_" + i} value={f.q} />
+          <textarea name={"fu_a_" + i} rows="3" class="agb-ans" placeholder="Skip it if it doesn't apply.">{f.a || ""}</textarea>
+        </div>
+      ))}
+    </div>
+  </div>
+  <div style="margin-top:1.1rem;padding-top:.9rem;border-top:1px dashed #cfd9d3;">
+    <label>Your photos <span style="font-weight:400;color:#888">(your own photos only - we resize and compress them for you)</span></label>
+    <div style="display:flex;gap:1.2rem;align-items:flex-start;flex-wrap:wrap;margin-top:.4rem;">
+      <div style="flex:0 0 220px;">
+        <div style="font-size:.85rem;font-weight:600;margin-bottom:.35rem;">Hero photo</div>
+        <img id="agb-hero-prev" src={page?.hero_image_url || ""} alt="" style={`width:220px;height:124px;object-fit:cover;border-radius:8px;background:#e6ece8;display:${page?.hero_image_url ? "block" : "none"};`} />
+        <label style="display:inline-block;margin:.5rem 0 0;padding:.4rem .9rem;border:1px solid #2f6f73;border-radius:999px;color:#2f6f73;background:#fff;cursor:pointer;font-weight:600;font-size:.85rem;">Upload hero photo<input type="file" accept="image/*" id="agb-hero-file" style="display:none;" /></label>
+      </div>
+      <div style="flex:1;min-width:260px;">
+        <div style="font-size:.85rem;font-weight:600;margin-bottom:.35rem;">Photos in the guide</div>
+        <div id="agb-photo-list"></div>
+        <label style="display:inline-block;margin:.3rem 0 0;padding:.4rem .9rem;border:1px solid #2f6f73;border-radius:999px;color:#2f6f73;background:#fff;cursor:pointer;font-weight:600;font-size:.85rem;">+ Add photos<input type="file" accept="image/*" multiple id="agb-photo-files" style="display:none;" /></label>
+      </div>
+    </div>
+    <div id="agb-photo-status" style="font-size:.85rem;color:#777;margin-top:.5rem;"></div>
+    <input type="hidden" name="photos_json" id="agb-photos-json" value={JSON.stringify(Array.isArray(page?.photos) ? page.photos : [])} />
+  </div>
+  <label style="margin-top:1.1rem;">Related for-sale page <span style="font-weight:400;color:#888">(adds a "See ... for sale" button at the end)</span></label>
+  <select name="related_intent_slug" id="agb-related">
+    <option value="">None</option>
+    {__relatedOptions.map((o) => <option value={o.slug} selected={page?.related_intent_slug === o.slug}>{o.card_title || o.nav_label || o.hero_heading || o.slug}</option>)}
+  </select>
+  <div style="display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;margin-top:1rem;">
+    <button type="button" id="agb-draft">Draft from my answers</button>
+    <span id="agb-meter" style="font-size:.88rem;"></span>
+    <span id="agb-status" style="font-size:.85rem;color:#777;"></span>
+  </div>
+</fieldset>
+<script is:inline>
+(function () {
+  var box = document.getElementById("agb"); if (!box) return;
+  var form = box.closest("form"); if (!form) return;
+  var btn = document.getElementById("agb-draft"), meter = document.getElementById("agb-meter"), st = document.getElementById("agb-status");
+  var fuList = document.getElementById("agb-fu-list"), fuBtn = document.getElementById("agb-fu-btn"), fuSt = document.getElementById("agb-fu-status");
+  function all() { return Array.prototype.slice.call(form.querySelectorAll(".agb-ans")); }
+  function words() { return all().reduce(function (n, t) { var m = t.value.trim().match(/\S+/g); return n + (m ? m.length : 0); }, 0); }
+  function upd() { var w = words(); meter.textContent = w + " words of your own - aim for 600+"; meter.style.color = w >= 600 ? "#2f7d4f" : (w >= 300 ? "#b07a12" : "#b3412f"); }
+  form.addEventListener("input", function (e) { if (e.target && e.target.classList && e.target.classList.contains("agb-ans")) upd(); });
+  upd();
+  function rows() { return Array.prototype.slice.call(fuList.querySelectorAll(".agb-fu")); }
+  function reindex() { rows().forEach(function (r, i) { r.querySelector('input[type="hidden"]').name = "fu_q_" + i; r.querySelector("textarea").name = "fu_a_" + i; }); }
+  function addFu(q) {
+    var r = document.createElement("div"); r.className = "agb-fu";
+    var l = document.createElement("label"); l.style.cssText = "display:block;margin-top:.8rem;font-weight:600;"; l.textContent = q;
+    var h = document.createElement("input"); h.type = "hidden"; h.value = q;
+    var t = document.createElement("textarea"); t.rows = 3; t.className = "agb-ans"; t.placeholder = "Skip it if it doesn't apply."; t.style.cssText = "display:block;width:100%;box-sizing:border-box;font:inherit;padding:.6rem;";
+    r.appendChild(l); r.appendChild(h); r.appendChild(t); fuList.appendChild(r); reindex(); if (window.__agbMic) window.__agbMic(t);
+  }
+  function collect() {
+    var a = {};
+    all().forEach(function (t) { if (/^ans_/.test(t.name)) a[t.name.slice(4)] = t.value.trim(); });
+    var fu = rows().map(function (r) { return { q: r.querySelector('input[type="hidden"]').value.trim(), a: r.querySelector("textarea").value.trim() }; }).filter(function (f) { return f.q; });
+    if (fu.length) a.followups = fu;
+    return a;
+  }
+  function hasAny(a) { return Object.keys(a).some(function (k) { return k === "followups" ? a[k].some(function (f) { return f.a; }) : !!a[k]; }); }
+  document.getElementById("agb-use-topic").addEventListener("click", function () {
+    var s = document.getElementById("agb-topic"), o = s.options[s.selectedIndex], t = form.querySelector('[name="title"]');
+    if (o && o.value && t) { t.value = o.text; t.focus(); st.textContent = "Now replace the [brackets] in the title."; }
+  });
+  fuBtn.addEventListener("click", async function () {
+    var a = collect(); if (!hasAny(a)) { fuSt.textContent = "Answer a few questions first."; return; }
+    var t = form.querySelector('[name="title"]');
+    fuBtn.disabled = true; fuSt.textContent = "Thinking of good follow-ups...";
+    try {
+      var r = await fetch("/admin/api/guide-followups", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: t ? t.value : "", city: box.dataset.city || "", answers: a }) });
+      var d = await r.json(); if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+      var have = {}; rows().forEach(function (row) { have[row.querySelector('input[type="hidden"]').value] = 1; });
+      d.questions.forEach(function (q) { if (!have[q]) addFu(q); });
+      fuSt.textContent = "Answer the ones you can and skip the rest. Click again for more.";
+    } catch (e) { fuSt.textContent = "Failed: " + e.message; }
+    fuBtn.disabled = false;
+  });
+  btn.addEventListener("click", async function () {
+    var id = (location.pathname.match(/guide-pages\/([^/]+)/) || [])[1] || "";
+    var a = collect();
+    if (!hasAny(a)) { st.textContent = "Answer at least one question first."; return; }
+    var t = form.querySelector('[name="title"]');
+    if (t && /\[.+\]/.test(t.value)) { st.textContent = "Replace the [brackets] in the title first."; return; }
+    btn.disabled = true; st.textContent = "Starting...";
+    try {
+      var notesEl = document.getElementById("guide-gen-notes");
+      var r = await fetch("/admin/api/generate-guide", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: id, title: t ? t.value : "", notes: notesEl ? notesEl.value : "", agent_answers: a, topic: document.getElementById("agb-topic").value, related_intent_slug: document.getElementById("agb-related").value, photos: (function () { try { return JSON.parse(document.getElementById("agb-photos-json").value || "[]"); } catch (e) { return []; } })() }) });
+      var d = await r.json(); if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+      st.textContent = "Writing your guide. Use 'Insert generated draft' below the body copy when it's ready.";
+      if (window.__guideGenCheck) window.__guideGenCheck();
+    } catch (e) { st.textContent = "Failed: " + e.message; }
+    btn.disabled = false;
+  });
+})();
+</script>
+<script is:inline>
+(function () {
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR || !document.getElementById("agb")) return;
+  var active = null, MIC = "\uD83C\uDFA4 Talk", STOP = "\u25A0 Stop";
+  function idle(b) { b.textContent = MIC; b.style.background = "#fff"; b.style.color = "#2f6f73"; b.style.borderColor = "#2f6f73"; }
+  function attach(ta) {
+    if (!ta || ta.dataset.mic) return; ta.dataset.mic = "1";
+    var b = document.createElement("button"); b.type = "button";
+    b.style.cssText = "display:inline-block;margin:.35rem 0 0;padding:.3rem .85rem;font-size:.85rem;border-radius:999px;border:1px solid #2f6f73;cursor:pointer;";
+    idle(b); ta.insertAdjacentElement("afterend", b);
+    b.addEventListener("click", function () {
+      if (active && active.ta === ta) { active.rec.stop(); return; }
+      if (active) active.rec.stop();
+      var rec = new SR(); rec.lang = "en-CA"; rec.continuous = true; rec.interimResults = true;
+      var base = ta.value.trim() ? ta.value.trim() + " " : "", done = "";
+      rec.onresult = function (e) {
+        var interim = "";
+        for (var i = e.resultIndex; i < e.results.length; i++) { var r = e.results[i]; if (r.isFinal) done += r[0].transcript.trim() + " "; else interim += r[0].transcript; }
+        ta.value = base + done + interim; ta.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      rec.onerror = function (e) { var m = { "not-allowed": "Mic blocked - allow it in the address bar", "service-not-allowed": "Speech service blocked", "audio-capture": "No microphone found", "network": "Speech service unreachable", "no-speech": "Didn't hear anything - try again" }; b.textContent = m[e.error] || ("Mic error: " + e.error); b.style.background = "#fff"; b.style.color = "#b3412f"; b.style.borderColor = "#b3412f"; console.warn("speech error", e.error); };
+      rec.onend = function () { ta.value = (base + done).trim(); ta.dispatchEvent(new Event("input", { bubbles: true })); if (b.textContent === STOP) idle(b); setTimeout(function () { if (b.textContent !== STOP) idle(b); }, 4000); active = null; };
+      try { rec.start(); } catch (err) { return; }
+      active = { ta: ta, rec: rec };
+      b.textContent = STOP; b.style.background = "#b3412f"; b.style.color = "#fff"; b.style.borderColor = "#b3412f";
+    });
+  }
+  window.__agbMic = attach;
+  Array.prototype.slice.call(document.querySelectorAll("#agb .agb-ans")).forEach(attach);
+})();
+</script>
+<script is:inline>
+(function () {
+  var box = document.getElementById("agb"); if (!box) return;
+  var form = box.closest("form");
+  var id = (location.pathname.match(/guide-pages\/([^/]+)/) || [])[1] || "";
+  var hid = document.getElementById("agb-photos-json"), list = document.getElementById("agb-photo-list"), st = document.getElementById("agb-photo-status");
+  var photos = []; try { photos = JSON.parse(hid.value || "[]"); } catch (e) {}
+  function sync() { hid.value = JSON.stringify(photos); }
+  function render() {
+    list.innerHTML = "";
+    photos.forEach(function (p, i) {
+      var row = document.createElement("div"); row.style.cssText = "display:flex;gap:.6rem;align-items:center;margin-bottom:.5rem;";
+      var img = document.createElement("img"); img.src = p.url_sm || p.url; img.alt = ""; img.style.cssText = "width:96px;height:64px;object-fit:cover;border-radius:6px;flex:0 0 auto;";
+      var cap = document.createElement("input"); cap.type = "text"; cap.placeholder = "Caption, e.g. Morning mist off the north shore"; cap.value = p.caption || ""; cap.style.cssText = "flex:1;min-width:0;padding:.45rem .6rem;font:inherit;";
+      cap.addEventListener("input", function () { p.caption = cap.value; p.alt = cap.value; sync(); });
+      var rm = document.createElement("button"); rm.type = "button"; rm.textContent = "Remove"; rm.style.cssText = "flex:0 0 auto;";
+      rm.addEventListener("click", function () { photos.splice(i, 1); sync(); render(); });
+      row.appendChild(img); row.appendChild(cap); row.appendChild(rm); list.appendChild(row);
+    });
+  }
+  function shrink(file) {
+    return new Promise(function (res) {
+      var u = URL.createObjectURL(file), im = new Image();
+      im.onload = function () {
+        var s = Math.min(1, 2400 / Math.max(im.width, im.height)), c = document.createElement("canvas");
+        c.width = Math.round(im.width * s); c.height = Math.round(im.height * s);
+        c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u);
+        c.toBlob(function (b) { res(b || file); }, "image/jpeg", 0.88);
+      };
+      im.onerror = function () { URL.revokeObjectURL(u); res(file); };
+      im.src = u;
+    });
+  }
+  async function upload(file, kind) {
+    var blob = await shrink(file), fd = new FormData();
+    fd.append("file", blob, (file.name || "photo").replace(/\.[^.]+$/, "") + ".jpg"); fd.append("guide_id", id); fd.append("kind", kind);
+    var r = await fetch("/admin/api/guide-photo", { method: "POST", body: fd }), d = await r.json();
+    if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+    return d;
+  }
+  document.getElementById("agb-photo-files").addEventListener("change", async function (e) {
+    var files = Array.prototype.slice.call(e.target.files || []); e.target.value = "";
+    for (var i = 0; i < files.length; i++) {
+      st.textContent = "Optimizing photo " + (i + 1) + " of " + files.length + "...";
+      try { var d = await upload(files[i], "inline"); photos.push({ url: d.url, url_sm: d.url_sm, width: d.width, height: d.height, caption: "", alt: "" }); sync(); render(); }
+      catch (err) { st.textContent = "Failed: " + err.message; return; }
+    }
+    st.textContent = "Done. Add a caption to each photo, then Save. Photos go into your next draft.";
+  });
+  document.getElementById("agb-hero-file").addEventListener("change", async function (e) {
+    var f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
+    st.textContent = "Optimizing hero photo...";
+    try {
+      var d = await upload(f, "hero"), inp = form.querySelector('[name="hero_image_url"]'), pv = document.getElementById("agb-hero-prev");
+      if (inp) inp.value = d.url; pv.src = d.url_sm || d.url; pv.style.display = "block";
+      st.textContent = "Hero photo ready (" + d.kb + " KB). Save to keep it.";
+    } catch (err) { st.textContent = "Failed: " + err.message; }
+  });
+  render();
+})();
+</script>
+<script is:inline>
+window.__seoFill = function (md) {
+  var box = document.getElementById("agb"); if (!box) return;
+  var form = box.closest("form"); if (!form) return;
+  var t = form.querySelector('[name="title"]'), st = form.querySelector('[name="seo_title"]'), mdEl = form.querySelector('[name="meta_description"]');
+  var name = box.dataset.agent || "", title = t ? t.value.trim() : "";
+  if (st && !st.value.trim() && title) {
+    var a = title + ": Local Guide" + (name ? " | " + name : "");
+    if (a.length > 60) a = title + (name ? " | " + name : "");
+    if (a.length > 60) a = title;
+    st.value = a;
+  }
+  if (mdEl && !mdEl.value.trim()) {
+    var paras = String(md || "").split(/\n\s*\n/).map(function (x) { return x.trim(); }).filter(function (x) { return x && !/^(#|!\[|\[|- |\d+\.)/.test(x); });
+    var p = (paras[0] || "").replace(/\*\*|\*|`/g, "").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\s+/g, " ");
+    var out = "";
+    (p.match(/[^.!?]+[.!?]+/g) || [p]).forEach(function (s) { var n = (out + " " + s.trim()).trim(); if (n.length <= 155) out = n; });
+    if (!out && p) out = p.slice(0, 152).replace(/\s+\S*$/, "") + "...";
+    mdEl.value = out;
+  }
+};
+</script>
+<!-- agent-guide-builder:end -->
+<label>Body copy <span style="font-weight:400;color:#888">� main guide text, supports paragraph breaks</span></label>
     <textarea name="neighbourhood_copy" rows="8">{page.neighbourhood_copy || ""}</textarea>
+{__isAgentGuide && <Fragment set:html={'<style>#guide-gen-notes,#guide-gen-btn{display:none!important}</style>'} />}
 <!-- guide-gen:start -->
 <div style="margin:.6rem 0 1.2rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
   <input id="guide-gen-notes" placeholder="Optional: what to cover, angle, local details" style="flex:1;min-width:240px;" />
@@ -182,11 +469,23 @@ if (!page) return Astro.redirect("/admin/intent-pages");
   var id = (location.pathname.match(/guide-pages\/([^/]+)/) || [])[1] || "";
   var API = "/admin/api/generate-guide", draft = "";
   function show(d) {
-    if (d.status === "working") { btn.disabled = true; st.textContent = "Researching and writing. This takes a minute or two. You can leave and come back."; return true; }
+    var ast = document.getElementById("agb-status");
+    if (!document.getElementById("gg-css")) { var s = document.createElement("style"); s.id = "gg-css"; s.textContent = "@keyframes ggb{0%,80%,100%{transform:translateY(0);opacity:.35}40%{transform:translateY(-5px);opacity:1}}.gg-dots{display:inline-flex;gap:4px;margin-right:8px;vertical-align:middle}.gg-dots i{width:7px;height:7px;border-radius:50%;background:#2f6f73;display:block;animation:ggb 1.2s infinite ease-in-out}.gg-dots i:nth-child(2){animation-delay:.15s}.gg-dots i:nth-child(3){animation-delay:.3s}@keyframes ggp{0%{box-shadow:0 0 0 0 rgba(47,125,79,.55)}70%{box-shadow:0 0 0 12px rgba(47,125,79,0)}100%{box-shadow:0 0 0 0 rgba(47,125,79,0)}}.gg-ready{background:#2f7d4f!important;border-color:#2f7d4f!important;color:#fff!important;animation:ggp 1.6s infinite}.gg-done{color:#2f7d4f;font-weight:700;font-size:.95rem}"; document.head.appendChild(s); }
+    var dots = '<span class="gg-dots"><i></i><i></i><i></i></span>';
+    if (d.status === "working") {
+      btn.disabled = true; ins.style.display = "none"; ins.classList.remove("gg-ready");
+      st.innerHTML = dots + "Writing your guide..."; if (ast) ast.innerHTML = dots + "Writing your guide...";
+      return true;
+    }
     btn.disabled = false;
-    if (d.status === "done" && d.draft) { draft = d.draft; ins.style.display = ""; st.textContent = d.error ? "Draft ready, but it may be cut off. Check the ending before you save." : "Draft ready."; }
-    else if (d.status === "failed") st.textContent = "Failed: " + (d.error || "unknown error");
-    else st.textContent = "";
+    if (d.status === "done" && d.draft) {
+      draft = d.draft; ins.style.display = ""; ins.classList.add("gg-ready");
+      var msg = d.error ? "Draft ready, but it may be cut off. Check the ending." : "\u2713 Draft ready - click Insert generated draft";
+      st.innerHTML = '<span class="gg-done">' + msg + "</span>";
+      if (ast) ast.innerHTML = '<span class="gg-done">' + msg + " below \u2193</span>";
+    }
+    else if (d.status === "failed") { st.textContent = "Failed: " + (d.error || "unknown error"); if (ast) ast.textContent = st.textContent; }
+    else { st.textContent = ""; }
     return false;
   }
   async function check() {
@@ -205,10 +504,10 @@ if (!page) return Astro.redirect("/admin/intent-pages");
   });
   ins.addEventListener("click", function () {
     if (ta.value.trim() && !confirm("Replace the current body copy with the generated draft?")) return;
-    ta.value = draft; ins.style.display = "none"; st.textContent = "Inserted. Review it, then Save.";
+    ta.value = draft; if (window.__seoFill) window.__seoFill(draft); ins.style.display = "none"; ins.classList.remove("gg-ready"); var __a = document.getElementById("agb-status"); if (__a) __a.textContent = "Inserted. Review it, then Save."; st.textContent = "Inserted. Review it, then Save.";
     fetch(API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: id, action: "dismiss" }) });
   });
-  if (id) check();
+  window.__guideGenCheck = check; if (id) check();
 })();
 </script>
 <!-- guide-gen:end -->

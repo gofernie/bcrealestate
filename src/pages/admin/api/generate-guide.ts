@@ -37,6 +37,9 @@ export const POST: APIRoute = async ({ request }) => {
   if (cur?.ai_status === "working" && cur.ai_started_at && Date.now() - new Date(cur.ai_started_at).getTime() < STALE_MS) {
     return json({ error: "Already writing this guide" }, 409);
   }
+  if (b.agent_answers && typeof b.agent_answers === "object") {
+    await db.from("guide_pages").update({ agent_answers: b.agent_answers, topic: String(b.topic || "") || null, related_intent_slug: String(b.related_intent_slug || "") || null, ...(Array.isArray(b.photos) ? { photos: b.photos } : {}) }).eq("id", id);
+  }
   await db.from("guide_pages").update({ ai_status: "working", ai_draft: null, ai_error: null, ai_started_at: new Date().toISOString(), ai_notes: String(b.notes || "").slice(0, 4000) }).eq("id", id);
   const notes = String(b.notes || "").slice(0, 4000);
   const title = String(b.title || "").trim();

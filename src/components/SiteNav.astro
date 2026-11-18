@@ -338,7 +338,7 @@ const nanaimoMobileUtilityLinks: NavItem[] = [
   { label: "55+ Communities", href: "/mobile-home-parks-in-nanaimo?age=55-plus" },
 ];
 const agentLogoHome = (() => { const h = Astro.url.hostname.replace(/^www\./, "").replace(/\.localhost$/, ".bc.realestate").toLowerCase(); return !!h && h !== "bc.realestate" && h !== "localhost" && h !== "127.0.0.1" && !h.endsWith(".netlify.app"); })();
-const siteLogoUrl = await (async () => { try { const { createClient } = await import("@supabase/supabase-js"); const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }); const h = Astro.url.hostname.replace(/\.localhost$/, ".bc.realestate").replace(/^www\./, "").replace(/\.localhost$/, ".bc.realestate"); const { data } = await sb.from("sites").select("logo_url").eq("domain", h).not("logo_url", "is", null).limit(1); return String(data?.[0]?.logo_url || "").trim(); } catch { return ""; } })();
+const __hasGuides = await (async () => { try { if (!site?.id) return false; const { createClient } = await import("@supabase/supabase-js"); const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }); const local = /localhost|127\.0\.0\.1/.test(Astro.url.hostname); const { count } = await sb.from("guide_pages").select("id", { count: "exact", head: true }).eq("site_id", site.id).in("status", local ? ["live", "draft"] : ["live"]); return (count || 0) > 0; } catch { return false; } })();const siteLogoUrl = await (async () => { try { const { createClient } = await import("@supabase/supabase-js"); const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }); const h = Astro.url.hostname.replace(/\.localhost$/, ".bc.realestate").replace(/^www\./, "").replace(/\.localhost$/, ".bc.realestate"); const { data } = await sb.from("sites").select("logo_url").eq("domain", h).not("logo_url", "is", null).limit(1); return String(data?.[0]?.logo_url || "").trim(); } catch { return ""; } })();
 const agentAreas: any[] = await (async () => {
   if (!agentLogoHome) return [];
   try {
@@ -485,12 +485,18 @@ const currentAreaLabel = String((agentAreas.find((a: any) => a.slug === currentA
 ))}
 
 {!isNanaimoMobilesSite && (
-  <a
+  <><a
     class:list={{
       active: isActive(`/${slugify(city)}/market-intelligence`)
     }}
     href={`/${slugify(city)}/market-intelligence`}
   >Market Intel</a>
+{__hasGuides && (<a
+    class:list={{
+      active: isActive(`/${slugify(city)}/guides`)
+    }}
+    href={`/${slugify(city)}/guides`}
+  >Guides</a>)}</>
 )}
     </div>
   </div>
