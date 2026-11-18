@@ -1,10 +1,12 @@
 import type { APIRoute } from "astro";
+import { getAdminUser } from "../../../lib/guideAccess";
 export const prerender = false;
 
 const pick = (k: string) => (import.meta.env as any)[k] ?? process.env[k];
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "content-type": "application/json" } });
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, cookies }) => {
+  if (!(await getAdminUser(cookies))) return json({ error: "Not signed in" }, 401);
   const key = pick("ANTHROPIC_API_KEY");
   if (!key) return json({ error: "No ANTHROPIC_API_KEY" }, 500);
   const b: any = await request.json().catch(() => ({}));

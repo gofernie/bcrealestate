@@ -1,0 +1,175 @@
+---
+import AdminSidebar from "../../components/AdminSidebar.astro";
+import { getAdminUser, allowedSiteIds, canEditGuide } from "../../lib/guideAccess";
+import { createClient } from "@supabase/supabase-js";
+export const prerender = false;
+
+const supabase = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
+const me = await getAdminUser(Astro.cookies);
+if (!me) return Astro.redirect("/login");
+const allowed = await allowedSiteIds(supabase, me);
+const siteFilter = String(Astro.url.searchParams.get("site") || Astro.url.searchParams.get("siteId") || "");
+const msg = String(Astro.url.searchParams.get("msg") || "");
+const slugify = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
+
+if (Astro.request.method === "POST") {
+  const fd = await Astro.request.formData();
+  const action = String(fd.get("_action") || "");
+  const back = String(fd.get("back") || "/admin/guides");
+  if (action === "create") {
+    const siteId = String(fd.get("site_id") || "");
+    if (allowed && !allowed.includes(siteId)) return Astro.redirect("/admin/guides?msg=" + encodeURIComponent("You can only add guides to your own site"));
+    const title = String(fd.get("title") || "").trim() || "New guide";
+    const { data: s } = await supabase.from("sites").select("id,city").eq("id", siteId).maybeSingle();
+    if (!s) return Astro.redirect("/admin/guides?msg=" + encodeURIComponent("Pick a site first"));
+    const city = String(s.city || "").toLowerCase();
+    const base = slugify(title) || "guide";
+    let slug = base;
+    for (let i = 2; i < 50; i++) {
+      const { data: ex } = await supabase.from("guide_pages").select("id").eq("site_id", s.id).eq("city", city).eq("slug", slug).limit(1);
+      if (!ex || !ex.length) break;
+      slug = `${base}-${i}`;
+    }
+    const { data: row, error } = await supabase.from("guide_pages").insert({ site_id: s.id, city, slug, title, status: "draft", template: "custom" }).select("id").single();
+    if (error || !row) return Astro.redirect("/admin/guides?msg=" + encodeURIComponent("Could not create: " + (error?.message || "unknown")));
+    return Astro.redirect(`/admin/guide-pages/${row.id}/edit`);
+  }
+  const id = String(fd.get("id") || "");
+  if (id && !(await canEditGuide(supabase, me, id))) return Astro.redirect("/admin/guides?msg=" + encodeURIComponent("That guide isn't yours"));
+  if (id && action === "toggle") await supabase.from("guide_pages").update({ status: fd.get("live") === "1" ? "live" : "draft" }).eq("id", id);
+  if (id && action === "delete") await supabase.from("guide_pages").delete().eq("id", id);
+  return Astro.redirect(back);
+}
+
+let __sq = supabase.from("sites").select("id,domain,city,site_name").order("domain").order("city");
+if (allowed) __sq = __sq.in("id", allowed);
+const { data: sitesData } = await __sq;
+const sites = sitesData || [];
+const siteById = Object.fromEntries(sites.map((s) => [s.id, s]));
+let q = supabase.from("guide_pages").select("id,site_id,city,slug,title,status,updated_at,neighbourhood_copy,photos").order("updated_at", { ascending: false });
+if (allowed) q = q.in("site_id", allowed);
+if (siteFilter) q = q.eq("site_id", siteFilter);
+const { data: gData } = await q;
+
+const isLocal = /localhost|127\.0\.0\.1/.test(Astro.url.hostname);
+const port = Astro.url.port ? `:${Astro.url.port}` : "";
+const viewUrl = (domain, city, slug) => {
+  const d = String(domain || "bc.realestate").replace(/^www\./, "");
+  const path = `/${city}/guides/${slug}`;
+  if (!isLocal) return `https://${d}${path}`;
+  if (d === "bc.realestate") return `http://localhost${port}${path}`;
+  if (d.endsWith(".bc.realestate")) return `http://${d.replace(/\.bc\.realestate$/, ".localhost")}${port}${path}`;
+  return `http://localhost${port}${path}?siteDomain=${encodeURIComponent(d)}`;
+};
+const words = (md) => String(md || "").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\]\([^)]*\)/g, " ").replace(/[#*\[\]>`_-]/g, " ").split(/\s+/).filter(Boolean).length;
+const fmt = (d) => d ? new Date(d).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" }) : "";
+const siteLabel = (s) => s ? `${s.site_name || s.domain} \u00B7 ${String(s.city || "").replace(/-/g, " ")}` : "Unknown site";
+const guides = (gData || []).map((g) => {
+  const s = siteById[g.site_id];
+  return { ...g, site: s, label: siteLabel(s), words: words(g.neighbourhood_copy), photoCount: Array.isArray(g.photos) ? g.photos.length : 0, view: viewUrl(s?.domain, g.city, g.slug), live: g.status === "live" };
+});
+const backUrl = "/admin/guides" + (siteFilter ? `?site=${encodeURIComponent(siteFilter)}` : "");
+---
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Guides</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      body { margin: 0; font-family: "DM Sans", system-ui, sans-serif; color: #1f2a26; background: #f5f4f0; }
+      .main { max-width: 1200px; margin: 0 auto; padding: 28px 24px 70px; }
+      h1 { font-family: "Instrument Serif", serif; font-weight: 400; font-size: 2.4rem; margin: 0 0 4px; }
+      .sub { color: #5b6660; margin: 0 0 22px; }
+      .msg { background: #fff4e5; border: 1px solid #f0c98a; padding: 10px 14px; border-radius: 8px; margin: 0 0 18px; }
+      .bar { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; margin: 0 0 22px; }
+      .card { background: #fff; border: 1px solid #e4e0d8; border-radius: 12px; padding: 16px 18px; }
+      .new { flex: 1 1 520px; }
+      .new h2, .filter h2 { font-size: .8rem; letter-spacing: .1em; text-transform: uppercase; color: #2f6f73; margin: 0 0 10px; }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; }
+      select, input[type=text] { font: inherit; padding: 9px 10px; border: 1px solid #cfd6d2; border-radius: 8px; background: #fff; min-width: 0; }
+      .new select { flex: 1 1 220px; } .new input { flex: 2 1 260px; }
+      .btn { font: inherit; font-weight: 600; padding: 9px 16px; border-radius: 999px; border: 1px solid #2f6f73; background: #2f6f73; color: #fff; cursor: pointer; text-decoration: none; display: inline-block; white-space: nowrap; }
+      .btn.ghost { background: #fff; color: #2f6f73; }
+      .btn.danger { background: #fff; color: #b3412f; border-color: #e3b7ae; }
+      .btn.sm { padding: 6px 12px; font-size: .85rem; }
+      .list { display: flex; flex-direction: column; gap: 10px; }
+      .g { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; }
+      .g-title { font-weight: 700; font-size: 1.05rem; margin: 0 0 4px; }
+      .g-meta { font-size: .86rem; color: #5b6660; display: flex; gap: 12px; flex-wrap: wrap; }
+      .badge { font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
+      .badge.live { background: #e3f2e8; color: #2f7d4f; } .badge.draft { background: #eef0ee; color: #5b6660; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+      .actions form { margin: 0; }
+      .empty { color: #5b6660; padding: 30px; text-align: center; }
+      @media (max-width: 700px) { .g { grid-template-columns: 1fr; } .actions { justify-content: flex-start; } }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <AdminSidebar active="guides" />
+      <main class="main">
+        <h1>Guides</h1>
+        <p class="sub">Local guides written from agents' own experience. These are the pages that can rank.</p>
+        {msg && <div class="msg">{msg}</div>}
+
+        <div class="bar">
+          <form method="POST" class="card new">
+            <h2>New guide</h2>
+            <input type="hidden" name="_action" value="create" />
+            <div class="row">
+              <select name="site_id" required>
+                <option value="">Choose a site...</option>
+                {sites.map((s) => <option value={s.id} selected={s.id === siteFilter}>{siteLabel(s)}</option>)}
+              </select>
+              <input type="text" name="title" placeholder="Title (optional, e.g. Living on Quamichan Lake)" />
+              <button class="btn" type="submit">Create &amp; open builder &rarr;</button>
+            </div>
+          </form>
+          <form method="GET" class="card filter">
+            <h2>Show</h2>
+            <select name="site" onchange="this.form.submit()">
+              <option value="">All sites</option>
+              {sites.map((s) => <option value={s.id} selected={s.id === siteFilter}>{siteLabel(s)}</option>)}
+            </select>
+          </form>
+        </div>
+
+        <div class="list">
+          {guides.length === 0 && <div class="card empty">No guides yet. Create the first one above.</div>}
+          {guides.map((g) => (
+            <div class="card g">
+              <div>
+                <div class="g-title">{g.title || "(untitled)"} <span class={`badge ${g.live ? "live" : "draft"}`}>{g.live ? "Live" : "Draft"}</span></div>
+                <div class="g-meta">
+                  <span>{g.label}</span>
+                  <span>{g.words} words</span>
+                  <span>{g.photoCount} photo{g.photoCount === 1 ? "" : "s"}</span>
+                  <span>Updated {fmt(g.updated_at)}</span>
+                </div>
+              </div>
+              <div class="actions">
+                <a class="btn sm" href={`/admin/guide-pages/${g.id}/edit`}>Edit</a>
+                <a class="btn sm ghost" href={g.view} target="_blank" rel="noopener">View &#8599;</a>
+                <form method="POST">
+                  <input type="hidden" name="_action" value="toggle" />
+                  <input type="hidden" name="id" value={g.id} />
+                  <input type="hidden" name="live" value={g.live ? "0" : "1"} />
+                  <input type="hidden" name="back" value={backUrl} />
+                  <button class="btn sm ghost" type="submit">{g.live ? "Unpublish" : "Publish"}</button>
+                </form>
+                <form method="POST" onsubmit="return confirm('Delete this guide? This cannot be undone.');">
+                  <input type="hidden" name="_action" value="delete" />
+                  <input type="hidden" name="id" value={g.id} />
+                  <input type="hidden" name="back" value={backUrl} />
+                  <button class="btn sm danger" type="submit">Delete</button>
+                </form>
+              </div>
+            </div>
+          ))}
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

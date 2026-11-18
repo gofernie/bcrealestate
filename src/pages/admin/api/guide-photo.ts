@@ -2,18 +2,20 @@ import type { APIRoute } from "astro";
 import { createClient } from "@supabase/supabase-js";
 import sharp from "sharp";
 import { randomUUID } from "node:crypto";
+import { getAdminUser, canEditGuide } from "../../../lib/guideAccess";
 export const prerender = false;
 
 const pick = (k: string) => (import.meta.env as any)[k] ?? process.env[k];
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "content-type": "application/json" } });
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, cookies }) => {
   try {
     const form = await request.formData();
     const file = form.get("file");
     const guideId = String(form.get("guide_id") || "").replace(/[^a-z0-9-]/gi, "");
     const kind = String(form.get("kind") || "inline") === "hero" ? "hero" : "inline";
     if (!(file instanceof File) || !guideId) return json({ error: "Missing file or guide" }, 400);
+    { const __me = await getAdminUser(cookies); if (!__me || !(await canEditGuide(createClient(pick("PUBLIC_SUPABASE_URL"), pick("SUPABASE_SERVICE_ROLE_KEY")), __me, guideId))) return json({ error: "Not allowed" }, 403); }
     if (!/^image\//.test(file.type)) return json({ error: "That isn't an image" }, 400);
     const base = sharp(Buffer.from(await file.arrayBuffer()), { failOn: "none" }).rotate();
     const lgW = kind === "hero" ? 2000 : 1600;

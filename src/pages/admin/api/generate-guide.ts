@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { guideDb, guideJobToken, runGuideJob } from "../../../lib/guideGenerator";
+import { getAdminUser, canEditGuide } from "../../../lib/guideAccess";
 export const prerender = false;
 
 const pick = (k: string) => (import.meta.env as any)[k] ?? process.env[k];
@@ -10,9 +11,9 @@ const ENV = () => ({
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "content-type": "application/json" } });
 const STALE_MS = 16 * 60 * 1000;
 
-export const GET: APIRoute = async ({ url }) => {
+export const GET: APIRoute = async ({ url, cookies }) => {
   const id = url.searchParams.get("id") || "";
-  if (!id) return json({ error: "no id" }, 400);
+  if (!id) return json({ error: "no id" }, 400); { const __me = await getAdminUser(cookies); if (!__me || !(await canEditGuide(guideDb(ENV()), __me, id))) return json({ error: "Not allowed" }, 403); }
   const { data } = await guideDb(ENV()).from("guide_pages").select("ai_status, ai_draft, ai_error, ai_started_at, ai_notes").eq("id", id).maybeSingle();
   if (!data) return json({ status: null });
   if (data.ai_status === "working" && data.ai_started_at && Date.now() - new Date(data.ai_started_at).getTime() > STALE_MS) {
@@ -21,12 +22,12 @@ export const GET: APIRoute = async ({ url }) => {
   return json({ status: data.ai_status, draft: data.ai_status === "done" ? data.ai_draft : null, error: data.ai_error, notes: data.ai_notes });
 };
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, cookies }) => {
   const env = ENV();
   const db = guideDb(env);
   const b: any = await request.json().catch(() => ({}));
   const id = String(b.id || "");
-  if (!id) return json({ error: "no id" }, 400);
+  if (!id) return json({ error: "no id" }, 400); { const __me = await getAdminUser(cookies); if (!__me || !(await canEditGuide(guideDb(ENV()), __me, id))) return json({ error: "Not allowed" }, 403); }
 
   if (b.action === "dismiss") {
     await db.from("guide_pages").update({ ai_status: "applied" }).eq("id", id);
