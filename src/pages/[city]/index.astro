@@ -1182,9 +1182,10 @@ const seoDescription = isNanaimoMobilesSite
 
 const canonicalUrl = isNanaimoMobilesSite
   ? "https://nanaimomobiles.com/"
-  : `${Astro.url.origin}${Astro.url.pathname}`;
+  : Astro.url.searchParams.get("root_rewrite") === "1" ? `${Astro.url.origin}/` : `${Astro.url.origin}${Astro.url.pathname}`;
 
 const heroLogoUrl = String((site as any)?.logo_url || "").trim() || await (async () => { try { const { createClient } = await import("@supabase/supabase-js"); const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }); const h = Astro.url.hostname.replace(/^www\./, "").replace(/\.localhost$/, ".bc.realestate"); const { data } = await sb.from("sites").select("logo_url").eq("domain", h).not("logo_url", "is", null).limit(1); return String(data?.[0]?.logo_url || "").trim(); } catch { return ""; } })();
+const heroLogoInvert = await (async () => { const v = (site as any)?.hero_logo_invert; if (typeof v === "boolean") return v; try { const { createClient } = await import("@supabase/supabase-js"); const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }); const h = Astro.url.hostname.replace(/^www\./, "").replace(/\.localhost$/, ".bc.realestate"); const { data } = await sb.from("sites").select("hero_logo_invert").eq("domain", h).limit(1); return data?.[0]?.hero_logo_invert !== false; } catch { return true; } })();
 const homepageHeroKicker = isNanaimoMobilesSite
   ? "Nanaimo mobile home real estate"
   : `${cityName} Real Estate`;
@@ -2722,8 +2723,8 @@ window.__JAWG_ATTRIBUTION__ = jawgAccessToken
   <div class="locus-home-hero__inner">
 
     <div class="locus-home-hero__copy">
-      {heroLogoUrl && <img class="hero-agent-logo" src={heroLogoUrl} alt="" style="display:block;width:clamp(110px,12vw,170px);height:auto;margin:0 0 18px;filter:brightness(0) invert(1) drop-shadow(0 2px 8px rgba(0,0,0,.45));" />}
-      {heroLogoUrl && <Fragment set:html={'<style id="hide-nav-logo">.site-nav__logo,a:has(> .site-nav__logo){display:none !important}a:has(> .site-nav__logo)+*{margin-left:0 !important}</style>'} />}
+      {heroLogoUrl && <img class="hero-agent-logo" src={heroLogoUrl} alt="" style={`display:block;height:clamp(56px,6vw,92px);width:auto;max-width:min(380px,80vw);margin:0 0 18px;filter:${heroLogoInvert ? "brightness(0) invert(1) " : ""}drop-shadow(0 2px 8px rgba(0,0,0,.45));`} />}
+      {heroLogoUrl && <Fragment set:html={'<style id="hide-nav-logo">.site-nav__logo,a:has(> .site-nav__logo){display:none !important}a:has(> .site-nav__logo)+*{margin-left:0 !important}#site-nav-links{margin-left:auto !important}button.site-nav__toggle.site-nav__toggle{margin-left:auto !important;justify-self:end !important;order:99 !important}</style>'} />}
       <p class="locus-home-kicker">{homepageHeroKicker}</p>
 
       <h1>
