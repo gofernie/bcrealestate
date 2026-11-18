@@ -700,11 +700,11 @@ const maxPriceVal = storyBudgetVal
   const oceanViewsVal =
     String(form.elements.oceanViews?.value || "") === "true";
   const viewTypeVal =
-    String(form.elements.viewType?.value || "")
+    String(((document.getElementById("home-hero-search")?.elements?.viewType) || form.elements.viewType)?.value || "")
       .trim()
       .toLowerCase();
   const waterfrontTypeVal =
-    String(form.elements.waterfrontType?.value || "")
+    String(((document.getElementById("home-hero-search")?.elements?.waterfrontType) || form.elements.waterfrontType)?.value || "") /* hero-more-filters-sync-v1 */
       .trim()
       .toLowerCase();  const planModeVal = [
     "primary-on-main",
