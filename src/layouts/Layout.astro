@@ -503,7 +503,8 @@ html body .together__card[hidden] { display: none !important; }
 html body .together__card input { border-radius: 6px !important; }
 html body .together__card #together-submit { border-radius: 6px !important; }
 </style><style is:global>/* calm-chip-size-v1: neighbour-area chips size to their text */ html body button.cta-calm-chip[data-cta-calm-chip] { width: auto !important; max-width: max-content !important; flex: 0 0 auto !important; display: inline-flex !important; align-items: center !important; padding: 7px 14px !important; font-size: .82rem !important; line-height: 1.2 !important; min-height: 0 !important; } html body #neighbour-areas { justify-content: center !important; }</style>
-</head>
+<style is:inline>/* strip-blob-v1 */.hero-collections-strip:not(:has(a)){display:none!important}</style>
+<style is:inline>/* card-wait-v1 */html:not(.card-placed) .locus-home-agent-strip-top{visibility:hidden}</style>
 
 <body data-google-maps-api-key={import.meta.env.PUBLIC_GOOGLE_MAPS_API_KEY || ""}>
     <slot />
@@ -1669,29 +1670,32 @@ html body .together__card #together-submit { border-radius: 6px !important; }
 <!-- agent-strip-move-v3: Featured Searches + agent card under the search bar, even spacing -->
 <script is:inline>
 (() => {
-  const GAP = 24;
+  const GAP = 24; document.documentElement.classList.remove("card-placed"); setTimeout(() => document.documentElement.classList.add("card-placed"), 2000);
   let fs, strips = [];
-  const layout = () => { /* gap-batched-v1: read everything first, then write only what changed, so layout runs once */
+  const layout = () => { /* card-above-popular-v1: card sits right under the search, Popular searches below it */
     if (!fs) return;
     const form = document.getElementById("home-hero-search");
     const ref = document.getElementById("homepage-listings");
+    const vis = strips.filter((s) => getComputedStyle(s).display !== "none");
+    const top = vis[0] || fs;
+    const fsVis = getComputedStyle(fs).display !== "none";
     let mt = null;
     if (form && !form.closest(".listing-filter-rail.is-visible") && getComputedStyle(form).position !== "fixed") {
-      const cur = parseFloat(getComputedStyle(fs).marginTop) || 0;
-      const gap = fs.getBoundingClientRect().top - cur - form.getBoundingClientRect().bottom;
+      const cur = parseFloat(getComputedStyle(top).marginTop) || 0;
+      const gap = top.getBoundingClientRect().top - cur - form.getBoundingClientRect().bottom;
       mt = Math.max(-40, GAP - gap) + "px";
     }
     const w = ref ? ref.getBoundingClientRect().width : 0;
     const set = (el, k, v) => { if (el.style.getPropertyValue(k) !== v || el.style.getPropertyPriority(k) !== "important") el.style.setProperty(k, v, "important"); };
-    if (mt !== null) set(fs, "margin-top", mt);
-    set(fs, "margin-bottom", "0px");
     strips.forEach((s) => {
       set(s, "transform", "none");
-      set(s, "margin-top", (GAP + 20) + "px");
-      set(s, "margin-bottom", innerWidth <= 700 ? "20px" : "-20px"); /* agent-strip-mobile-gap */
+      if (s === top && mt !== null) set(s, "margin-top", mt);
+      set(s, "margin-bottom", fsVis ? "0px" : (innerWidth <= 700 ? "20px" : "-20px"));
       if (w > 0) { set(s, "max-width", w + "px"); set(s, "margin-left", "auto"); set(s, "margin-right", "auto"); }
-      const inner = s.firstElementChild; if (inner) set(inner, "margin-top", "0px");
+      const inner = s.firstElementChild; if (inner) { set(inner, "margin-top", "0px"); set(inner, "margin-bottom", "0px"); }
     });
+    if (top !== fs) set(fs, "margin-top", GAP + "px");
+    set(fs, "margin-bottom", "0px");
   };
   const place = () => {
     fs = document.querySelector(".hero-collections-strip");
@@ -1699,8 +1703,8 @@ html body .together__card #together-submit { border-radius: 6px !important; }
     const hero = document.querySelector(".locus-home-hero"), ft = document.querySelector("footer");
     const fm = document.getElementById("home-hero-search"), slot = fm && fm.closest(".home-mobile-search-slot"); /* featured-after-search-v1 */ if (slot && slot.offsetParent !== null) { if (slot.nextElementSibling !== fs) { slot.after(fs); setTimeout(() => dispatchEvent(new Event("resize")), 0); } } else if (hero && ft && (ft.compareDocumentPosition(fs) & Node.DOCUMENT_POSITION_FOLLOWING)) hero.after(fs);
     strips = [...document.querySelectorAll(".locus-home-agent-strip-top--desktop, .locus-home-agent-strip-top--mobile")];
-    let a = fs; strips.forEach((s) => { a.after(s); a = s; });
-    layout(); setTimeout(layout, 300);
+    strips.forEach((s) => fs.before(s));
+    layout(); requestAnimationFrame(() => document.documentElement.classList.add("card-placed")); setTimeout(layout, 300); (function waitLinks(n){ if (document.querySelector(".hero-collections-strip a") || n > 60) layout(); else setTimeout(() => waitLinks(n + 1), 100); })(0);
     addEventListener("resize", () => requestAnimationFrame(layout));
     return true;
   };

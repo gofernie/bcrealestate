@@ -44,7 +44,7 @@
       const heads = prev.length ? added.map(findHead).filter(Boolean) : [document.getElementById("homepage-listings")].filter(Boolean);
       if (!heads.length) return;
       heads.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
-      const el = heads[0];
+      const el = heads[0]; if (!prev.length) return;
       const to = () => scrollTo({ top: el.getBoundingClientRect().top + scrollY - topOffset() - 20, behavior: "auto" });
       to(); requestAnimationFrame(to);
     };
