@@ -1427,3 +1427,19 @@ if (homeGrid) {
 applySavedHomeDecisions();
 document.documentElement.style.visibility = "";
   })();
+
+/* hero-more-live-apply-v1: More filters panel changes refresh results right away */
+document.addEventListener("change", (e) => {
+  const t = e.target;
+  if (!t || !t.closest || !t.closest("#hero-more-filters") || !t.name) return;
+  const rf = document.getElementById("home-filter-form");
+  const r = rf && rf.elements[t.name];
+  if (r && !(r instanceof RadioNodeList)) {
+    if (r.type === "checkbox") r.checked = t.type === "checkbox" ? t.checked : !!t.value;
+    else r.value = t.type === "checkbox" ? (t.checked ? (t.value || "true") : "") : t.value;
+  }
+  clearTimeout(window.__heroMoreApplyT);
+  window.__heroMoreApplyT = setTimeout(() => {
+    if (typeof fetchHomeListings === "function") fetchHomeListings({ resetVisible: true });
+  }, 150);
+}, true);
