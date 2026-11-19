@@ -69,12 +69,22 @@ const { data: page } = await supabase
 if (!page) return Astro.redirect("/admin/intent-pages");
 const __agbTopics = [
   ["", "Custom (write your own title)"],
-  ["why-love", "Why I love living in [neighbourhood]"],
+  ["why-love", "Why I love living in [place]"],
   ["tell-buyers", "What I tell buyers moving to [town]"],
   ["living-on", "Living on [lake / waterfront]"],
   ["retirees", "[Town] for retirees: my honest take"],
-  ["families", "[Neighbourhood] for families"],
+  ["families", "[Place] for families"],
   ["first-time", "First-time buyers in [town]: my advice"],
+  ["r-first-time", "First-time buyers guide to [place] (AI research)"],
+  ["r-taxes", "Property taxes and transfer tax in [place] (AI research)"],
+  ["r-alberta", "Buying in [place] from Alberta (AI research)"],
+  ["r-str", "Short-term rental rules in [place] (AI research)"],
+  ["r-process", "How buying a home in [place] works (AI research)"],
+  ["r-strata", "Buying a condo or strata in [place]: what to check (AI research)"],
+  ["famous", "What [place] is famous for"],
+  ["r-expensive", "Is [place] expensive to live in? (AI research)"],
+  ["r-getting", "Getting to [place]: airports and drive times (AI research)"],
+  ["r-custom", "Custom research guide (AI research)"],
 ];
 const __agbQuestions = [
   ["love", "What do you love about it?", "The things you'd point out on a drive through."],
@@ -93,6 +103,48 @@ const __agbExtra = [
   ["pockets", "Which streets or pockets do you like most, and why?", "Name them and say what sets them apart."],
   ["around", "How do people get around: commute, groceries, schools?", "From your own experience."],
 ];
+const __agbResearch = {
+  "r-expensive": [
+    ["re_homes", "What do homes actually cost here right now, in your experience?", "Condos, townhomes, houses: rough ranges."],
+    ["re_hidden", "What costs catch newcomers off guard?", "Insurance, heating, snow removal, travel..."],
+    ["re_worth", "Is it worth it? Your honest take.", "What people get for the money."],
+  ],
+  "r-getting": [
+    ["rg_routes", "How do you and your clients usually get in and out?", "Airports, highways, shuttles."],
+    ["rg_winter", "What's winter driving like on the way in?", "Passes, road conditions, tips."],
+    ["rg_tip", "Your tip for buyers flying in to view homes?", "Timing, where to stay, planning a viewing trip."],
+  ],
+  "r-first-time": [
+    ["rf_mistake", "What do first-time buyers here most often get wrong?", "The mistakes you see again and again."],
+    ["rf_budget", "What does a realistic starter home look like here right now?", "Type, area, rough price, from your own deals."],
+    ["rf_advice", "Your best advice for a first-time buyer here?", "What you'd tell your own kid."],
+  ],
+  "r-taxes": [
+    ["rt_surprise", "What surprises your clients about taxes or closing costs here?", "The moment at closing they didn't see coming."],
+    ["rt_typical", "What do homes here typically pay in property tax, from what you've seen?", "Rough ranges are fine."],
+    ["rt_quirk", "Any local quirks?", "Town vs rural, utilities, assessments, grants people forget."],
+  ],
+  "r-alberta": [
+    ["ra_why", "Why are Albertans buying here, from what you see?", "Lifestyle, prices, recreation, retirement..."],
+    ["ra_trip", "What catches Alberta buyers off guard?", "Rules, costs, timing, the market itself."],
+    ["ra_tip", "Your advice for buying from out of province?", "Remote viewings, timing, financing, trips out."],
+  ],
+  "r-str": [
+    ["rs_where", "Where do short-term rentals actually work here, in your experience?", "Buildings, zones, pockets."],
+    ["rs_trap", "What STR mistakes have you seen buyers make?", "The ones that cost real money."],
+    ["rs_numbers", "What's realistic for bookings or income, from what you've seen?", "Seasons, occupancy, your honest take."],
+  ],
+  "r-process": [
+    ["rp_timeline", "How long does it usually take here from offer to keys?", "Typical timelines you see."],
+    ["rp_local", "What's different about buying here vs a big city?", "Subjects, inspections, wells, septic, insurance..."],
+    ["rp_tip", "One thing you wish every buyer knew before they start?", "Your straight-talk advice."],
+  ],
+  "r-strata": [
+    ["rx_red", "What red flags do you look for in strata documents here?", "Minutes, depreciation reports, levies, bylaws."],
+    ["rx_buildings", "Any buildings or complexes buyers should know about?", "Good or bad, and why."],
+    ["rx_tip", "Your advice before writing an offer on a strata?", "What to ask for, what to check."],
+  ],
+};
 let __siteName = ""; let __isAgentGuide = !!(page?.agent_answers);
 let __relatedOptions = [];
 try {
@@ -101,6 +153,39 @@ try {
   if (page?.site_id) { const { data: __s } = await __sb.from("sites").select("domain,site_name").eq("id", page.site_id).maybeSingle(); __siteName = String(__s?.site_name || "").trim(); if (__s?.domain && !/^(www\.)?bc\.realestate$/.test(__s.domain)) __isAgentGuide = true; }
   if (page?.site_id) { const { data } = await __sb.from("intent_pages").select("slug,card_title,nav_label,hero_heading").eq("site_id", page.site_id).order("slug"); __relatedOptions = data || []; }
 } catch {}
+const __agbPlaces = await (async () => {
+  const tc = (v) => String(v || "").replace(/[-_]+/g, " ").trim().replace(/\b\w/g, (m) => m.toUpperCase());
+  const slug = (v) => String(v || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const towns = [];
+  const add = (s, l) => { s = slug(s); if (s && !towns.some((t) => t.slug === s)) towns.push({ slug: s, label: l || tc(s), hoods: [] }); };
+  try {
+    add(page?.city);
+    if (page?.site_id) {
+      const { data: st } = await supabase.from("sites").select("primary_city, city, secondary_markets").eq("id", page.site_id).maybeSingle();
+      if (st) {
+        add(st.primary_city || st.city);
+        (Array.isArray(st.secondary_markets) ? st.secondary_markets : []).forEach((m) =>
+          add(typeof m === "string" ? m : m?.city, typeof m === "object" && m?.label ? String(m.label) : ""));
+      }
+    }
+  } catch {}
+  try {
+    const probe = await supabase.from("area_boundaries").select("*").limit(1);
+    const cols = Object.keys(probe.data?.[0] || {});
+    const cc = ["city", "city_slug", "primary_city", "market"].find((k) => cols.includes(k));
+    const nc = ["area_name", "name", "label", "neighbourhood", "area", "title"].find((k) => cols.includes(k));
+    if (cc && nc) {
+      const { data } = await supabase.from("area_boundaries").select(`${cc},${nc}`).limit(5000);
+      (data || []).forEach((r) => {
+        const t = towns.find((x) => x.slug === slug(r[cc]));
+        const n = String(r[nc] || "").trim();
+        if (t && n && !t.hoods.includes(n)) t.hoods.push(n);
+      });
+      towns.forEach((t) => t.hoods.sort((a, b) => a.localeCompare(b)));
+    }
+  } catch {}
+  return towns;
+})();
 ---
 <!doctype html>
 <html lang="en">
@@ -216,8 +301,23 @@ try {
     <select name="topic" id="agb-topic" style="flex:1;">
       {__agbTopics.map(([v, l]) => <option value={v} selected={(page?.topic || "") === v}>{l}</option>)}
     </select>
-    <button type="button" id="agb-use-topic">Use as title</button>
+    <select id="agb-town" title="Town" style="flex:0 0 150px;">{__agbPlaces.map((t) => <option value={t.slug}>{t.label}</option>)}</select>
+<select id="agb-hood" title="Neighbourhood (optional)" style="flex:0 0 190px;"><option value="">Whole town</option></select>
+<script type="application/json" id="agb-places-data" set:html={JSON.stringify(__agbPlaces)}></script>
+<button type="button" id="agb-use-topic">Use as title</button>
   </div>
+  <div id="agb-paa" style="margin-top:.8rem;">
+    <button type="button" id="agb-paa-btn" style="padding:.4rem .95rem;border:1px solid #2f6f73;border-radius:999px;color:#2f6f73;background:#fff;cursor:pointer;font-weight:600;font-size:.85rem;">What are people asking?</button>
+    <button type="button" id="agb-gsc-btn" style="padding:.4rem .95rem;border:1px solid #2f6f73;border-radius:999px;color:#2f6f73;background:#fff;cursor:pointer;font-weight:600;font-size:.85rem;margin-left:.3rem;">From Search Console</button>
+    <span id="agb-paa-status" style="font-size:.85rem;color:#777;margin-left:.5rem;">Finds what people search on Google for this title.</span>
+    <div id="agb-paa-list" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.55rem;"></div>
+  </div>
+  <div id="agb-sq" style="margin-top:.9rem;padding-top:.8rem;border-top:1px dashed #cfd9d3;">
+    <button type="button" id="agb-sq-btn" style="padding:.4rem .95rem;border:1px solid #2f6f73;border-radius:999px;color:#fff;background:#2f6f73;cursor:pointer;font-weight:600;font-size:.85rem;">Suggest questions for this guide</button>
+    <span id="agb-sq-status" style="font-size:.85rem;color:#777;margin-left:.5rem;">Reads your title and the questions below, then suggests better ones.</span>
+    <div id="agb-sq-list" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.55rem;"></div>
+  </div>
+  <div id="agb-personal">
   {__agbQuestions.map(([k, q, hint]) => (
     <>
       <label style="margin-top:.8rem;">{q}</label>
@@ -233,6 +333,22 @@ try {
       </>
     ))}
   </details>
+</div>
+  <div id="agb-research" style="display:none;">
+    <p style="margin:.9rem 0 0;font-size:.85rem;color:#555;line-height:1.45;">The AI researches and verifies the facts. Your answers make it yours: they're woven in as your own tips and experience.</p>
+    {Object.entries(__agbResearch).map(([tv, qs]) => (
+      <div class="agb-rq" data-topic={tv} style="display:none;">
+        {qs.map(([k, q, hint]) => (
+          <>
+            <label style="margin-top:.8rem;">{q}</label>
+            <textarea name={"ans_" + k} rows="3" class="agb-ans" placeholder={hint}>{(page?.agent_answers && page.agent_answers[k]) || ""}</textarea>
+          </>
+        ))}
+      </div>
+    ))}
+    <label style="margin-top:.8rem;">A client story (no names).</label>
+    <textarea name="ans_rq_story" rows="3" class="agb-ans" placeholder="A real situation that shows why this matters.">{(page?.agent_answers && page.agent_answers.rq_story) || ""}</textarea>
+  </div>
   <div style="margin-top:1.1rem;padding-top:.9rem;border-top:1px dashed #cfd9d3;">
     <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;">
       <button type="button" id="agb-fu-btn">Suggest follow-up questions</button>
@@ -304,12 +420,39 @@ try {
     return a;
   }
   function hasAny(a) { return Object.keys(a).some(function (k) { return k === "followups" ? a[k].some(function (f) { return f.a; }) : !!a[k]; }); }
-  document.getElementById("agb-use-topic").addEventListener("click", function () {
+  (function(){var d=[];try{d=JSON.parse(document.getElementById("agb-places-data").textContent||"[]");}catch(e){}var ts=document.getElementById("agb-town"),hs=document.getElementById("agb-hood");if(!ts||!hs)return;function fill(){var t=d.find(function(x){return x.slug===ts.value;});hs.innerHTML='<option value="">Whole town</option>';(t&&t.hoods||[]).forEach(function(n){var o=document.createElement("option");o.value=n;o.textContent=n;hs.appendChild(o);});hs.style.display=(t&&t.hoods&&t.hoods.length)?"":"none";}ts.addEventListener("change",fill);fill();document.getElementById("agb-use-topic").addEventListener("click",function(){setTimeout(function(){var t=document.querySelector('[name="title"]');if(!t)return;var v=hs.value||(ts.options[ts.selectedIndex]||{}).text||"";if(!v)return;t.value=t.value.replace(/\[place\]/g,v).replace(/\[Place\]/g,v);t.dispatchEvent(new Event("input",{bubbles:true}));},0);});})();
+document.addEventListener("DOMContentLoaded",function(){var sel=document.getElementById("agb-topic"),per=document.getElementById("agb-personal"),res=document.getElementById("agb-research"),gb=document.getElementById("guide-gen-btn");var row=gb?gb.parentElement:null;function sync(){var v=String(sel&&sel.value||""),r=v.indexOf("r-")===0;if(per)per.style.display=r?"none":"";if(res)res.style.display=r?"":"none";document.querySelectorAll("#agb .agb-rq").forEach(function(d){d.style.display=d.getAttribute("data-topic")===v?"":"none";});if(row)row.style.display=r?"":"none";}if(sel){sel.addEventListener("change",sync);sync();}if(!gb)return;gb.addEventListener("click",async function(e){var v=String(sel&&sel.value||"");if(v.indexOf("r-")!==0)return;e.stopImmediatePropagation();e.preventDefault();var form=document.getElementById("agb").closest("form");var t=form.querySelector('[name="title"]');var st=document.getElementById("guide-gen-status");if(t&&/\[.+\]/.test(t.value)){st.textContent="Replace the [brackets] in the title first.";return;}var a={};form.querySelectorAll('[name^="ans_"]').forEach(function(x){if(x.value.trim())a[x.name.slice(4)]=x.value.trim();});var fus=[];form.querySelectorAll('[name^="fu_q_"]').forEach(function(q){var n=q.name.slice(5),an=form.querySelector('[name="fu_a_'+n+'"]');if(an&&an.value.trim())fus.push({q:q.value,a:an.value.trim()});});a.followups=fus;var id=(location.pathname.match(/guide-pages\/([^/]+)/)||[])[1]||"";gb.disabled=true;st.textContent="Starting...";try{var r=await fetch("/admin/api/generate-guide",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id,title:t?t.value:"",notes:(document.getElementById("guide-gen-notes")||{}).value||"",agent_answers:a,topic:v,related_intent_slug:(document.getElementById("agb-related")||{}).value||"",photos:(function(){try{return JSON.parse(document.getElementById("agb-photos-json").value||"[]");}catch(x){return [];}})()})});var d=await r.json();if(!r.ok)throw new Error(d.error||("HTTP "+r.status));st.textContent="Researching and writing...";if(window.__guideGenCheck)window.__guideGenCheck();}catch(err){st.textContent="Failed: "+err.message;}gb.disabled=false;},true);});
+document.addEventListener("DOMContentLoaded",function(){var b=document.getElementById("agb-paa-btn");if(!b)return;var st=document.getElementById("agb-paa-status"),list=document.getElementById("agb-paa-list"),sel=document.getElementById("agb-topic"),box=document.getElementById("agb"),form=box.closest("form");function place(){var ts=document.getElementById("agb-town"),hs=document.getElementById("agb-hood");return (hs&&hs.value)||(ts&&ts.options[ts.selectedIndex]?ts.options[ts.selectedIndex].text:"")||box.dataset.city||"";}function isR(){return String(sel&&sel.value||"").indexOf("r-")===0;}function addFu(q){var fl=document.getElementById("agb-fu-list");if(!fl)return;var max=-1;form.querySelectorAll('[name^="fu_q_"]').forEach(function(x){var n=parseInt(x.name.slice(5),10);if(n>max)max=n;});var i=max+1;var row=document.createElement("div");row.className="agb-fu";var l=document.createElement("label");l.style.marginTop=".8rem";l.textContent=q;var h=document.createElement("input");h.type="hidden";h.name="fu_q_"+i;h.value=q;var ta=document.createElement("textarea");ta.name="fu_a_"+i;ta.rows=3;ta.className="agb-ans";ta.placeholder="Answer in your own words, or skip it.";row.appendChild(l);row.appendChild(h);row.appendChild(ta);fl.appendChild(row);if(window.__agbMic)window.__agbMic(ta);return row;}function addNote(q){var n=document.getElementById("guide-gen-notes");if(!n)return;var tag="Answer these searched questions in the FAQ, using this exact wording:";if(n.value.indexOf(tag)<0)n.value=(n.value.trim()+" "+tag).trim();n.value+=" "+q;return " "+q;}b.addEventListener("click",async function(){var t=form.querySelector('[name="title"]');var title=t?t.value.trim():"";if(/\[.+\]/.test(title))title="";b.disabled=true;st.textContent="Searching what people ask...";try{var r=await fetch("/admin/api/guide-paa",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({title:title,place:place(),topic:sel?sel.value:""})});var d=await r.json();if(!r.ok)throw new Error(d.error||("HTTP "+r.status));list.innerHTML="";(d.questions||[]).forEach(function(q){var c=document.createElement("button");c.type="button";c.textContent="+ "+q;c.style.cssText="padding:.35rem .75rem;border:1px solid #cfd9d3;border-radius:999px;background:#fff;cursor:pointer;font-size:.85rem;text-align:left;";var lab=c.textContent,on=false,row=null,nt="";c.addEventListener("click",function(){var n=document.getElementById("guide-gen-notes");if(!on){if(isR())nt=addNote(q)||"";else row=addFu(q);on=true;c.textContent="\u2713 "+q;c.style.background="#e6f0ec";c.style.borderColor="#2f6f73";}else{if(row&&row.parentNode)row.parentNode.removeChild(row);if(nt&&n)n.value=n.value.replace(nt,"");row=null;nt="";on=false;c.textContent=lab;c.style.background="#fff";c.style.borderColor="#cfd9d3";}});list.appendChild(c);});st.textContent=(d.questions||[]).length?(isR()?"Click to have the AI answer them in the FAQ.":"Click to add as questions for you to answer."):"Nothing found. Try a broader title.";}catch(err){st.textContent="Failed: "+err.message;}b.disabled=false;});});
+document.addEventListener("DOMContentLoaded",function(){var b=document.getElementById("agb-gsc-btn");if(!b)return;var st=document.getElementById("agb-paa-status"),list=document.getElementById("agb-paa-list"),sel=document.getElementById("agb-topic"),box=document.getElementById("agb"),form=box.closest("form");var ts=document.getElementById("agb-town"),hs=document.getElementById("agb-hood");function town(){return ts&&ts.options[ts.selectedIndex]?ts.options[ts.selectedIndex].text:(box.dataset.city||"");}function place(){return (hs&&hs.value)||town();}function isR(){return String(sel&&sel.value||"").indexOf("r-")===0;}function addFu(q){var fl=document.getElementById("agb-fu-list");if(!fl)return;var max=-1;form.querySelectorAll('[name^="fu_q_"]').forEach(function(x){var n=parseInt(x.name.slice(5),10);if(n>max)max=n;});var i=max+1;var row=document.createElement("div");row.className="agb-fu";var l=document.createElement("label");l.style.marginTop=".8rem";l.textContent=q;var h=document.createElement("input");h.type="hidden";h.name="fu_q_"+i;h.value=q;var ta=document.createElement("textarea");ta.name="fu_a_"+i;ta.rows=3;ta.className="agb-ans";ta.placeholder="Answer in your own words, or skip it.";row.appendChild(l);row.appendChild(h);row.appendChild(ta);fl.appendChild(row);if(window.__agbMic)window.__agbMic(ta);return row;}function addNote(q){var n=document.getElementById("guide-gen-notes");if(!n)return;var tag="Make sure the guide fully answers these real Google searches:";if(n.value.indexOf(tag)<0)n.value=(n.value.trim()+" "+tag).trim();n.value+=" \""+q+"\";";return " \""+q+"\";";}b.addEventListener("click",async function(){b.disabled=true;st.textContent="Loading your real Google searches...";try{var r=await fetch("/admin/api/guide-gsc",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({place:place(),town:town()})});var d=await r.json();if(!r.ok)throw new Error(d.error||("HTTP "+r.status));list.innerHTML="";(d.queries||[]).forEach(function(x){var c=document.createElement("button");c.type="button";c.textContent="+ "+x.q+"  \u00b7 "+x.impressions+" views";c.title=x.clicks+" clicks, avg position "+x.position+" (last 90 days)";c.style.cssText="padding:.35rem .75rem;border:1px solid #cfd9d3;border-radius:999px;background:#fff;cursor:pointer;font-size:.85rem;text-align:left;";var lab=c.textContent,on=false,row=null,nt="";c.addEventListener("click",function(){var n=document.getElementById("guide-gen-notes");if(!on){if(isR())nt=addNote(x.q)||"";else row=addFu("People search \""+x.q+"\". What would you tell them?");on=true;c.textContent="\u2713 "+x.q;c.style.background="#e6f0ec";c.style.borderColor="#2f6f73";}else{if(row&&row.parentNode)row.parentNode.removeChild(row);if(nt&&n)n.value=n.value.replace(nt,"");row=null;nt="";on=false;c.textContent=lab;c.style.background="#fff";c.style.borderColor="#cfd9d3";}});list.appendChild(c);});st.textContent=(d.queries||[]).length?"Real searches your site showed up for (last 90 days). Hover for clicks and position.":"No searches yet for "+place()+". Try the town instead of a neighbourhood.";}catch(err){st.textContent="Failed: "+err.message;}b.disabled=false;});});
+document.addEventListener("DOMContentLoaded",function(){var box=document.getElementById("agb");if(!box)return;var form=box.closest("form");var t=form.querySelector('[name="title"]');var list=document.getElementById("agb-paa-list"),st=document.getElementById("agb-paa-status");if(list&&t){var prev=null,cur=null;function clean(s){return String(s||"").replace(/^[+\u2713]\s*/,"").replace(/\s*\u00b7\s*\d+\s*views\s*$/,"").trim();}function cap(s){return s.charAt(0).toUpperCase()+s.slice(1);}function paint(b,on){b.style.background=on?"#e6f0ec":"#fff";b.style.borderColor=on?"#2f6f73":"#cfd9d3";}list.addEventListener("click",function(e){var b=e.target.closest("button");if(!b||!list.contains(b))return;e.stopPropagation();e.preventDefault();if(!b.dataset.q)b.dataset.q=clean(b.textContent);if(cur===b){t.value=prev||"";paint(b,false);cur=null;}else{if(cur)paint(cur,false);else prev=t.value;t.value=cap(b.dataset.q);paint(b,true);cur=b;}t.dispatchEvent(new Event("input",{bubbles:true}));},true);new MutationObserver(function(){if(list.children.length){cur=null;st.textContent="Ideas for a guide. Click one to use it as the title (click again to undo).";}}).observe(list,{childList:true});}
+var sb=document.getElementById("agb-sq-btn");if(!sb)return;var ss=document.getElementById("agb-sq-status"),sl=document.getElementById("agb-sq-list"),sel=document.getElementById("agb-topic");function vis(el){return !!(el&&el.offsetParent!==null);}function existing(){var out=[];box.querySelectorAll("label").forEach(function(l){var nx=l.nextElementSibling;if(!nx)return;var ta=nx.tagName==="TEXTAREA"?nx:(nx.tagName==="INPUT"&&nx.nextElementSibling&&nx.nextElementSibling.tagName==="TEXTAREA"?nx.nextElementSibling:null);if(ta&&ta.classList.contains("agb-ans")&&(vis(ta)||ta.closest(".agb-fu")))out.push(l.textContent.trim());});return out;}function place(){var ts=document.getElementById("agb-town"),hs=document.getElementById("agb-hood");return (hs&&hs.value)||(ts&&ts.options[ts.selectedIndex]?ts.options[ts.selectedIndex].text:"")||box.dataset.city||"";}function addFu(q){var fl=document.getElementById("agb-fu-list");if(!fl)return null;var max=-1;form.querySelectorAll('[name^="fu_q_"]').forEach(function(x){var n=parseInt(x.name.slice(5),10);if(n>max)max=n;});var i=max+1;var row=document.createElement("div");row.className="agb-fu";var l=document.createElement("label");l.style.marginTop=".8rem";l.textContent=q;var h=document.createElement("input");h.type="hidden";h.name="fu_q_"+i;h.value=q;var ta=document.createElement("textarea");ta.name="fu_a_"+i;ta.rows=3;ta.className="agb-ans";ta.placeholder="Answer in your own words, or skip it.";row.appendChild(l);row.appendChild(h);row.appendChild(ta);fl.appendChild(row);if(window.__agbMic)window.__agbMic(ta);return row;}sb.addEventListener("click",async function(){var title=t?t.value.trim():"";if(!title||/\[.+\]/.test(title)){ss.textContent="Set the title first.";return;}sb.disabled=true;ss.textContent="Thinking about your guide...";try{var r=await fetch("/admin/api/guide-prompts",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({title:title,place:place(),topic:sel?sel.value:"",existing:existing()})});var d=await r.json();if(!r.ok)throw new Error(d.error||("HTTP "+r.status));sl.innerHTML="";(d.questions||[]).forEach(function(q){var c=document.createElement("button");c.type="button";c.textContent="+ "+q;c.style.cssText="padding:.35rem .75rem;border:1px solid #cfd9d3;border-radius:999px;background:#fff;cursor:pointer;font-size:.85rem;text-align:left;";var on=false,row=null;c.addEventListener("click",function(){if(!on){row=addFu(q);on=true;c.textContent="\u2713 "+q;c.style.background="#e6f0ec";c.style.borderColor="#2f6f73";}else{if(row&&row.parentNode)row.parentNode.removeChild(row);row=null;on=false;c.textContent="+ "+q;c.style.background="#fff";c.style.borderColor="#cfd9d3";}});sl.appendChild(c);});ss.textContent=(d.questions||[]).length?"Click to add a question below (click again to remove). Click the button again for more.":"No suggestions. Try again.";}catch(err){ss.textContent="Failed: "+err.message;}sb.disabled=false;});});
+document.addEventListener("DOMContentLoaded",function(){var p=document.getElementById("agb-paa");var t=document.querySelector('[name="title"]');if(!p||!t)return;var lab=(t.previousElementSibling&&t.previousElementSibling.tagName==="LABEL")?t.previousElementSibling:t;var wrap=document.createElement("div");wrap.id="agb-ideas";wrap.style.cssText="margin:0 0 1.4rem;padding:1rem 1.1rem;border:1px solid #d9e2dc;border-radius:10px;background:#f7faf8;";var h=document.createElement("div");h.textContent="Need an idea for a guide?";h.style.cssText="font-weight:700;margin-bottom:.2rem;";var s=document.createElement("div");s.textContent="See what people search for, then click one to use it as the title.";s.style.cssText="font-size:.85rem;color:#666;";wrap.appendChild(h);wrap.appendChild(s);lab.parentNode.insertBefore(wrap,lab);p.style.marginTop=".6rem";wrap.appendChild(p);var sl=document.querySelector('[name="slug"]');if(sl){var auto=!sl.value||/^new-guide(-\d+)?$/.test(sl.value);sl.addEventListener("input",function(){auto=false;});t.addEventListener("input",function(){if(!auto)return;sl.value=t.value.toLowerCase().replace(/['\u2019]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,80);});}});
+document.addEventListener("DOMContentLoaded",function(){var box=document.getElementById("agb"),ideas=document.getElementById("agb-ideas"),sel=document.getElementById("agb-topic");if(!box||!ideas||!sel)return;var form=box.closest("form"),t=form.querySelector('[name="title"]'),row=sel.parentElement,lab=(row.previousElementSibling&&row.previousElementSibling.tagName==="LABEL")?row.previousElementSibling:null,paa=document.getElementById("agb-paa"),per=document.getElementById("agb-personal"),ts=document.getElementById("agb-town"),hs=document.getElementById("agb-hood"),ub=document.getElementById("agb-use-topic");
+ideas.children[0].textContent="1. What do you want to write about?";ideas.children[1].textContent="Pick a template, or get ideas from what people search for.";if(lab){lab.textContent="Start from a template";lab.style.marginTop=".8rem";ideas.insertBefore(lab,paa);}row.style.marginTop=".3rem";ideas.insertBefore(row,paa);if(ub)ub.style.display="none";
+var md=document.createElement("div");md.style.cssText="margin-top:.9rem;font-size:.92rem;";md.innerHTML='<span style="font-weight:600;margin-right:.8rem;">How should it be written?</span><label style="display:inline-flex;align-items:center;gap:.35rem;margin:0 1.1rem 0 0;font-weight:500;cursor:pointer;"><input type="radio" name="agb_mode2" value="exp"> From my experience</label><label style="display:inline-flex;align-items:center;gap:.35rem;font-weight:500;cursor:pointer;"><input type="radio" name="agb_mode2" value="res"> AI research + my experience</label>';ideas.appendChild(md);
+function isR(){return String(sel.value||"").indexOf("r-")===0;}function custom(){var v=String(sel.value||"");return v===""||v==="r-custom";}function real(v){v=String(v||"").trim();return !!v&&!/^new guide$/i.test(v)&&!/\[.+\]/.test(v);}function place(){return (hs&&hs.value)||(ts&&ts.options[ts.selectedIndex]?ts.options[ts.selectedIndex].text:"")||box.dataset.city||"";}
+function radios(){md.querySelectorAll("input").forEach(function(x){x.checked=(x.value==="res")===isR();});}function setTopic(v){sel.value=v;sel.dispatchEvent(new Event("change",{bubbles:true}));}
+md.querySelectorAll("input").forEach(function(x){x.addEventListener("change",function(){var want=x.value==="res";if(want!==isR())setTopic(want?"r-custom":"");});});
+var gen=document.createElement("div");gen.id="agb-gen";gen.innerHTML='<div style="margin-top:.4rem;font-weight:700;font-size:1.02rem;">2. Answer a few questions</div><div id="agb-gen-st" style="font-size:.85rem;color:#777;margin-top:.15rem;"></div><div id="agb-gen-list"></div>';var anchor=document.getElementById("agb-sq")||per;anchor.parentNode.insertBefore(gen,anchor);var gst=gen.querySelector("#agb-gen-st"),gl=gen.querySelector("#agb-gen-list");var sqb=document.getElementById("agb-sq-btn");if(sqb)sqb.textContent="Suggest more questions";
+function nextIdx(){var max=-1;form.querySelectorAll('[name^="fu_q_"]').forEach(function(x){var n=parseInt(x.name.slice(5),10);if(n>max)max=n;});return max+1;}
+function addRow(q){var i=nextIdx();var r=document.createElement("div");r.className="agb-fu agb-gen-row";var l=document.createElement("label");l.style.marginTop=".8rem";l.textContent=q;var h=document.createElement("input");h.type="hidden";h.name="fu_q_"+i;h.value=q;var ta=document.createElement("textarea");ta.name="fu_a_"+i;ta.rows=3;ta.className="agb-ans";ta.placeholder="Answer in your own words, or skip it.";r.appendChild(l);r.appendChild(h);r.appendChild(ta);gl.appendChild(r);if(window.__agbMic)window.__agbMic(ta);}
+var seq=0;async function generate(keep){if(!real(t.value)){window.__agbErr="set a title first";gst.textContent="Pick a template or an idea above first.";return;}var my=++seq;gst.textContent="Writing questions for \u201c"+t.value.trim()+"\u201d...";var existing=[];gl.querySelectorAll("label").forEach(function(l){existing.push(l.textContent);});try{var r=await fetch("/admin/api/guide-prompts",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({title:t.value.trim(),place:place(),topic:sel.value,existing:existing})});var d=await r.json();if(my!==seq)return;if(!r.ok)throw new Error(d.error||("HTTP "+r.status));var qs=d.questions||[];if(!qs.length)throw new Error("none came back"+(d.debug?" - AI said: "+d.debug:""));if(!keep)gl.querySelectorAll(".agb-gen-row").forEach(function(r){var ta=r.querySelector("textarea");if(!ta||!ta.value.trim())r.remove();});qs.forEach(addRow);window.__agbErr="";window.__agbAdded=qs.length;gst.innerHTML='Written for your title. Answer what you can and skip the rest. <a href="#" id="agb-gen-again" style="color:#2f6f73;">New questions</a>';gst.querySelector("#agb-gen-again").addEventListener("click",function(e){e.preventDefault();generate();});}catch(err){window.__agbErr=err.message;gst.innerHTML="Couldn't write questions ("+err.message+"). <a href=\"#\" id=\"agb-gen-retry\" style=\"color:#2f6f73;\">Try again</a>";var rt=gst.querySelector("#agb-gen-retry");if(rt)rt.addEventListener("click",function(ev){ev.preventDefault();generate();});}}
+window.__agbGen=generate;function layout(){radios();var c=custom();if(per&&c)per.style.display="none";gen.style.display=c?"":"none";}
+var fromTpl=false;function fillFromTpl(){var o=sel.options[sel.selectedIndex];if(!o||!o.value||o.value==="r-custom")return false;var p=place();var s=o.text.replace(/\s*\(AI research\)\s*$/,"").replace(/\[(place|town|neighbourhood)\]/gi,function(){return p;});t.value=s.charAt(0).toUpperCase()+s.slice(1);t.dispatchEvent(new Event("input",{bubbles:true}));fromTpl=true;return true;}
+sel.addEventListener("change",function(){setTimeout(function(){fillFromTpl();layout();},0);});
+[ts,hs].forEach(function(x){if(x)x.addEventListener("change",function(){setTimeout(function(){if(fromTpl)fillFromTpl();},0);});});
+var RES=/(cost|price|afford|expensive|tax|radon|flood|wildfire|insurance|tire|rule|permit|bylaw|zoning|inspect|check before|how do i buy|how much|mortgage|strata|rental|str\b)/i;var list=document.getElementById("agb-paa-list");if(list)list.addEventListener("click",function(){var before=t.value;setTimeout(function(){if(t.value===before)return;fromTpl=false;var want=(real(t.value)&&RES.test(t.value))?"r-custom":"";if(sel.value!==want)setTopic(want);else layout();},0);},true);
+var tm=null;t.addEventListener("input",function(){clearTimeout(tm);tm=setTimeout(function(){if(custom()&&real(t.value))generate();},900);});
+layout();if(custom()&&real(t.value)&&!form.querySelector('[name^="fu_q_"]'))generate();else if(custom())gst.textContent=real(t.value)?"":"Pick a template or an idea above first.";});
+(function(){if(document.getElementById("agb-fu-css"))return;var s=document.createElement("style");s.id="agb-fu-css";s.textContent="#agb .agb-fu label{display:block;font-weight:600;margin:1rem 0 .35rem;line-height:1.4;}#agb .agb-fu textarea{display:block;width:100%;box-sizing:border-box;font:inherit;font-size:.95rem;line-height:1.45;padding:.6rem .75rem;border:1px solid #ccc;border-radius:6px;background:#fff;resize:vertical;min-height:4.5rem;}#agb .agb-fu textarea:focus{outline:2px solid #2f6f73;outline-offset:0;border-color:#2f6f73;}#agb-gen-st{margin-bottom:.2rem;}";document.head.appendChild(s);})();
+document.addEventListener("DOMContentLoaded",function(){var sel=document.getElementById("agb-topic"),gl=document.getElementById("agb-gen-list"),fl=document.getElementById("agb-fu-list"),fb=document.getElementById("agb-fu-btn"),story=document.querySelector('#agb textarea[name="ans_rq_story"]');if(!sel||!gl)return;function custom(){var v=String(sel.value||"");return v===""||v==="r-custom";}function storyEls(){if(!story)return[];var out=[story];var l=story.previousElementSibling;if(l&&l.tagName==="LABEL")out.push(l);var m=story.nextElementSibling;if(m&&m.tagName==="BUTTON")out.push(m);return out;}function tidy(){var c=custom();if(c&&fl){Array.prototype.slice.call(fl.querySelectorAll(".agb-fu")).forEach(function(r){gl.appendChild(r);});}if(fb&&fb.parentElement)fb.parentElement.style.display=c?"none":"";var hideStory=c&&story&&!story.value.trim();storyEls().forEach(function(x){x.style.display=hideStory?"none":"";});}sel.addEventListener("change",function(){setTimeout(tidy,30);});setTimeout(tidy,30);});
+document.addEventListener("DOMContentLoaded",function(){var b=document.getElementById("agb-sq-btn"),ss=document.getElementById("agb-sq-status"),sl=document.getElementById("agb-sq-list");if(b){if(ss)ss.textContent="Adds 5 more questions under the ones above.";b.addEventListener("click",async function(e){e.stopImmediatePropagation();e.preventDefault();if(!window.__agbGen)return;if(sl)sl.innerHTML="";b.disabled=true;if(ss)ss.textContent="Adding questions...";window.__agbErr="";window.__agbAdded=0;await window.__agbGen(true);b.disabled=false;if(ss)ss.textContent=window.__agbErr?("Couldn't add questions: "+window.__agbErr):("Added "+(window.__agbAdded||0)+" questions above. Click again for more.");},true);}setTimeout(function(){var sel=document.getElementById("agb-topic"),fl=document.getElementById("agb-fu-list");if(!sel||!fl)return;var v=String(sel.value||"");if((v===""||v==="r-custom")&&!fl.querySelector(".agb-fu")&&fl.parentElement)fl.parentElement.style.display="none";},60);});
+document.getElementById("agb-use-topic").addEventListener("click", function () {
     var s = document.getElementById("agb-topic"), o = s.options[s.selectedIndex], t = form.querySelector('[name="title"]');
     if (o && o.value && t) { t.value = o.text; t.focus(); st.textContent = "Now replace the [brackets] in the title."; }
   });
   fuBtn.addEventListener("click", async function () {
-    var a = collect(); if (!hasAny(a)) { fuSt.textContent = "Answer a few questions first."; return; }
+    var a = collect(); /* agb-merge-gen */ (function(){var fu=Array.isArray(a.followups)?a.followups:[];document.querySelectorAll("#agb .agb-fu").forEach(function(r){var q=r.querySelector('input[type="hidden"]'),t=r.querySelector("textarea");if(q&&t&&t.value.trim()&&!fu.some(function(f){return f.q===q.value;}))fu.push({q:q.value,a:t.value.trim()});});a.followups=fu;})(); if (!(hasAny(a)||(a.followups||[]).some(function(f){return f&&String(f.a||"").trim();}))) { fuSt.textContent = "Answer a few questions first."; return; }
     var t = form.querySelector('[name="title"]');
     fuBtn.disabled = true; fuSt.textContent = "Thinking of good follow-ups...";
     try {
@@ -323,8 +466,8 @@ try {
   });
   btn.addEventListener("click", async function () {
     var id = (location.pathname.match(/guide-pages\/([^/]+)/) || [])[1] || "";
-    var a = collect();
-    if (!hasAny(a)) { st.textContent = "Answer at least one question first."; return; }
+    var a = collect(); /* agb-merge-gen */ (function(){var fu=Array.isArray(a.followups)?a.followups:[];document.querySelectorAll("#agb .agb-fu").forEach(function(r){var q=r.querySelector('input[type="hidden"]'),t=r.querySelector("textarea");if(q&&t&&t.value.trim()&&!fu.some(function(f){return f.q===q.value;}))fu.push({q:q.value,a:t.value.trim()});});a.followups=fu;})();
+    if (!(hasAny(a)||(a.followups||[]).some(function(f){return f&&String(f.a||"").trim();}))) { st.textContent = "Answer at least one question first."; return; }
     var t = form.querySelector('[name="title"]');
     if (t && /\[.+\]/.test(t.value)) { st.textContent = "Replace the [brackets] in the title first."; return; }
     btn.disabled = true; st.textContent = "Starting...";

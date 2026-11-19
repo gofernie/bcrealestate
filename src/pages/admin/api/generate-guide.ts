@@ -41,6 +41,23 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (b.agent_answers && typeof b.agent_answers === "object") {
     await db.from("guide_pages").update({ agent_answers: b.agent_answers, topic: String(b.topic || "") || null, related_intent_slug: String(b.related_intent_slug || "") || null, ...(Array.isArray(b.photos) ? { photos: b.photos } : {}) }).eq("id", id);
   }
+  {
+    const { data: __g } = await db.from("guide_pages").select("site_id, topic, agent_answers").eq("id", id).maybeSingle();
+    const __t = String(b.topic || __g?.topic || "");
+    const __ans = b.agent_answers || __g?.agent_answers;
+    const __isRes = __t.startsWith("r-") || !(__ans && Object.values(__ans).some((v: any) => typeof v === "string" ? v.trim() : Array.isArray(v) && v.length));
+    if (__isRes && __g?.site_id) {
+      const { data: __s } = await db.from("sites").select("domain, ai_research_limit").eq("id", __g.site_id).maybeSingle();
+      const __free = String(process.env.AI_UNLIMITED_DOMAINS || import.meta.env.AI_UNLIMITED_DOMAINS || "bc.realestate,chriscrump.com,fernie.homes").split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
+      const __dom = String(__s?.domain || "").toLowerCase().replace(/^www\./, "");
+      const __limit = __s?.ai_research_limit == null ? +(process.env.AI_RESEARCH_LIMIT || import.meta.env.AI_RESEARCH_LIMIT || 10) : +__s.ai_research_limit;
+      if (!__free.includes(__dom) && __limit >= 0) {
+        const __m = new Date(); __m.setUTCDate(1); __m.setUTCHours(0, 0, 0, 0);
+        const { count: __used } = await db.from("ai_usage").select("id", { count: "exact", head: true }).eq("site_id", __g.site_id).eq("kind", "research").gte("created_at", __m.toISOString());
+        if ((__used || 0) >= __limit) return new Response(JSON.stringify({ error: `Monthly limit reached: ${__used} of ${__limit} AI research guides used this month. Switch to "From my experience", or ask Chris to raise your limit.` }), { status: 429, headers: { "content-type": "application/json" } });
+      }
+    }
+  }
   await db.from("guide_pages").update({ ai_status: "working", ai_draft: null, ai_error: null, ai_started_at: new Date().toISOString(), ai_notes: String(b.notes || "").slice(0, 4000) }).eq("id", id);
   const notes = String(b.notes || "").slice(0, 4000);
   const title = String(b.title || "").trim();
