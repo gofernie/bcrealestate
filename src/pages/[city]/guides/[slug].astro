@@ -104,7 +104,11 @@ const __agentName = String(__agent?.name || "").trim();
 const __showAgent = !!__agentName && __agentName.toLowerCase() !== "bc.realestate";
 const __bylineRole = [__agent?.title || __agent?.designation || "REALTOR\u00AE", __agent?.brokerage || __agent?.brokerage_name].filter(Boolean).join(", ");
 const __updated = page.updated_at ? new Date(page.updated_at).toLocaleDateString("en-CA", { month: "long", year: "numeric" }) : "";const __isLg = (u) => /-lg\.webp$/.test(String(u || ""));
-const __lgToSm = (u) => String(u || "").replace(/-lg\.webp$/, "-sm.webp");
+const __upd = page.updated_at ? new Date(page.updated_at) : null;
+const __nowD = new Date();
+const __stale = !!__upd && (__nowD.getFullYear() * 12 + __nowD.getMonth()) > (__upd.getFullYear() * 12 + __upd.getMonth());
+const __hasStats = /\$\s?\d|median|sold/i.test(page.neighbourhood_copy || "");
+const __miHref = `/${city}/market-intelligence`;const __lgToSm = (u) => String(u || "").replace(/-lg\.webp$/, "-sm.webp");
 const __guideHtml = renderGuideMd(page.neighbourhood_copy || "")
   .replace(/<p><a href="([^"]+)">(See [^<]*?\u2192)<\/a><\/p>/g, '<p class="guide-cta"><a href="$1">$2</a></p>')
   .replace(/<p>!<a href="([^"]+)">([^<]*)<\/a><\/p>/g, (_m, u, c) =>
@@ -116,6 +120,14 @@ const __heroSrcset = __isLg(page.hero_image_url) ? `${__lgToSm(page.hero_image_u
 const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 const title = page.seo_title || page.title || `${cityLabel} Guide`;
 const description = page.meta_description || "";
+const __btn = (label, kind = "") => `<p class="guide-live-cta" style="margin:18px 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">${kind ? `<button type="button" class="guide-live-upd" data-live="${kind}" data-city="${city}" style="padding:10px 18px;border:0;border-radius:999px;background:var(--accent, #2f6f73);color:#fff;font:600 .92rem inherit;font-family:inherit;cursor:pointer;">Update to today's numbers</button>` : ""}<a class="guide-live-btn" href="${__miHref}" style="display:inline-block;padding:9px 18px;border:1.5px solid var(--accent, #2f6f73);border-radius:999px;color:var(--accent, #2f6f73);font-weight:600;font-size:.92rem;text-decoration:none;">${label} \u2192</a></p>`;
+const __guideHtmlX = __guideHtml.split(/(?=<h2[\s>])/).map((chunk) => {
+  const h = (chunk.match(/^<h2[^>]*>([\s\S]*?)<\/h2>/) || [])[1] || "";
+  const txt = h.replace(/<[^>]+>/g, "");
+  if (/actually sell for|sold prices|what homes sell for/i.test(txt)) return chunk + __btn("See today's sold prices", "sold");
+  if (/for sale now|currently for sale/i.test(txt)) return chunk + __btn("See what's for sale today", "active");
+  return chunk;
+}).join("");
 ---
 <Layout title={title} description={description} accent={accent} site={site} city={city}>
   <SiteNav site={site} city={city} accent={accent} />
@@ -123,10 +135,58 @@ const description = page.meta_description || "";
     <p style="font-size:.85rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent, #2f6f73);margin-bottom:8px;">{page.eyebrow || `${cityLabel} local guide`}</p>
     <h1 style="font-family:'Instrument Serif',serif;font-weight:400;font-size:clamp(2.4rem,5vw,3.6rem);line-height:1.05;margin:0 0 28px;max-width:760px;">{page.title}</h1>
 <p class="guide-byline" style="margin:-12px 0 40px;color:#5b6660;font-size:.95rem;">{__showAgent && <>By <strong style="color:#1f2a26;">{__agentName}</strong>, {__bylineRole}</>}{__showAgent && __updated && " \u00B7 "}{__updated && `Updated ${__updated}`}</p>
+    {__hasStats && __updated && (
+      <p class={"guide-datanote" + (__stale ? " is-stale" : "")} style={__stale
+        ? "margin:-28px 0 36px;padding:10px 14px;border-radius:10px;background:#fff7e6;border:1px solid #f3d9a4;color:#7a5a1c;font-size:.92rem;max-width:760px;"
+        : "margin:-30px 0 36px;color:#5b6660;font-size:.9rem;"}>
+        {__stale ? `This guide uses ${__updated} data. For today's numbers, see ` : `Figures as of ${__updated}. Live numbers: `}
+        <a href={__miHref} style="color:var(--accent, #2f6f73);font-weight:600;">{cityLabel} Market Intel {"\u2192"}</a>
+      </p>
+    )}
     {page.hero_image_url && <img class="guide-hero" src={page.hero_image_url} srcset={__heroSrcset} sizes="(max-width: 1200px) 100vw, 1180px" alt={page.title} fetchpriority="high" style="display:block;width:100%;aspect-ratio:16/7;object-fit:cover;border-radius:14px;margin:0 0 40px;" />}
     {page.neighbourhood_copy && (
-<div class="guide-layout"><div class="guide-body" style="max-width:760px;" set:html={__guideHtml} />{__photoFigs.length > 0 && <aside class="guide-aside" set:html={__photoFigs.join("")} />}</div>
-<div class="guide-contact"><AgentBrandStrip site={site} city={city} variant="contact" /></div>
+<div class="guide-layout"><div class="guide-body" style="max-width:760px;" set:html={__guideHtmlX} />{__photoFigs.length > 0 && <aside class="guide-aside" set:html={__photoFigs.join("")} />}</div>
+<script is:inline>
+(function () {
+  var cache = {};
+  function get(city) { return cache[city] || (cache[city] = fetch("/api/guide-live?city=" + encodeURIComponent(city)).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })); }
+  function cell(tag, v) { var c = document.createElement(tag); c.textContent = String(v); return c; }
+  function table(head, rows) {
+    var t = document.createElement("table"), th = document.createElement("thead"), tr = document.createElement("tr");
+    head.forEach(function (h) { tr.appendChild(cell("th", h)); }); th.appendChild(tr); t.appendChild(th);
+    var tb = document.createElement("tbody");
+    rows.forEach(function (r) { var x = document.createElement("tr"); r.forEach(function (v) { x.appendChild(cell("td", v)); }); tb.appendChild(x); });
+    t.appendChild(tb); return t;
+  }
+  document.addEventListener("click", async function (e) {
+    var b = e.target.closest && e.target.closest(".guide-live-upd"); if (!b) return;
+    e.preventDefault();
+    var kind = b.getAttribute("data-live"), city = b.getAttribute("data-city"), cta = b.closest(".guide-live-cta");
+    var els = [], el = cta.previousElementSibling;
+    while (el && el.tagName !== "H2") { els.unshift(el); el = el.previousElementSibling; }
+    var wrap = els.filter(function (x) { return x.tagName === "TABLE" || (x.querySelector && x.querySelector("table")); })[0];
+    if (!wrap) return;
+    b.disabled = true; b.textContent = "Loading today\u2019s numbers...";
+    try {
+      var d = await get(city), s = d[kind];
+      if (!s || !s.rows || !s.rows.length) throw new Error("no data");
+      var t = kind === "sold"
+        ? table(["Area", "Homes sold", "Median sold price"], s.rows.map(function (r) { return [r.name, r.n, r.median]; }))
+        : table(["Property type", "Active listings", "Median asking price"], s.rows.map(function (r) { return [r.name, r.n, r.median]; }));
+      var old = wrap.tagName === "TABLE" ? wrap : wrap.querySelector("table");
+      t.className = old.className; old.replaceWith(t);
+      els.forEach(function (x) { if (x !== wrap && /^(P|UL|OL|BLOCKQUOTE)$/.test(x.tagName) && !x.querySelector("img")) x.style.display = "none"; });
+      var note = document.createElement("p");
+      note.className = "guide-live-note";
+      note.style.cssText = "padding:10px 14px;border-radius:10px;background:#eef6f3;border:1px solid #cfe3dc;font-size:.95rem;";
+      var badge = document.createElement("strong"); badge.textContent = "Live \u00b7 " + d.asOf + ". "; badge.style.color = "var(--accent, #2f6f73)";
+      note.appendChild(badge); note.appendChild(document.createTextNode(s.summary));
+      wrap.parentNode.insertBefore(note, wrap);
+      b.textContent = "Showing today\u2019s numbers \u2713";
+    } catch (err) { b.disabled = false; b.textContent = "Couldn\u2019t load. Try again"; }
+  });
+})();
+</script><div class="guide-contact"><AgentBrandStrip site={site} city={city} variant="intro" /></div>
     )}
   </main>
 </Layout>
