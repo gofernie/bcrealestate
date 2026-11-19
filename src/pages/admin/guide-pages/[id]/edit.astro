@@ -49,6 +49,7 @@ if (Astro.request.method === "POST") {
       photos: (() => { try { const p = JSON.parse(clean(form.get("photos_json")) || "null"); return Array.isArray(p) ? p : undefined; } catch { return undefined; } })(),
       agent_answers: (() => { const a = Object.fromEntries(["love","who","local","story","miss","friend","winter","money","saturday","surprised","downsides","pockets","around"].map((k) => [k, clean(form.get("ans_" + k)) || ""])); const fu = []; for (let i = 0; i < 20; i++) { const q = clean(form.get("fu_q_" + i)); if (q) fu.push({ q, a: clean(form.get("fu_a_" + i)) || "" }); } if (fu.length) a.followups = fu; return Object.values(a).some((v) => Array.isArray(v) ? v.length : Boolean(v)) ? a : null; })(),
       section_blocks: sectionBlocks,
+      guide_links: { ...Object.fromEntries(["live_sold","live_active","mi_sold","mi_active","mi_bottom"].map((k) => [k, form.get("gl_" + k) === "on"])), pages: form.getAll("gl_page").map(String).filter(Boolean).slice(0, 12) },
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
@@ -67,6 +68,9 @@ const { data: page } = await supabase
   .single();
 
 if (!page) return Astro.redirect("/admin/intent-pages");
+const __gl = { live_sold: true, live_active: true, mi_sold: true, mi_active: false, mi_bottom: false, ...((page.guide_links && typeof page.guide_links === "object") ? page.guide_links : {}) };
+let __glPages: any[] = [];
+try { let __q = supabase.from("intent_pages").select("slug,card_title,nav_label,hero_heading").eq("city", page.city); __q = page.site_id ? __q.eq("site_id", page.site_id) : __q.is("site_id", null); const { data: __d } = await __q; __glPages = (__d || []).map((p: any) => ({ slug: p.slug, label: String(p.card_title || p.nav_label || p.hero_heading || p.slug).trim() })).sort((a: any, b: any) => a.label.localeCompare(b.label)); } catch {}
 const __agbTopics = [
   ["", "Custom (write your own title)"],
   ["why-love", "Why I love living in [place]"],
@@ -237,6 +241,24 @@ const __agbPlaces = await (async () => {
     <input name="eyebrow" value={page.eyebrow || ""} placeholder="e.g. Alberta Buyers Guide" />
 
     <input type="hidden" name="hero_image_url" value={page.hero_image_url || ""} />
+<fieldset style="border:1px solid #ddd;border-radius:8px;padding:12px 14px;margin:16px 0;">
+  <legend style="font-weight:700;padding:0 6px;">Link buttons <span style="font-weight:400;color:#888">(for guides with market data tables)</span></legend>
+  {[
+    ["live_sold", "Sold prices section: \u201cUpdate to today's numbers\u201d"],
+    ["mi_sold", "Sold prices section: \u201cSee today's sold prices\u201d link"],
+    ["live_active", "For sale section: \u201cUpdate to today's numbers\u201d"],
+    ["mi_active", "For sale section: \u201cSee what's for sale today\u201d link"],
+    ["mi_bottom", "Above Sources: \u201cSee today's market\u201d link"],
+  ].map(([k, l]) => (
+    <label style="display:flex;align-items:center;gap:.55rem;font-weight:500;margin:8px 0;cursor:pointer;"><input type="checkbox" name={"gl_" + k} checked={!!__gl[k]} style="width:auto;margin:0;" /> {l}</label>
+  ))}
+  <div style="margin-top:14px;font-weight:600;">Link to pages on this site <span style="font-weight:400;color:#888">(buttons at the end of the guide)</span></div>
+  <div style="max-height:240px;overflow:auto;border:1px solid #eaecf0;border-radius:10px;padding:4px 12px;background:#fff;margin-top:6px;">
+    {__glPages.map((p) => (
+      <label style="display:flex;align-items:center;gap:.55rem;font-weight:500;margin:7px 0;cursor:pointer;"><input type="checkbox" name="gl_page" value={p.slug} checked={Array.isArray(__gl.pages) && __gl.pages.includes(p.slug)} style="width:auto;margin:0;" /> {p.label}</label>
+    ))}
+    {!__glPages.length && <p style="color:#888;font-size:.9rem;margin:8px 0;">No pages for this city on this site yet.</p>}
+  </div></fieldset>
 <fieldset style="border:1px solid #ddd;border-radius:8px;padding:12px 14px;margin:16px 0;">
   <legend style="font-weight:700;padding:0 6px;">Scroll photo panel <span style="font-weight:400;color:#888">(shows mid-article; leave photo blank to hide)</span></legend>
   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:4px 0 10px;">

@@ -1,4 +1,5 @@
 ---
+import { createClient as __glCC } from "@supabase/supabase-js";
 import { createClient } from "@supabase/supabase-js";
 import Layout from "../../../layouts/Layout.astro";
 import SiteNav from "../../../components/SiteNav.astro";
@@ -120,14 +121,32 @@ const __heroSrcset = __isLg(page.hero_image_url) ? `${__lgToSm(page.hero_image_u
 const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 const title = page.seo_title || page.title || `${cityLabel} Guide`;
 const description = page.meta_description || "";
-const __btn = (label, kind = "") => `<p class="guide-live-cta" style="margin:18px 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">${kind ? `<button type="button" class="guide-live-upd" data-live="${kind}" data-city="${city}" style="padding:10px 18px;border:0;border-radius:999px;background:var(--accent, #2f6f73);color:#fff;font:600 .92rem inherit;font-family:inherit;cursor:pointer;">Update to today's numbers</button>` : ""}<a class="guide-live-btn" href="${__miHref}" style="display:inline-block;padding:9px 18px;border:1.5px solid var(--accent, #2f6f73);border-radius:999px;color:var(--accent, #2f6f73);font-weight:600;font-size:.92rem;text-decoration:none;">${label} \u2192</a></p>`;
+const __gl = { live_sold: true, live_active: true, mi_sold: true, mi_active: false, mi_bottom: false, ...((page.guide_links && typeof page.guide_links === "object") ? page.guide_links : {}) };
+const __esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const __glSlugs = Array.isArray(__gl.pages) ? __gl.pages.filter(Boolean) : [];
+let __glLinks = [];
+if (__glSlugs.length) {
+  try {
+    const __c = __glCC(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
+    let __q = __c.from("intent_pages").select("slug,card_title,nav_label,hero_heading").in("slug", __glSlugs).eq("city", page.city);
+    __q = page.site_id ? __q.eq("site_id", page.site_id) : __q.is("site_id", null);
+    const { data: __d } = await __q;
+    __glLinks = __glSlugs.map((s) => (__d || []).find((r) => r.slug === s)).filter(Boolean)
+      .map((r) => ({ href: `/${city}/${r.slug}`, label: String(r.card_title || r.nav_label || r.hero_heading || "Homes").trim() }));
+  } catch {}
+}
+const __pill = "display:inline-block;padding:9px 18px;border:1.5px solid var(--accent, #2f6f73);border-radius:999px;color:var(--accent, #2f6f73);font-weight:600;font-size:.92rem;text-decoration:none;";
+const __btn = (label, kind = "", link = true) => (!kind && !link) ? "" : `<p class="guide-live-cta" style="margin:18px 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">${kind ? `<button type="button" class="guide-live-upd" data-live="${kind}" data-city="${city}" style="padding:10px 18px;border:0;border-radius:999px;background:var(--accent, #2f6f73);color:#fff;font:600 .92rem inherit;font-family:inherit;cursor:pointer;">Update to today's numbers</button>` : ""}${link ? `<a class="guide-live-btn" href="${__miHref}" style="${__pill}">${label} \u2192</a>` : ""}</p>`;
+let __bottomDone = false;
+const __bottom = () => { const items = [...__glLinks.map((l) => `<a href="${l.href}" style="${__pill}">${__esc(l.label)} \u2192</a>`), ...(__gl.mi_bottom ? [`<a href="${__miHref}" style="${__pill}">See today's ${cityLabel} market \u2192</a>`] : [])]; return items.length ? `<p class="guide-mi-bottom" style="margin:28px 0 8px;display:flex;gap:8px;flex-wrap:wrap;">${items.join("")}</p>` : ""; };
 const __guideHtmlX = __guideHtml.split(/(?=<h2[\s>])/).map((chunk) => {
   const h = (chunk.match(/^<h2[^>]*>([\s\S]*?)<\/h2>/) || [])[1] || "";
   const txt = h.replace(/<[^>]+>/g, "");
-  if (/actually sell for|sold prices|what homes sell for/i.test(txt)) return chunk + __btn("See today's sold prices", "sold");
-  if (/for sale now|currently for sale/i.test(txt)) return chunk + __btn("See what's for sale today", "active");
+  if (/^\s*sources\s*$/i.test(txt) && !__bottomDone) { __bottomDone = true; return __bottom() + chunk; }
+  if (/actually sell for|sold prices|what homes sell for/i.test(txt)) return chunk + __btn("See today's sold prices", __gl.live_sold ? "sold" : "", __gl.mi_sold);
+  if (/for sale now|currently for sale/i.test(txt)) return chunk + __btn("See what's for sale today", __gl.live_active ? "active" : "", __gl.mi_active);
   return chunk;
-}).join("");
+}).join("") + (__bottomDone ? "" : __bottom());
 ---
 <Layout title={title} description={description} accent={accent} site={site} city={city}>
   <SiteNav site={site} city={city} accent={accent} />
