@@ -49,7 +49,7 @@ if (Astro.request.method === "POST") {
       photos: (() => { try { const p = JSON.parse(clean(form.get("photos_json")) || "null"); return Array.isArray(p) ? p : undefined; } catch { return undefined; } })(),
       agent_answers: (() => { const a = Object.fromEntries(["love","who","local","story","miss","friend","winter","money","saturday","surprised","downsides","pockets","around"].map((k) => [k, clean(form.get("ans_" + k)) || ""])); const fu = []; for (let i = 0; i < 20; i++) { const q = clean(form.get("fu_q_" + i)); if (q) fu.push({ q, a: clean(form.get("fu_a_" + i)) || "" }); } if (fu.length) a.followups = fu; return Object.values(a).some((v) => Array.isArray(v) ? v.length : Boolean(v)) ? a : null; })(),
       section_blocks: sectionBlocks,
-      guide_links: { ...Object.fromEntries(["live_sold","live_active","mi_sold","mi_active","mi_bottom"].map((k) => [k, form.get("gl_" + k) === "on"])), pages: form.getAll("gl_page").map(String).filter(Boolean).slice(0, 12) },
+      guide_links: { ...Object.fromEntries(["live_sold","live_active","mi_sold","mi_active","mi_bottom"].map((k) => [k, form.get("gl_" + k) === "on"])), pages: form.getAll("gl_page").map(String).filter(Boolean).slice(0, 12), custom: (() => { const ty = form.getAll("glc_type").map(String), ar = form.getAll("glc_area").map(String), lb = form.getAll("glc_label").map(String); return lb.map((l, i) => ({ type: ty[i] || "", area: ar[i] || "", label: l.trim() })).filter((c) => c.label || c.type || c.area).slice(0, 6); })() },
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
@@ -258,7 +258,48 @@ const __agbPlaces = await (async () => {
       <label style="display:flex;align-items:center;gap:.55rem;font-weight:500;margin:7px 0;cursor:pointer;"><input type="checkbox" name="gl_page" value={p.slug} checked={Array.isArray(__gl.pages) && __gl.pages.includes(p.slug)} style="width:auto;margin:0;" /> {p.label}</label>
     ))}
     {!__glPages.length && <p style="color:#888;font-size:.9rem;margin:8px 0;">No pages for this city on this site yet.</p>}
-  </div></fieldset>
+  </div>
+  <div style="margin-top:16px;font-weight:600;">Custom links <span style="font-weight:400;color:#888">(a home type and/or area, opens filtered listings)</span></div>
+  <div id="glc-list" data-city={String(page.city || "").replace(/-/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase())}>
+    {(Array.isArray(__gl.custom) ? __gl.custom : []).map((c) => (
+      <div class="glc-row" style="display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap;">
+        <select name="glc_type" style="width:auto;flex:0 0 160px;">{[["", "Any type"], ["house", "Houses"], ["townhouse", "Townhomes"], ["condo", "Condos"], ["mobile", "Mobile homes"], ["land", "Land"]].map(([v, l]) => <option value={v} selected={(c.type || "") === v}>{l}</option>)}</select>
+        <select name="glc_area" style="width:auto;flex:0 0 200px;"><option value="">Whole town</option>{((__agbPlaces.find((p) => p.slug === page.city) || {}).hoods || []).map((h) => <option value={h} selected={c.area === h}>{h}</option>)}</select>
+        <input name="glc_label" value={c.label || ""} placeholder="Button text" style="flex:1;min-width:170px;" />
+        <button type="button" class="glc-del" title="Remove" style="margin:0;padding:7px 12px;background:#fff;color:#b42318;border:1px solid #eaecf0;">&times;</button>
+      </div>    ))}
+  </div>
+  <template id="glc-tpl">{[{}].map((c) => (
+      <div class="glc-row" style="display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap;">
+        <select name="glc_type" style="width:auto;flex:0 0 160px;">{[["", "Any type"], ["house", "Houses"], ["townhouse", "Townhomes"], ["condo", "Condos"], ["mobile", "Mobile homes"], ["land", "Land"]].map(([v, l]) => <option value={v} selected={(c.type || "") === v}>{l}</option>)}</select>
+        <select name="glc_area" style="width:auto;flex:0 0 200px;"><option value="">Whole town</option>{((__agbPlaces.find((p) => p.slug === page.city) || {}).hoods || []).map((h) => <option value={h} selected={c.area === h}>{h}</option>)}</select>
+        <input name="glc_label" value={c.label || ""} placeholder="Button text" style="flex:1;min-width:170px;" />
+        <button type="button" class="glc-del" title="Remove" style="margin:0;padding:7px 12px;background:#fff;color:#b42318;border:1px solid #eaecf0;">&times;</button>
+      </div>  ))}</template>
+  <button type="button" id="glc-add" style="margin:8px 0 0;padding:7px 14px;background:#fff;color:#2f6f73;border:1.5px solid #2f6f73;border-radius:999px;font-weight:600;">+ Add a link</button>
+  <script is:inline>
+  (function () {
+    var box = document.getElementById("glc-list"), tpl = document.getElementById("glc-tpl"), add = document.getElementById("glc-add");
+    if (!box || !tpl || !add) return;
+    var city = box.getAttribute("data-city") || "";
+    var P = { "": "homes", house: "houses", townhouse: "townhomes", condo: "condos", mobile: "mobile homes", land: "lots & land" };
+    function wire(r) {
+      var t = r.querySelector('[name="glc_type"]'), a = r.querySelector('[name="glc_area"]'), l = r.querySelector('[name="glc_label"]');
+      var auto = !l.value;
+      l.addEventListener("input", function () { auto = !l.value; });
+      function upd() { if (!auto) return; var s = (a.value || city) + " " + P[t.value || ""]; l.value = s.charAt(0).toUpperCase() + s.slice(1); }
+      t.addEventListener("change", upd); a.addEventListener("change", upd);
+      r.querySelector(".glc-del").addEventListener("click", function () { r.remove(); });
+      return upd;
+    }
+    box.querySelectorAll(".glc-row").forEach(wire);
+    add.addEventListener("click", function () {
+      if (box.querySelectorAll(".glc-row").length >= 6) return;
+      var r = tpl.content.firstElementChild.cloneNode(true);
+      box.appendChild(r); wire(r)();
+    });
+  })();
+  </script></fieldset>
 <fieldset style="border:1px solid #ddd;border-radius:8px;padding:12px 14px;margin:16px 0;">
   <legend style="font-weight:700;padding:0 6px;">Scroll photo panel <span style="font-weight:400;color:#888">(shows mid-article; leave photo blank to hide)</span></legend>
   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:4px 0 10px;">
