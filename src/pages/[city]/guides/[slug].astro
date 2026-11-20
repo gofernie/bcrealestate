@@ -196,7 +196,7 @@ const __needLive = /sold for|sell for|sold prices|sale prices|for sale now|for s
 let __live = null;
 if (__needLive) {
   try {
-    const __base = import.meta.env.DEV ? "http://127.0.0.1:" + (Astro.url.port || "4321") : Astro.url.origin;
+    const __base = import.meta.env.DEV ? "http://localhost:" + (Astro.url.port || "4321") : Astro.url.origin;
     const __r = await fetch(__base + "/api/guide-live?city=" + encodeURIComponent(city), { signal: AbortSignal.timeout(4000) });
     if (__r.ok) __live = await __r.json();
   } catch {}
@@ -319,6 +319,67 @@ const __liveCss = __liveOk ? "<style>.guide-live-upd{display:none!important}</st
     menu(b, title);
   });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+})();
+</script><script is:inline>
+/* guide-sort-v1 */
+(function () {
+  function val(td) {
+    var s = (td && td.textContent || "").trim(), n = s.replace(/[$,%\s]/g, "");
+    return n !== "" && !isNaN(n) ? { n: +n } : { s: s.toLowerCase() };
+  }
+  function init() {
+    document.querySelectorAll(".guide-body table").forEach(function (tbl) {
+      if (tbl.dataset.sortable) return; tbl.dataset.sortable = "1";
+      var ths = tbl.querySelectorAll("thead th"); if (!ths.length) return;
+      ths.forEach(function (th, col) {
+        th.style.cursor = "pointer"; th.style.userSelect = "none"; th.title = "Sort by " + th.textContent.trim();
+        var ar = document.createElement("span"); ar.className = "gs-arrow"; ar.style.cssText = "margin-left:6px;font-size:.75em;opacity:.35;"; ar.textContent = ""; th.appendChild(ar);
+        th.addEventListener("click", function () {
+          var body = tbl.tBodies[0]; if (!body) return;
+          var dir = th.dataset.dir === "desc" ? "asc" : (th.dataset.dir === "asc" ? "desc" : null);
+          if (!dir) { var first = val(body.rows[0] && body.rows[0].cells[col]); dir = "n" in first ? "desc" : "asc"; }
+          ths.forEach(function (h) { delete h.dataset.dir; var a = h.querySelector(".gs-arrow"); if (a) { a.textContent = ""; a.style.opacity = ".35"; } });
+          th.dataset.dir = dir; ar.textContent = dir === "asc" ? "\u25B2" : "\u25BC"; ar.style.opacity = "1";
+          var rows = [].slice.call(body.rows);
+          rows.sort(function (r1, r2) {
+            var a = val(r1.cells[col]), b = val(r2.cells[col]);
+            var c = ("n" in a && "n" in b) ? a.n - b.n : String(a.s != null ? a.s : a.n).localeCompare(String(b.s != null ? b.s : b.n));
+            return dir === "asc" ? c : -c;
+          });
+          rows.forEach(function (r) { body.appendChild(r); });
+        });
+      });
+    });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
+})();
+</script><style is:inline>
+.guide-body table[data-sortable] thead th { transition: background .15s, color .15s; }
+.guide-body table[data-sortable] thead th:hover { background: color-mix(in srgb, var(--accent, #2f6f73) 10%, transparent); color: var(--accent, #2f6f73); }
+.guide-body table[data-sortable] thead th[data-dir] { color: var(--accent, #2f6f73); }
+.guide-sort-hint { margin: 6px 0 0; font-size: .8rem; color: #8a948f; }
+</style>
+<script is:inline>
+/* guide-sort-hint-v1 */
+(function () {
+  function num(td) { var n = (td && td.textContent || "").replace(/[$,%\s]/g, ""); return n !== "" && !isNaN(n) ? +n : null; }
+  function run() {
+    document.querySelectorAll(".guide-body table[data-sortable]").forEach(function (tbl) {
+      if (tbl.dataset.hinted) return; tbl.dataset.hinted = "1";
+      var body = tbl.tBodies[0], ths = tbl.querySelectorAll("thead th");
+      if (!body || body.rows.length < 3 || !ths.length) return;
+      /* default-price-sort */ var pc = [].findIndex.call(ths, function (h) { return /price/i.test(h.textContent); }); if (pc >= 0 && [].every.call(body.rows, function (r) { return num(r.cells[pc]) !== null; })) { ths[pc].click(); } else for (var c = 0; c < ths.length; c++) {
+        var vals = [].map.call(body.rows, function (r) { return num(r.cells[c]); });
+        if (vals.some(function (v) { return v === null; })) continue;
+        var desc = vals.every(function (v, i) { return i === 0 || v <= vals[i - 1]; });
+        if (desc) { ths[c].dataset.dir = "desc"; var ar = ths[c].querySelector(".gs-arrow"); if (ar) { ar.textContent = "\u25BC"; ar.style.opacity = "1"; } break; }
+      }
+      var hint = document.createElement("p"); hint.className = "guide-sort-hint"; hint.textContent = "Tap a column heading to sort.";
+      var wrap = tbl.parentElement && tbl.parentElement.tagName === "DIV" && tbl.parentElement.children.length === 1 ? tbl.parentElement : tbl;
+      wrap.parentNode.insertBefore(hint, wrap.nextSibling);
+    });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function () { setTimeout(run, 0); }); else setTimeout(run, 0);
 })();
 </script><div class="guide-contact"><style is:inline>.gc-mob{display:none}@media (max-width: 760px){.gc-desk{display:none!important}.gc-mob{display:block!important}}</style><div class="gc-desk"><AgentBrandStrip site={site} city={city} variant="intro" /></div><div class="gc-mob"><AgentContactCard site={site}  /></div></div>
     )}
