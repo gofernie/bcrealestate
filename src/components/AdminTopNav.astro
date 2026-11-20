@@ -56,6 +56,7 @@ const nav = [
       ["Fetch status", "/admin/fetch-status"],
       ["City traffic", "/admin/city-traffic"],
       ["Market intelligence", "/admin/market-intelligence"],
+      ["AI costs", "/admin/ai-costs"],
       ["News", "/admin/news"],
       ["Prospect email", "/admin/prospect-email"],
       ["New agent demo", "/admin/new-demo"],
@@ -133,30 +134,42 @@ const createHref = resolvedSiteId ? `/listings?site_id=${encodeURIComponent(reso
     });
   });
   (function () {
+    var EASE = "cubic-bezier(.3,1.12,.5,1)";
     function setupPill(nav, itemSel, activeSel) {
       if (!nav) return;
       var pill = document.createElement("span");
       pill.className = "nav-pill";
       nav.prepend(pill);
       nav.classList.add("has-pill");
-      var first = true;
-      function move(el) {
+      var curL = null;
+      function move(el, instant) {
         if (!el) { pill.style.opacity = 0; return; }
         var n = nav.getBoundingClientRect(), r = el.getBoundingClientRect();
-        if (first) pill.style.transition = "none";
-        pill.style.width = r.width + "px";
+        var L = r.left - n.left, R = n.right - r.right;
+        if (instant || curL === null) {
+          pill.style.transition = "none";
+        } else {
+          var fast = "240ms " + EASE, slow = "420ms " + EASE;
+          var goingRight = L > curL;
+          pill.style.transition =
+            "left " + (goingRight ? slow : fast) + ", right " + (goingRight ? fast : slow) +
+            ", top .2s, height .2s, opacity .2s";
+        }
+        pill.style.left = L + "px";
+        pill.style.right = R + "px";
+        pill.style.top = (r.top - n.top) + "px";
         pill.style.height = r.height + "px";
-        pill.style.transform = "translate(" + (r.left - n.left) + "px," + (r.top - n.top) + "px)";
         pill.style.opacity = 1;
-        if (first) { void pill.offsetWidth; pill.style.transition = ""; first = false; }
+        if (instant || curL === null) void pill.offsetWidth;
+        curL = L;
       }
       function active() { return nav.querySelector(activeSel); }
       nav.querySelectorAll(itemSel).forEach(function (el) {
         el.addEventListener("mouseenter", function () { move(el); });
       });
       nav.addEventListener("mouseleave", function () { move(active()); });
-      window.addEventListener("resize", function () { move(active()); });
-      move(active());
+      window.addEventListener("resize", function () { move(active(), true); });
+      move(active(), true);
     }
     setupPill(
       document.querySelector(".admin-topnav__links"),
@@ -216,13 +229,9 @@ const createHref = resolvedSiteId ? `/listings?site_id=${encodeURIComponent(reso
   .admin-topnav .has-pill > details > summary { position:relative; z-index:1; background:transparent !important; transition:color .2s; }
   .admin-topnav .has-pill > details { z-index:1; }
   .admin-topnav .nav-pill {
-    position:absolute; top:0; left:0; width:0; height:0;
+    position:absolute; left:0; right:100%; top:0; height:0;
     border-radius:8px; background:#292929;
     pointer-events:none; z-index:0; opacity:0;
-    transition:
-      transform .35s cubic-bezier(.34,1.56,.64,1),
-      width .35s cubic-bezier(.34,1.56,.64,1),
-      height .2s, opacity .2s;
   }
   .admin-topnav .admin-topnav__tabs .nav-pill { border-radius:7px; background:#2c2c2c; }
 </style>
