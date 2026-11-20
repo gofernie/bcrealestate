@@ -844,7 +844,7 @@ export const GET: APIRoute = async ({ request }) => {
         status: 200,
         headers: {
           "Content-Type": "application/json",
-          "Cache-Control": "public, max-age=30, s-maxage=60, stale-while-revalidate=300",
+          "Cache-Control": "public, max-age=30, s-maxage=60, stale-while-revalidate=300", "Netlify-CDN-Cache-Control": "public, durable, s-maxage=120, stale-while-revalidate=3600",
         },
       }
     );
@@ -858,7 +858,7 @@ export const GET: APIRoute = async ({ request }) => {
       status: 200,
       headers: {
         "Content-Type": "application/json",
-        "Cache-Control": "public, max-age=30, s-maxage=60, stale-while-revalidate=300",
+        "Cache-Control": "public, max-age=30, s-maxage=60, stale-while-revalidate=300", "Netlify-CDN-Cache-Control": "public, durable, s-maxage=120, stale-while-revalidate=3600",
       },
     });
   }
@@ -871,7 +871,7 @@ export const GET: APIRoute = async ({ request }) => {
     status: 200,
     headers: {
       "Content-Type": "application/json",
-      "Cache-Control": "public, max-age=30, s-maxage=60, stale-while-revalidate=300",
+      "Cache-Control": "public, max-age=30, s-maxage=60, stale-while-revalidate=300", "Netlify-CDN-Cache-Control": "public, durable, s-maxage=120, stale-while-revalidate=3600",
     },
   });
 };
