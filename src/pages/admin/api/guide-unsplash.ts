@@ -31,6 +31,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     alt: p.alt_description || q,
     name: p.user?.name || "Unsplash",
     href: `${p.user?.links?.html || "https://unsplash.com"}?${UTM}`,
+    raw: p.urls?.raw,
     download: p.links?.download_location,
   }));
   return json({ results });

@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { getAdminUser } from "../../../lib/guideAccess";
+import { logAi } from "../../../lib/aiLog";
 export const prerender = false;
 const json = (o: any, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json" } });
 
@@ -11,7 +12,7 @@ function parse(text: string): string[] {
   return qs.map((q) => String(typeof q === "object" && q ? q.question || q.q || "" : q || "").trim()).filter(Boolean);
 }
 
-async function ask(key: string, prompt: string) {
+async function ask(me: any, key: string, prompt: string) {
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -19,6 +20,7 @@ async function ask(key: string, prompt: string) {
   });
   const o: any = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(o?.error?.message || "AI " + r.status);
+  logAi({ user: me, kind: "questions", model: o.model, usage: o.usage });
   return (o.content || []).filter((x: any) => x.type === "text").map((x: any) => x.text).join("");
 }
 
@@ -45,10 +47,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     `Reply with ONLY a JSON array of 5 strings, like ["...?", "...?"]. No other text.`,
   ].filter(Boolean).join("\n\n");
   try {
-    let text = await ask(key, prompt);
+    let text = await ask(me, key, prompt);
     let qs = parse(text);
     if (!qs.length) {
-      text = await ask(key, `Write 5 new interview questions for a local real estate agent writing a guide titled "${title}"${place ? ` about ${place}, BC` : ""}. Focus on angles not yet covered: ${existing.slice(-8).join(" | ") || "none"}. ${style} Reply with ONLY a JSON array of 5 question strings.`);
+      text = await ask(me, key, `Write 5 new interview questions for a local real estate agent writing a guide titled "${title}"${place ? ` about ${place}, BC` : ""}. Focus on angles not yet covered: ${existing.slice(-8).join(" | ") || "none"}. ${style} Reply with ONLY a JSON array of 5 question strings.`);
       qs = parse(text);
     }
     if (!qs.length) return json({ questions: [], debug: text.replace(/\s+/g, " ").slice(0, 200) });

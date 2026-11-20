@@ -1,0 +1,104 @@
+---
+import AdminSidebar from "../../components/AdminSidebar.astro";
+import Layout from "../../layouts/Layout.astro";
+import { createClient } from "@supabase/supabase-js";
+import { getAdminUser } from "../../lib/guideAccess";
+export const prerender = false;
+
+const me: any = await getAdminUser(Astro.cookies);
+if (!me) return Astro.redirect("/login");
+const allow = String(import.meta.env.AI_COSTS_ADMINS || process.env.AI_COSTS_ADMINS || "chris@crump.ca").toLowerCase().split(",").map((s) => s.trim()).filter(Boolean);
+if (!allow.some((a) => JSON.stringify(me).toLowerCase().includes(a))) return new Response("Not found", { status: 404 });
+
+const db = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
+const qm = Astro.url.searchParams.get("m") || "";
+const m = /^\d{4}-\d{2}$/.test(qm) ? qm : new Date().toISOString().slice(0, 7);
+const start = new Date(m + "-01T00:00:00Z"), end = new Date(start); end.setUTCMonth(end.getUTCMonth() + 1);
+const prev = new Date(start); prev.setUTCMonth(prev.getUTCMonth() - 1);
+const prevM = prev.toISOString().slice(0, 7), nextM = end.toISOString().slice(0, 7);
+const monthLabel = start.toLocaleDateString("en-CA", { month: "long", year: "numeric", timeZone: "UTC" });
+
+const { data: rowsRaw, error } = await db.from("ai_usage").select("*").gte("created_at", start.toISOString()).lt("created_at", end.toISOString()).order("created_at", { ascending: false }).limit(5000);
+const R: any[] = rowsRaw || [];
+const gids = [...new Set(R.map((r) => r.guide_id).filter(Boolean))];
+const { data: guidesRaw } = gids.length ? await db.from("guide_pages").select("id,title,city,site_id").in("id", gids) : { data: [] as any[] };
+const guides: any[] = guidesRaw || [];
+const sids = [...new Set([...R.map((r) => r.site_id), ...guides.map((g) => g.site_id)].filter(Boolean))];
+const { data: sitesRaw } = sids.length ? await db.from("sites").select("id,site_name,domain").in("id", sids) : { data: [] as any[] };
+const G = new Map(guides.map((g) => [g.id, g])), S = new Map((sitesRaw || []).map((s: any) => [s.id, s]));
+const siteOf = (r: any) => r.site_id || G.get(r.guide_id)?.site_id || null;
+const siteName = (id: any) => (id ? S.get(id)?.domain || S.get(id)?.site_name || String(id).slice(0, 8) : "(no site)");
+const money = (n: number) => "$" + (n || 0).toFixed(2);
+const cost = (r: any) => +r.cost_usd || 0;
+function group(keyFn: (r: any) => any, labelFn: (k: any) => string) {
+  const mp = new Map<string, any>();
+  for (const r of R) { const k = keyFn(r) ?? "-"; const e = mp.get(k) || { key: k, label: labelFn(k === "-" ? null : k), runs: 0, cost: 0 }; e.runs++; e.cost += cost(r); mp.set(k, e); }
+  return [...mp.values()].sort((a, b) => b.cost - a.cost);
+}
+const total = R.reduce((a, r) => a + cost(r), 0);
+const drafts = R.filter((r) => r.kind === "research" || r.kind === "agent");
+const draftCost = drafts.reduce((a, r) => a + cost(r), 0);
+const other = R.filter((r) => !(r.kind === "research" || r.kind === "agent"));
+const bySite = group(siteOf, siteName);
+const byUser = group((r) => r.user_email || null, (k) => k || "(not tagged)");
+const byGuide = group((r) => r.guide_id || null, (k) => (k ? G.get(k)?.title || String(k).slice(0, 8) : "(no guide)"));
+const byKind = group((r) => r.kind || null, (k) => k || "(unknown)");
+const fmtTime = (s: string) => new Date(s).toLocaleString("en-CA", { timeZone: "America/Edmonton", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+---
+<Layout title="AI costs">
+<AdminSidebar />
+<main class="ai-admin">
+  <section class="hero">
+    <p class="eyebrow">AI costs</p>
+    <h1>What AI is costing you</h1>
+    <p class="sub"><a href={`?m=${prevM}`}>&larr;</a> <strong>{monthLabel}</strong> <a href={`?m=${nextM}`}>&rarr;</a> &nbsp;Estimated from token usage. Drafts include web searches.</p>
+  </section>
+  {error && <p class="err">Couldn't load ai_usage: {error.message}</p>}
+  <section class="stats">
+    <article><span>Total this month</span><strong>{money(total)}</strong></article>
+    <article><span>Guide drafts</span><strong>{drafts.length}</strong><em>{drafts.length ? `${money(draftCost / drafts.length)} avg` : "-"}</em></article>
+    <article><span>Other AI calls</span><strong>{other.length}</strong><em>{money(total - draftCost)}</em></article>
+    <article><span>All runs</span><strong>{R.length}</strong></article>
+  </section>
+  <section class="grid">
+    <article class="panel"><h2>By site</h2>{bySite.map((x) => <div class="row"><b>{x.label}</b><span>{x.runs} runs</span><strong>{money(x.cost)}</strong></div>)}{!bySite.length && <p class="none">Nothing yet.</p>}</article>
+    <article class="panel"><h2>By user</h2>{byUser.map((x) => <div class="row"><b>{x.label}</b><span>{x.runs} runs</span><strong>{money(x.cost)}</strong></div>)}{!byUser.length && <p class="none">Nothing yet.</p>}</article>
+  </section>
+  <section class="grid">
+    <article class="panel"><h2>By guide</h2>{byGuide.map((x) => <div class="row">{x.key !== "-" ? <a href={`/admin/guide-pages/${x.key}/edit`}><b>{x.label}</b></a> : <b>{x.label}</b>}<span>{x.runs} runs</span><strong>{money(x.cost)}</strong></div>)}{!byGuide.length && <p class="none">Nothing yet.</p>}</article>
+    <article class="panel"><h2>By type</h2>{byKind.map((x) => <div class="row"><b>{x.label}</b><span>{x.runs} runs</span><strong>{money(x.cost)}</strong></div>)}{!byKind.length && <p class="none">Nothing yet.</p>}</article>
+  </section>
+  <section class="panel">
+    <h2>Recent runs</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>When</th><th>Type</th><th>Guide</th><th>Site</th><th>User</th><th>Model</th><th>Tokens in / out</th><th>Cost</th></tr></thead>
+      <tbody>{R.slice(0, 50).map((r) => <tr>
+        <td>{fmtTime(r.created_at)}</td><td>{r.kind}</td>
+        <td>{r.guide_id ? <a href={`/admin/guide-pages/${r.guide_id}/edit`}>{G.get(r.guide_id)?.title || String(r.guide_id).slice(0, 8)}</a> : "-"}</td>
+        <td>{siteName(siteOf(r))}</td><td>{r.user_email || "-"}</td><td>{String(r.model || "").replace(/^claude-/, "")}</td>
+        <td>{(r.input_tokens || 0).toLocaleString()} / {(r.output_tokens || 0).toLocaleString()}</td><td><strong>{money(cost(r))}</strong></td>
+      </tr>)}</tbody>
+    </table></div>
+  </section>
+</main>
+</Layout>
+<style>
+  .ai-admin { max-width: 1180px; margin: 0 auto; padding: 40px 20px 80px; }
+  .hero { margin-bottom: 28px; }
+  .eyebrow { margin: 0 0 8px; font-size: .78rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #667085; }
+  h1 { margin: 0; font-size: clamp(2rem, 4vw, 3.25rem); letter-spacing: -0.04em; }
+  .sub { color: #667085; } .sub a { text-decoration: none; padding: 0 6px; color: #2f6f73; font-weight: 700; }
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 28px 0; }
+  .stats article, .panel { background: #fff; border: 1px solid #eaecf0; border-radius: 22px; box-shadow: 0 14px 40px rgba(16,24,40,.06); }
+  .stats article { padding: 20px; } .stats span { display: block; color: #667085; font-weight: 700; font-size: .86rem; }
+  .stats strong { display: block; margin-top: 8px; font-size: 2rem; } .stats em { font-style: normal; color: #667085; font-size: .9rem; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+  .panel { padding: 22px 24px; } .panel h2 { margin: 0 0 12px; font-size: 1.15rem; }
+  .row { display: grid; grid-template-columns: 1fr auto auto; gap: 14px; align-items: center; padding: 11px 0; border-top: 1px solid #f2f4f7; }
+  .row span { color: #667085; font-size: .88rem; } .row a { color: inherit; }
+  .none { color: #98a2b3; } .err { color: #b42318; }
+  .table-wrap { overflow-x: auto; } table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th { text-align: left; font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: #667085; padding: 10px; border-bottom: 1px solid #eaecf0; }
+  td { padding: 10px; border-bottom: 1px solid #f2f4f7; white-space: nowrap; } td a { color: #2f6f73; }
+  @media (max-width: 800px) { .stats { grid-template-columns: 1fr 1fr; } .grid { grid-template-columns: 1fr; } }
+</style>

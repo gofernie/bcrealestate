@@ -49,7 +49,7 @@ if (Astro.request.method === "POST") {
       photos: (() => { try { const p = JSON.parse(clean(form.get("photos_json")) || "null"); return Array.isArray(p) ? p : undefined; } catch { return undefined; } })(),
       agent_answers: (() => { const a = Object.fromEntries(["love","who","local","story","miss","friend","winter","money","saturday","surprised","downsides","pockets","around"].map((k) => [k, clean(form.get("ans_" + k)) || ""])); const fu = []; for (let i = 0; i < 20; i++) { const q = clean(form.get("fu_q_" + i)); if (q) fu.push({ q, a: clean(form.get("fu_a_" + i)) || "" }); } if (fu.length) a.followups = fu; return Object.values(a).some((v) => Array.isArray(v) ? v.length : Boolean(v)) ? a : null; })(),
       section_blocks: sectionBlocks,
-      guide_links: { hero_credit: (() => { try { const v = JSON.parse(String(form.get("gl_hero_credit") || "null")); return v && v.url ? v : null; } catch { return null; } })(), ...Object.fromEntries(["live_sold","live_active","mi_sold","mi_active","mi_bottom"].map((k) => [k, form.get("gl_" + k) === "on"])), pages: form.getAll("gl_page").map(String).filter(Boolean).slice(0, 12), custom: (() => { const ty = form.getAll("glc_type").map(String), ar = form.getAll("glc_area").map(String), lb = form.getAll("glc_label").map(String); return lb.map((l, i) => ({ type: ty[i] || "", area: ar[i] || "", label: l.trim() })).filter((c) => c.label || c.type || c.area).slice(0, 6); })() },
+      guide_links: { scroll_credit: (() => { try { const v = JSON.parse(String(form.get("gl_scroll_credit") || "null")); return v && v.url ? v : null; } catch { return null; } })(), hero_credit: (() => { try { const v = JSON.parse(String(form.get("gl_hero_credit") || "null")); return v && v.url ? v : null; } catch { return null; } })(), ...Object.fromEntries(["live_sold","live_active","mi_sold","mi_active","mi_bottom"].map((k) => [k, form.get("gl_" + k) === "on"])), pages: form.getAll("gl_page").map(String).filter(Boolean).slice(0, 12), custom: (() => { const ty = form.getAll("glc_type").map(String), ar = form.getAll("glc_area").map(String), lb = form.getAll("glc_label").map(String); return lb.map((l, i) => ({ type: ty[i] || "", area: ar[i] || "", label: l.trim() })).filter((c) => c.label || c.type || c.area).slice(0, 6); })() },
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
@@ -304,6 +304,8 @@ const __agbPlaces = await (async () => {
   <legend style="font-weight:700;padding:0 6px;">Scroll photo panel <span style="font-weight:400;color:#888">(shows mid-article; leave photo blank to hide)</span></legend>
   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:4px 0 10px;">
     <input type="file" id="isc-file" accept="image/jpeg,image/png,image/webp" />
+    <button type="button" id="isc-us" style="margin:0;padding:.4rem .9rem;border:1px solid #2f6f73;border-radius:999px;color:#2f6f73;background:#fff;cursor:pointer;font-weight:600;font-size:.85rem;">Unsplash</button>
+    <input type="hidden" name="gl_scroll_credit" id="gl-scroll-credit" value={JSON.stringify(__gl.scroll_credit || null)} />
     <span id="isc-status" style="color:#666;font-size:.9rem;"></span>
   </div>
   <img id="isc-preview" alt="" src={page.interscroller_img_mobile || page.interscroller_img || ""} hidden={!(page.interscroller_img_mobile || page.interscroller_img)} style="display:block;max-width:140px;border-radius:6px;margin:0 0 12px;" />
@@ -336,7 +338,7 @@ const __agbPlaces = await (async () => {
           var r = await fetch("/admin/api/guide-image", { method: "POST", body: fd });
           var d = await r.json();
           if (!r.ok || d.error) throw new Error(d.error || ("HTTP " + r.status));
-          document.querySelector('[name="interscroller_img"]').value = d.img;
+          document.querySelector('[name="interscroller_img"]').value = d.img; var __sc = document.getElementById("gl-scroll-credit"); if (__sc) __sc.value = "null";
           document.querySelector('[name="interscroller_img_mobile"]').value = d.img_mobile;
           pv.src = d.img_mobile; pv.hidden = false;
           st.textContent = "Done (" + d.kb.wide + " KB + " + d.kb.tall + " KB). Click Save.";
@@ -479,7 +481,7 @@ const __agbPlaces = await (async () => {
       var q = document.getElementById("agb-us-q"), go = document.getElementById("agb-us-go"), x = document.getElementById("agb-us-x"), grid = document.getElementById("agb-us-grid"), more = document.getElementById("agb-us-more"), st = document.getElementById("agb-us-st"), ttl = document.getElementById("agb-us-title");
       var form = P.closest("form"), mode = "guide", page = 1, API = "/admin/api/guide-unsplash";
       function place() { var ts = document.getElementById("agb-town"), hs = document.getElementById("agb-hood"); return (hs && hs.value) || (ts && ts.options[ts.selectedIndex] ? ts.options[ts.selectedIndex].text : ""); }
-      function open(m) { mode = m; ttl.textContent = m === "hero" ? "Pick a hero photo" : "Add photos to the guide"; P.style.display = ""; if (!q.value) { var p = place(); q.value = p ? p + " BC" : "British Columbia"; } if (!grid.children.length) search(1); q.focus(); }
+      function open(m) { mode = m; ttl.textContent = m === "hero" ? "Pick a hero photo" : m === "scroll" ? "Pick a scroll panel photo" : "Add photos to the guide"; var an = document.getElementById(m === "scroll" ? "isc-us" : "agb-photo-status"); if (an) { var host = m === "scroll" ? an.parentElement : an; host.parentNode.insertBefore(P, host.nextSibling); } P.style.display = ""; if (!q.value) { var p = place(); q.value = p ? p + " BC" : "British Columbia"; } if (!grid.children.length) search(1); q.focus(); }
       async function search(pg) {
         page = pg; go.disabled = true; st.textContent = "Searching...";
         try {
@@ -501,6 +503,17 @@ const __agbPlaces = await (async () => {
       }
       function track(p) { fetch(API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "track", download: p.download }) }).catch(function () {}); }
       function use(p, b) {
+        if (mode === "scroll") {
+          var d1 = form.querySelector('[name="interscroller_img"]'), m1 = form.querySelector('[name="interscroller_img_mobile"]'), al = form.querySelector('[name="interscroller_alt"]'), sc = document.getElementById("gl-scroll-credit"), ip = document.getElementById("isc-preview"), is = document.getElementById("isc-status");
+          var dk = p.raw + "&w=1920&h=1080&fit=crop&q=75&fm=webp";
+          if (d1) d1.value = dk;
+          if (m1) m1.value = p.raw + "&w=900&h=1600&fit=crop&q=60&fm=webp";
+          if (al) al.value = p.alt || "";
+          if (sc) sc.value = JSON.stringify({ url: dk, name: p.name, href: p.href });
+          if (ip) { ip.src = p.thumb; ip.hidden = false; }
+          if (is) is.textContent = "Unsplash photo set. Save to keep it.";
+          P.style.display = "none"; track(p); return;
+        }
         if (mode === "hero") {
           var inp = form.querySelector('[name="hero_image_url"]'), pv = document.getElementById("agb-hero-prev"), hc = document.getElementById("gl-hero-credit"), rm = document.getElementById("agb-hero-rm");
           if (inp) inp.value = p.hero; if (hc) hc.value = JSON.stringify({ url: p.hero, name: p.name, href: p.href });
@@ -518,6 +531,7 @@ const __agbPlaces = await (async () => {
       q.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); search(1); } });
       document.getElementById("agb-hero-us").addEventListener("click", function () { open("hero"); });
       document.getElementById("agb-photo-us").addEventListener("click", function () { open("guide"); });
+      document.getElementById("isc-us").addEventListener("click", function () { open("scroll"); });
       document.getElementById("agb-hero-rm").addEventListener("click", function () {
         var inp = form.querySelector('[name="hero_image_url"]'), pv = document.getElementById("agb-hero-prev"), hc = document.getElementById("gl-hero-credit");
         if (inp) inp.value = ""; if (hc) hc.value = "null"; pv.removeAttribute("src"); pv.style.display = "none"; this.style.display = "none";
@@ -675,7 +689,7 @@ document.getElementById("agb-use-topic").addEventListener("click", function () {
       var img = document.createElement("img"); img.src = p.url_sm || p.url; img.alt = ""; img.style.cssText = "width:96px;height:64px;object-fit:cover;border-radius:6px;flex:0 0 auto;";
       var cap = document.createElement("input"); cap.type = "text"; cap.placeholder = "Caption, e.g. Morning mist off the north shore"; cap.value = p.caption || ""; cap.style.cssText = "flex:1;min-width:0;padding:.45rem .6rem;font:inherit;";
       cap.addEventListener("input", function () { p.caption = cap.value; p.alt = cap.value; sync(); });
-      var rm = document.createElement("button"); rm.type = "button"; rm.textContent = "Remove"; rm.style.cssText = "flex:0 0 auto;";
+      var rm = document.createElement("button"); rm.type = "button"; rm.textContent = "Remove"; rm.style.cssText = "flex:0 0 auto;margin:0;padding:.4rem .9rem;border:1px solid #f1c4c0;border-radius:999px;background:#fff;color:#b42318;font-weight:600;font-size:.85rem;cursor:pointer;";
       rm.addEventListener("click", function () { photos.splice(i, 1); sync(); render(); });
       row.appendChild(img); row.appendChild(cap); row.appendChild(rm); list.appendChild(row);
     });
@@ -720,6 +734,24 @@ document.getElementById("agb-use-topic").addEventListener("click", function () {
   });
   render();
   window.__agbAddPhoto = function (p) { photos.push(p); sync(); render(); };
+  /* __agbDragV1: drag to reorder */
+  var __from = -1, __r0 = render;
+  render = function () {
+    __r0();
+    [].forEach.call(list.children, function (row, i) {
+      var h = document.createElement("span"); h.textContent = "\u2630"; h.title = "Drag to reorder";
+      h.style.cssText = "flex:0 0 auto;cursor:grab;color:#98a2b3;font-size:1.1rem;padding:0 .2rem;user-select:none;";
+      row.insertBefore(h, row.firstChild);
+      h.addEventListener("mousedown", function () { row.draggable = true; });
+      h.addEventListener("mouseup", function () { row.draggable = false; });
+      row.addEventListener("dragstart", function (e) { __from = i; row.style.opacity = ".45"; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", String(i)); } catch (x) {} });
+      row.addEventListener("dragend", function () { row.draggable = false; row.style.opacity = ""; __from = -1; [].forEach.call(list.children, function (r) { r.style.boxShadow = ""; }); });
+      row.addEventListener("dragover", function (e) { if (__from < 0) return; e.preventDefault(); row.style.boxShadow = i < __from ? "inset 0 3px 0 #2f6f73" : "inset 0 -3px 0 #2f6f73"; });
+      row.addEventListener("dragleave", function () { row.style.boxShadow = ""; });
+      row.addEventListener("drop", function (e) { e.preventDefault(); if (__from < 0 || __from === i) return; var m = photos.splice(__from, 1)[0]; photos.splice(i, 0, m); __from = -1; sync(); render(); });
+    });
+  };
+  render();
 })();
 </script>
 <script is:inline>
@@ -841,6 +873,53 @@ window.__seoFill = function (md) {
     });
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
+})();
+</script>
+<script is:inline>
+/* __seoAIv1 */
+(function () {
+  function init() {
+    var st = document.querySelector('[name="seo_title"]'), md = document.querySelector('[name="meta_description"]');
+    if (!st || !md) return;
+    var lab = (st.previousElementSibling && st.previousElementSibling.tagName === "LABEL") ? st.previousElementSibling : st;
+    var bar = document.createElement("div"); bar.style.cssText = "display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:22px 0 0;";
+    var b = document.createElement("button"); b.type = "button"; b.textContent = "Auto-fill SEO"; b.style.cssText = "margin:0;padding:.45rem 1rem;border:0;border-radius:999px;background:#2f6f73;color:#fff;font-weight:600;font-size:.88rem;cursor:pointer;";
+    var s = document.createElement("span"); s.style.cssText = "font-size:.85rem;color:#777;"; s.textContent = "Writes the SEO title and meta description from the guide.";
+    bar.appendChild(b); bar.appendChild(s); lab.parentNode.insertBefore(bar, lab);
+    async function run(silent) {
+      var f = st.form, body = (f.querySelector('[name="neighbourhood_copy"]') || {}).value || "", title = (f.querySelector('[name="title"]') || {}).value || "";
+      if (!body.trim() && !title.trim()) { s.textContent = "Write or insert the guide first."; return; }
+      if (!silent && (st.value || md.value) && !confirm("Replace the current SEO title and meta description?")) return;
+      var brand = (st.value.split(" | ")[1] || "").trim();
+      b.disabled = true; s.textContent = "Writing SEO title and description...";
+      try {
+        var r = await fetch("/admin/api/guide-seo", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: (location.pathname.match(/guide-pages\/([^/]+)/) || [])[1] || "", title: title, body: body, brand: brand }) });
+        var d = await r.json(); if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+        st.value = d.title; md.value = d.description;
+        (function chips(pairs) {
+          pairs.forEach(function (pr) {
+            var el = pr[0], list = pr[1], id = pr[2], old = document.getElementById(id); if (old) old.remove();
+            if (!list || list.length < 2) return;
+            var w = document.createElement("div"); w.id = id; w.style.cssText = "display:flex;flex-direction:column;gap:6px;margin:6px 0 4px;";
+            list.forEach(function (v) {
+              var c = document.createElement("button"); c.type = "button"; c.textContent = v + "  (" + v.length + ")";
+              c.style.cssText = "margin:0;text-align:left;padding:.45rem .75rem;border:1px solid #d0d5dd;border-radius:10px;background:#fff;color:#344054;font-weight:400;font-size:.88rem;cursor:pointer;";
+              function on() { w.querySelectorAll("button").forEach(function (x) { x.style.borderColor = "#d0d5dd"; x.style.background = "#fff"; }); c.style.borderColor = "#2f6f73"; c.style.background = "#eef6f3"; }
+              c.addEventListener("click", function () { el.value = v; on(); });
+              w.appendChild(c); if (v === el.value) on();
+            });
+            el.parentNode.insertBefore(w, el.nextSibling);
+          });
+        })([[st, d.titles, "seo-t-opts"], [md, d.descriptions, "seo-d-opts"]]);
+        s.textContent = "Done. Click another option below each box to swap, then Save.";
+      } catch (err) { s.textContent = "Failed: " + err.message; }
+      b.disabled = false;
+    }
+    b.addEventListener("click", function () { run(false); });
+    var old = window.__seoFill;
+    window.__seoFill = function (draft) { try { if (old) old(draft); } catch (e) {} setTimeout(function () { run(true); }, 50); };
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else setTimeout(init, 0);
 })();
 </script>
 </body>
