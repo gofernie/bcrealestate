@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import Layout from "../../../layouts/Layout.astro";
 import SiteNav from "../../../components/SiteNav.astro";
 import AgentBrandStrip from "../../../components/AgentBrandStrip.astro";
+import AgentContactCard from "../../../components/AgentContactCard.astro";
 import { getAgentForSite } from "../../../lib/getAgentForSite";
 import { getSite } from "../../../lib/getSite";
 
@@ -189,6 +190,37 @@ function __phKeep(html) {
 }
 const __asideFigs = __phList.length ? __phList.map(__phFig) : __photoFigs;
 const __guideHtmlY = __phKeep(__guideHtmlX);
+const __sc = (page.interscroller_img && __gl.scroll_credit && __gl.scroll_credit.url === page.interscroller_img) ? __gl.scroll_credit : null;
+const __scHtml = __sc ? "<p class=" + __Q + "guide-photo-credits" + __Q + " style=" + __Q + "margin:28px 0 0;font-size:.75rem;color:#6b746f;" + __Q + ">Scroll photo: <a href=" + __Q + __esc(__sc.href || "https://unsplash.com") + __Q + " target=" + __Q + "_blank" + __Q + " rel=" + __Q + "noopener" + __Q + " style=" + __Q + "color:inherit;" + __Q + ">" + __esc(__sc.name || "") + "</a> / <a href=" + __Q + "https://unsplash.com/?utm_source=fernie_pages&amp;utm_medium=referral" + __Q + " target=" + __Q + "_blank" + __Q + " rel=" + __Q + "noopener" + __Q + " style=" + __Q + "color:inherit;" + __Q + ">Unsplash</a></p>" : "";
+const __needLive = /actually sell for|sold prices|what homes sell for|for sale now|currently for sale/i.test(__guideHtmlY);
+let __live = null;
+if (__needLive) {
+  try {
+    const __base = import.meta.env.DEV ? "http://127.0.0.1:" + (Astro.url.port || "4321") : Astro.url.origin;
+    const __r = await fetch(__base + "/api/guide-live?city=" + encodeURIComponent(city), { signal: AbortSignal.timeout(4000) });
+    if (__r.ok) __live = await __r.json();
+  } catch {}
+}
+function __liveTable(head, rows) {
+  return "<table><thead><tr>" + head.map((h) => "<th>" + __esc(h) + "</th>").join("") + "</tr></thead><tbody>" + rows.map((r) => "<tr>" + r.map((v) => "<td>" + __esc(v) + "</td>").join("") + "</tr>").join("") + "</tbody></table>";
+}
+let __liveOk = false;
+const __guideHtmlL = !__live ? __guideHtmlY : __guideHtmlY.split(/(?=<h2[\s>])/).map((chunk) => {
+  const he = chunk.indexOf("</h2>");
+  const txt = he > 0 ? chunk.slice(0, he).replace(/<[^>]+>/g, "") : "";
+  const kind = /actually sell for|sold prices|what homes sell for/i.test(txt) ? "sold" : /for sale now|currently for sale/i.test(txt) ? "active" : "";
+  const s = kind ? __live[kind] : null;
+  if (!s || !Array.isArray(s.rows) || !s.rows.length) return chunk;
+  const ts = chunk.indexOf("<table"), te = chunk.indexOf("</table>");
+  if (ts < 0 || te < ts) return chunk;
+  const tbl = kind === "sold"
+    ? __liveTable(["Area", "Homes sold", "Median sold price"], s.rows.map((r) => [r.name, r.n, r.median]))
+    : __liveTable(["Property type", "Active listings", "Median asking price"], s.rows.map((r) => [r.name, r.n, r.median]));
+  const note = "<p class=" + __Q + "guide-live-note" + __Q + " style=" + __Q + "padding:10px 14px;border-radius:10px;background:#eef6f3;border:1px solid #cfe3dc;font-size:.95rem;" + __Q + "><strong style=" + __Q + "color:var(--accent, #2f6f73);" + __Q + ">Updated " + __esc(__live.asOf || "") + ".</strong> " + __esc(s.summary || "") + "</p>";
+  __liveOk = true;
+  return chunk.slice(0, ts) + note + tbl + chunk.slice(te + 8);
+}).join("");
+const __liveCss = __liveOk ? "<style>.guide-live-upd{display:none!important}</style>" : "";
 ---
 <Layout title={title} description={description} accent={accent} site={site} city={city}>
   <SiteNav site={site} city={city} accent={accent} />
@@ -197,17 +229,17 @@ const __guideHtmlY = __phKeep(__guideHtmlX);
     <h1 style="font-family:'Instrument Serif',serif;font-weight:400;font-size:clamp(2.4rem,5vw,3.6rem);line-height:1.05;margin:0 0 28px;max-width:760px;">{page.title}</h1>
 <p class="guide-byline" style="margin:-12px 0 40px;color:#5b6660;font-size:.95rem;">{__showAgent && <>By <strong style="color:#1f2a26;">{__agentName}</strong>, {__bylineRole}</>}{__showAgent && __updated && " \u00B7 "}{__updated && `Updated ${__updated}`}{" \u00B7 "}<button type="button" class="guide-share-btn" data-title={page.title} style="background:none;border:0;padding:0;font:inherit;color:var(--accent, #2f6f73);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px;">Share</button></p>
     {__hasStats && __updated && (
-      <p class={"guide-datanote" + (__stale ? " is-stale" : "")} style={__stale
+      <p class={"guide-datanote" + (__stale && !__liveOk ? " is-stale" : "")} style={__stale && !__liveOk
         ? "margin:-28px 0 36px;padding:10px 14px;border-radius:10px;background:#fff7e6;border:1px solid #f3d9a4;color:#7a5a1c;font-size:.92rem;max-width:760px;"
         : "margin:-30px 0 36px;color:#5b6660;font-size:.9rem;"}>
-        {__stale ? `This guide uses ${__updated} data. For today's numbers, see ` : `Figures as of ${__updated}. Live numbers: `}
+        {__liveOk ? "Tables on this page update automatically from this site's listing data. More: " : __stale ? `This guide uses ${__updated} data. For today's numbers, see ` : `Figures as of ${__updated}. Live numbers: `}
         <a href={__miHref} style="color:var(--accent, #2f6f73);font-weight:600;">{cityLabel} Market Intel {"\u2192"}</a>
       </p>
     )}
     {page.hero_image_url && <img class="guide-hero" src={page.hero_image_url} srcset={__heroSrcset} sizes="(max-width: 1200px) 100vw, 1180px" alt={page.title} fetchpriority="high" style="display:block;width:100%;aspect-ratio:16/7;object-fit:cover;border-radius:14px;margin:0 0 40px;" />}
     {page.hero_image_url && __gl.hero_credit && __gl.hero_credit.url === page.hero_image_url && <p class="guide-hero-credit" style="margin:-34px 0 34px;font-size:.75rem;color:#6b746f;text-align:right;">Photo: <a href={__gl.hero_credit.href || "https://unsplash.com"} target="_blank" rel="noopener" style="color:inherit;">{__gl.hero_credit.name}</a> / <a href="https://unsplash.com/?utm_source=fernie_pages&utm_medium=referral" target="_blank" rel="noopener" style="color:inherit;">Unsplash</a></p>}
     {page.neighbourhood_copy && (
-<div class="guide-layout"><div class="guide-body" style="max-width:760px;" set:html={__guideHtmlY} />{__asideFigs.length > 0 && <aside class="guide-aside" set:html={__asideFigs.join("")} />}</div>
+<div class="guide-layout"><div class="guide-body" style="max-width:760px;" set:html={__guideHtmlL + __scHtml + __liveCss} />{__asideFigs.length > 0 && <aside class="guide-aside" set:html={__asideFigs.join("")} />}</div>
 <script is:inline>
 (function () {
   var cache = {};
@@ -288,7 +320,7 @@ const __guideHtmlY = __phKeep(__guideHtmlX);
   });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
 })();
-</script><div class="guide-contact"><AgentBrandStrip site={site} city={city} variant="intro" /></div>
+</script><div class="guide-contact"><style is:inline>.gc-mob{display:none}@media (max-width: 760px){.gc-desk{display:none!important}.gc-mob{display:block!important}}</style><div class="gc-desk"><AgentBrandStrip site={site} city={city} variant="intro" /></div><div class="gc-mob"><AgentContactCard site={site}  /></div></div>
     )}
   </main>
 </Layout>
