@@ -60,7 +60,7 @@ async function purgeAfterAdminSave(pathname: string, referer: string) {
   }
 }
 
-export const onRequest = defineMiddleware(async (context, next) => {
+const mainHandler = defineMiddleware(async (context, next) => {
   const { pathname, search } = context.url;
   // streetindex-host-v1: streetindex.io serves /streetindex pages (same MarketTicker as bc.realestate)
   {
@@ -239,4 +239,47 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const response = await next();
   if (isWrite && response.status < 400) await purgeAfterAdminSave(pathname, referer);
   return response;
+});
+
+// demo-gate-v1: agent demo subdomains (name.bc.realestate) need an access code and are never indexed
+const DEMO_COOKIE = "demo_access";
+function demoHostOf(hostname: string) {
+  const h = hostname.replace(/\.localhost$/, ".bc.realestate").replace(/^www\./, "").toLowerCase();
+  return /^[a-z0-9-]+\.bc\.realestate$/.test(h) ? h : "";
+}
+const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+function demoGatePage(back: string, bad: boolean) {
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Private demo</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;background:#f5f1e8;color:#2b2b2b}form{background:#fff;padding:32px;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.08);width:min(340px,90vw)}h1{font-size:20px;margin:0 0 8px}p{font-size:14px;color:#666;margin:0 0 16px}input{width:100%;box-sizing:border-box;padding:10px;font-size:16px;border:1px solid #ccc;border-radius:8px;margin-bottom:12px}button{width:100%;padding:10px;font-size:16px;border:0;border-radius:8px;background:#1f4d3a;color:#fff;cursor:pointer}.err{color:#b00020}</style></head>
+<body><form method="post" action="/__demo-access"><h1>Private demo</h1><p>This site is a private preview. Enter the access code to continue.</p>${bad ? '<p class="err">That code didn\'t work. Try again.</p>' : ""}<input type="hidden" name="back" value="${escHtml(back)}"><input name="code" type="password" placeholder="Access code" autofocus required><button type="submit">Continue</button></form></body></html>`;
+  return new Response(html, { status: 401, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Netlify-CDN-Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" } });
+}
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  const demoHost = demoHostOf(context.url.hostname);
+  const code = String(import.meta.env.DEMO_ACCESS_CODE || "");
+  if (!demoHost || !code) return mainHandler(context, next);
+  const { pathname, search } = context.url;
+  if (pathname === "/robots.txt") return new Response("User-agent: *\nDisallow: /\n", { headers: { "Content-Type": "text/plain", "X-Robots-Tag": "noindex" } });
+  if (pathname === "/__demo-access" && context.request.method === "POST") {
+    const form = await context.request.formData().catch(() => null);
+    const entered = String(form?.get("code") || "").trim();
+    const back = String(form?.get("back") || "/");
+    const safeBack = back.startsWith("/") && !back.startsWith("//") ? back : "/";
+    if (entered && entered === code) {
+      const secure = import.meta.env.DEV ? "" : "; Secure";
+      return new Response(null, { status: 303, headers: { Location: safeBack, "Cache-Control": "no-store", "Set-Cookie": `${DEMO_COOKIE}=${encodeURIComponent(code)}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax${secure}` } });
+    }
+    return demoGatePage(safeBack, true);
+  }
+  const isAsset = /^\/(_astro|_image|fonts|images|img|js|css)(\/|$)/.test(pathname) || /\.(css|js|mjs|png|jpe?g|webp|avif|gif|svg|ico|woff2?|ttf|map)$/i.test(pathname);
+  const hasAccess = context.cookies.get(DEMO_COOKIE)?.value === code;
+  if (!hasAccess && !isAsset) return demoGatePage(pathname + search, false);
+  const res = await mainHandler(context, next);
+  try {
+    res.headers.set("X-Robots-Tag", "noindex, nofollow");
+    const v = res.headers.get("netlify-vary");
+    res.headers.set("Netlify-Vary", v ? `${v},cookie=${DEMO_COOKIE}` : `cookie=${DEMO_COOKIE}`);
+  } catch {}
+  return res;
 });
