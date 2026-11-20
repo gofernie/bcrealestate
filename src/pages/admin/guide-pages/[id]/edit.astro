@@ -49,7 +49,7 @@ if (Astro.request.method === "POST") {
       photos: (() => { try { const p = JSON.parse(clean(form.get("photos_json")) || "null"); return Array.isArray(p) ? p : undefined; } catch { return undefined; } })(),
       agent_answers: (() => { const a = Object.fromEntries(["love","who","local","story","miss","friend","winter","money","saturday","surprised","downsides","pockets","around"].map((k) => [k, clean(form.get("ans_" + k)) || ""])); const fu = []; for (let i = 0; i < 20; i++) { const q = clean(form.get("fu_q_" + i)); if (q) fu.push({ q, a: clean(form.get("fu_a_" + i)) || "" }); } if (fu.length) a.followups = fu; return Object.values(a).some((v) => Array.isArray(v) ? v.length : Boolean(v)) ? a : null; })(),
       section_blocks: sectionBlocks,
-      guide_links: { ...Object.fromEntries(["live_sold","live_active","mi_sold","mi_active","mi_bottom"].map((k) => [k, form.get("gl_" + k) === "on"])), pages: form.getAll("gl_page").map(String).filter(Boolean).slice(0, 12), custom: (() => { const ty = form.getAll("glc_type").map(String), ar = form.getAll("glc_area").map(String), lb = form.getAll("glc_label").map(String); return lb.map((l, i) => ({ type: ty[i] || "", area: ar[i] || "", label: l.trim() })).filter((c) => c.label || c.type || c.area).slice(0, 6); })() },
+      guide_links: { hero_credit: (() => { try { const v = JSON.parse(String(form.get("gl_hero_credit") || "null")); return v && v.url ? v : null; } catch { return null; } })(), ...Object.fromEntries(["live_sold","live_active","mi_sold","mi_active","mi_bottom"].map((k) => [k, form.get("gl_" + k) === "on"])), pages: form.getAll("gl_page").map(String).filter(Boolean).slice(0, 12), custom: (() => { const ty = form.getAll("glc_type").map(String), ar = form.getAll("glc_area").map(String), lb = form.getAll("glc_label").map(String); return lb.map((l, i) => ({ type: ty[i] || "", area: ar[i] || "", label: l.trim() })).filter((c) => c.label || c.type || c.area).slice(0, 6); })() },
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
@@ -448,14 +448,83 @@ const __agbPlaces = await (async () => {
         <div style="font-size:.85rem;font-weight:600;margin-bottom:.35rem;">Hero photo</div>
         <img id="agb-hero-prev" src={page?.hero_image_url || ""} alt="" style={`width:220px;height:124px;object-fit:cover;border-radius:8px;background:#e6ece8;display:${page?.hero_image_url ? "block" : "none"};`} />
         <label style="display:inline-block;margin:.5rem 0 0;padding:.4rem .9rem;border:1px solid #2f6f73;border-radius:999px;color:#2f6f73;background:#fff;cursor:pointer;font-weight:600;font-size:.85rem;">Upload hero photo<input type="file" accept="image/*" id="agb-hero-file" style="display:none;" /></label>
+        <button type="button" id="agb-hero-us" style="margin:.5rem 0 0 .3rem;padding:.4rem .9rem;border:1px solid #2f6f73;border-radius:999px;color:#2f6f73;background:#fff;cursor:pointer;font-weight:600;font-size:.85rem;">Unsplash</button>
+        <button type="button" id="agb-hero-rm" style="margin:.5rem 0 0 .3rem;padding:.4rem .9rem;border:1px solid #b42318;border-radius:999px;color:#b42318;background:#fff;cursor:pointer;font-weight:600;font-size:.85rem;display:{page?.hero_image_url ? 'inline-block' : 'none'};">Remove</button>
+        <input type="hidden" name="gl_hero_credit" id="gl-hero-credit" value={JSON.stringify(__gl.hero_credit || null)} />
       </div>
       <div style="flex:1;min-width:260px;">
         <div style="font-size:.85rem;font-weight:600;margin-bottom:.35rem;">Photos in the guide</div>
         <div id="agb-photo-list"></div>
         <label style="display:inline-block;margin:.3rem 0 0;padding:.4rem .9rem;border:1px solid #2f6f73;border-radius:999px;color:#2f6f73;background:#fff;cursor:pointer;font-weight:600;font-size:.85rem;">+ Add photos<input type="file" accept="image/*" multiple id="agb-photo-files" style="display:none;" /></label>
+        <button type="button" id="agb-photo-us" style="margin:.3rem 0 0 .3rem;padding:.4rem .9rem;border:1px solid #2f6f73;border-radius:999px;color:#2f6f73;background:#fff;cursor:pointer;font-weight:600;font-size:.85rem;">Unsplash</button>
       </div>
     </div>
     <div id="agb-photo-status" style="font-size:.85rem;color:#777;margin-top:.5rem;"></div>
+    <div id="agb-us" style="display:none;margin-top:.8rem;padding:12px;border:1px solid #eaecf0;border-radius:12px;background:#fff;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <strong id="agb-us-title" style="font-size:.9rem;">Unsplash</strong>
+        <input id="agb-us-q" type="text" style="flex:1;min-width:180px;" />
+        <button type="button" id="agb-us-go" style="margin:0;padding:.45rem 1rem;">Search</button>
+        <button type="button" id="agb-us-x" style="margin:0;padding:.45rem 1rem;background:#fff;color:#555;border:1px solid #ddd;">Close</button>
+      </div>
+      <div id="agb-us-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px;"></div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:8px;">
+        <button type="button" id="agb-us-more" style="display:none;margin:0;padding:.4rem .9rem;background:#fff;color:#2f6f73;border:1px solid #2f6f73;">More</button>
+        <span id="agb-us-st" style="font-size:.82rem;color:#777;"></span>
+      </div>
+    </div>
+    <script is:inline>
+    (function () {
+      var P = document.getElementById("agb-us"); if (!P) return;
+      var q = document.getElementById("agb-us-q"), go = document.getElementById("agb-us-go"), x = document.getElementById("agb-us-x"), grid = document.getElementById("agb-us-grid"), more = document.getElementById("agb-us-more"), st = document.getElementById("agb-us-st"), ttl = document.getElementById("agb-us-title");
+      var form = P.closest("form"), mode = "guide", page = 1, API = "/admin/api/guide-unsplash";
+      function place() { var ts = document.getElementById("agb-town"), hs = document.getElementById("agb-hood"); return (hs && hs.value) || (ts && ts.options[ts.selectedIndex] ? ts.options[ts.selectedIndex].text : ""); }
+      function open(m) { mode = m; ttl.textContent = m === "hero" ? "Pick a hero photo" : "Add photos to the guide"; P.style.display = ""; if (!q.value) { var p = place(); q.value = p ? p + " BC" : "British Columbia"; } if (!grid.children.length) search(1); q.focus(); }
+      async function search(pg) {
+        page = pg; go.disabled = true; st.textContent = "Searching...";
+        try {
+          var r = await fetch(API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ q: q.value.trim(), page: pg }) });
+          var d = await r.json(); if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+          if (pg === 1) grid.innerHTML = "";
+          (d.results || []).forEach(tile);
+          st.textContent = (d.results || []).length ? "Click a photo to use it. The photographer is credited on the guide." : "No results. Try other words.";
+          more.style.display = (d.results || []).length ? "" : "none";
+        } catch (err) { st.textContent = "Failed: " + err.message; }
+        go.disabled = false;
+      }
+      function tile(p) {
+        var b = document.createElement("button"); b.type = "button"; b.title = "Photo by " + p.name;
+        b.style.cssText = "margin:0;padding:0;border:2px solid transparent;border-radius:8px;background:none;cursor:pointer;text-align:left;color:#555;";
+        var im = document.createElement("img"); im.src = p.thumb; im.alt = p.alt || ""; im.loading = "lazy"; im.style.cssText = "display:block;width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:6px;";
+        var c = document.createElement("span"); c.textContent = p.name; c.style.cssText = "display:block;font-size:.72rem;font-weight:400;padding:2px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+        b.appendChild(im); b.appendChild(c); b.addEventListener("click", function () { use(p, b); }); grid.appendChild(b);
+      }
+      function track(p) { fetch(API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "track", download: p.download }) }).catch(function () {}); }
+      function use(p, b) {
+        if (mode === "hero") {
+          var inp = form.querySelector('[name="hero_image_url"]'), pv = document.getElementById("agb-hero-prev"), hc = document.getElementById("gl-hero-credit"), rm = document.getElementById("agb-hero-rm");
+          if (inp) inp.value = p.hero; if (hc) hc.value = JSON.stringify({ url: p.hero, name: p.name, href: p.href });
+          pv.src = p.thumb; pv.style.display = "block"; if (rm) rm.style.display = "inline-block";
+          P.style.display = "none"; document.getElementById("agb-photo-status").textContent = "Hero photo set. Save to keep it.";
+        } else {
+          if (window.__agbAddPhoto) window.__agbAddPhoto({ url: p.inline, url_sm: p.thumb, caption: "", alt: p.alt || "", credit: p.name, credit_href: p.href });
+          b.style.borderColor = "#2f6f73"; st.textContent = "Added. Give it a caption below, then Save.";
+        }
+        track(p);
+      }
+      go.addEventListener("click", function () { search(1); });
+      more.addEventListener("click", function () { search(page + 1); });
+      x.addEventListener("click", function () { P.style.display = "none"; });
+      q.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); search(1); } });
+      document.getElementById("agb-hero-us").addEventListener("click", function () { open("hero"); });
+      document.getElementById("agb-photo-us").addEventListener("click", function () { open("guide"); });
+      document.getElementById("agb-hero-rm").addEventListener("click", function () {
+        var inp = form.querySelector('[name="hero_image_url"]'), pv = document.getElementById("agb-hero-prev"), hc = document.getElementById("gl-hero-credit");
+        if (inp) inp.value = ""; if (hc) hc.value = "null"; pv.removeAttribute("src"); pv.style.display = "none"; this.style.display = "none";
+        document.getElementById("agb-photo-status").textContent = "Hero photo removed. Save to keep the change.";
+      });
+    })();
+    </script>
     <input type="hidden" name="photos_json" id="agb-photos-json" value={JSON.stringify(Array.isArray(page?.photos) ? page.photos : [])} />
   </div>
   <label style="margin-top:1.1rem;">Related for-sale page <span style="font-weight:400;color:#888">(adds a "See ... for sale" button at the end)</span></label>
@@ -645,11 +714,12 @@ document.getElementById("agb-use-topic").addEventListener("click", function () {
     st.textContent = "Optimizing hero photo...";
     try {
       var d = await upload(f, "hero"), inp = form.querySelector('[name="hero_image_url"]'), pv = document.getElementById("agb-hero-prev");
-      if (inp) inp.value = d.url; pv.src = d.url_sm || d.url; pv.style.display = "block";
+      if (inp) inp.value = d.url; pv.src = d.url_sm || d.url; pv.style.display = "block"; var __hc = document.getElementById("gl-hero-credit"); if (__hc) __hc.value = "null"; var __rm = document.getElementById("agb-hero-rm"); if (__rm) __rm.style.display = "inline-block";
       st.textContent = "Hero photo ready (" + d.kb + " KB). Save to keep it.";
     } catch (err) { st.textContent = "Failed: " + err.message; }
   });
   render();
+  window.__agbAddPhoto = function (p) { photos.push(p); sync(); render(); };
 })();
 </script>
 <script is:inline>
@@ -675,7 +745,7 @@ window.__seoFill = function (md) {
 };
 </script>
 <!-- agent-guide-builder:end -->
-<label>Body copy <span style="font-weight:400;color:#888">� main guide text, supports paragraph breaks</span></label>
+<label>Body copy <span style="font-weight:400;color:#888">&mdash; main guide text, supports paragraph breaks</span></label>
     <textarea name="neighbourhood_copy" rows="8">{page.neighbourhood_copy || ""}</textarea>
 {__isAgentGuide && <Fragment set:html={'<style>#guide-gen-notes,#guide-gen-btn{display:none!important}</style>'} />}
 <!-- guide-gen:start -->

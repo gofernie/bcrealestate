@@ -115,13 +115,20 @@ const __guideHtml = renderGuideMd(page.neighbourhood_copy || "")
   .replace(/<p>!<a href="([^"]+)">([^<]*)<\/a><\/p>/g, (_m, u, c) =>
     `<figure class="guide-photo"><img src="${u}"` +
     (__isLg(u) ? ` srcset="${__lgToSm(u)} 800w, ${u} 1600w" sizes="(max-width: 800px) 100vw, 760px"` : "") +
-    ` alt="${c}" loading="lazy" decoding="async">` + (c ? `<figcaption>${c}</figcaption>` : "") + `</figure>`);
+    ` alt="${c}" loading="lazy" decoding="async">` + ((c || __cr(u)) ? `<figcaption>${c}${__cr(u)}</figcaption>` : "") + `</figure>`);
 const __photoFigs = __guideHtml.match(/<figure class="guide-photo">[\s\S]*?<\/figure>/g) || [];
 const __heroSrcset = __isLg(page.hero_image_url) ? `${__lgToSm(page.hero_image_url)} 800w, ${page.hero_image_url} 2000w` : undefined;
 const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 const title = page.seo_title || page.title || `${cityLabel} Guide`;
 const description = page.meta_description || "";
 const __gl = { live_sold: true, live_active: true, mi_sold: true, mi_active: false, mi_bottom: false, ...((page.guide_links && typeof page.guide_links === "object") ? page.guide_links : {}) };
+function __cr(u) {
+  const url = String(u || "").replace(/&amp;/g, "&");
+  const p = (Array.isArray(page.photos) ? page.photos : []).find((x) => x && x.credit && x.url === url);
+  if (!p) return "";
+  const e = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+  return `<span class="guide-credit" style="display:block;font-size:.75rem;margin-top:.2rem;">Photo: <a href="${e(p.credit_href || "https://unsplash.com")}" target="_blank" rel="noopener" style="color:inherit;">${e(p.credit)}</a> / <a href="https://unsplash.com/?utm_source=fernie_pages&utm_medium=referral" target="_blank" rel="noopener" style="color:inherit;">Unsplash</a></span>`;
+}
 const __esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const __glSlugs = Array.isArray(__gl.pages) ? __gl.pages.filter(Boolean) : [];
 let __glLinks = [];
@@ -159,13 +166,36 @@ const __guideHtmlX = __guideHtml.split(/(?=<h2[\s>])/).map((chunk) => {
   if (/for sale now|currently for sale/i.test(txt)) return chunk + __btn("See what's for sale today", __gl.live_active ? "active" : "", __gl.mi_active);
   return chunk;
 }).join("") + (__bottomDone ? "" : __bottom());
+const __Q = String.fromCharCode(34);
+const __phList = (Array.isArray(page.photos) ? page.photos : []).filter((p) => p && p.url);
+function __phFig(p) {
+  const cap = (p.caption || __cr(p.url)) ? "<figcaption>" + __esc(p.caption || "") + __cr(p.url) + "</figcaption>" : "";
+  return "<figure class=" + __Q + "guide-photo" + __Q + "><img src=" + __Q + __esc(p.url) + __Q + " alt=" + __Q + __esc(p.alt || p.caption || "") + __Q + " loading=" + __Q + "lazy" + __Q + " decoding=" + __Q + "async" + __Q + ">" + cap + "</figure>";
+}
+function __phKeep(html) {
+  if (!__phList.length) return html;
+  const open = "<figure class=" + __Q + "guide-photo" + __Q + ">";
+  const parts = html.split(open);
+  let out = parts[0];
+  for (let i = 1; i < parts.length; i++) {
+    const end = parts[i].indexOf("</figure>");
+    if (end < 0) { out += open + parts[i]; continue; }
+    const fig = parts[i].slice(0, end + 9), rest = parts[i].slice(end + 9);
+    const s = fig.indexOf("src=" + __Q) + 5;
+    const u = fig.slice(s, fig.indexOf(__Q, s)).split("&amp;").join("&");
+    out += (__phList.some((p) => p.url === u) ? open + fig : "") + rest;
+  }
+  return out;
+}
+const __asideFigs = __phList.length ? __phList.map(__phFig) : __photoFigs;
+const __guideHtmlY = __phKeep(__guideHtmlX);
 ---
 <Layout title={title} description={description} accent={accent} site={site} city={city}>
   <SiteNav site={site} city={city} accent={accent} />
   <main style="max-width:1448px;margin:0 auto;padding:48px 24px 40px;">
     <p style="font-size:.85rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent, #2f6f73);margin-bottom:8px;">{page.eyebrow || `${cityLabel} local guide`}</p>
     <h1 style="font-family:'Instrument Serif',serif;font-weight:400;font-size:clamp(2.4rem,5vw,3.6rem);line-height:1.05;margin:0 0 28px;max-width:760px;">{page.title}</h1>
-<p class="guide-byline" style="margin:-12px 0 40px;color:#5b6660;font-size:.95rem;">{__showAgent && <>By <strong style="color:#1f2a26;">{__agentName}</strong>, {__bylineRole}</>}{__showAgent && __updated && " \u00B7 "}{__updated && `Updated ${__updated}`}</p>
+<p class="guide-byline" style="margin:-12px 0 40px;color:#5b6660;font-size:.95rem;">{__showAgent && <>By <strong style="color:#1f2a26;">{__agentName}</strong>, {__bylineRole}</>}{__showAgent && __updated && " \u00B7 "}{__updated && `Updated ${__updated}`}{" \u00B7 "}<button type="button" class="guide-share-btn" data-title={page.title} style="background:none;border:0;padding:0;font:inherit;color:var(--accent, #2f6f73);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px;">Share</button></p>
     {__hasStats && __updated && (
       <p class={"guide-datanote" + (__stale ? " is-stale" : "")} style={__stale
         ? "margin:-28px 0 36px;padding:10px 14px;border-radius:10px;background:#fff7e6;border:1px solid #f3d9a4;color:#7a5a1c;font-size:.92rem;max-width:760px;"
@@ -175,8 +205,9 @@ const __guideHtmlX = __guideHtml.split(/(?=<h2[\s>])/).map((chunk) => {
       </p>
     )}
     {page.hero_image_url && <img class="guide-hero" src={page.hero_image_url} srcset={__heroSrcset} sizes="(max-width: 1200px) 100vw, 1180px" alt={page.title} fetchpriority="high" style="display:block;width:100%;aspect-ratio:16/7;object-fit:cover;border-radius:14px;margin:0 0 40px;" />}
+    {page.hero_image_url && __gl.hero_credit && __gl.hero_credit.url === page.hero_image_url && <p class="guide-hero-credit" style="margin:-34px 0 34px;font-size:.75rem;color:#6b746f;text-align:right;">Photo: <a href={__gl.hero_credit.href || "https://unsplash.com"} target="_blank" rel="noopener" style="color:inherit;">{__gl.hero_credit.name}</a> / <a href="https://unsplash.com/?utm_source=fernie_pages&utm_medium=referral" target="_blank" rel="noopener" style="color:inherit;">Unsplash</a></p>}
     {page.neighbourhood_copy && (
-<div class="guide-layout"><div class="guide-body" style="max-width:760px;" set:html={__guideHtmlX} />{__photoFigs.length > 0 && <aside class="guide-aside" set:html={__photoFigs.join("")} />}</div>
+<div class="guide-layout"><div class="guide-body" style="max-width:760px;" set:html={__guideHtmlY} />{__asideFigs.length > 0 && <aside class="guide-aside" set:html={__asideFigs.join("")} />}</div>
 <script is:inline>
 (function () {
   var cache = {};
@@ -216,6 +247,46 @@ const __guideHtmlX = __guideHtml.split(/(?=<h2[\s>])/).map((chunk) => {
       b.textContent = "Showing today\u2019s numbers \u2713";
     } catch (err) { b.disabled = false; b.textContent = "Couldn\u2019t load. Try again"; }
   });
+})();
+</script><div class="guide-share-end" style="max-width:760px;margin:40px 0 8px;padding:18px 20px;border:1px solid #e3e8e5;border-radius:12px;background:#fff;display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
+  <div><strong style="display:block;font-size:1.05rem;color:#1f2a26;">Moving with someone?</strong><span style="color:#5b6660;font-size:.95rem;">Send them this guide.</span></div>
+  <button type="button" class="guide-share-btn" data-title={page.title} style="padding:10px 18px;border:0;border-radius:4px;background:var(--accent, #2f6f73);color:#fff;font:inherit;font-weight:600;cursor:pointer;">Share this guide</button>
+</div>
+<script is:inline>
+(function () {
+  var url = location.origin + location.pathname + "?ref=share", pop = null;
+  function ev(n) { try { window.fathom && window.fathom.trackEvent("Guide share " + n); } catch (e) {} }
+  function close() { if (pop) { pop.remove(); pop = null; } }
+  function menu(btn, title) {
+    close();
+    pop = document.createElement("div");
+    pop.style.cssText = "position:absolute;z-index:50;background:#fff;border:1px solid #e3e8e5;border-radius:10px;box-shadow:0 10px 30px rgba(16,24,40,.12);padding:6px;min-width:180px;";
+    [
+      ["Copy link", function (a) { navigator.clipboard.writeText(url).then(function () { a.textContent = "Copied \u2713"; ev("copy"); setTimeout(close, 1200); }).catch(function () { prompt("Copy this link:", url); close(); }); }],
+      ["Email", function () { location.href = "mailto:?subject=" + encodeURIComponent(title) + "&body=" + encodeURIComponent(title + "\n\n" + url); ev("email"); close(); }],
+      ["Facebook", function () { window.open("https://www.facebook.com/sharer/sharer.php?u=" + encodeURIComponent(url), "_blank", "noopener,width=600,height=500"); ev("facebook"); close(); }]
+    ].forEach(function (it) {
+      var a = document.createElement("button"); a.type = "button"; a.textContent = it[0];
+      a.style.cssText = "display:block;width:100%;text-align:left;padding:9px 12px;border:0;background:none;font:inherit;font-size:.95rem;cursor:pointer;border-radius:6px;color:#1f2a26;";
+      a.onmouseenter = function () { a.style.background = "#f2f5f3"; }; a.onmouseleave = function () { a.style.background = "none"; };
+      a.onclick = function (e) { e.stopPropagation(); it[1](a); };
+      pop.appendChild(a);
+    });
+    document.body.appendChild(pop);
+    var r = btn.getBoundingClientRect();
+    pop.style.top = (r.bottom + window.scrollY + 6) + "px";
+    pop.style.left = Math.max(8, Math.min(r.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - pop.offsetWidth - 12)) + "px";
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest(".guide-share-btn");
+    if (!b) { if (pop && !pop.contains(e.target)) close(); return; }
+    e.preventDefault(); e.stopPropagation();
+    var title = b.getAttribute("data-title") || document.title;
+    if (navigator.share && window.matchMedia("(pointer: coarse)").matches) { navigator.share({ title: title, url: url }).then(function () { ev("native"); }).catch(function () {}); return; }
+    if (pop) { close(); return; }
+    menu(b, title);
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
 })();
 </script><div class="guide-contact"><AgentBrandStrip site={site} city={city} variant="intro" /></div>
     )}
