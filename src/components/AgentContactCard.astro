@@ -1,0 +1,91 @@
+---
+import { getAgentForSite } from "../lib/getAgentForSite";
+const { site = null, source = "" } = Astro.props;
+let agent: any = null;
+try { agent = await getAgentForSite(site); } catch {}
+const rawName = String(agent?.name || site?.agent_name || "").trim();
+const hasAgent = !!rawName && !/bc\.realestate/i.test(rawName);
+const name = hasAgent ? rawName : "";
+const first = name.split(/\s+/)[0] || "";
+const phone = hasAgent ? String(agent?.phone || site?.agent_phone || site?.phone || site?.contact_phone || "").trim() : "";
+const photo = hasAgent ? (agent?.photo_url || agent?.photo || agent?.headshot_url || site?.agent_photo || site?.agent_photo_url || site?.headshot || site?.headshot_url || "") : "";
+const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+const src = source || `Contact card ${Astro.url.pathname}`;
+const uid = "amc-" + Math.random().toString(36).slice(2, 9);
+---
+<section class="amc" data-amc data-site-id={String(site?.id || "")} data-source={src} aria-label="Your local real estate guide">
+  <div class="amc__id">
+    {hasAgent && (photo
+      ? <img class="amc__photo" src={photo} alt="" width="76" height="76" loading="lazy" decoding="async" />
+      : <span class="amc__photo amc__initials" aria-hidden="true">{initials}</span>)}
+    <div>
+      <h2>Questions about a home or neighbourhood?</h2>
+      <p class="amc__copy">{hasAgent ? `Get local insight from ${name}.` : "Get local insight and a straight answer."}</p>
+    </div>
+  </div>
+  <div class={"amc__actions" + (phone ? "" : " amc__actions--one")}>
+    <button type="button" class="amc__ask" data-amc-open aria-expanded="false" aria-controls={uid}>{first ? "Ask " + first : "Ask a question"} <span aria-hidden="true">&rarr;</span></button>
+    {phone && <a class="amc__call" href={`tel:${phone.replace(/[^\d+]/g, "")}`}>Call {phone}</a>}
+  </div>
+  <form class="amc__form" id={uid} data-amc-form hidden>
+    <div class="amc__head"><strong>{first ? "Send " + first + " a message" : "Send a message"}</strong><span>Ask about a home, an area, or your search.</span></div>
+    <label><span>Name</span><input name="name" autocomplete="name" required /></label>
+    <label><span>Email</span><input name="email" type="email" autocomplete="email" required /></label>
+    <label><span>Phone <em>optional</em></span><input name="phone" type="tel" autocomplete="tel" /></label>
+    <label><span>Message</span><textarea name="question" rows="3" required placeholder="How can I help?"></textarea></label>
+    <div class="amc__form-actions"><button type="submit">Send message</button><button type="button" data-amc-cancel>Cancel</button><p role="status" aria-live="polite"></p></div>
+  </form>
+</section>
+<script is:inline>
+(function () {
+  if (window.__amcBound) return; window.__amcBound = true;
+  document.addEventListener("click", function (e) {
+    var t = e.target; if (!t || !t.closest) return;
+    var o = t.closest("[data-amc-open]"), c = t.closest("[data-amc-cancel]"); if (!o && !c) return;
+    var card = (o || c).closest("[data-amc]"), f = card && card.querySelector("[data-amc-form]"), b = card && card.querySelector("[data-amc-open]"); if (!f) return;
+    var open = o ? f.hidden : false; f.hidden = !open; if (b) b.setAttribute("aria-expanded", String(open));
+    if (open) { var n = f.querySelector("input[name='name']"); if (n) n.focus(); }
+  });
+  document.addEventListener("submit", async function (e) {
+    var f = e.target; if (!f || !f.matches || !f.matches("[data-amc-form]")) return;
+    e.preventDefault();
+    var card = f.closest("[data-amc]"), st = f.querySelector('[role="status"]'), sb = f.querySelector('button[type="submit"]'), d = new FormData(f), q = String(d.get("question") || "").trim();
+    if (sb) sb.disabled = true; if (st) st.textContent = "Sending\u2026";
+    try {
+      var r = await fetch("/api/intent-lead", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        site_id: card.getAttribute("data-site-id") || "", name: String(d.get("name") || "").trim(), email: String(d.get("email") || "").trim(), phone: String(d.get("phone") || "").trim(),
+        question: q, source: card.getAttribute("data-source") || "Contact card",
+        message: ["Contact card request from " + location.pathname + ".", q ? "Question: " + q : ""].filter(Boolean).join("\n")
+      }) });
+      if (!r.ok) throw new Error("Could not send your message.");
+      f.reset(); if (st) st.textContent = "Message sent \u2014 thank you.";
+      setTimeout(function () { f.hidden = true; var b = card.querySelector("[data-amc-open]"); if (b) b.setAttribute("aria-expanded", "false"); if (st) st.textContent = ""; }, 2200);
+    } catch (err) { if (st) st.textContent = (err && err.message) || "Could not send your message."; }
+    finally { if (sb) sb.disabled = false; }
+  });
+})();
+</script>
+<style>
+  .amc { box-sizing: border-box; margin: 28px 0; padding: 18px 16px; border: 1px solid #d0d5dd; border-radius: 10px; background: linear-gradient(110deg, color-mix(in srgb, var(--accent, #2f6f73) 6%, #f2f4f4), #eef1f1); }
+  .amc__id { display: flex; align-items: center; gap: 16px; }
+  .amc__photo { flex: 0 0 76px; width: 76px; height: 76px; margin: 5px; border-radius: 50%; object-fit: cover; object-position: center 20%; box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--accent, #2f6f73); }
+  .amc__initials { display: grid; place-items: center; background: var(--accent, #2f6f73); color: #fff; font-weight: 800; }
+  .amc h2 { margin: 0 0 6px; font-size: 1.18rem; line-height: 1.22; color: #101828; }
+  .amc__copy { margin: 0; font-size: .92rem; line-height: 1.45; color: #475467; }
+  .amc__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+  .amc__actions--one { grid-template-columns: 1fr; }
+  .amc__ask, .amc__call { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 46px; margin: 0; padding: 0 12px; box-sizing: border-box; border-radius: 4px; font: inherit; font-size: .9rem; white-space: nowrap; text-decoration: none; cursor: pointer; }
+  .amc__ask { background: var(--ink, #2f3b38); color: #fff; border: 1px solid var(--ink, #2f3b38); font-weight: 700; }
+  .amc__call { background: #fff; color: #101828; border: 1px solid #d0d5dd; font-weight: 600; }
+  .amc__form { display: grid; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #d0d5dd; }
+  .amc__form[hidden] { display: none; }
+  .amc__head { display: grid; gap: 2px; } .amc__head strong { color: #101828; } .amc__head span { color: #475467; font-size: .85rem; }
+  .amc__form label { display: grid; gap: 5px; } .amc__form label > span { color: #475467; font-size: .82rem; } .amc__form em { font-style: normal; opacity: .7; }
+  .amc__form input, .amc__form textarea { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid #d0d5dd; border-radius: 8px; background: #fff; font: inherit; }
+  .amc__form textarea { min-height: 80px; resize: vertical; }
+  .amc__form-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+  .amc__form-actions button { margin: 0; padding: 10px 16px; border-radius: 6px; font: inherit; font-size: .88rem; font-weight: 700; cursor: pointer; }
+  .amc__form-actions button[type="submit"] { border: 0; background: var(--accent, #2f6f73); color: #fff; }
+  .amc__form-actions button[type="button"] { border: 0; background: transparent; color: #475467; }
+  .amc__form-actions [role="status"] { margin: 0; color: #475467; font-size: .85rem; }
+</style>
