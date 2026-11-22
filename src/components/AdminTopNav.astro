@@ -1,237 +1,327 @@
 ---
+// admin-nav-v2: one bar. Home / Pages / Buyers / Settings for the current site, + New, View site,
+// Platform menu (platform admin only), site switcher, and section sub-tabs.
 import { createClient } from "@supabase/supabase-js";
 
-const { active = "", siteId = "", siteName = "", city = "" } = Astro.props;
+const { siteId = "", siteName = "", city = "" } = Astro.props;
+const access: any = (Astro.locals as any).adminAccess || null;
+const isPlatformAdmin = access ? !!access.isPlatformAdmin : true;
+const realPlatformAdmin = access ? !!access.realPlatformAdmin : true;
+const viewAsSiteId = access?.viewAsSiteId || "";
 
-const path = Astro.url.pathname;
-const querySiteId = Astro.url.searchParams.get("site_id") || "";
+const path = Astro.url.pathname.replace(/\/+$/, "") || "/";
+const q = Astro.url.searchParams;
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const pathSiteId = (path.match(/^\/admin\/sites\/([0-9a-f-]{36})/i) || [])[1] || "";
-const resolvedSiteId = String(siteId || pathSiteId || querySiteId || "").trim();
+const fromQuery = [q.get("site_id"), q.get("site"), q.get("siteId")].find((v) => uuid.test(String(v || ""))) || "";
+let resolvedSiteId = String(pathSiteId || siteId || fromQuery || access?.currentSiteId || "").trim();
+if (!uuid.test(resolvedSiteId)) resolvedSiteId = "";
+if (access && !isPlatformAdmin && access.siteIds && !access.siteIds.includes(resolvedSiteId)) resolvedSiteId = access.siteIds[0] || "";
 
-let siteLabel = siteName;
-let siteCity = city;
-let siteDomain = "";
-
+const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
+let site: any = null;
 if (resolvedSiteId) {
-  const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
-  const { data } = await sb
-    .from("sites")
-    .select("site_name, domain, primary_city, city")
-    .eq("id", resolvedSiteId)
-    .maybeSingle();
-  if (data) {
-    siteLabel = siteLabel || data.site_name || data.domain;
-    siteCity = siteCity || data.primary_city || data.city || "";
-    siteDomain = data.domain || "";
-  }
+  const { data } = await sb.from("sites").select("id, site_name, domain, city, primary_city").eq("id", resolvedSiteId).maybeSingle();
+  site = data;
+}
+const titleCase = (v: any) => String(v || "").replace(/[-_]+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
+const siteLabel = siteName || site?.site_name || site?.domain || "";
+const siteCity = titleCase(city || site?.primary_city || site?.city || "");
+const siteDomain = String(site?.domain || "").replace(/^www\./, "");
+const siteCitySlug = String(site?.city || "").toLowerCase().trim().replace(/\s+/g, "-");
+const viewSiteHref = siteDomain
+  ? (siteDomain === "bc.realestate" ? `https://bc.realestate/${siteCitySlug}` : `https://${siteDomain}`)
+  : "";
+
+// Sites for the switcher
+let switchSites: any[] = [];
+if (isPlatformAdmin) {
+  const { data } = await sb.from("sites").select("id, site_name, domain, city").order("site_name");
+  switchSites = data || [];
+} else if (access?.siteIds?.length > 1) {
+  const { data } = await sb.from("sites").select("id, site_name, domain, city").in("id", access.siteIds).order("site_name");
+  switchSites = data || [];
 }
 
-const titleCase = (v) => String(v || "").replace(/[-_]+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
+const S = resolvedSiteId;
+const enc = encodeURIComponent;
+const hub = S ? `/admin/sites/${S}/pages` : "";
+const withSite = (p: string, key = "site_id") => (S ? `${p}${p.includes("?") ? "&" : "?"}${key}=${enc(S)}` : p);
 
-const withSite = (p) => {
-  if (!resolvedSiteId) return p;
-  return `${p}${p.includes("?") ? "&" : "?"}site_id=${encodeURIComponent(resolvedSiteId)}`;
-};
+// Which section is this screen in?
+const tab = q.get("focus") === "pages" ? "my-pages" : (q.get("tab") || "");
+const isHub = /^\/admin\/sites\/[^/]+\/pages$/.test(path);
+const section =
+  isHub && (tab === "my-pages" || tab === "core-pages") ? "pages" :
+  isHub ? "home" :
+  /^\/admin\/sites\/[^/]+\/settings$/.test(path) ? "settings" :
+  /^\/admin\/(intent-pages|guide-pages|guides)(\/|$)/.test(path) ? "pages" :
+  /^\/admin\/(leads|intent-sessions|buyers|watches|digests|create-shortlist)(\/|$)/.test(path) || /^\/(shortlists|listings)$/.test(path) ? "buyers" :
+  "platform";
 
-const nav = [
-  { key: "sites", label: "Sites", href: "/admin/sites" },
-  { key: "leads", label: "Leads", href: withSite("/admin/leads") },
-  { key: "sessions", label: "Sessions", href: withSite("/admin/intent-sessions") },
-  {
-    key: "buyers", label: "Buyers", match: ["buyers", "watches", "shortlists", "create-shortlist"],
-    items: [
-      ["Buyers", "/admin/buyers"],
-      ["Watched homes", withSite("/admin/watches")],
-      ["Shortlists", withSite("/shortlists")],
-      ["Create shortlist", "/admin/create-shortlist"],
-    ],
-  },
-  { key: "digests", label: "Digests", href: withSite("/admin/digests") },
-    { key: "guides", label: "Guides", href: withSite("/admin/guides") },
-  { key: "agents", label: "Agents", href: "/admin/agents" },
-  {
-    key: "tools", label: "Tools", match: ["tools", "area-boundaries", "fetch-status", "city-traffic", "market-intelligence", "news", "prospect-email", "new-demo"],
-    items: [
-      ["Area boundaries", "/admin/area-boundaries"],
-      ["Fetch status", "/admin/fetch-status"],
-      ["City traffic", "/admin/city-traffic"],
-      ["Market intelligence", "/admin/market-intelligence"],
-      ["AI costs", "/admin/ai-costs"],
-      ["News", "/admin/news"],
-      ["Prospect email", "/admin/prospect-email"],
-      ["New agent demo", "/admin/new-demo"],
-    ],
-  },
-];
-
-const isActive = (item) => {
-  if (item.key === "sites") return active === "sites" || active === "pages" || path.startsWith("/admin/sites");
-  if (item.match) return item.match.includes(active) || item.items.some(([, h]) => path === h.split("?")[0]);
-  return active === item.key;
-};
-
-const siteTab =
-  path.endsWith("/settings") ? "settings" :
-  path.endsWith("/pages") || path.startsWith("/admin/intent-pages") || path.startsWith("/admin/guide-pages") ? "pages" :
-  path.startsWith("/admin/leads") ? "leads" :
-  path.startsWith("/admin/intent-sessions") ? "sessions" : "";
-
-const siteTabs = resolvedSiteId ? [
-  { key: "pages", label: "Pages", href: `/admin/sites/${resolvedSiteId}/pages` },
-  { key: "settings", label: "Settings", href: `/admin/sites/${resolvedSiteId}/settings` },
-  { key: "leads", label: "Leads", href: withSite("/admin/leads") },
-  { key: "sessions", label: "Sessions", href: withSite("/admin/intent-sessions") },
+const mainLinks = S ? [
+  { key: "home", label: "Home", href: hub },
+  { key: "pages", label: "Pages", href: withSite("/admin/intent-pages/new") },
+  { key: "buyers", label: "Buyers", href: withSite("/admin/leads") },
+  { key: "settings", label: "Settings", href: `/admin/sites/${S}/settings` },
 ] : [];
 
-const createHref = resolvedSiteId ? `/listings?site_id=${encodeURIComponent(resolvedSiteId)}` : "/listings";
+const subTabs: Record<string, { key: string; label: string; href: string; on: boolean }[]> = S ? {
+  pages: [
+    { key: "build", label: "Build a page", href: withSite("/admin/intent-pages/new"), on: /^\/admin\/intent-pages\/new$/.test(path) },
+    { key: "mine", label: "Your pages", href: `${hub}?tab=my-pages`, on: (isHub && tab === "my-pages") || /^\/admin\/intent-pages\/[^/]+\/edit$/.test(path) || path === "/admin/intent-pages" },
+    { key: "core", label: "Core pages", href: `${hub}?tab=core-pages`, on: isHub && tab === "core-pages" },
+    { key: "guides", label: "Guides", href: withSite("/admin/guides", "site"), on: /^\/admin\/(guides|guide-pages)(\/|$)/.test(path) },
+  ],
+  buyers: [
+    { key: "leads", label: "Leads", href: withSite("/admin/leads"), on: path === "/admin/leads" },
+    { key: "sessions", label: "Sessions", href: withSite("/admin/intent-sessions"), on: path === "/admin/intent-sessions" },
+    { key: "crm", label: "Buyers", href: withSite("/admin/buyers"), on: path === "/admin/buyers" },
+    { key: "shortlists", label: "Shortlists", href: withSite("/shortlists"), on: /^\/(shortlists|listings)$/.test(path) || path === "/admin/create-shortlist" },
+    { key: "watches", label: "Watched homes", href: withSite("/admin/watches"), on: path === "/admin/watches" },
+    { key: "digests", label: "Digests", href: withSite("/admin/digests"), on: path === "/admin/digests" },
+  ],
+} : {};
+const tabsNow = subTabs[section] || [];
+
+const newItems = S ? [
+  ["Page", "Category, intent or map area", withSite("/admin/intent-pages/new")],
+  ["Guide", "Local or evergreen guide", withSite("/admin/guides", "site") + "#new-guide"],
+  ["Shortlist", "Pick homes for a buyer", withSite("/listings")],
+] : [];
+
+const platformItems = [
+  ["All sites", "/admin/sites"],
+  ["Agents", "/admin/agents"],
+  ["Drafts to review", "/admin/drafts"],
+  ["New agent demo", "/admin/new-demo"],
+  ["Prospect email", "/admin/prospect-email"],
+  ["Area boundaries", "/admin/area-boundaries"],
+  ["Market intelligence", "/admin/market-intelligence"],
+  ["News", "/admin/news"],
+  ["City traffic", "/admin/city-traffic"],
+  ["Fetch status", "/admin/fetch-status"],
+  ["AI costs", "/admin/ai-costs"],
+];
+
+// Breadcrumb only on editors, where "back" matters
+const crumbs: { label: string; href: string }[] = [];
+if (S && /^\/admin\/intent-pages\/[^/]+\/edit$/.test(path)) crumbs.push({ label: "Your pages", href: `${hub}?tab=my-pages` }, { label: "Edit page", href: "" });
+if (S && /^\/admin\/guide-pages\/[^/]+\/edit$/.test(path)) crumbs.push({ label: "Guides", href: withSite("/admin/guides", "site") }, { label: "Edit guide", href: "" });
 ---
+
+{viewAsSiteId && (
+  <div class="admin-preview-bar">
+    <span>Previewing the agent view{siteLabel ? ` of ${siteLabel}` : ""}. Agents only see this site.</span>
+    <a href="/admin/view-as?exit=1">Exit preview</a>
+  </div>
+)}
 
 <header class="admin-topnav">
   <div class="admin-topnav__main">
-    <a href="/admin/sites" class="admin-topnav__brand">Locus <span>Admin</span></a>
+    <a href={isPlatformAdmin ? "/admin/sites" : (hub || "/admin")} class="admin-topnav__brand">Locus <span>Admin</span></a>
 
-    <nav class="admin-topnav__links">
-      {nav.map((item) =>
-        item.items ? (
-          <details class:list={["admin-topnav__menu", { active: isActive(item) }]}>
-            <summary>{item.label} <span class="caret">▾</span></summary>
-            <div class="admin-topnav__dropdown">
-              {item.items.map(([label, href]) => <a href={href}>{label}</a>)}
-            </div>
-          </details>
-        ) : (
-          <a href={item.href} class:list={{ active: isActive(item) }}>{item.label}</a>
-        )
-      )}
+    {(switchSites.length > 0) ? (
+      <details class="admin-topnav__menu admin-topnav__switch">
+        <summary>
+          <span class="switch-name">{siteLabel || "Choose a site"}</span>
+          {siteCity && <span class="switch-city">{siteCity}</span>}
+          <span class="caret">▾</span>
+        </summary>
+        <div class="admin-topnav__dropdown admin-topnav__dropdown--sites">
+          {switchSites.length > 8 && <input class="switch-filter" type="search" placeholder="Find a site…" aria-label="Find a site" />}
+          {isPlatformAdmin && <a href="/admin/sites" class="switch-all">All sites</a>}
+          <div class="switch-list">
+            {switchSites.map((s) => (
+              <a href={`/admin/sites/${s.id}/pages`} class:list={{ current: s.id === S }} data-name={`${s.site_name || ""} ${s.domain || ""} ${s.city || ""}`.toLowerCase()}>
+                <strong>{s.site_name || s.domain}</strong>
+                <span>{s.domain !== "bc.realestate" ? s.domain : titleCase(s.city)}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      </details>
+    ) : siteLabel ? (
+      <div class="admin-topnav__sitename"><strong>{siteLabel}</strong>{siteCity && <span>{siteCity}</span>}</div>
+    ) : null}
+
+    <nav class="admin-topnav__links" aria-label="Admin">
+      {mainLinks.map((l) => <a href={l.href} class:list={{ active: section === l.key }}>{l.label}</a>)}
     </nav>
 
-    <a href={createHref} class="admin-topnav__create">+ Create</a>
+    <div class="admin-topnav__right">
+      {newItems.length > 0 && (
+        <details class="admin-topnav__menu admin-topnav__new">
+          <summary>+ New</summary>
+          <div class="admin-topnav__dropdown admin-topnav__dropdown--right">
+            {newItems.map(([label, hint, href]) => <a href={href}><strong>{label}</strong><span>{hint}</span></a>)}
+          </div>
+        </details>
+      )}
+      {viewSiteHref && <a class="admin-topnav__view" href={viewSiteHref} target="_blank" rel="noopener">View site ↗</a>}
+      {isPlatformAdmin && (
+        <details class:list={["admin-topnav__menu", "admin-topnav__platform", { active: section === "platform" }]}>
+          <summary>Platform <span class="caret">▾</span></summary>
+          <div class="admin-topnav__dropdown admin-topnav__dropdown--right">
+            {platformItems.map(([label, href]) => <a href={href} class:list={{ current: path === href }}>{label}</a>)}
+          </div>
+        </details>
+      )}
+      <details class="admin-topnav__menu admin-topnav__account">
+        <summary aria-label="Account"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></summary>
+        <div class="admin-topnav__dropdown admin-topnav__dropdown--right">
+          {realPlatformAdmin && S && !viewAsSiteId && <a href={`/admin/view-as?site_id=${S}`}>Preview as agent</a>}
+          {viewAsSiteId && <a href="/admin/view-as?exit=1">Exit agent preview</a>}
+          <form method="post" action="/api/auth/logout"><button type="submit">Log out</button></form>
+        </div>
+      </details>
+    </div>
   </div>
 
-  {resolvedSiteId && siteLabel && (
-    <div class="admin-topnav__site">
-      <a class="admin-topnav__back" href="/admin/sites">← All sites</a>
-      <div class="admin-topnav__sitename">
-        <strong>{siteLabel}</strong>
-        {siteCity && <span>{titleCase(siteCity)}</span>}
-      </div>
-      <nav class="admin-topnav__tabs">
-        {siteTabs.map((t) => (
-          <a href={t.href} class:list={{ active: siteTab === t.key }}>{t.label}</a>
-        ))}
-      </nav>
-      {siteDomain && (
-        <a class="admin-topnav__view" href={`https://${siteDomain}`} target="_blank" rel="noopener">View site ↗</a>
-      )}
-    </div>
+  {tabsNow.length > 0 && (
+    <nav class="admin-topnav__tabs" aria-label="Section">
+      {tabsNow.map((t) => <a href={t.href} class:list={{ active: t.on }}>{t.label}</a>)}
+    </nav>
   )}
 </header>
 
+{crumbs.length > 0 && (
+  <nav class="admin-crumbs" aria-label="Breadcrumb" data-admin-crumbs>
+    {crumbs.map((c, i) => (
+      <Fragment>
+        {i > 0 && <span class="admin-crumbs__sep" aria-hidden="true">&rsaquo;</span>}
+        {c.href ? <a href={c.href}>&larr; {c.label}</a> : <strong aria-current="page">{c.label}</strong>}
+      </Fragment>
+    ))}
+  </nav>
+)}
+
 <script is:inline>
-  document.addEventListener("click", function (e) {
-    document.querySelectorAll(".admin-topnav details[open]").forEach(function (d) {
-      if (!d.contains(e.target)) d.removeAttribute("open");
-    });
-  });
   (function () {
-    var EASE = "cubic-bezier(.3,1.12,.5,1)";
-    function setupPill(nav, itemSel, activeSel) {
-      if (!nav) return;
-      var pill = document.createElement("span");
-      pill.className = "nav-pill";
-      nav.prepend(pill);
-      nav.classList.add("has-pill");
-      var curL = null;
-      function move(el, instant) {
-        if (!el) { pill.style.opacity = 0; return; }
-        var n = nav.getBoundingClientRect(), r = el.getBoundingClientRect();
-        var L = r.left - n.left, R = n.right - r.right;
-        if (instant || curL === null) {
-          pill.style.transition = "none";
-        } else {
-          var fast = "240ms " + EASE, slow = "420ms " + EASE;
-          var goingRight = L > curL;
-          pill.style.transition =
-            "left " + (goingRight ? slow : fast) + ", right " + (goingRight ? fast : slow) +
-            ", top .2s, height .2s, opacity .2s";
-        }
-        pill.style.left = L + "px";
-        pill.style.right = R + "px";
-        pill.style.top = (r.top - n.top) + "px";
-        pill.style.height = r.height + "px";
-        pill.style.opacity = 1;
-        if (instant || curL === null) void pill.offsetWidth;
-        curL = L;
-      }
-      function active() { return nav.querySelector(activeSel); }
-      nav.querySelectorAll(itemSel).forEach(function (el) {
-        el.addEventListener("mouseenter", function () { move(el); });
+    document.addEventListener("click", function (e) {
+      document.querySelectorAll(".admin-topnav details[open]").forEach(function (d) {
+        if (!d.contains(e.target)) d.removeAttribute("open");
       });
-      nav.addEventListener("mouseleave", function () { move(active()); });
-      window.addEventListener("resize", function () { move(active(), true); });
-      move(active(), true);
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") document.querySelectorAll(".admin-topnav details[open]").forEach(function (d) { d.removeAttribute("open"); });
+    });
+    var sw = document.querySelector(".admin-topnav__switch");
+    if (sw) {
+      var f = sw.querySelector(".switch-filter");
+      sw.addEventListener("toggle", function () { if (sw.open && f) setTimeout(function () { f.focus(); }, 0); });
+      if (f) f.addEventListener("input", function () {
+        var v = f.value.trim().toLowerCase();
+        sw.querySelectorAll(".switch-list a").forEach(function (a) { a.style.display = !v || a.dataset.name.indexOf(v) > -1 ? "" : "none"; });
+      });
     }
-    setupPill(
-      document.querySelector(".admin-topnav__links"),
-      ":scope > a, :scope > details > summary",
-      ":scope > a.active, :scope > details.active > summary"
-    );
-    setupPill(
-      document.querySelector(".admin-topnav__tabs"),
-      ":scope > a",
-      ":scope > a.active"
-    );
+    function place() {
+      var c = document.querySelector("[data-admin-crumbs]"); if (!c || c.dataset.placed) return;
+      c.dataset.placed = "1";
+      var m = document.querySelector("main");
+      if (m && !m.contains(c)) {
+        m.insertBefore(c, m.firstChild);
+        var n = c.nextElementSibling;
+        if (n) {
+          var cs = getComputedStyle(n), ml = parseFloat(cs.marginLeft) || 0, mr = parseFloat(cs.marginRight) || 0;
+          if (cs.maxWidth && cs.maxWidth !== "none") c.style.maxWidth = cs.maxWidth;
+          if (ml > 0 && Math.abs(ml - mr) < 2) { c.style.marginLeft = "auto"; c.style.marginRight = "auto"; }
+        }
+      } else { c.classList.add("admin-crumbs--bar"); }
+      c.classList.add("is-placed");
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", place); else place();
   })();
 </script>
 
-<style>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" />
+<style is:inline data-id="admin-base-css">
+  /* admin-type-v1: one typeface and one page-title style across the admin */
+  html body { margin:0; font-family:"DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif; background-color:#f7f4ef; }
+  html body h1, html body h2, html body h3 { font-family:"DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif !important; }
+  html body h1:not(.workspace-header h1) { font-size:2.2rem !important; font-weight:700 !important; letter-spacing:-0.02em !important; line-height:1.1 !important; font-style:normal !important; }
+  html body h1 em { font-style:normal !important; }
+  html body input, html body select, html body textarea, html body button { font-family:inherit; }
+  /* admin-layout-v1: every admin page starts at the same left edge (no centred columns) */
+  html body main:not(.peg-page), html body div.wrap { margin-left:0 !important; margin-right:auto !important; padding-left:clamp(16px, 4vw, 48px) !important; padding-right:clamp(16px, 4vw, 48px) !important; box-sizing:border-box; }
+  html body .fs-wrap, html body .nd-wrap { padding-left:0 !important; margin-left:0 !important; }
+  html body .peg-shell { margin-left:clamp(16px, 4vw, 48px) !important; }
+</style>
+<style is:inline data-id="admin-topnav-css">
+  .admin-preview-bar { display:flex; justify-content:center; align-items:center; gap:14px; padding:8px 16px; background:#f3d98b; color:#3a2d00; font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  .admin-preview-bar a { color:#3a2d00; text-decoration:underline; }
   .admin-topnav { width:100%; background:#111; color:#fff; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-size:14px; line-height:1; position:relative; z-index:40; }
-  .admin-topnav__main { min-height:64px; padding:0 32px; display:flex; align-items:center; gap:30px; }
-  .admin-topnav__brand { color:#fff; text-decoration:none; font-size:18px; font-weight:750; letter-spacing:-.03em; white-space:nowrap; }
+  .admin-topnav__main { min-height:60px; padding:0 28px; display:flex; align-items:center; gap:18px; }
+  .admin-topnav__brand { color:#fff; text-decoration:none; font-size:17px; font-weight:750; letter-spacing:-.03em; white-space:nowrap; }
   .admin-topnav__brand span { color:#888; font-weight:500; }
-  .admin-topnav__links { display:flex; align-items:center; gap:4px; flex:1; }
-  .admin-topnav__links > a, .admin-topnav__menu > summary { color:#aaa; text-decoration:none; font-size:14px; font-weight:600; line-height:20px; padding:10px 13px; border-radius:8px; cursor:pointer; white-space:nowrap; }
-  .admin-topnav__links > a:hover, .admin-topnav__menu > summary:hover { color:#fff; background:#222; }
-  .admin-topnav__links > a.active, .admin-topnav__menu.active > summary { color:#fff; background:#292929; }
-  .admin-topnav__menu { position:relative; }
-  .admin-topnav__menu > summary { list-style:none; display:block; }
-  .admin-topnav__menu > summary::-webkit-details-marker { display:none; }
-  .admin-topnav__menu > summary::marker { content:""; }
-  .caret { font-size:10px; opacity:.7; margin-left:2px; }
-  .admin-topnav__dropdown { position:absolute; top:calc(100% + 6px); left:0; min-width:210px; padding:6px; background:#1b1b1b; border:1px solid #2e2e2e; border-radius:12px; box-shadow:0 14px 34px rgba(0,0,0,.35); z-index:60; }
-  .admin-topnav__dropdown a { display:block; padding:10px 12px; border-radius:8px; color:#ccc; text-decoration:none; font-size:13.5px; font-weight:600; line-height:1.2; }
-  .admin-topnav__dropdown a:hover { background:#292929; color:#fff; }
-  .admin-topnav__create { color:#111; background:#fff; text-decoration:none; font-size:14px; font-weight:700; padding:10px 16px; border-radius:8px; white-space:nowrap; }
-  .admin-topnav__site { min-height:52px; padding:0 32px; border-top:1px solid #292929; background:#191919; display:flex; align-items:center; gap:24px; }
-  .admin-topnav__back { color:#888; text-decoration:none; font-size:13px; font-weight:600; white-space:nowrap; }
-  .admin-topnav__back:hover { color:#fff; }
-  .admin-topnav__sitename { display:flex; align-items:center; gap:10px; padding-left:24px; border-left:1px solid #333; }
+  .admin-topnav__sitename { display:flex; align-items:baseline; gap:8px; padding-left:18px; border-left:1px solid #333; white-space:nowrap; }
   .admin-topnav__sitename strong { font-size:14px; }
   .admin-topnav__sitename span { color:#888; font-size:12px; }
-  .admin-topnav__tabs { display:flex; gap:4px; flex:1; }
-  .admin-topnav__tabs a { color:#aaa; text-decoration:none; font-size:13px; font-weight:600; padding:8px 11px; border-radius:7px; }
-  .admin-topnav__tabs a:hover { color:#fff; background:#242424; }
-  .admin-topnav__tabs a.active { color:#fff; background:#2c2c2c; }
-  .admin-topnav__view { color:#aaa; text-decoration:none; font-size:13px; font-weight:600; white-space:nowrap; }
-  .admin-topnav__view:hover { color:#fff; }
-  @media (max-width: 860px) {
-    .admin-topnav__main { padding:12px 16px; gap:12px; flex-wrap:wrap; }
-    .admin-topnav__links { order:3; width:100%; flex-wrap:wrap; }
-    .admin-topnav__site { padding:10px 16px; flex-wrap:wrap; gap:10px 16px; }
-    .admin-topnav__sitename { padding-left:0; border-left:0; }
-    .admin-topnav__tabs { order:3; width:100%; flex-wrap:wrap; }
+  .admin-topnav__menu { position:relative; }
+  .admin-topnav__menu > summary { list-style:none; display:flex; align-items:center; gap:6px; color:#aaa; font-size:14px; font-weight:600; line-height:20px; padding:9px 12px; border-radius:8px; cursor:pointer; white-space:nowrap; user-select:none; }
+  .admin-topnav__menu > summary::-webkit-details-marker { display:none; }
+  .admin-topnav__menu > summary::marker { content:""; }
+  .admin-topnav__menu > summary:hover, .admin-topnav__menu[open] > summary { color:#fff; background:#222; }
+  .admin-topnav__menu.active > summary { color:#fff; background:#292929; }
+  .admin-topnav__switch { margin-left:-4px; padding-left:14px; border-left:1px solid #333; }
+  .admin-topnav__switch > summary { color:#fff; }
+  .admin-topnav__switch .switch-name { max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+  .admin-topnav__switch .switch-city { color:#888; font-size:12px; font-weight:500; }
+  .caret { font-size:10px; opacity:.6; }
+  .admin-topnav__links { display:flex; align-items:center; gap:2px; flex:1; margin-left:6px; position:relative; }
+  .admin-topnav__links > a { color:#aaa; text-decoration:none; font-size:14px; font-weight:600; line-height:20px; padding:9px 13px; border-radius:8px; white-space:nowrap; transition:color .15s, background .15s; }
+  .admin-topnav__links > a:hover { color:#fff; background:#222; }
+  .admin-topnav__links > a.active { color:#fff; background:#2a2a2a; }
+  .admin-topnav__right { display:flex; align-items:center; gap:6px; margin-left:auto; }
+  .admin-topnav__new > summary { color:#111; background:#fff; font-weight:700; padding:9px 15px; }
+  .admin-topnav__new > summary:hover, .admin-topnav__new[open] > summary { color:#111; background:#e9e5de; }
+  .admin-topnav__view { color:#aaa; text-decoration:none; font-size:13px; font-weight:600; white-space:nowrap; padding:9px 10px; border-radius:8px; }
+  .admin-topnav__view:hover { color:#fff; background:#222; }
+  .admin-topnav__account > summary { padding:8px 9px; color:#9a9a9a; }
+  .admin-topnav__dropdown { position:absolute; top:calc(100% + 6px); left:0; min-width:220px; padding:6px; background:#1b1b1b; border:1px solid #2e2e2e; border-radius:12px; box-shadow:0 14px 34px rgba(0,0,0,.35); z-index:60; }
+  .admin-topnav__dropdown--right { left:auto; right:0; }
+  .admin-topnav__dropdown a, .admin-topnav__dropdown button { display:block; width:100%; text-align:left; padding:10px 12px; border:0; border-radius:8px; background:none; color:#ccc; text-decoration:none; font:600 13.5px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif; cursor:pointer; }
+  .admin-topnav__dropdown a:hover, .admin-topnav__dropdown button:hover { background:#292929; color:#fff; }
+  .admin-topnav__dropdown a.current { color:#fff; background:#262626; }
+  .admin-topnav__dropdown form { margin:0; border-top:1px solid #2a2a2a; margin-top:4px; padding-top:4px; }
+  .admin-topnav__new .admin-topnav__dropdown a strong { display:block; color:#fff; font-size:14px; }
+  .admin-topnav__new .admin-topnav__dropdown a span { display:block; margin-top:3px; color:#8a8a8a; font-size:12px; font-weight:500; }
+  .admin-topnav__dropdown--sites { width:300px; }
+  .admin-topnav__dropdown--sites .switch-filter { width:100%; box-sizing:border-box; margin:0 0 6px; padding:9px 11px; border:1px solid #333; border-radius:8px; background:#111; color:#fff; font:500 13px system-ui,sans-serif; outline:none; }
+  .admin-topnav__dropdown--sites .switch-filter:focus { border-color:#666; }
+  .admin-topnav__dropdown--sites .switch-all { border-bottom:1px solid #2a2a2a; border-radius:8px 8px 0 0; margin-bottom:4px; }
+  .admin-topnav__dropdown--sites .switch-list { max-height:min(60vh,440px); overflow:auto; }
+  .admin-topnav__dropdown--sites .switch-list a strong { display:block; color:#eee; font-size:13.5px; }
+  .admin-topnav__dropdown--sites .switch-list a span { display:block; margin-top:3px; color:#7d7d7d; font-size:12px; font-weight:500; }
+  .admin-topnav__tabs { display:flex; gap:2px; padding:0 28px; background:#191919; border-top:1px solid #262626; overflow-x:auto; scrollbar-width:none; }
+  .admin-topnav__tabs::-webkit-scrollbar { display:none; }
+  .admin-topnav__tabs a { color:#999; text-decoration:none; font-size:13px; font-weight:600; padding:13px 12px 12px; border-bottom:2px solid transparent; white-space:nowrap; }
+  .admin-topnav__tabs a:hover { color:#fff; }
+  .admin-topnav__tabs a.active { color:#fff; border-bottom-color:#fff; }
+  .admin-crumbs { display:none; width:100%; box-sizing:border-box; align-items:center; flex-wrap:wrap; gap:7px; margin-bottom:20px; font-size:13px; line-height:1.3; color:#8a857c; }
+  .admin-crumbs.is-placed { display:flex; }
+  .admin-crumbs--bar { padding:20px 28px 0; }
+  .admin-crumbs a { color:inherit; text-decoration:none; }
+  .admin-crumbs a:hover { color:#161616; }
+  .admin-crumbs strong { color:#161616; font-weight:600; }
+  .admin-crumbs__sep { opacity:.7; }
+  @media (max-width: 980px) {
+    .admin-topnav__main { padding:10px 16px; gap:8px 10px; flex-wrap:wrap; }
+    .admin-topnav__switch, .admin-topnav__sitename { order:1; flex:1 1 auto; min-width:0; margin-left:0; }
+    .admin-topnav__right { order:2; margin-left:0; }
+    .admin-topnav__links { order:3; flex:0 0 100%; width:100%; margin:0 0 0 -12px; overflow-x:auto; }
+    .admin-topnav__view { display:none; }
+    .admin-topnav__tabs { padding:0 16px; }
+    .admin-topnav__switch .switch-name { max-width:150px; }
   }
-</style>
-
-<style is:global>
-  .admin-topnav .has-pill { position:relative; }
-  .admin-topnav .has-pill > a,
-  .admin-topnav .has-pill > details > summary { position:relative; z-index:1; background:transparent !important; transition:color .2s; }
-  .admin-topnav .has-pill > details { z-index:1; }
-  .admin-topnav .nav-pill {
-    position:absolute; left:0; right:100%; top:0; height:0;
-    border-radius:8px; background:#292929;
-    pointer-events:none; z-index:0; opacity:0;
+  @media (max-width: 600px) {
+    .admin-topnav__brand { display:none; }
+    .admin-topnav__switch { padding-left:0; border-left:0; margin-left:-12px; }
+    .admin-topnav__switch .switch-city { display:none; }
+    .admin-topnav__platform > summary { font-size:0; gap:0; padding:9px 10px; }
+    .admin-topnav__platform > summary::before { content:"⚙"; font-size:15px; }
+    .admin-topnav__dropdown--sites { width:min(300px, calc(100vw - 24px)); }
   }
-  .admin-topnav .admin-topnav__tabs .nav-pill { border-radius:7px; background:#2c2c2c; }
 </style>

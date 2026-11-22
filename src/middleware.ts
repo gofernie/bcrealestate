@@ -2,6 +2,8 @@ import { defineMiddleware } from "astro:middleware";
 import { createClient } from "@supabase/supabase-js";
 import { purgeCache } from "@netlify/functions";
 import { createSupabaseServerClient } from "./lib/supabaseServer";
+import { resolveAdminAccess, checkApiAccess, forbiddenPage, isUuid, VIEW_AS_COOKIE, LAST_SITE_COOKIE } from "./lib/adminAccess";
+import { PLATFORM_ADMIN_IDS } from "./lib/guideAccess";
 
 const tagSafe = (v: unknown) => String(v || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 const SHARED_HOSTS = new Set(["bc.realestate"]);
@@ -182,7 +184,8 @@ const mainHandler = defineMiddleware(async (context, next) => {
     }
   }
 
-  const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/") || pathname.startsWith("/api/admin/") || pathname === "/api/buyers" || pathname.startsWith("/api/buyers/") || pathname === "/api/buyer-detail";
+  const isGuardedWrite = context.request.method !== "GET" && context.request.method !== "HEAD" && /^\/api\/(site-settings|shortlists\/(create|delete|add-item)|create-agent|prospect-pages\/)/.test(pathname);
+  const isAdminRoute = isGuardedWrite || pathname === "/admin" || pathname.startsWith("/admin/") || /^\/(shortlists|listings)\/?$/.test(pathname) || pathname.startsWith("/api/admin/") || pathname === "/api/buyers" || pathname.startsWith("/api/buyers/") || pathname === "/api/buyer-detail";
   const isWrite = context.request.method !== "GET" && context.request.method !== "HEAD";
   const referer = context.request.headers.get("referer") || "";
 
@@ -234,6 +237,31 @@ const mainHandler = defineMiddleware(async (context, next) => {
     return context.redirect(
       `/login?returnTo=${encodeURIComponent(returnTo)}`
     );
+  }
+
+  // admin-access-v1: agents only reach their own site(s); platform screens are admin-only
+  if (pathname === "/admin/view-as" || pathname === "/admin/view-as/") {
+    const target = context.url.searchParams.get("site_id") || "";
+    const secure = !import.meta.env.DEV;
+    if (PLATFORM_ADMIN_IDS.has(user.id) && isUuid(target)) {
+      context.cookies.set(VIEW_AS_COOKIE, target, { path: "/", httpOnly: true, sameSite: "lax", secure, maxAge: 60 * 60 * 8 });
+      return context.redirect(`/admin/sites/${target}/pages`);
+    }
+    const back = context.cookies.get(VIEW_AS_COOKIE)?.value || "";
+    context.cookies.delete(VIEW_AS_COOKIE, { path: "/" });
+    return context.redirect(isUuid(back) ? `/admin/sites/${back}/pages` : "/admin/sites");
+  }
+  const gate = await resolveAdminAccess(user, context.url, context.cookies);
+  if (gate.forbidden) return forbiddenPage(gate.forbidden);
+  if (gate.redirect && gate.redirect !== `${pathname}${search}`) return context.redirect(gate.redirect);
+  (context.locals as any).adminAccess = gate.access;
+  // admin-api-guard-v1
+  if (pathname.startsWith("/api/") || pathname.startsWith("/admin/api/")) {
+    const check = await checkApiAccess(context.request.clone(), context.url, gate.access);
+    if (!check.allowed) return new Response(JSON.stringify({ ok: false, error: check.reason || "Not allowed" }), { status: 403, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  }
+  if (gate.access.isPlatformAdmin && gate.access.currentSiteId && context.cookies.get(LAST_SITE_COOKIE)?.value !== gate.access.currentSiteId) {
+    context.cookies.set(LAST_SITE_COOKIE, gate.access.currentSiteId, { path: "/", httpOnly: true, sameSite: "lax", secure: !import.meta.env.DEV, maxAge: 60 * 60 * 24 * 90 });
   }
 
   const response = await next();

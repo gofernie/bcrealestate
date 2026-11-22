@@ -8,7 +8,7 @@ const siteId = String(Astro.params.id || "");
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Agent Editor</title>
+    <title>Site settings · Locus Admin</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     
     <link href="https://?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -852,7 +852,6 @@ const siteId = String(Astro.params.id || "");
   <div class="page">
     <AdminSidebar active="sites">
       <nav class="sidebar__section-links">
-        <a href={`/admin/sites/${siteId}/pages`}>Pages &amp; navigation</a>
         <a href="#s-agent">Agent</a>
         <a href="#s-colour">Colour</a>
         <a href="#s-template">Template</a>
@@ -2017,6 +2016,36 @@ document.querySelectorAll(".sidebar__section-links a").forEach((link) => {
 
 loadPage();
     </script>
+  <style is:inline data-id="settings-tabs-css">
+    .settings-tabs .section:not(.is-tab) { display:none !important; }
+    .settings-tabs .section__trigger { cursor:default; }
+    .settings-tabs .section__chevron { display:none !important; }
+  </style>
+  <script is:inline data-id="settings-tabs">
+  (function () {
+    /* settings-tabs-v1: one section at a time; the form still saves every field */
+    var links = [].slice.call(document.querySelectorAll(".sidebar__section-links a")).filter(function (a) {
+      var t = document.querySelector(a.getAttribute("href"));
+      return t && getComputedStyle(t).display !== "none" && getComputedStyle(a).display !== "none";
+    });
+    if (!links.length) return;
+    document.body.classList.add("settings-tabs");
+    var secs = links.map(function (a) { return document.querySelector(a.getAttribute("href")); });
+    function show(id, save) {
+      var hit = secs.filter(function (s) { return s.id === id; })[0] || secs[0];
+      secs.forEach(function (s) { s.classList.toggle("is-tab", s === hit); if (s === hit) s.classList.add("is-open"); });
+      links.forEach(function (a) { a.classList.toggle("active", a.getAttribute("href") === "#" + hit.id); });
+      if (save) { try { history.replaceState(null, "", "#" + hit.id.replace(/^s-/, "")); } catch (e) {} }
+    }
+    links.forEach(function (a) {
+      a.addEventListener("click", function (e) { e.preventDefault(); e.stopImmediatePropagation(); show(a.getAttribute("href").slice(1), true); window.scrollTo({ top: 0 }); }, true);
+    });
+    document.querySelectorAll("[data-toggle]").forEach(function (b) {
+      b.addEventListener("click", function (e) { e.stopImmediatePropagation(); }, true);
+    });
+    show("s-" + (location.hash.slice(1) || ""), false);
+  })();
+  </script>
   <script is:inline>
   (() => {
     const pathMatch = window.location.pathname.match(

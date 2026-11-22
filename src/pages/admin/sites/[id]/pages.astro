@@ -1,4 +1,4 @@
-﻿---
+---
 import { createClient } from "@supabase/supabase-js";
 import AdminTopNav from "../../../../components/AdminTopNav.astro";
 
@@ -282,7 +282,7 @@ function ideaHref(template: string) {
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>{siteName} Website Pages</title>
+    <title>{siteName} · Locus Admin</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
     <style is:global>
@@ -393,7 +393,7 @@ document.addEventListener("astro:page-load", initMyPagesDrag);
 
         <header class="workspace-header workspace-header--focused">
   <div>
-    <p class="eyebrow">Agent website</p>
+    <p class="eyebrow">Your website</p>
 
     <div class="focused-title-row">
       <h1>{siteName}</h1>
@@ -432,10 +432,10 @@ document.addEventListener("astro:page-load", initMyPagesDrag);
 <section class="focused-setup">
   <div class="focused-setup-heading">
     <p class="section-kicker">Website setup</p>
-    <h2>Build the agent's website</h2>
+    <h2>Set up your website</h2>
     <p>
-      Work from the top down. The important decisions
-      come first; the website details stay out of the way.
+      Work through these in order. The big decisions come first;
+      the finer details are in Settings.
     </p>
   </div>
 
@@ -637,7 +637,7 @@ document.addEventListener("astro:page-load", initMyPagesDrag);
     <p class="section-kicker">Ready to share</p>
     <h2>{site?.domain || `${cityLabel} website`}</h2>
     <p>
-      Open the finished site and send it to the agent.
+      See your site the way buyers see it.
     </p>
   </div>
 
@@ -889,7 +889,60 @@ document.addEventListener("astro:page-load", initMyPagesDrag);
             </a>
           </div>
         </section>
-      </main>
+      <style is:inline data-id="ptabs-style">
+  .ptabs{display:flex;gap:2px;margin:22px 0 16px;border-bottom:1px solid #e6e1d8;overflow-x:auto;scrollbar-width:none}
+  .ptabs::-webkit-scrollbar{display:none}
+  .ptab{appearance:none;background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:11px 14px;display:inline-flex;align-items:center;gap:8px;font-family:inherit;font-size:14px;font-weight:500;line-height:1;color:#6f6a62;white-space:nowrap;cursor:pointer;transition:color .15s,border-color .15s}
+  .ptab:hover{color:#161616}
+  .ptab .n{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#ece6db;color:#161616;font-size:11px;font-weight:600;transition:background .15s,color .15s}
+  .ptab[aria-selected="true"]{color:#161616;border-bottom-color:#161616}
+  .ptab[aria-selected="true"] .n{background:#161616;color:#fff}
+  .ptab:focus-visible{outline:2px solid #161616;outline-offset:-2px;border-radius:6px}
+  [data-ptab-step]{border-top:0 !important;border-bottom:0 !important}
+  [data-ptab-hidden]{display:none !important}
+  .ptab-solo{display:block !important;margin-top:8px !important}
+</style>
+<script is:inline data-id="ptabs-script">
+(function(){
+  /* admin-nav-v2: Home shows the setup steps as tabs; Pages > Your pages / Core pages show just that list */
+  var main=document.querySelector('main.main'); if(!main||main.getAttribute('data-tabbed'))return;
+  var setup=main.querySelector('.focused-setup'); if(!setup)return;
+  main.setAttribute('data-tabbed','1');
+  var crumbs=main.querySelector('nav.breadcrumbs'); if(crumbs)crumbs.remove();
+  var q=new URLSearchParams(location.search);
+  var mode=q.get('tab')||'';
+  if(location.hash==='#my-pages-list'||q.get('focus')==='pages')mode='my-pages';
+  var core=document.getElementById('core-pages'), mine=document.getElementById('my-pages');
+  var head=main.querySelector('.workspace-header'), share=main.querySelector('.focused-share');
+  function hide(el){if(el)el.setAttribute('data-ptab-hidden','');}
+  if(mode==='my-pages'||mode==='core-pages'){
+    hide(head);hide(setup);hide(share);
+    hide(mode==='core-pages'?mine:core);
+    var show=mode==='core-pages'?core:mine; if(show)show.classList.add('ptab-solo');
+    return;
+  }
+  hide(core);hide(mine);
+  var mains=setup.querySelectorAll('.focused-step-main'); if(!mains.length)return;
+  var steps=[].map.call(mains,function(m){return m.parentElement;});
+  var wrap=steps[0].parentElement;
+  var panels=steps.map(function(s,i){s.setAttribute('data-ptab-step','');var h=s.querySelector('h3');var label=h?h.textContent.trim():'Step '+(i+1);return {label:label,key:label.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''),el:s,n:i+1};});
+  var bar=document.createElement('div'); bar.className='ptabs'; bar.setAttribute('role','tablist');
+  wrap.parentNode.insertBefore(bar,wrap);
+  panels.forEach(function(p){
+    var b=document.createElement('button'); b.type='button'; b.className='ptab'; b.setAttribute('role','tab');
+    var n=document.createElement('span');n.className='n';n.textContent=p.n;b.appendChild(n);
+    var l=document.createElement('span'); l.textContent=p.label; b.appendChild(l);
+    b.addEventListener('click',function(){show(p.key,true);});
+    p.btn=b; bar.appendChild(b);
+  });
+  function show(key,save){
+    var hit=panels.filter(function(p){return p.key===key;})[0]||panels[0];
+    panels.forEach(function(p){var on=p===hit;p.btn.setAttribute('aria-selected',on?'true':'false');if(on)p.el.removeAttribute('data-ptab-hidden');else p.el.setAttribute('data-ptab-hidden','');});
+    if(save){try{var u=new URL(location.href);u.searchParams.set('step',hit.key);u.searchParams.delete('tab');u.hash='';history.replaceState(null,'',u);}catch(e){}}
+  }
+  show(q.get('step')||q.get('tab'),false);
+})();
+</script></main>
     </div>
 
     <script>

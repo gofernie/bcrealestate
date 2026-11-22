@@ -22,7 +22,16 @@ const requestHost = (
   .split(":")[0];
 
 const globalAdminHosts = new Set(["localhost", "127.0.0.1", "bc.realestate"]);
-const scopeDomain = globalAdminHosts.has(requestHost) ? "" : requestHost;
+let scopeDomain = globalAdminHosts.has(requestHost) ? "" : requestHost;
+// admin-access-v1: scope to the chosen site's domain (agents always have one)
+const __watchSiteId = Astro.url.searchParams.get("site_id") || "";
+let __watchCity = "";
+if (__watchSiteId) {
+  const { data: __ws } = await supabase.from("sites").select("domain, city").eq("id", __watchSiteId).maybeSingle();
+  const __d = String(__ws?.domain || "").replace(/^www\./, "").toLowerCase();
+  if (__d && __d !== "bc.realestate") scopeDomain = __d;
+  else if (__d === "bc.realestate") { scopeDomain = __d; __watchCity = String(__ws?.city || "").toLowerCase().replace(/\s+/g, "-"); }
+}
 const showAll = Astro.url.searchParams.get("show") === "all";
 
 let query = supabase
@@ -33,7 +42,7 @@ let query = supabase
 if (scopeDomain) query = query.eq("site_domain", scopeDomain);
 
 const { data, error } = await query;
-const all: any[] = data || [];
+const all: any[] = (data || []).filter((w: any) => { if (!__watchCity) return true; try { return new URL(w.listing_url).pathname.split("/").filter(Boolean)[0] === __watchCity; } catch { return false; } });
 
 const watchIds = [...new Set(all.map((w) => String(w.listing_id)).filter((s) => /^[A-Za-z0-9_-]+$/.test(s)))];
 const cityById = new Map<string, string>();
@@ -111,7 +120,7 @@ const stats = [
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex" />
-  <title>Watched homes · Admin</title>
+  <title>Watched homes · Locus Admin</title>
   <style>
     body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #f7f6f2; color: #1c2424; }
     .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 16px 64px; }

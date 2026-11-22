@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { createClient } from "@supabase/supabase-js";
 
-export const GET: APIRoute = async ({ url }) => {
+export const GET: APIRoute = async ({ url, locals }) => {
   try {
     const name = String(url.searchParams.get("name") || "").trim();
 
@@ -38,6 +38,14 @@ export const GET: APIRoute = async ({ url }) => {
       );
     } else {
       sendsQuery = sendsQuery.ilike("client_name", name);
+    }
+
+    // admin-access-v1: agents only see their own buyers
+    const __access = (locals as any)?.adminAccess;
+    if (__access && !__access.isPlatformAdmin) {
+      const { data: __sites } = await supabase.from("sites").select("agent_id").in("id", __access.siteIds?.length ? __access.siteIds : ["00000000-0000-0000-0000-000000000000"]);
+      const __agentIds = [...new Set((__sites || []).map((s: any) => String(s.agent_id || "")).filter(Boolean))];
+      sendsQuery = sendsQuery.in("agent_id", __agentIds.length ? __agentIds : ["00000000-0000-0000-0000-000000000000"]);
     }
 
     const { data: rawSends, error: sendsError } = await sendsQuery;

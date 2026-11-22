@@ -1,7 +1,7 @@
 // Who can touch which guides. Platform admins see everything; agents only their own sites (sites.agent_id = user.id).
 import { createSupabaseServerClient } from "./supabaseServer";
 
-const PLATFORM_ADMIN_IDS = new Set([
+export const PLATFORM_ADMIN_IDS = new Set([
   "e6ef2640-eeff-4d57-8df2-c4c5f820a182",
   "0282af0e-cef9-4f8e-a263-d456c6c26b1b",
 ]);

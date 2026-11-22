@@ -1,27 +1,44 @@
 import type { APIRoute } from "astro";
 import { createClient } from "@supabase/supabase-js";
 
-export const GET: APIRoute = async () => {
+export const GET: APIRoute = async ({ locals }) => {
   try {
     const supabase = createClient(
       import.meta.env.PUBLIC_SUPABASE_URL,
       import.meta.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
-    const { data: clients, error: clientsError } = await supabase
+    // admin-access-v1: agents only see buyers from their own shortlists
+    const __access = (locals as any)?.adminAccess;
+    let __agentIds: string[] | null = null;
+    if (__access && !__access.isPlatformAdmin) {
+      const { data: __sites } = await supabase.from("sites").select("agent_id").in("id", __access.siteIds?.length ? __access.siteIds : ["00000000-0000-0000-0000-000000000000"]);
+      __agentIds = [...new Set((__sites || []).map((s: any) => String(s.agent_id || "")).filter(Boolean))];
+      if (!__agentIds.length) __agentIds = ["00000000-0000-0000-0000-000000000000"];
+    }
+
+    const { data: __clientsAll, error: clientsError } = await supabase
       .from("clients")
       .select("id, name, phone")
       .order("name", { ascending: true });
 
     if (clientsError) throw clientsError;
 
-    const { data: sends, error: sendsError } = await supabase
+    let __sendsQ = supabase
       .from("shortlist_sends")
       .select(
         "id, buyer_id, client_id, client_name, client_phone, last_viewed_at, last_contacted_at, last_contact_note"
       );
+    if (__agentIds) __sendsQ = __sendsQ.in("agent_id", __agentIds);
+    const { data: sends, error: sendsError } = await __sendsQ;
 
     if (sendsError) throw sendsError;
+
+    const __sendClientIds = new Set((sends || []).map((s: any) => String(s.client_id || "")).filter(Boolean));
+    const __sendNames = new Set((sends || []).map((s: any) => String(s.client_name || "").trim().toLowerCase()).filter(Boolean));
+    const clients = __agentIds
+      ? (__clientsAll || []).filter((c: any) => __sendClientIds.has(String(c.id)) || __sendNames.has(String(c.name || "").trim().toLowerCase()))
+      : __clientsAll;
 
     const sendIds = (sends || []).map((send: any) => send.id);
 

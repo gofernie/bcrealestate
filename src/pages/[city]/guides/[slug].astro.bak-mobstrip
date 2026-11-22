@@ -1,0 +1,332 @@
+---
+import { createClient as __glCC } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
+import Layout from "../../../layouts/Layout.astro";
+import SiteNav from "../../../components/SiteNav.astro";
+import AgentBrandStrip from "../../../components/AgentBrandStrip.astro";
+import { getAgentForSite } from "../../../lib/getAgentForSite";
+import { getSite } from "../../../lib/getSite";
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const city = String(Astro.params.city || "").toLowerCase().trim();
+const slug = String(Astro.params.slug || "").toLowerCase().trim();
+
+const requestHost = Astro.request.headers.get("x-forwarded-host") || Astro.request.headers.get("host") || "";
+const requestDomain = requestHost.split(",")[0].trim().replace(/^www\./, "").split(":")[0];
+const localSubdomainMatch = requestDomain.match(/^([a-z0-9-]+)\.localhost$/);
+const isLocalRequest = requestDomain === "localhost" || requestDomain === "127.0.0.1" || Boolean(localSubdomainMatch);
+const isNetlifyProjectDomain = requestDomain === "bc-realestate.netlify.app" || requestDomain.endsWith("--bc-realestate.netlify.app");
+const inferredLocalDomain = localSubdomainMatch ? `${localSubdomainMatch[1]}.bc.realestate` : "bc.realestate";
+const requestedLocalDomain = String(Astro.url.searchParams.get("siteDomain") || inferredLocalDomain).trim().replace(/^www\./, "");
+const effectiveSiteDomain = isLocalRequest || isNetlifyProjectDomain ? requestedLocalDomain : requestDomain;
+
+const site = await getSite(effectiveSiteDomain, city);
+const accent = site?.accent_color || "#2f6f73";
+
+const { data: __guideRows } = await supabase
+  .from("guide_pages")
+  .select("*")
+  .eq("city", city)
+  .eq("slug", slug)
+  .in("status", isLocalRequest ? ["live", "draft"] : ["live"]);
+const page = (__guideRows || []).find((r) => site?.id && r.site_id === site.id) || (__guideRows || []).find((r) => !r.site_id) || null;
+
+if (!page) return new Response(null, { status: 404 });
+const { data: __intentMatch } = await supabase.from("intent_pages").select("id").eq("slug", slug).limit(1);
+if (__intentMatch && __intentMatch.length) return Astro.redirect(`/${city}/${slug}`, 301);
+
+function escHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function mdInline(s) {
+  let t = escHtml(s);
+  t = t.replace(/`([^`]+)`/g, "<code>$1</code>");
+  t = t.replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/|#)[^\s)]*)\)/g, '<a href="$2">$1</a>');
+  t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  t = t.replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\w)/g, "$1<em>$2</em>");
+  return t;
+}
+function renderGuideMd(src) {
+  const lines = String(src || "").replace(/\r\n?/g, "\n").split("\n");
+  const out = [];
+  const isTable = (l) => /^\s*\|/.test(l);
+  const isUl = (l) => /^\s*[-*]\s+/.test(l);
+  const isOl = (l) => /^\s*\d+[.)]\s+/.test(l);
+  const isHead = (l) => /^#{2,4}\s+/.test(l);
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+    if (isHead(line)) {
+      const m = line.match(/^(#{2,4})\s+(.*)$/);
+      const lvl = m[1].length;
+      out.push(`<h${lvl}>${mdInline(m[2].trim())}</h${lvl}>`);
+      i++; continue;
+    }
+    if (isTable(line)) {
+      const rows = [];
+      while (i < lines.length && isTable(lines[i])) { rows.push(lines[i]); i++; }
+      const cells = (r) => r.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+      const data = rows.filter((r) => !/^[\s|:-]+$/.test(r));
+      if (!data.length) continue;
+      const head = cells(data[0]).map((c) => `<th>${mdInline(c)}</th>`).join("");
+      const body = data.slice(1).map((r) => `<tr>${cells(r).map((c) => `<td>${mdInline(c)}</td>`).join("")}</tr>`).join("");
+      out.push(`<div class="guide-table"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`);
+      continue;
+    }
+    if (isUl(line) || isOl(line)) {
+      const ordered = isOl(line);
+      const test = ordered ? isOl : isUl;
+      const items = [];
+      while (i < lines.length && test(lines[i])) {
+        items.push(lines[i].replace(ordered ? /^\s*\d+[.)]\s+/ : /^\s*[-*]\s+/, ""));
+        i++;
+      }
+      const tag = ordered ? "ol" : "ul";
+      out.push(`<${tag}>${items.map((it) => `<li>${mdInline(it)}</li>`).join("")}</${tag}>`);
+      continue;
+    }
+    const para = [];
+    while (i < lines.length && lines[i].trim() && !isHead(lines[i]) && !isTable(lines[i]) && !isUl(lines[i]) && !isOl(lines[i])) {
+      para.push(mdInline(lines[i].trim()));
+      i++;
+    }
+    out.push(`<p>${para.join("<br>")}</p>`);
+  }
+  return out.join("\n");
+}
+let __agent = null;
+try { __agent = await getAgentForSite(site); } catch {}
+const __agentName = String(__agent?.name || "").trim();
+const __showAgent = !!__agentName && __agentName.toLowerCase() !== "bc.realestate";
+const __bylineRole = [__agent?.title || __agent?.designation || "REALTOR\u00AE", __agent?.brokerage || __agent?.brokerage_name].filter(Boolean).join(", ");
+const __updated = page.updated_at ? new Date(page.updated_at).toLocaleDateString("en-CA", { month: "long", year: "numeric" }) : "";const __isLg = (u) => /-lg\.webp$/.test(String(u || ""));
+const __upd = page.updated_at ? new Date(page.updated_at) : null;
+const __nowD = new Date();
+const __stale = !!__upd && (__nowD.getFullYear() * 12 + __nowD.getMonth()) > (__upd.getFullYear() * 12 + __upd.getMonth());
+const __hasStats = /\$\s?\d|median|sold/i.test(page.neighbourhood_copy || "");
+const __miHref = `/${city}/market-intelligence`;const __lgToSm = (u) => String(u || "").replace(/-lg\.webp$/, "-sm.webp");
+const __guideHtml = renderGuideMd(page.neighbourhood_copy || "")
+  .replace(/<p><a href="([^"]+)">(See [^<]*?\u2192)<\/a><\/p>/g, '<p class="guide-cta"><a href="$1">$2</a></p>')
+  .replace(/<p>!<a href="([^"]+)">([^<]*)<\/a><\/p>/g, (_m, u, c) =>
+    `<figure class="guide-photo"><img src="${u}"` +
+    (__isLg(u) ? ` srcset="${__lgToSm(u)} 800w, ${u} 1600w" sizes="(max-width: 800px) 100vw, 760px"` : "") +
+    ` alt="${c}" loading="lazy" decoding="async">` + ((c || __cr(u)) ? `<figcaption>${c}${__cr(u)}</figcaption>` : "") + `</figure>`);
+const __photoFigs = __guideHtml.match(/<figure class="guide-photo">[\s\S]*?<\/figure>/g) || [];
+const __heroSrcset = __isLg(page.hero_image_url) ? `${__lgToSm(page.hero_image_url)} 800w, ${page.hero_image_url} 2000w` : undefined;
+const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+const title = page.seo_title || page.title || `${cityLabel} Guide`;
+const description = page.meta_description || "";
+const __gl = { live_sold: true, live_active: true, mi_sold: true, mi_active: false, mi_bottom: false, ...((page.guide_links && typeof page.guide_links === "object") ? page.guide_links : {}) };
+function __cr(u) {
+  const url = String(u || "").replace(/&amp;/g, "&");
+  const p = (Array.isArray(page.photos) ? page.photos : []).find((x) => x && x.credit && x.url === url);
+  if (!p) return "";
+  const e = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+  return `<span class="guide-credit" style="display:block;font-size:.75rem;margin-top:.2rem;">Photo: <a href="${e(p.credit_href || "https://unsplash.com")}" target="_blank" rel="noopener" style="color:inherit;">${e(p.credit)}</a> / <a href="https://unsplash.com/?utm_source=fernie_pages&utm_medium=referral" target="_blank" rel="noopener" style="color:inherit;">Unsplash</a></span>`;
+}
+const __esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const __glSlugs = Array.isArray(__gl.pages) ? __gl.pages.filter(Boolean) : [];
+let __glLinks = [];
+if (__glSlugs.length) {
+  try {
+    const __c = __glCC(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
+    let __q = __c.from("intent_pages").select("slug,card_title,nav_label,hero_heading").in("slug", __glSlugs).eq("city", page.city);
+    __q = page.site_id ? __q.eq("site_id", page.site_id) : __q.is("site_id", null);
+    const { data: __d } = await __q;
+    __glLinks = __glSlugs.map((s) => (__d || []).find((r) => r.slug === s)).filter(Boolean)
+      .map((r) => ({ href: `/${city}/${r.slug}`, label: String(r.card_title || r.nav_label || r.hero_heading || "Homes").trim() }));
+  } catch {}
+}
+const __pill = "display:inline-block;padding:9px 18px;border:1.5px solid var(--accent, #2f6f73);border-radius:4px;color:var(--accent, #2f6f73);font-weight:600;font-size:.92rem;text-decoration:none;";
+const __btn = (label, kind = "", link = true) => (!kind && !link) ? "" : `<p class="guide-live-cta" style="margin:18px 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">${kind ? `<button type="button" class="guide-live-upd" data-live="${kind}" data-city="${city}" style="padding:10px 18px;border:0;border-radius:4px;background:var(--accent, #2f6f73);color:#fff;font:600 .92rem inherit;font-family:inherit;cursor:pointer;">Update to today's numbers</button>` : ""}${link ? `<a class="guide-live-btn" href="${__miHref}" style="${__pill}">${label} \u2192</a>` : ""}</p>`;
+let __bottomDone = false;
+{
+  const __P = { "": "homes", house: "houses", townhouse: "townhomes", condo: "condos", mobile: "mobile homes", land: "lots & land" };
+  const __base = (site?.city && String(site.city).toLowerCase() === String(city).toLowerCase()) ? "/" : `/${city}`;
+  const __cityName = String(city || "").replace(/-/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+  for (const c of (Array.isArray(__gl.custom) ? __gl.custom : [])) {
+    const qs = new URLSearchParams();
+    if (c.area) qs.set("area", String(c.area).toLowerCase());
+    if (c.type) qs.set("type", String(c.type));
+    const q = qs.toString();
+    const fallback = `${c.area || __cityName} ${__P[c.type || ""] || "homes"}`;
+    __glLinks.push({ href: __base + (q ? "?" + q : "") + (__base === "/" ? "#homepage-listings" : ""), label: String(c.label || "").trim() || fallback.charAt(0).toUpperCase() + fallback.slice(1) });
+  }
+}const __bottom = () => { const items = [...__glLinks.map((l) => `<a href="${l.href}" style="${__pill}">${__esc(l.label)} \u2192</a>`), ...(__gl.mi_bottom ? [`<a href="${__miHref}" style="${__pill}">See today's ${cityLabel} market \u2192</a>`] : [])]; return items.length ? `<p class="guide-mi-bottom" style="margin:28px 0 8px;display:flex;gap:8px;flex-wrap:wrap;">${items.join("")}</p>` : ""; };
+const __guideHtmlX = __guideHtml.split(/(?=<h2[\s>])/).map((chunk) => {
+  const h = (chunk.match(/^<h2[^>]*>([\s\S]*?)<\/h2>/) || [])[1] || "";
+  const txt = h.replace(/<[^>]+>/g, "");
+  if (/^\s*sources\s*$/i.test(txt) && !__bottomDone) { __bottomDone = true; return __bottom() + chunk; }
+  if (/actually sell for|sold prices|what homes sell for/i.test(txt)) return chunk + __btn("See today's sold prices", __gl.live_sold ? "sold" : "", __gl.mi_sold);
+  if (/for sale now|currently for sale/i.test(txt)) return chunk + __btn("See what's for sale today", __gl.live_active ? "active" : "", __gl.mi_active);
+  return chunk;
+}).join("") + (__bottomDone ? "" : __bottom());
+const __Q = String.fromCharCode(34);
+const __phList = (Array.isArray(page.photos) ? page.photos : []).filter((p) => p && p.url);
+function __phFig(p) {
+  const cap = (p.caption || __cr(p.url)) ? "<figcaption>" + __esc(p.caption || "") + __cr(p.url) + "</figcaption>" : "";
+  return "<figure class=" + __Q + "guide-photo" + __Q + "><img src=" + __Q + __esc(p.url) + __Q + " alt=" + __Q + __esc(p.alt || p.caption || "") + __Q + " loading=" + __Q + "lazy" + __Q + " decoding=" + __Q + "async" + __Q + ">" + cap + "</figure>";
+}
+function __phKeep(html) {
+  if (!__phList.length) return html;
+  const open = "<figure class=" + __Q + "guide-photo" + __Q + ">";
+  const parts = html.split(open);
+  let out = parts[0];
+  for (let i = 1; i < parts.length; i++) {
+    const end = parts[i].indexOf("</figure>");
+    if (end < 0) { out += open + parts[i]; continue; }
+    const fig = parts[i].slice(0, end + 9), rest = parts[i].slice(end + 9);
+    const s = fig.indexOf("src=" + __Q) + 5;
+    const u = fig.slice(s, fig.indexOf(__Q, s)).split("&amp;").join("&");
+    out += (__phList.some((p) => p.url === u) ? open + fig : "") + rest;
+  }
+  return out;
+}
+const __asideFigs = __phList.length ? __phList.map(__phFig) : __photoFigs;
+const __guideHtmlY = __phKeep(__guideHtmlX);
+const __sc = (page.interscroller_img && __gl.scroll_credit && __gl.scroll_credit.url === page.interscroller_img) ? __gl.scroll_credit : null;
+const __scHtml = __sc ? "<p class=" + __Q + "guide-photo-credits" + __Q + " style=" + __Q + "margin:28px 0 0;font-size:.75rem;color:#6b746f;" + __Q + ">Scroll photo: <a href=" + __Q + __esc(__sc.href || "https://unsplash.com") + __Q + " target=" + __Q + "_blank" + __Q + " rel=" + __Q + "noopener" + __Q + " style=" + __Q + "color:inherit;" + __Q + ">" + __esc(__sc.name || "") + "</a> / <a href=" + __Q + "https://unsplash.com/?utm_source=fernie_pages&amp;utm_medium=referral" + __Q + " target=" + __Q + "_blank" + __Q + " rel=" + __Q + "noopener" + __Q + " style=" + __Q + "color:inherit;" + __Q + ">Unsplash</a></p>" : "";
+---
+<Layout title={title} description={description} accent={accent} site={site} city={city}>
+  <SiteNav site={site} city={city} accent={accent} />
+  <main style="max-width:1448px;margin:0 auto;padding:48px 24px 40px;">
+    <p style="font-size:.85rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent, #2f6f73);margin-bottom:8px;">{page.eyebrow || `${cityLabel} local guide`}</p>
+    <h1 style="font-family:'Instrument Serif',serif;font-weight:400;font-size:clamp(2.4rem,5vw,3.6rem);line-height:1.05;margin:0 0 28px;max-width:760px;">{page.title}</h1>
+<p class="guide-byline" style="margin:-12px 0 40px;color:#5b6660;font-size:.95rem;">{__showAgent && <>By <strong style="color:#1f2a26;">{__agentName}</strong>, {__bylineRole}</>}{__showAgent && __updated && " \u00B7 "}{__updated && `Updated ${__updated}`}{" \u00B7 "}<button type="button" class="guide-share-btn" data-title={page.title} style="background:none;border:0;padding:0;font:inherit;color:var(--accent, #2f6f73);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px;">Share</button></p>
+    {__hasStats && __updated && (
+      <p class={"guide-datanote" + (__stale ? " is-stale" : "")} style={__stale
+        ? "margin:-28px 0 36px;padding:10px 14px;border-radius:10px;background:#fff7e6;border:1px solid #f3d9a4;color:#7a5a1c;font-size:.92rem;max-width:760px;"
+        : "margin:-30px 0 36px;color:#5b6660;font-size:.9rem;"}>
+        {__stale ? `This guide uses ${__updated} data. For today's numbers, see ` : `Figures as of ${__updated}. Live numbers: `}
+        <a href={__miHref} style="color:var(--accent, #2f6f73);font-weight:600;">{cityLabel} Market Intel {"\u2192"}</a>
+      </p>
+    )}
+    {page.hero_image_url && <img class="guide-hero" src={page.hero_image_url} srcset={__heroSrcset} sizes="(max-width: 1200px) 100vw, 1180px" alt={page.title} fetchpriority="high" style="display:block;width:100%;aspect-ratio:16/7;object-fit:cover;border-radius:14px;margin:0 0 40px;" />}
+    {page.hero_image_url && __gl.hero_credit && __gl.hero_credit.url === page.hero_image_url && <p class="guide-hero-credit" style="margin:-34px 0 34px;font-size:.75rem;color:#6b746f;text-align:right;">Photo: <a href={__gl.hero_credit.href || "https://unsplash.com"} target="_blank" rel="noopener" style="color:inherit;">{__gl.hero_credit.name}</a> / <a href="https://unsplash.com/?utm_source=fernie_pages&utm_medium=referral" target="_blank" rel="noopener" style="color:inherit;">Unsplash</a></p>}
+    {page.neighbourhood_copy && (
+<div class="guide-layout"><div class="guide-body" style="max-width:760px;" set:html={__guideHtmlY + __scHtml} />{__asideFigs.length > 0 && <aside class="guide-aside" set:html={__asideFigs.join("")} />}</div>
+<script is:inline>
+(function () {
+  var cache = {};
+  function get(city) { return cache[city] || (cache[city] = fetch("/api/guide-live?city=" + encodeURIComponent(city)).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })); }
+  function cell(tag, v) { var c = document.createElement(tag); c.textContent = String(v); return c; }
+  function table(head, rows) {
+    var t = document.createElement("table"), th = document.createElement("thead"), tr = document.createElement("tr");
+    head.forEach(function (h) { tr.appendChild(cell("th", h)); }); th.appendChild(tr); t.appendChild(th);
+    var tb = document.createElement("tbody");
+    rows.forEach(function (r) { var x = document.createElement("tr"); r.forEach(function (v) { x.appendChild(cell("td", v)); }); tb.appendChild(x); });
+    t.appendChild(tb); return t;
+  }
+  document.addEventListener("click", async function (e) {
+    var b = e.target.closest && e.target.closest(".guide-live-upd"); if (!b) return;
+    e.preventDefault();
+    var kind = b.getAttribute("data-live"), city = b.getAttribute("data-city"), cta = b.closest(".guide-live-cta");
+    var els = [], el = cta.previousElementSibling;
+    while (el && el.tagName !== "H2") { els.unshift(el); el = el.previousElementSibling; }
+    var wrap = els.filter(function (x) { return x.tagName === "TABLE" || (x.querySelector && x.querySelector("table")); })[0];
+    if (!wrap) return;
+    b.disabled = true; b.textContent = "Loading today\u2019s numbers...";
+    try {
+      var d = await get(city), s = d[kind];
+      if (!s || !s.rows || !s.rows.length) throw new Error("no data");
+      var t = kind === "sold"
+        ? table(["Area", "Homes sold", "Median sold price"], s.rows.map(function (r) { return [r.name, r.n, r.median]; }))
+        : table(["Property type", "Active listings", "Median asking price"], s.rows.map(function (r) { return [r.name, r.n, r.median]; }));
+      var old = wrap.tagName === "TABLE" ? wrap : wrap.querySelector("table");
+      t.className = old.className; old.replaceWith(t);
+      els.forEach(function (x) { if (x !== wrap && /^(P|UL|OL|BLOCKQUOTE)$/.test(x.tagName) && !x.querySelector("img")) x.style.display = "none"; });
+      var note = document.createElement("p");
+      note.className = "guide-live-note";
+      note.style.cssText = "padding:10px 14px;border-radius:10px;background:#eef6f3;border:1px solid #cfe3dc;font-size:.95rem;";
+      var badge = document.createElement("strong"); badge.textContent = "Live \u00b7 " + d.asOf + ". "; badge.style.color = "var(--accent, #2f6f73)";
+      note.appendChild(badge); note.appendChild(document.createTextNode(s.summary));
+      wrap.parentNode.insertBefore(note, wrap);
+      b.textContent = "Showing today\u2019s numbers \u2713";
+    } catch (err) { b.disabled = false; b.textContent = "Couldn\u2019t load. Try again"; }
+  });
+})();
+</script><div class="guide-share-end" style="max-width:760px;margin:40px 0 8px;padding:18px 20px;border:1px solid #e3e8e5;border-radius:12px;background:#fff;display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
+  <div><strong style="display:block;font-size:1.05rem;color:#1f2a26;">Moving with someone?</strong><span style="color:#5b6660;font-size:.95rem;">Send them this guide.</span></div>
+  <button type="button" class="guide-share-btn" data-title={page.title} style="padding:10px 18px;border:0;border-radius:4px;background:var(--accent, #2f6f73);color:#fff;font:inherit;font-weight:600;cursor:pointer;">Share this guide</button>
+</div>
+<script is:inline>
+(function () {
+  var url = location.origin + location.pathname + "?ref=share", pop = null;
+  function ev(n) { try { window.fathom && window.fathom.trackEvent("Guide share " + n); } catch (e) {} }
+  function close() { if (pop) { pop.remove(); pop = null; } }
+  function menu(btn, title) {
+    close();
+    pop = document.createElement("div");
+    pop.style.cssText = "position:absolute;z-index:50;background:#fff;border:1px solid #e3e8e5;border-radius:10px;box-shadow:0 10px 30px rgba(16,24,40,.12);padding:6px;min-width:180px;";
+    [
+      ["Copy link", function (a) { navigator.clipboard.writeText(url).then(function () { a.textContent = "Copied \u2713"; ev("copy"); setTimeout(close, 1200); }).catch(function () { prompt("Copy this link:", url); close(); }); }],
+      ["Email", function () { location.href = "mailto:?subject=" + encodeURIComponent(title) + "&body=" + encodeURIComponent(title + "\n\n" + url); ev("email"); close(); }],
+      ["Facebook", function () { window.open("https://www.facebook.com/sharer/sharer.php?u=" + encodeURIComponent(url), "_blank", "noopener,width=600,height=500"); ev("facebook"); close(); }]
+    ].forEach(function (it) {
+      var a = document.createElement("button"); a.type = "button"; a.textContent = it[0];
+      a.style.cssText = "display:block;width:100%;text-align:left;padding:9px 12px;border:0;background:none;font:inherit;font-size:.95rem;cursor:pointer;border-radius:6px;color:#1f2a26;";
+      a.onmouseenter = function () { a.style.background = "#f2f5f3"; }; a.onmouseleave = function () { a.style.background = "none"; };
+      a.onclick = function (e) { e.stopPropagation(); it[1](a); };
+      pop.appendChild(a);
+    });
+    document.body.appendChild(pop);
+    var r = btn.getBoundingClientRect();
+    pop.style.top = (r.bottom + window.scrollY + 6) + "px";
+    pop.style.left = Math.max(8, Math.min(r.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - pop.offsetWidth - 12)) + "px";
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest(".guide-share-btn");
+    if (!b) { if (pop && !pop.contains(e.target)) close(); return; }
+    e.preventDefault(); e.stopPropagation();
+    var title = b.getAttribute("data-title") || document.title;
+    if (navigator.share && window.matchMedia("(pointer: coarse)").matches) { navigator.share({ title: title, url: url }).then(function () { ev("native"); }).catch(function () {}); return; }
+    if (pop) { close(); return; }
+    menu(b, title);
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+})();
+</script><div class="guide-contact"><AgentBrandStrip site={site} city={city} variant="intro" /></div>
+    )}
+  </main>
+</Layout>
+
+<style is:global>
+  .guide-body { font-size: 1.05rem; line-height: 1.7; color: #333; max-width: 760px; }
+  .guide-body p { margin: 0 0 1.2em; }
+  .guide-author { margin: 0 0 2rem; }
+  .guide-contact { margin: 3rem 0 1rem; }
+  .guide-body h2 { font-size: 1.6rem; line-height: 1.25; margin: 2em 0 .6em; }
+  .guide-body h3 { font-size: 1.25rem; margin: 1.6em 0 .5em; }
+  .guide-body ul, .guide-body ol { margin: 0 0 1.2em; padding-left: 1.4em; }
+  .guide-body li { margin-bottom: .4em; }
+  .guide-body a { color: var(--accent, #2f6f73); text-decoration: underline; }
+  .guide-body code { background: #f3f1ec; padding: .1em .35em; border-radius: 4px; font-size: .9em; }
+  .guide-table { overflow-x: auto; margin: 0 0 1.6em; }
+  .guide-body table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  .guide-body th, .guide-body td { text-align: left; vertical-align: top; padding: .6em .75em; border-bottom: 1px solid #e4e0d8; }
+  .guide-body th { font-weight: 700; background: color-mix(in srgb, var(--accent, #2f6f73) 8%, white); }
+</style>
+
+<style is:global>
+  .guide-body .guide-cta { margin: 2rem 0 0; }
+  .guide-body .guide-cta a { display: inline-block; padding: .85rem 1.5rem; border-radius: 999px; background: var(--accent, #2f6f73); color: #fff; text-decoration: none; font-weight: 600; }
+  .guide-body .guide-cta a:hover { filter: brightness(1.08); }
+  .guide-body .guide-photo { margin: 2rem 0; }
+  .guide-body .guide-photo img { display: block; width: 100%; height: auto; max-height: 460px; object-fit: cover; border-radius: 12px; }
+  .guide-aside { display: none; }
+  @media (min-width: 1100px) {
+    .guide-layout { display: grid; grid-template-columns: minmax(0, 760px) minmax(340px, 440px); gap: 0 80px; align-items: stretch; }
+    .guide-body .guide-photo { display: none; }
+    .guide-aside { display: flex; flex-direction: column; justify-content: space-between; gap: 2rem; padding: .3rem 0 4.5rem; }
+    .guide-aside .guide-photo { margin: 0; }
+    .guide-aside .guide-photo img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 12px; }
+    .guide-aside .guide-photo figcaption { font-size: .85rem; color: #6b746f; margin-top: .5rem; }
+  }
+  
+  .guide-body .guide-photo figcaption { font-size: .88rem; color: #6b746f; margin-top: .55rem; }
+</style>

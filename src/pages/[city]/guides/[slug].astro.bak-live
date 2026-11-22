@@ -1,0 +1,188 @@
+---
+import { createClient } from "@supabase/supabase-js";
+import Layout from "../../../layouts/Layout.astro";
+import SiteNav from "../../../components/SiteNav.astro";
+import AgentBrandStrip from "../../../components/AgentBrandStrip.astro";
+import { getAgentForSite } from "../../../lib/getAgentForSite";
+import { getSite } from "../../../lib/getSite";
+
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const city = String(Astro.params.city || "").toLowerCase().trim();
+const slug = String(Astro.params.slug || "").toLowerCase().trim();
+
+const requestHost = Astro.request.headers.get("x-forwarded-host") || Astro.request.headers.get("host") || "";
+const requestDomain = requestHost.split(",")[0].trim().replace(/^www\./, "").split(":")[0];
+const localSubdomainMatch = requestDomain.match(/^([a-z0-9-]+)\.localhost$/);
+const isLocalRequest = requestDomain === "localhost" || requestDomain === "127.0.0.1" || Boolean(localSubdomainMatch);
+const isNetlifyProjectDomain = requestDomain === "bc-realestate.netlify.app" || requestDomain.endsWith("--bc-realestate.netlify.app");
+const inferredLocalDomain = localSubdomainMatch ? `${localSubdomainMatch[1]}.bc.realestate` : "bc.realestate";
+const requestedLocalDomain = String(Astro.url.searchParams.get("siteDomain") || inferredLocalDomain).trim().replace(/^www\./, "");
+const effectiveSiteDomain = isLocalRequest || isNetlifyProjectDomain ? requestedLocalDomain : requestDomain;
+
+const site = await getSite(effectiveSiteDomain, city);
+const accent = site?.accent_color || "#2f6f73";
+
+const { data: __guideRows } = await supabase
+  .from("guide_pages")
+  .select("*")
+  .eq("city", city)
+  .eq("slug", slug)
+  .in("status", isLocalRequest ? ["live", "draft"] : ["live"]);
+const page = (__guideRows || []).find((r) => site?.id && r.site_id === site.id) || (__guideRows || []).find((r) => !r.site_id) || null;
+
+if (!page) return new Response(null, { status: 404 });
+const { data: __intentMatch } = await supabase.from("intent_pages").select("id").eq("slug", slug).limit(1);
+if (__intentMatch && __intentMatch.length) return Astro.redirect(`/${city}/${slug}`, 301);
+
+function escHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function mdInline(s) {
+  let t = escHtml(s);
+  t = t.replace(/`([^`]+)`/g, "<code>$1</code>");
+  t = t.replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/|#)[^\s)]*)\)/g, '<a href="$2">$1</a>');
+  t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  t = t.replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\w)/g, "$1<em>$2</em>");
+  return t;
+}
+function renderGuideMd(src) {
+  const lines = String(src || "").replace(/\r\n?/g, "\n").split("\n");
+  const out = [];
+  const isTable = (l) => /^\s*\|/.test(l);
+  const isUl = (l) => /^\s*[-*]\s+/.test(l);
+  const isOl = (l) => /^\s*\d+[.)]\s+/.test(l);
+  const isHead = (l) => /^#{2,4}\s+/.test(l);
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+    if (isHead(line)) {
+      const m = line.match(/^(#{2,4})\s+(.*)$/);
+      const lvl = m[1].length;
+      out.push(`<h${lvl}>${mdInline(m[2].trim())}</h${lvl}>`);
+      i++; continue;
+    }
+    if (isTable(line)) {
+      const rows = [];
+      while (i < lines.length && isTable(lines[i])) { rows.push(lines[i]); i++; }
+      const cells = (r) => r.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+      const data = rows.filter((r) => !/^[\s|:-]+$/.test(r));
+      if (!data.length) continue;
+      const head = cells(data[0]).map((c) => `<th>${mdInline(c)}</th>`).join("");
+      const body = data.slice(1).map((r) => `<tr>${cells(r).map((c) => `<td>${mdInline(c)}</td>`).join("")}</tr>`).join("");
+      out.push(`<div class="guide-table"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`);
+      continue;
+    }
+    if (isUl(line) || isOl(line)) {
+      const ordered = isOl(line);
+      const test = ordered ? isOl : isUl;
+      const items = [];
+      while (i < lines.length && test(lines[i])) {
+        items.push(lines[i].replace(ordered ? /^\s*\d+[.)]\s+/ : /^\s*[-*]\s+/, ""));
+        i++;
+      }
+      const tag = ordered ? "ol" : "ul";
+      out.push(`<${tag}>${items.map((it) => `<li>${mdInline(it)}</li>`).join("")}</${tag}>`);
+      continue;
+    }
+    const para = [];
+    while (i < lines.length && lines[i].trim() && !isHead(lines[i]) && !isTable(lines[i]) && !isUl(lines[i]) && !isOl(lines[i])) {
+      para.push(mdInline(lines[i].trim()));
+      i++;
+    }
+    out.push(`<p>${para.join("<br>")}</p>`);
+  }
+  return out.join("\n");
+}
+let __agent = null;
+try { __agent = await getAgentForSite(site); } catch {}
+const __agentName = String(__agent?.name || "").trim();
+const __showAgent = !!__agentName && __agentName.toLowerCase() !== "bc.realestate";
+const __bylineRole = [__agent?.title || __agent?.designation || "REALTOR\u00AE", __agent?.brokerage || __agent?.brokerage_name].filter(Boolean).join(", ");
+const __updated = page.updated_at ? new Date(page.updated_at).toLocaleDateString("en-CA", { month: "long", year: "numeric" }) : "";const __isLg = (u) => /-lg\.webp$/.test(String(u || ""));
+const __upd = page.updated_at ? new Date(page.updated_at) : null;
+const __nowD = new Date();
+const __stale = !!__upd && (__nowD.getFullYear() * 12 + __nowD.getMonth()) > (__upd.getFullYear() * 12 + __upd.getMonth());
+const __hasStats = /\$\s?\d|median|sold/i.test(page.neighbourhood_copy || "");
+const __miHref = `/${city}/market-intelligence`;const __lgToSm = (u) => String(u || "").replace(/-lg\.webp$/, "-sm.webp");
+const __guideHtml = renderGuideMd(page.neighbourhood_copy || "")
+  .replace(/<p><a href="([^"]+)">(See [^<]*?\u2192)<\/a><\/p>/g, '<p class="guide-cta"><a href="$1">$2</a></p>')
+  .replace(/<p>!<a href="([^"]+)">([^<]*)<\/a><\/p>/g, (_m, u, c) =>
+    `<figure class="guide-photo"><img src="${u}"` +
+    (__isLg(u) ? ` srcset="${__lgToSm(u)} 800w, ${u} 1600w" sizes="(max-width: 800px) 100vw, 760px"` : "") +
+    ` alt="${c}" loading="lazy" decoding="async">` + (c ? `<figcaption>${c}</figcaption>` : "") + `</figure>`);
+const __photoFigs = __guideHtml.match(/<figure class="guide-photo">[\s\S]*?<\/figure>/g) || [];
+const __heroSrcset = __isLg(page.hero_image_url) ? `${__lgToSm(page.hero_image_url)} 800w, ${page.hero_image_url} 2000w` : undefined;
+const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+const title = page.seo_title || page.title || `${cityLabel} Guide`;
+const description = page.meta_description || "";
+const __btn = (label) => `<p class="guide-live-cta" style="margin:18px 0 8px;"><a class="guide-live-btn" href="${__miHref}" style="display:inline-block;padding:9px 18px;border:1.5px solid var(--accent, #2f6f73);border-radius:999px;color:var(--accent, #2f6f73);font-weight:600;font-size:.92rem;text-decoration:none;">${label} \u2192</a></p>`;
+const __guideHtmlX = __guideHtml.split(/(?=<h2[\s>])/).map((chunk) => {
+  const h = (chunk.match(/^<h2[^>]*>([\s\S]*?)<\/h2>/) || [])[1] || "";
+  const txt = h.replace(/<[^>]+>/g, "");
+  if (/actually sell for|sold prices|what homes sell for/i.test(txt)) return chunk + __btn("See today's sold prices");
+  if (/for sale now|currently for sale/i.test(txt)) return chunk + __btn("See what's for sale today");
+  return chunk;
+}).join("");
+---
+<Layout title={title} description={description} accent={accent} site={site} city={city}>
+  <SiteNav site={site} city={city} accent={accent} />
+  <main style="max-width:1448px;margin:0 auto;padding:48px 24px 40px;">
+    <p style="font-size:.85rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent, #2f6f73);margin-bottom:8px;">{page.eyebrow || `${cityLabel} local guide`}</p>
+    <h1 style="font-family:'Instrument Serif',serif;font-weight:400;font-size:clamp(2.4rem,5vw,3.6rem);line-height:1.05;margin:0 0 28px;max-width:760px;">{page.title}</h1>
+<p class="guide-byline" style="margin:-12px 0 40px;color:#5b6660;font-size:.95rem;">{__showAgent && <>By <strong style="color:#1f2a26;">{__agentName}</strong>, {__bylineRole}</>}{__showAgent && __updated && " \u00B7 "}{__updated && `Updated ${__updated}`}</p>
+    {__hasStats && __updated && (
+      <p class={"guide-datanote" + (__stale ? " is-stale" : "")} style={__stale
+        ? "margin:-28px 0 36px;padding:10px 14px;border-radius:10px;background:#fff7e6;border:1px solid #f3d9a4;color:#7a5a1c;font-size:.92rem;max-width:760px;"
+        : "margin:-30px 0 36px;color:#5b6660;font-size:.9rem;"}>
+        {__stale ? `This guide uses ${__updated} data. For today's numbers, see ` : `Figures as of ${__updated}. Live numbers: `}
+        <a href={__miHref} style="color:var(--accent, #2f6f73);font-weight:600;">{cityLabel} Market Intel {"\u2192"}</a>
+      </p>
+    )}
+    {page.hero_image_url && <img class="guide-hero" src={page.hero_image_url} srcset={__heroSrcset} sizes="(max-width: 1200px) 100vw, 1180px" alt={page.title} fetchpriority="high" style="display:block;width:100%;aspect-ratio:16/7;object-fit:cover;border-radius:14px;margin:0 0 40px;" />}
+    {page.neighbourhood_copy && (
+<div class="guide-layout"><div class="guide-body" style="max-width:760px;" set:html={__guideHtmlX} />{__photoFigs.length > 0 && <aside class="guide-aside" set:html={__photoFigs.join("")} />}</div>
+<div class="guide-contact"><AgentBrandStrip site={site} city={city} variant="intro" /></div>
+    )}
+  </main>
+</Layout>
+
+<style is:global>
+  .guide-body { font-size: 1.05rem; line-height: 1.7; color: #333; max-width: 760px; }
+  .guide-body p { margin: 0 0 1.2em; }
+  .guide-author { margin: 0 0 2rem; }
+  .guide-contact { margin: 3rem 0 1rem; }
+  .guide-body h2 { font-size: 1.6rem; line-height: 1.25; margin: 2em 0 .6em; }
+  .guide-body h3 { font-size: 1.25rem; margin: 1.6em 0 .5em; }
+  .guide-body ul, .guide-body ol { margin: 0 0 1.2em; padding-left: 1.4em; }
+  .guide-body li { margin-bottom: .4em; }
+  .guide-body a { color: var(--accent, #2f6f73); text-decoration: underline; }
+  .guide-body code { background: #f3f1ec; padding: .1em .35em; border-radius: 4px; font-size: .9em; }
+  .guide-table { overflow-x: auto; margin: 0 0 1.6em; }
+  .guide-body table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  .guide-body th, .guide-body td { text-align: left; vertical-align: top; padding: .6em .75em; border-bottom: 1px solid #e4e0d8; }
+  .guide-body th { font-weight: 700; background: color-mix(in srgb, var(--accent, #2f6f73) 8%, white); }
+</style>
+
+<style is:global>
+  .guide-body .guide-cta { margin: 2rem 0 0; }
+  .guide-body .guide-cta a { display: inline-block; padding: .85rem 1.5rem; border-radius: 999px; background: var(--accent, #2f6f73); color: #fff; text-decoration: none; font-weight: 600; }
+  .guide-body .guide-cta a:hover { filter: brightness(1.08); }
+  .guide-body .guide-photo { margin: 2rem 0; }
+  .guide-body .guide-photo img { display: block; width: 100%; height: auto; max-height: 460px; object-fit: cover; border-radius: 12px; }
+  .guide-aside { display: none; }
+  @media (min-width: 1100px) {
+    .guide-layout { display: grid; grid-template-columns: minmax(0, 760px) minmax(340px, 440px); gap: 0 80px; align-items: stretch; }
+    .guide-body .guide-photo { display: none; }
+    .guide-aside { display: flex; flex-direction: column; justify-content: space-between; gap: 2rem; padding: .3rem 0 4.5rem; }
+    .guide-aside .guide-photo { margin: 0; }
+    .guide-aside .guide-photo img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 12px; }
+    .guide-aside .guide-photo figcaption { font-size: .85rem; color: #6b746f; margin-top: .5rem; }
+  }
+  
+  .guide-body .guide-photo figcaption { font-size: .88rem; color: #6b746f; margin-top: .55rem; }
+</style>
