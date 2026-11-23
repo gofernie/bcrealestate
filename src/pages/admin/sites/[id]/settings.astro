@@ -1012,6 +1012,17 @@ const siteId = String(Astro.params.id || "");
                     class="agent-photo-editor__status"
                     id="agentIntroBackgroundStatus"
                   ></div>
+                  <!-- bg-presets-v1 -->
+                  <div style="margin-top:14px;">
+                    <div style="font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8a8580;margin-bottom:8px;">Or pick a background</div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px;">
+                      {["airy-living-room","nanaimo-waterfront","evergreen-window","fernie-mountains","warm-kitchen","studio-warm-grey","studio-cool-grey","studio-cream","studio-slate-blue","studio-dusty-teal","studio-sage","studio-terracotta","studio-deep-navy","studio-forest","studio-charcoal"].map((n) => (
+                        <button type="button" data-bg-preset={`/bg-presets/${n}.webp`} title={n.replace(/-/g, " ")} style="padding:0;border:2px solid transparent;border-radius:6px;overflow:hidden;aspect-ratio:4/5;cursor:pointer;background:#ddd;">
+                          <img src={`/bg-presets/${n}-thumb.webp`} alt="" loading="lazy" style="display:block;width:100%;height:100%;object-fit:cover;" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>            </div>
           </div>
@@ -2677,6 +2688,31 @@ loadPage();
       }
     } catch {}
   };
+
+  // bg-presets-v1: a preset click goes through the normal upload path
+
+  document.querySelectorAll("[data-bg-preset]").forEach((btn) => {
+
+    btn.addEventListener("click", async () => {
+
+      const src = btn.getAttribute("data-bg-preset") || "";
+
+      try {
+
+        setStatus("Applying background...");
+
+        const blob = await (await fetch(src)).blob();
+
+        await upload(new File([blob], src.split("/").pop() || "preset.webp", { type: blob.type || "image/webp" }));
+
+        document.querySelectorAll("[data-bg-preset]").forEach((b) => { b.style.borderColor = b === btn ? "#1f2a2e" : "transparent"; });
+
+      } catch { setStatus("Could not apply that background.", "is-error"); }
+
+    });
+
+  });
+
 
   const upload = async (file) => {
     if (!(file instanceof File)) return;

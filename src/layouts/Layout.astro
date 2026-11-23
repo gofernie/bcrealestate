@@ -1,6 +1,8 @@
 ---
 import "../styles/docked-listing-filter-rail.css";
 import SiteFooter from "../components/SiteFooter.astro";
+import AgentBrandStrip from "../components/AgentBrandStrip.astro";
+import AgentContactCard from "../components/AgentContactCard.astro";
 
 interface Props { description?: string; ogImage?: string;
   title?: string;
@@ -8,7 +10,16 @@ interface Props { description?: string; ogImage?: string;
   city?: string;
   site?: any;
 }
-const { title, accentColor = "#2f6f73", city = "nanaimo", site = null, description = "", ogImage = "" } = Astro.props;
+const { title, accentColor: __accentProp, accent: __accentAlt, city = "nanaimo", site = null, description = "", ogImage = "" } = Astro.props;
+// accent-alias-v1: pages pass either accentColor or accent; fall back to the site's own accent
+const accentColor = __accentProp || __accentAlt || site?.accent_color || "#2f6f73";
+// agent-bottom-v1: agent section above the footer on every page except homepage, guides, admin
+const __abPath = Astro.url.pathname.replace(/\/+$/, "") || "/";
+const __abCity = String(city || "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+const showAgentBottom = !!site
+  && !/^\/(admin|api)(\/|$)/.test(__abPath)
+  && !/\/guides(\/|$)/.test(__abPath)
+  && __abPath !== "/" && __abPath !== `/${__abCity}`;
 ---
 <!doctype html>
 <html lang="en" style={`--accent: ${accentColor};`} data-theme="light">
@@ -510,6 +521,13 @@ html body .together__card #together-submit { border-radius: 6px !important; }
 
 <body data-google-maps-api-key={import.meta.env.PUBLIC_GOOGLE_MAPS_API_KEY || ""}>
     <slot />
+    {showAgentBottom && (
+      <div class="lh-agent-bottom" style="width:min(1400px, calc(100% - 40px));margin:64px auto 0;">
+        <style is:inline>.lh-agent-bottom .gc-mob{display:none}@media (max-width: 760px){.lh-agent-bottom .gc-desk{display:none!important}.lh-agent-bottom .gc-mob{display:block!important}}</style>
+        <div class="gc-desk"><AgentBrandStrip site={site} city={city} variant="intro" /></div>
+        <div class="gc-mob"><AgentContactCard site={site} source="Page bottom" /></div>
+      </div>
+    )}
     <SiteFooter site={site} city={city} />
 
     <script is:inline define:vars={{ city }}>
