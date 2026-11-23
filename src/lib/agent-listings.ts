@@ -1,4 +1,4 @@
-﻿import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -415,7 +415,7 @@ export const buildListingHighlights = (listing: any): string[] => {
     if (sqft && sqft >= 2500) highlights.push("Generous floor plan");
     if (beds && beds >= 4) highlights.push("Family-sized");
     if (hasView) highlights.push("View potential");
-    if (hasSuite) highlights.push("Suite potential");
+    if (hasSuite) highlights.push("Suite");
     if (isUpdated) highlights.push("Updated features");
     if (quiet) highlights.push("Quiet setting");
     if (hasParking) highlights.push("Good parking");

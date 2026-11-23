@@ -41,7 +41,7 @@ const city = document.querySelector("[data-city]")?.dataset.city || "nanaimo";
         ? "Timeshare"
         : /\bphase\s*(?:ii|2)\b/i.test(ownershipText)
           ? "Hotel Phase II"
-          : /\bhotel\b/i.test(ownershipText)
+          : /\b(?:hotel\s+(?:suite|condo|unit|room)|condo[-\s]?hotel|hotel[-\s]?condo|strata\s+hotel)\b/i.test(ownershipText)
             ? "Hotel Suite"
             : "";
   const isFractionalOwnership =

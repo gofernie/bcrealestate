@@ -777,6 +777,83 @@ for (const [ids, style] of [[upperIds, "Traditional"], [lowerIds, "Rancher with 
   }
 }
 console.log(`Rancher check: ${lowerIds.length} with lower levels, ${upperIds.length} with upstairs.`);
+/* room-features-v1: no stairs, garden suite, kitchen count (2+ kitchens also marks has_suite) */
+const MAIN_LEVEL = /^(main|main level|ground|ground level)$/;
+const OUT_LEVEL = /^(other|auxiliary building|additional accommodation|secondary dwelling unit)$/;
+const GARDEN_LEVEL = /^(additional accommodation|secondary dwelling unit)$/;
+const feat = new Map<string, { main: boolean; otherLiving: boolean; garden: boolean; kitchens: number }>();
+for (const room of roomRows) {
+  const lid = String(room.listing_id || ""); if (!lid) continue;
+  const lvl = String(room.level || "").trim().toLowerCase();
+  const label = String(room.room_label || room.room_type || "").toLowerCase();
+  const f = feat.get(lid) || { main: false, otherLiving: false, garden: false, kitchens: 0 };
+  if (MAIN_LEVEL.test(lvl)) f.main = true; else if (lvl && !OUT_LEVEL.test(lvl)) f.otherLiving = true;
+  if (GARDEN_LEVEL.test(lvl)) f.garden = true;
+  if (label.includes("kitchen")) f.kitchens++;
+  feat.set(lid, f);
+}
+const setFlag = async (col: string, ids: string[]) => {
+  await supabase.from("listing_rows").update({ [col]: false }).eq("normalized_city", searchKey);
+  for (let i = 0; i < ids.length; i += 200) {
+    const { error } = await supabase.from("listing_rows").update({ [col]: true }).in("id", ids.slice(i, i + 200));
+    if (error) console.warn(`Could not set ${col}: ${error.message}`);
+  }
+};
+const entries = [...feat.entries()];
+await setFlag("single_level", entries.filter(([, f]) => f.main && !f.otherLiving).map(([id]) => id));
+await setFlag("has_garden_suite", entries.filter(([, f]) => f.garden).map(([id]) => id));
+const byKitchens = new Map<number, string[]>();
+for (const [id, f] of entries) { if (!byKitchens.has(f.kitchens)) byKitchens.set(f.kitchens, []); byKitchens.get(f.kitchens)!.push(id); }
+for (const [n, ids] of byKitchens) for (let i = 0; i < ids.length; i += 200) {
+  const { error } = await supabase.from("listing_rows").update({ kitchen_count: n }).in("id", ids.slice(i, i + 200));
+  if (error) console.warn(`Could not set kitchen_count: ${error.message}`);
+}
+const twoKitchenIds = entries.filter(([, f]) => f.kitchens >= 2).map(([id]) => id);
+for (let i = 0; i < twoKitchenIds.length; i += 200) {
+  await supabase.from("listing_rows").update({ has_suite: true }).in("id", twoKitchenIds.slice(i, i + 200));
+}
+console.log(`Room features: ${entries.length} listings checked, ${twoKitchenIds.length} with 2+ kitchens.`);
+/* detached-suite-v1: carriage house / garden suite / cottage from the description (houses only, not "potential") */
+{
+  const POS = /(carriage house|coach house|garden suite|laneway (home|house)|detached (suite|cottage|guest ?house|dwelling|unit)|separate cottage|guest cottage|backyard cottage)/;
+  const NEG = /(potential|possib|room (for|to)|space for|zon(ed|ing)|allows? for|ability to|opportunity|future|could (add|build)|build (a|your))[^.]{0,40}(carriage|coach|garden suite|laneway|detached)/;
+  const detachedIds: string[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from("listing_rows").select("id, description, normalized_type").eq("normalized_city", searchKey).range(from, from + 999);
+    if (error) { console.warn(`Could not read descriptions: ${error.message}`); break; }
+    for (const row of data || []) {
+      const t = String(row.description || "").toLowerCase();
+      if (row.normalized_type === "house" && POS.test(t) && !NEG.test(t)) detachedIds.push(String(row.id));
+    }
+    if (!data || data.length < 1000) break;
+  }
+  await setFlag("has_detached_suite", detachedIds);
+  console.log(`Detached suites: ${detachedIds.length}.`);
+  /* mls-features-v1: heat pump, AC, fireplace, parking from MLS details */
+  {
+    const hp: string[] = [], ac: string[] = [], fp: string[] = [], byParking = new Map<number, string[]>();
+    for (const l of allListings as any[]) {
+      const id = String(l?.mlsNumber || l?.id || ""); if (!id) continue;
+      const d = l?.details || {};
+      const heat = `${d.heating || ""} ${d.airConditioning || ""}`.toLowerCase();
+      if (heat.includes("heat pump")) { hp.push(id); ac.push(id); }
+      else if (/(air condition|central air|wall unit)/.test(String(d.airConditioning || "").toLowerCase())) ac.push(id);
+      if (/^[1-9]/.test(String(d.numFireplaces ?? ""))) fp.push(id);
+      const p = Number(d.numParkingSpaces); if (Number.isFinite(p) && p > 0) { if (!byParking.has(p)) byParking.set(p, []); byParking.get(p)!.push(id); }
+    }
+    await setFlag("has_heat_pump", hp); await setFlag("has_ac", ac); await setFlag("has_fireplace", fp);
+    for (const [n, ids] of byParking) for (let i = 0; i < ids.length; i += 200) {
+      const { error } = await supabase.from("listing_rows").update({ parking_spaces: n }).in("id", ids.slice(i, i + 200));
+      if (error) console.warn(`Could not set parking_spaces: ${error.message}`);
+    }
+    console.log(`MLS features: ${hp.length} heat pump, ${ac.length} AC, ${fp.length} fireplace.`);
+    /* shop-flag-v1 */
+    const SHOP = /(workshop|\b(detached|heated|insulated|wired|powered|large|big|huge|separate|double|massive|oversized)\s+(garage\s*\/\s*)?shop\b|garage\s*\/\s*shop|shop\s*\/\s*garage|\bshop\s+(with|has|is|offers|features)\b|\d+\s*(sq\.?\s*ft\.?|sf|sqft|square feet|ft)\s+shop\b|\d+\s*[x×]\s*\d+\s*(ft\.?\s+)?shop\b)/i;
+    const shopIds = (allListings as any[]).filter((l) => SHOP.test(String(l?.details?.description || l?.description || ""))).map((l) => String(l?.mlsNumber || l?.id || "")).filter(Boolean);
+    /* shop-rooms-v1 */ { const ft = (v: any) => Number(String(v ?? "").match(/^\d+/)?.[0] || 0); for (const rm of (roomRows as any[])) { if (String(rm?.room_type || "").toLowerCase() !== "workshop") continue; if (rm?.level === "Other" || ft(rm?.width) * ft(rm?.length) >= 200) { const id = String(rm?.listing_id || ""); if (id && !shopIds.includes(id)) shopIds.push(id); } } }
+    await setFlag("has_shop", shopIds); console.log(`Shops: ${shopIds.length}.`);
+  }
+}
 
 const threePlusBedsSameFloorIds =
   [

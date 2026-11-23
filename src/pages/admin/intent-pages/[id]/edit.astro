@@ -61,6 +61,16 @@ if (Astro.request.method === "POST") {
         three_plus_beds_same_floor: form.get("three_plus_beds_same_floor") === "true",
         four_plus_beds_same_floor: form.get("four_plus_beds_same_floor") === "true",
         requires_suite: form.get("requires_suite") === "true",
+        requires_heat_pump: form.get("requires_heat_pump") === "true",
+        requires_ac: form.get("requires_ac") === "true",
+        requires_fireplace: form.get("requires_fireplace") === "true",
+        min_parking: Number(form.get("min_parking")) > 0 ? Number(form.get("min_parking")) : null,
+        requires_detached_suite: form.get("requires_detached_suite") === "true",
+        requires_inhome_suite: form.get("requires_inhome_suite") === "true",
+        requires_single_level: form.get("requires_single_level") === "true",
+        requires_garden_suite: form.get("requires_garden_suite") === "true",
+        requires_updated_kitchen: form.get("requires_updated_kitchen") === "true",
+        min_kitchens: Number(form.get("min_kitchens")) > 1 ? Number(form.get("min_kitchens")) : null,
         requires_shop: form.get("requires_shop") === "true",
         requires_waterfront: form.get("requires_waterfront") === "true",
         requires_ocean_view: form.get("requires_ocean_view") === "true",
@@ -569,7 +579,7 @@ select {
           <label><input type="checkbox" name="three_plus_beds_same_floor" value="true" checked={page.three_plus_beds_same_floor === true} /> 3+ bedrooms on same floor</label>
           <label><input type="checkbox" name="four_plus_beds_same_floor" value="true" checked={page.four_plus_beds_same_floor === true} /> 4+ bedrooms on same floor</label>
         </div>
-        <div class="field"><label>Features</label><label><input type="checkbox" name="requires_suite" value="true" checked={page.requires_suite === true} /> Has a suite</label><label><input type="checkbox" name="requires_shop" value="true" checked={page.requires_shop === true} /> Has a shop</label><label><input type="checkbox" name="requires_ocean_view" value="true" checked={page.requires_ocean_view === true} /> Ocean view required</label><label><input type="checkbox" name="requires_waterfront" value="true" checked={page.requires_waterfront === true} /> Waterfront</label><label style="margin-top:6px;">Waterfront type <select name="waterfront_type"><option value="">Any</option>{["oceanfront","lakefront","riverfront"].map((w) => (<option value={w} selected={String(page.waterfront_type || "").toLowerCase() === w}>{w[0].toUpperCase() + w.slice(1)}</option>))}</select></label></div>
+        <div class="field"><label>Features</label><label><input type="checkbox" name="requires_suite" value="true" checked={page.requires_suite === true} /> Has a suite</label><label><input type="checkbox" name="requires_single_level" value="true" checked={page.requires_single_level === true} /> No stairs (all on one level)</label><label><input type="checkbox" name="requires_detached_suite" value="true" checked={page.requires_detached_suite === true} /> Detached suite <small style="color:#888;">(carriage house, garden suite, cottage)</small></label><label><input type="checkbox" name="requires_inhome_suite" value="true" checked={page.requires_inhome_suite === true} /> In-home suite <small style="color:#888;">(suite, no detached unit)</small></label><label><input type="checkbox" name="requires_updated_kitchen" value="true" checked={page.requires_updated_kitchen === true} /> Updated kitchen</label><label style="margin-top:6px;">Minimum kitchens <select name="min_kitchens"><option value="">Any</option><option value="2" selected={Number(page.min_kitchens) === 2}>2+</option><option value="3" selected={Number(page.min_kitchens) === 3}>3+</option></select></label><label><input type="checkbox" name="requires_heat_pump" value="true" checked={page.requires_heat_pump === true} /> Heat pump</label><label><input type="checkbox" name="requires_ac" value="true" checked={page.requires_ac === true} /> Air conditioning</label><label><input type="checkbox" name="requires_fireplace" value="true" checked={page.requires_fireplace === true} /> Fireplace</label><label style="margin-top:6px;">Minimum parking spaces <select name="min_parking"><option value="">Any</option>{[2,3,4,6].map((n) => (<option value={n} selected={Number(page.min_parking) === n}>{n}+{n >= 4 ? " (RV / boat room)" : ""}</option>))}</select></label><label><input type="checkbox" name="requires_shop" value="true" checked={page.requires_shop === true} /> Has a shop</label><label><input type="checkbox" name="requires_ocean_view" value="true" checked={page.requires_ocean_view === true} /> Ocean view required</label><label><input type="checkbox" name="requires_waterfront" value="true" checked={page.requires_waterfront === true} /> Waterfront</label><label style="margin-top:6px;">Waterfront type <select name="waterfront_type"><option value="">Any</option>{["oceanfront","lakefront","riverfront"].map((w) => (<option value={w} selected={String(page.waterfront_type || "").toLowerCase() === w}>{w[0].toUpperCase() + w.slice(1)}</option>))}</select></label></div>
         <div class="field"><label>Home style</label><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px 16px;">{HOME_STYLES.filter((s) => s !== "Other").map((s) => (<label style="display:flex;align-items:center;gap:8px;font-weight:500;"><input type="checkbox" name="home_styles" value={s} checked={Array.isArray(page.home_styles) && page.home_styles.includes(s)} /> {s}</label>))}</div></div>
                <div class="field">
           <label>Default sort</label>
@@ -893,3 +903,29 @@ select {
   <script src="/look-search.js" defer is:inline></script>
 </body>
 </html>
+
+<script is:inline>
+/* match-count-v1 */
+(() => {
+  const m = location.pathname.match(/intent-pages\/([^/]+)\/edit/); if (!m) return;
+  const form = document.querySelector('input[name="requires_heat_pump"]')?.closest("form"); if (!form) return;
+  const pill = document.createElement("div");
+  pill.style.cssText = "position:fixed;right:20px;bottom:20px;z-index:9999;background:#1f2a30;color:#fff;padding:10px 16px;border-radius:999px;font:600 14px/1.3 system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.2);transition:opacity .15s;cursor:help;";
+  pill.textContent = "Counting…"; document.body.appendChild(pill);
+  let t;
+  const run = async () => {
+    const qs = new URLSearchParams({ id: m[1] });
+    for (const [k, v] of new FormData(form)) { if (typeof v === "string" && v && v.length < 80 && !/(copy|heading|title|description|polygon|viewport|image|slug|label|eyebrow|angle)/.test(k)) qs.append(k, v); }
+    
+    pill.style.opacity = ".55";
+    try {
+      const j = await (await fetch("/api/intent-match-count?" + qs)).json();
+      pill.innerHTML = `${j.count} of ${j.cityTotal} active listings match<div style="font-weight:400;font-size:12px;opacity:.75;margin-top:3px;max-width:420px;">${j.applied.join(" · ") || "city only"}${j.skipped.length ? " — not counted: " + j.skipped.join(", ") : ""}</div>`; pill.style.borderRadius = "14px";
+      pill.title = "Counting: " + (j.applied.join(", ") || "city only") + (j.skipped.length ? "\nNot counted: " + j.skipped.join(", ") : "") + (j.error ? "\n" + j.error : "");
+    } catch { pill.textContent = "Count unavailable"; }
+    pill.style.opacity = "1";
+  };
+  const kick = () => { clearTimeout(t); t = setTimeout(run, 300); }; form.addEventListener("change", kick); form.addEventListener("input", kick);
+  run();
+})();
+</script>

@@ -76,16 +76,16 @@ const {
 
     <div data-slug-save-readback
       aria-live="polite"
-      style="margin:16px 0;padding:14px 16px;border:1px solid #cfe3df;border-radius:12px;background:#f0f7f5;color:#2f4f50;line-height:1.5;">
+      style="display:none;margin:16px 0;padding:14px 16px;border:1px solid #cfe3df;border-radius:12px;background:#f0f7f5;color:#2f4f50;line-height:1.5;">
     </div>
 
     <div class="slug-save-search__fields">
-      <label>
-        <span>Search name</span>
+      <label style="grid-column:1 / -1;">
+        <span>Your search</span>
         <input
           type="text"
           name="searchName"
-          placeholder="My home search"
+          style="background:#f0f7f5;border-color:#cfe3df;color:#2f4f50;font-weight:600;" placeholder="My home search"
         />
       </label>
 
@@ -333,9 +333,9 @@ const priceLabel = hasPriceBand
       };
 
       const ncYear = new Date().getFullYear() - 1;
-      const typeWord = type && type !== "all" ? type.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Homes"; /* wf-label-v1 */ const __wf = String(criteria.waterfrontType || "").trim().toLowerCase(); const __wfLabel = __wf === "any" ? "Waterfront" : __wf ? __wf.charAt(0).toUpperCase() + __wf.slice(1) : "";
+      const typeWord = type && type !== "all" && type !== "house" ? type.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Homes"; /* wf-label-v1 */ const __wf = String(criteria.waterfrontType || "").trim().toLowerCase(); const __wfLabel = __wf === "any" ? "Waterfront" : __wf ? __wf.charAt(0).toUpperCase() + __wf.slice(1) : "";
       const lotSqft = Number(criteria.minLotSqft || 0);
-      const lotLabel = lotSqft >= 43560 ? `on ${+(lotSqft / 43560).toFixed(2)}+ acres` : lotSqft ? `on ${lotSqft.toLocaleString("en-CA")}+ sq ft lots` : "";
+      const lotLabel = lotSqft >= 21780 ? `on ${+(lotSqft / 43560).toFixed(2)}+ acres` : lotSqft ? `on ${lotSqft.toLocaleString("en-CA")}+ sq ft lots` : "";
       const yearNum = Number(criteria.minYear || 0);
       const cityLabel = (root.dataset.city || "this market").replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
       const parts = [
@@ -353,7 +353,8 @@ const priceLabel = hasPriceBand
 
       /* summary-page-title-v1 */ const __pt = String(root.dataset.pageTitle || "").trim(); if (__pt) parts.splice(0, chosenAreas.length ? 1 : 2, __pt);
 
-      return { criteria, summary: parts.join(" · ") };
+      /* save-features-v1 */ { const pf = window.__pageFeatures || {}; criteria.features = pf; const fx = []; if (pf.detachedSuite) fx.push("a detached suite"); else if (pf.inhomeSuite) fx.push("an in-home suite"); else if (pf.suite) fx.push("a suite"); if (pf.shop) fx.push("a shop"); if (pf.heatPump) fx.push("a heat pump"); if (pf.ac) fx.push("A/C"); if (pf.fireplace) fx.push("a fireplace"); if (pf.singleLevel) fx.push("no stairs"); if (pf.updatedKitchen) fx.push("an updated kitchen"); if (pf.minKitchens > 1) fx.push(`${pf.minKitchens}+ kitchens`); if (pf.minParking > 0) fx.push(`${pf.minParking}+ parking spaces`); if (pf.oceanView) fx.push("an ocean view"); const st = Array.isArray(pf.styles) ? pf.styles : []; if (parts.length) { if (st.length) parts[0] = `${st.join(" / ")} ${String(parts[0]).toLowerCase()}`; if (fx.length) parts[0] = `${parts[0]} with ${fx.length > 1 ? fx.slice(0, -1).join(", ") + " and " + fx[fx.length - 1] : fx[0]}`; } }
+    return { criteria, summary: parts.join(" · ") };
     };
 
     const updateReadback = () => {
@@ -384,7 +385,7 @@ const priceLabel = hasPriceBand
         status.hidden = true;
         updateReadback();
         prefillContact();
-        const searchNameInput = form.querySelector('input[name="searchName"]');
+        const searchNameInput = form.querySelector('input[name="searchName"style="background:#f0f7f5;border-color:#cfe3df;color:#2f4f50;font-weight:600;" ]');
         if (searchNameInput && !searchNameInput.value.trim()) {
           searchNameInput.value = root.dataset.pageTitle || getLiveSearch().summary; /* save-name-v1 */
         }
@@ -799,7 +800,23 @@ const priceLabel = hasPriceBand
   .slug-save-search__open:hover { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(124, 58, 237, .45), 0 0 0 3px rgba(168, 85, 247, .15); }
   .slug-save-search__open:active { transform: translateY(0); }
   @keyframes ssSpectrum { from { background-position: 0% 50%; } to { background-position: 300% 50%; } }
+  /* save-name-wide-v2 */ .slug-save-search__fields > label:first-child { grid-column: 1 / -1 !important; }
   /* ss-motion-override */
   .slug-save-search__open { animation-duration: 6s !important; animation-iteration-count: infinite !important; animation-play-state: running !important; }
   @media (prefers-reduced-motion: reduce) { .slug-save-search__open { animation-duration: 6s !important; animation-iteration-count: infinite !important; } }
 </style>
+<script is:inline>
+/* save-name-fill-v1: the search field shows the search's details */
+(() => {
+  const fill = () => document.querySelectorAll("[data-slug-save-search]").forEach((root) => {
+    const input = root.querySelector('input[name="searchName"]'); if (!input || input.dataset.userEdited) return;
+    const box = root.querySelector('[aria-live="polite"]');
+    const summary = (box?.textContent || "").replace(/^\s*Your saved search\s*/i, "").trim();
+    if (summary) input.value = summary;
+  });
+  document.addEventListener("input", (e) => { if (e.target?.name === "searchName") e.target.dataset.userEdited = "1"; });
+  document.addEventListener("click", () => setTimeout(fill, 80));
+  document.addEventListener("change", () => setTimeout(fill, 120));
+  window.addEventListener("listing-filters-updated", () => setTimeout(fill, 120));
+})();
+</script>

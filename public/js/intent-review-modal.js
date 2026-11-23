@@ -864,7 +864,7 @@ if (type.includes("mobile") || type.includes("manufactured")) {
   ["layout", "Layout"],
     ["yard", "Yard"],
     ["garage", "Garage"],
-    ["suite", "Suite potential"],
+    ["suite", "Suite"],
     ["views", "Views"],
     ["privacy", "Privacy"],
     ["modern", "Modern"],
@@ -2399,7 +2399,10 @@ const SAVE_SEARCH_RESHOW_AFTER = 10;
 
 const HIGHLIGHT_RULES = [
   { keywords: ["ocean view", "peek-a-boo ocean", "water view", "sea view", "ocean views"], label: "Ocean views" },
-  { keywords: ["legal suite", "in-law suite", "carriage house", "mortgage helper", "self-contained suite"], label: "Suite potential" },
+  { keywords: ["carriage house", "carriage home", "coach house", "guest house", "guesthouse", "garden suite", "laneway home", "laneway house", "detached suite", "detached cottage", "guest cottage", "detached studio", "separate cottage"], label: "Detached suite" },
+  { keywords: ["basement suite", "walkout suite", "walk-out suite", "lower level suite", "lower-level suite", "downstairs suite", "ground level suite", "ground-level suite"], label: "Basement suite" },
+  { keywords: ["legal suite", "in-law suite", "inlaw suite", "self-contained suite", "mortgage helper", "1 bedroom suite", "2 bedroom suite", "one bedroom suite", "two bedroom suite", "separate entrance suite"], label: "Suite" },
+  { keywords: ["suite potential", "potential suite", "potential for a suite", "potential for suite", "easily suited", "room for a suite"], label: "Suite potential" },
   { keywords: ["r14 zoning", "r14", "fourplex", "four-plex", "duplex zoning"], label: "R14 zoning" },
   { keywords: ["rental income", "income property", "investor alert", "income generator", "revenue property"], label: "Investor opportunity" },
   { keywords: ["double garage", "triple garage", "detached garage", "oversized garage"], label: "Garage" },
@@ -2412,6 +2415,17 @@ const HIGHLIGHT_RULES = [
 { keywords: ["waterfront home", "waterfront property", "waterfront lot", "beachfront", "lakefront", "oceanfront", "on the water", "steps to the water", "direct water access"], label: "Waterfront" },  { keywords: ["acreage", "hobby farm", "farm land"], label: "Acreage" },
   { keywords: ["new build", "new home", "brand new construction", "newly built"], label: "New build" },
 ];
+/* suite-type-chips-v1: keep only the most specific suite chip */
+getHighlightChips = ((orig) => function () {
+  const out = orig.apply(this, arguments);
+  if (!Array.isArray(out)) return out;
+  const lab = (c) => (typeof c === "string" ? c : (c && (c.label || c.text))) || "";
+  const has = (s) => out.some((c) => lab(c) === s);
+  const drop = new Set();
+  if (has("Detached suite") || has("Basement suite")) { drop.add("Suite"); drop.add("Suite potential"); }
+  if (has("Suite")) drop.add("Suite potential");
+  return out.filter((c) => !drop.has(lab(c)));
+})(getHighlightChips);
 
 function getOwnershipChip(description = "") {
   const text = String(description || "");
@@ -2428,7 +2442,7 @@ function getOwnershipChip(description = "") {
     return "Hotel Phase II";
   }
 
-  if (/\bhotel\b/i.test(text)) {
+  if (/\b(?:hotel\s+(?:suite|condo|unit|room)|condo[-\s]?hotel|hotel[-\s]?condo|strata\s+hotel)\b/i.test(text)) {
     return "Hotel Suite";
   }
 

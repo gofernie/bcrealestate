@@ -128,5 +128,35 @@ export async function pageSearchMatches(
     const total = Number(body.total || 0);
     if (!(body.listings || []).length || offset + 48 >= total) break;
   }
+  /* alert-features-v1: keep only listings with the page's features (suite, shop, heat pump...) */
+  const pf: any = savedSearch?.filters?.criteria?.features || {};
+  const conds: string[] = [];
+  const t = (col: string) => conds.push(`${col}=eq.true`);
+  if (pf.suite) t("has_suite");
+  if (pf.detachedSuite) t("has_detached_suite");
+  if (pf.inhomeSuite) { t("has_suite"); conds.push("has_detached_suite=not.is.true"); }
+  if (pf.shop) t("has_shop");
+  if (pf.heatPump) t("has_heat_pump");
+  if (pf.ac) t("has_ac");
+  if (pf.fireplace) t("has_fireplace");
+  if (pf.singleLevel) t("single_level");
+  if (pf.updatedKitchen) t("has_updated_kitchen");
+  if (pf.oceanView) t("ocean_view");
+  if (Number(pf.minKitchens) > 1) conds.push(`kitchen_count=gte.${Number(pf.minKitchens)}`);
+  if (Number(pf.minParking) > 0) conds.push(`parking_spaces=gte.${Number(pf.minParking)}`);
+  const styles = Array.isArray(pf.styles) ? pf.styles.filter(Boolean) : [];
+  if (styles.length) conds.push(`home_style=in.(${encodeURIComponent(styles.map((s: string) => `"${s}"`).join(","))})`);
+  if (conds.length && found.length) {
+    const sbUrl = process.env.PUBLIC_SUPABASE_URL, sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!sbUrl || !sbKey) throw new Error("Supabase env missing, can't check saved-search features");
+    const keep = new Set<string>();
+    for (let i = 0; i < found.length; i += 150) {
+      const ids = found.slice(i, i + 150).map((f) => encodeURIComponent(f.mls_number)).join(",");
+      const r = await fetch(`${sbUrl}/rest/v1/listing_rows?select=id&id=in.(${ids})&${conds.join("&")}`, { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` }, signal: AbortSignal.timeout(30000) });
+      if (!r.ok) throw new Error(`Feature check ${r.status}: ${await r.text()}`);
+      for (const row of await r.json()) keep.add(String(row.id));
+    }
+    return found.filter((f) => keep.has(f.mls_number));
+  }
   return found;
 }
