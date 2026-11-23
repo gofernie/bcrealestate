@@ -1,3 +1,17 @@
+/* house-pin-v1: house marker for the current listing */
+window.__lhHouseIcon = function () {
+  if (!document.getElementById("lh-house-pin-css")) {
+    var s = document.createElement("style"); s.id = "lh-house-pin-css";
+    s.textContent = ".lh-house-pin{background:none!important;border:0!important;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));}";
+    document.head.appendChild(s);
+  }
+  var __acc = (getComputedStyle(document.documentElement).getPropertyValue("--accent") || getComputedStyle(document.body).getPropertyValue("--accent") || "").trim() || "#1f2a2e";
+  return L.divIcon({
+    className: "lh-house-pin",
+    html: '<svg width="34" height="42" viewBox="0 0 34 42" aria-hidden="true"><path d="M17 41s14-13.2 14-24A14 14 0 0 0 3 17c0 10.8 14 24 14 24z" fill="' + __acc + '" stroke="#fff" stroke-width="2"/><path d="M10 18.5L17 12.5l7 6V25a1 1 0 0 1-1 1h-3.5v-4.5h-5V26H11a1 1 0 0 1-1-1z" fill="#fff"/></svg>',
+    iconSize: [34, 42], iconAnchor: [17, 40], popupAnchor: [0, -36]
+  });
+};
 function initIntentReviewModal() {
         const sheet = document.getElementById("preview-sheet");
         const overlay = document.getElementById("sheet-overlay");
@@ -4173,10 +4187,7 @@ if (sheetMiniMapWrap) {
   if (listingPoint) {
     const lp = [listingPoint.lat, listingPoint.lng];
     bounds.push(lp);
-    L.circleMarker(lp, {
-      radius: 9, color: "#fff", weight: 2,
-      fillColor: "#ff3b30", fillOpacity: 1,
-    }).addTo(sheetMiniMapInstance)
+    L.marker(lp, { icon: window.__lhHouseIcon(), zIndexOffset: 1000 }).addTo(sheetMiniMapInstance)
       .bindPopup(activeCard?.dataset?.address || "Listing", { closeButton: false });
   }
 
@@ -5645,10 +5656,7 @@ try {
   sheetMiniMapInstance = L.map(sheetMiniMap, { zoomControl: true, attributionControl: false, scrollWheelZoom: false });
   L.tileLayer(window.__JAWG_TILE_URL__, { maxZoom: 19, attribution: window.__JAWG_ATTRIBUTION__ }).addTo(sheetMiniMapInstance);
 
-  sheetMiniMapMarker = L.circleMarker([point.lat, point.lng], {
-    radius: 9, color: "#fff", weight: 2,
-    fillColor: "#ff3b30", fillOpacity: 1,
-  }).addTo(sheetMiniMapInstance)
+  sheetMiniMapMarker = L.marker([point.lat, point.lng], { icon: window.__lhHouseIcon(), zIndexOffset: 1000 }).addTo(sheetMiniMapInstance)
     .bindPopup(activeCard.dataset.address || "Listing", { closeButton: false });
 
   const resizeModalMap = () => {
