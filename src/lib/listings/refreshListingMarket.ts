@@ -522,6 +522,22 @@ export async function refreshListingMarket(
         console.log(
       `Saving room matrix data for ${searchKey}...`
     );
+    /* raw-details-v1: keep the MLS details / condo / lot sections so features can be derived later */
+    {
+      const rawRows = allListings
+        .map((l: any) => ({ id: String(l?.mlsNumber || l?.id || ""), raw: { details: l?.details ?? null, condominium: l?.condominium ?? null, lot: l?.lot ?? null } }))
+        .filter((r: any) => r.id);
+      let next = 0, failed = 0;
+      const worker = async () => {
+        while (next < rawRows.length) {
+          const r = rawRows[next++];
+          const { error } = await supabase.from("listing_rows").update({ raw: r.raw }).eq("id", r.id);
+          if (error) failed++;
+        }
+      };
+      await Promise.all(Array.from({ length: 10 }, worker));
+      console.log(`Saved MLS details for ${rawRows.length - failed} listings${failed ? ` (${failed} failed)` : ""}.`);
+    }
 
     const listingIds = allListings
       .map((listing) =>
@@ -739,6 +755,28 @@ for (const room of roomRows) {
       1
   );
 }
+
+/* rancher-levels-v2: ignore outbuildings; lower/basement -> Rancher with basement, upstairs -> Traditional */
+const IGNORE_LEVEL = /^(other|auxiliary building|additional accommodation|secondary dwelling unit)$/;
+const levelFlags = new Map<string, { lower: boolean; upper: boolean }>();
+for (const room of roomRows) {
+  const lid = String(room.listing_id || "");
+  const lvl = String(room.level || "").trim().toLowerCase();
+  if (!lid || !lvl || IGNORE_LEVEL.test(lvl)) continue;
+  const f = levelFlags.get(lid) || { lower: false, upper: false };
+  if (/^(lower|basement)/.test(lvl)) f.lower = true;
+  if (/^(second|third|upper)/.test(lvl)) f.upper = true;
+  levelFlags.set(lid, f);
+}
+const upperIds = [...levelFlags.entries()].filter(([, f]) => f.upper).map(([id]) => id);
+const lowerIds = [...levelFlags.entries()].filter(([, f]) => f.lower && !f.upper).map(([id]) => id);
+for (const [ids, style] of [[upperIds, "Traditional"], [lowerIds, "Rancher with basement"]] as [string[], string][]) {
+  for (let i = 0; i < ids.length; i += 200) {
+    const { error: rancherFixError } = await supabase.from("listing_rows").update({ home_style: style }).in("id", ids.slice(i, i + 200)).eq("home_style", "Rancher");
+    if (rancherFixError) console.warn(`Could not correct ranchers: ${rancherFixError.message}`);
+  }
+}
+console.log(`Rancher check: ${lowerIds.length} with lower levels, ${upperIds.length} with upstairs.`);
 
 const threePlusBedsSameFloorIds =
   [

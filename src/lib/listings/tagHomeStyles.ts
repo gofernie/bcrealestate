@@ -3,7 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const HOME_STYLES = [
-  "West Coast contemporary", "Modern", "Craftsman", "Traditional", "Rancher", "Split level",
+  "West Coast contemporary", "Modern", "Craftsman", "Traditional", "Rancher", "Rancher with basement", "Split level",
   "Modern farmhouse", "Log / timber frame", "Cottage / cabin", "Mid-century", "Heritage / character",
   "Mediterranean", "Townhouse", "Condo / apartment", "Manufactured / mobile", "Duplex / multi-family", "Other",
 ];
@@ -45,7 +45,7 @@ export function normalizeHomeStyle(s: unknown): string {
   const rules: [RegExp, string][] = [
     [/west ?coast|contemporary/, "West Coast contemporary"], [/farm/, "Modern farmhouse"],
     [/mid.?century/, "Mid-century"], [/modern|minimal/, "Modern"], [/craftsman|arts/, "Craftsman"],
-    [/ranch|bungalow|one.?stor/, "Rancher"], [/split/, "Split level"], [/log|timber|chalet/, "Log / timber frame"],
+    [/ranch.*(basement|lower|walk)|(basement|lower|walk).*ranch/, "Rancher with basement"], [/ranch|bungalow|one.?stor/, "Rancher"], [/split/, "Split level"], [/log|timber|chalet/, "Log / timber frame"],
     [/cottage|cabin/, "Cottage / cabin"], [/heritage|character|victorian|tudor/, "Heritage / character"],
     [/mediterr|spanish/, "Mediterranean"], [/town/, "Townhouse"], [/condo|apartment/, "Condo / apartment"],
     [/manufact|mobile|modular/, "Manufactured / mobile"], [/duplex|triplex|multi/, "Duplex / multi-family"],
@@ -73,7 +73,10 @@ const tool = {
 const PROMPT =
   "This is the main listing photo for a British Columbia home for sale. Pick the single closest architectural style from the list. " +
   "For townhouses, condos and duplexes, use that building type. " +
-  "If the photo is not the building exterior, set is_exterior false and give your best style guess from what you can see.";
+  "If the photo is not the building exterior, set is_exterior false and give your best style guess from what you can see. " +
+  "Only answer \"Rancher\" for a true single-storey home: all living space on one level, with no finished floor above or below. " +
+  "If the home has one main living floor over a walk-out, daylight or lower level (common on sloped lots), answer \"Rancher with basement\". " +
+  "Always set storeys to the number of finished levels you can see, counting any lower or walk-out level.";
 
 // Tell the model what the MLS says the building is, so a mobile isn't called a "Rancher".
 function typeHint(mlsType: string) {
@@ -167,7 +170,7 @@ export async function tagUntaggedListings(
         const t = await tagPhoto(row.image_url, env, model, row.normalized_type, !okCottage);
         if (!t) throw new Error("no answer");
         const { error: upErr } = await db.from("listing_rows").update({
-          home_style: (() => { const s = normalizeHomeStyle(t.style); return s === COTTAGE && !okCottage ? "Other" : s; })(),
+          home_style: (() => { const s = normalizeHomeStyle(t.style); if (s === "Rancher" && Number(t.storeys) > 1) return "Rancher with basement"; return s === COTTAGE && !okCottage ? "Other" : s; })(),
           home_style_meta: {
             storeys: Number.isInteger(t.storeys) ? t.storeys : null,
             exterior: t.exterior || null,

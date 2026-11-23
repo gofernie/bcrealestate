@@ -1593,7 +1593,7 @@ html body .together__card #together-submit { border-radius: 6px !important; }
     const nsHead = [...document.querySelectorAll("h1, h2, h3, h4, p, span, div")].filter((e) => /^(next searches|more ways to explore\.?)$/i.test(e.textContent.replace(/\s+/g, " ").trim())).pop();
     let nsSec = nsHead; while (nsSec && nsSec !== document.body && ![...nsSec.querySelectorAll("a")].some((a) => /^See\s/i.test(a.textContent.trim()))) nsSec = nsSec.parentElement; if (nsSec === document.body) nsSec = null; console.log("[strip] next-searches head:", !!nsHead, "section:", !!nsSec);
     let __hcFd = []; try { __hcFd = JSON.parse(document.getElementById("hc-featured-data")?.textContent || "[]"); } catch (e) {} /* hc-ranked-v1 */
-    const domCards = __hcFd.length ? __hcFd.filter((x) => x && x.title && x.href).slice(0, 3) : nsSec ? [...nsSec.querySelectorAll("a")].filter((a) => /^See\s/i.test(a.textContent.trim())).slice(0, 3).map((a) => {
+    const domCards = __hcFd.length ? __hcFd.filter((x) => x && x.title && x.href).slice(0, 12) : nsSec ? [...nsSec.querySelectorAll("a")].filter((a) => /^See\s/i.test(a.textContent.trim())).slice(0, 12).map((a) => {
       let c = a; while (c.parentElement && c.parentElement !== nsSec && !c.querySelector("h2, h3, h4")) c = c.parentElement;
       const num = (c.textContent.replace(/\s+/g, " ").match(/\d[\d,]*\s+(homes|condos|townhomes|lots|properties|listings)\s+for sale/i) || [])[0] || "";
       return { title: (c.querySelector("h2, h3, h4")?.textContent || "").trim(), copy: [num.toLowerCase(), c.querySelector("p")?.textContent || ""].filter(Boolean).join(" \u00b7 "), href: a.getAttribute("href") };
@@ -1601,7 +1601,7 @@ html body .together__card #together-submit { border-radius: 6px !important; }
     if (domCards.length && !strip.querySelector(".hc-intents")) {
       const dbox = document.createElement("div");
       dbox.className = "hc-intents";
-      dbox.innerHTML = domCards.map((x) => `<a class="hc-intent" href="${esc2(x.href)}"><strong>${esc2(clip2(__dropCity(x.title), 48))}</strong><span>${esc2(clip2(x.copy, 110))}</span></a>`).join("");
+      dbox.innerHTML = domCards.map((x, i) => `<a class="hc-intent" ${i >= 3 ? 'data-hc-extra style="display:none !important"' : ""} href="${esc2(x.href)}"><strong>${esc2(clip2(__dropCity(x.title), 48))}</strong><span>${esc2(clip2(x.copy, 110))}</span></a>`).join("") + (domCards.length > 3 ? `<button type="button" class="hc-see-all" onclick="var s=this.parentNode.querySelectorAll('[data-hc-extra]'),o=this.dataset.open!=='1';s.forEach(function(e){o?e.style.removeProperty('display'):e.style.setProperty('display','none','important')});this.dataset.open=o?'1':'0';this.innerHTML=o?'Show fewer &uarr;':'Show more searches &darr;'" style="grid-column:1/-1;justify-self:center;margin-top:10px;background:none;border:1px solid rgba(255,255,255,.45);color:#fff;border-radius:999px;padding:7px 18px;font:inherit;font-size:.9rem;font-weight:600;cursor:pointer;">Show more searches &darr;</button>` : "") /* hc-see-all-v3 */;
       strip.prepend(dbox);
       strip.classList.add("has-intents");
       const pl0 = strip.querySelector(".locus-home-search__popular > span:first-child");
@@ -1609,7 +1609,7 @@ html body .together__card #together-submit { border-radius: 6px !important; }
     }
     const cityKey = (location.pathname.split("/").filter(Boolean)[0] || document.querySelector('meta[name="locus-city"]')?.getAttribute("content") || "").toLowerCase();
     if (cityKey) fetch(`/api/intent-pages?city=${encodeURIComponent(cityKey)}`).then((r) => r.json()).then((j) => {
-      const pages = (j.pages || []).filter((p) => p.slug).sort((a, b) => (Number(a.featured_rank) || 999) - (Number(b.featured_rank) || 999)).slice(0, 3);
+      const pages = (j.pages || []).filter((p) => p.slug).sort((a, b) => (Number(a.featured_rank) || 999) - (Number(b.featured_rank) || 999)).slice(0, 12);
       if (!pages.length || strip.querySelector(".hc-intents")) return;
       const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]));
       const clip = (s, n) => { s = String(s || "").replace(/\s+/g, " ").trim(); if (s.length <= n) return s; const cut = s.lastIndexOf(" ", n); return s.slice(0, cut > 20 ? cut : n) + "\u2026"; };
@@ -1617,7 +1617,7 @@ html body .together__card #together-submit { border-radius: 6px !important; }
       const title = (p) => String(p.hero_heading || "").split("|").map((s) => s.trim()).filter(Boolean).join(" ") || p.slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
       const box = document.createElement("div");
       box.className = "hc-intents";
-      box.innerHTML = pages.map((p) => `<a class="hc-intent" href="${esc(hrefFor(p.slug))}"><strong>${esc(clip(title(p), 48))}</strong><span>${esc(clip(p.intro_copy || p.lifestyle_angle || "", 110))}</span></a>`).join("");
+      box.innerHTML = pages.map((p, i) => `<a class="hc-intent" ${i >= 3 ? 'data-hc-extra style="display:none !important"' : ""} href="${esc(hrefFor(p.slug))}"><strong>${esc(clip(title(p), 48))}</strong><span>${esc(clip(p.intro_copy || p.lifestyle_angle || "", 110))}</span></a>`).join("") + (pages.length > 3 ? `<button type="button" class="hc-see-all" onclick="var s=this.parentNode.querySelectorAll('[data-hc-extra]'),o=this.dataset.open!=='1';s.forEach(function(e){o?e.style.removeProperty('display'):e.style.setProperty('display','none','important')});this.dataset.open=o?'1':'0';this.innerHTML=o?'Show fewer &uarr;':'Show more searches &darr;'" style="grid-column:1/-1;justify-self:center;margin-top:10px;background:none;border:1px solid rgba(255,255,255,.45);color:#fff;border-radius:999px;padding:7px 18px;font:inherit;font-size:.9rem;font-weight:600;cursor:pointer;">Show more searches &darr;</button>` : "") /* hc-see-all-v2 */;
       strip.prepend(box);
       strip.classList.add("has-intents");
       const pl = strip.querySelector(".locus-home-search__popular > span:first-child");
@@ -1983,7 +1983,51 @@ html body .hero-collections-strip.hero-collections-strip.hero-collections-strip 
   }
   </style>
 <script is:inline src="/js/view-nudge.js" defer></script>
-</body>
+<script is:inline>
+/* hc-more-v4: expand "Popular searches" with the rest of the site's searches */
+(function () {
+  var tries = 0;
+  function run() {
+    var b = document.querySelector(".hc-intents");
+    if (!b || !b.querySelector(".hc-intent")) { if (++tries < 40) setTimeout(run, 250); return; }
+    if (b.querySelector(".hc-see-all")) return;
+    var first = b.querySelector(".hc-intent").getAttribute("href") || "";
+    var city = first.split("/").filter(Boolean)[0] || "nanaimo";
+    var cityName = city.replace(/-/g, " ");
+    var norm = function (h) { return String(h || "").replace(/\/+$/, "").toLowerCase(); };
+    var have = new Set([].map.call(b.querySelectorAll(".hc-intent"), function (a) { return norm(a.getAttribute("href")); }));
+    var esc = function (s) { return String(s || "").replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+    var clip = function (s, n) { s = String(s || ""); return s.length > n ? s.slice(0, n - 1).trim() + "\u2026" : s; };
+    fetch("/api/intent-pages?city=" + encodeURIComponent(city)).then(function (r) { return r.json(); }).then(function (j) {
+      var seen = new Set(), extra = [];
+      (j.pages || []).filter(function (p) { return p && p.slug; })
+        .sort(function (a, c) { return (Number(a.featured_rank) || 999) - (Number(c.featured_rank) || 999); })
+        .forEach(function (p) { var h = "/" + city + "/" + p.slug; if (seen.has(p.slug) || have.has(norm(h))) return; seen.add(p.slug); extra.push(p); });
+      extra = extra.slice(0, 9);
+      if (!extra.length) return;
+      extra.forEach(function (p) {
+        var a = document.createElement("a");
+        a.className = "hc-intent"; a.setAttribute("data-hc-extra", ""); a.style.setProperty("display", "none", "important");
+        a.href = "/" + city + "/" + p.slug;
+        var title = String(p.card_title || p.hero_heading || p.slug.replace(/-/g, " ")).replace(new RegExp("^" + cityName + "\\s+", "i"), "");
+        a.innerHTML = "<strong>" + esc(clip(title, 48)) + "</strong><span>" + esc(clip(p.intro_copy || p.lifestyle_angle || "", 110)) + "</span>";
+        b.appendChild(a);
+      });
+      var btn = document.createElement("button");
+      btn.type = "button"; btn.className = "hc-see-all"; btn.innerHTML = "Show more searches &darr;";
+      btn.style.cssText = "grid-column:1/-1;justify-self:center;margin-top:10px;background:none;border:1px solid rgba(255,255,255,.45);color:#fff;border-radius:999px;padding:7px 18px;font:inherit;font-size:.9rem;font-weight:600;cursor:pointer;";
+      btn.addEventListener("click", function () {
+        var open = btn.getAttribute("data-open") !== "1";
+        b.querySelectorAll("[data-hc-extra]").forEach(function (e) { if (open) e.style.removeProperty("display"); else e.style.setProperty("display", "none", "important"); });
+        btn.setAttribute("data-open", open ? "1" : "0");
+        btn.innerHTML = open ? "Show fewer &uarr;" : "Show more searches &darr;";
+      });
+      b.appendChild(btn);
+    }).catch(function () {});
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run); else run();
+})();
+</script></body>
 </html>
 
 <style is:global>
