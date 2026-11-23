@@ -283,6 +283,8 @@ export const POST: APIRoute = async ({ request }) => {
         intro_copy: data.cityIntro,
         bio: String(data.agentBio || "").trim() || null,
         contact_copy: String(data.agentContactCopy || "").trim() || null,
+        about_text: String(data.aboutText || "").trim() || null,
+        about_facts: String(data.aboutFacts || "").split(/\r?\n/).map((l) => { const i = l.indexOf(":"); return i > 0 ? { label: l.slice(0, i).trim(), value: l.slice(i + 1).trim() } : null; }).filter((f) => f && f.label && f.value),
         secondary_markets: secondaryMarkets,
         featured_listing_mls: featuredListingMls,
         featured_listing_images: featuredListingImages,
