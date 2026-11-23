@@ -623,7 +623,40 @@ select {
 </div>
 
         <div class="field">
-          <label>Intro copy</label>
+          <div id="ai-write" style="border:1px solid #d9dde0;border-radius:12px;padding:16px 18px;margin:8px 0 18px;background:#fafaf7;">{/* intent-write-panel-v1 */}
+  <strong style="display:block;margin-bottom:4px;">Write this page's copy</strong>
+  <p style="margin:0 0 12px;font-size:13px;opacity:.7;">Answer what you can, in your own words. The draft fills Intro, What buyers should know, Buyer's guide, Section heading and Meta. Nothing saves until you press Save.</p>
+  <label style="display:block;margin-bottom:10px;"><span style="font-size:13px;font-weight:600;">If a buyer asked you about <span data-ai-topic>this kind of home</span>, what would you tell them?</span><textarea data-ai="q1" rows="2" style="width:100%;" placeholder="e.g. Lots of suites here are unpermitted, so ask for the permit. The best ones have their own entrance and laundry."></textarea></label>
+  <label style="display:block;margin-bottom:10px;"><span style="font-size:13px;font-weight:600;">Where would you send them to look, and why?</span><textarea data-ai="q2" rows="2" style="width:100%;" placeholder="e.g. Harewood and near VIU for rental demand; north Nanaimo for newer purpose-built suites."></textarea></label>
+  <label style="display:block;margin-bottom:12px;"><span style="font-size:13px;font-weight:600;">Any local tip or watch-out?</span><textarea data-ai="q3" rows="2" style="width:100%;" placeholder="e.g. Check ceiling heights in older basements. Some lenders only count half the rent."></textarea></label>
+  <button type="button" id="ai-write-btn" style="background:#1f2a30;color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer;">Write copy</button>
+  <span id="ai-write-status" style="margin-left:10px;font-size:13px;opacity:.75;"></span>
+</div>
+<script is:inline>
+(() => {
+  const m = location.pathname.match(/intent-pages\/([^/]+)\/edit/); if (!m) return;
+  const box = document.getElementById("ai-write"), btn = document.getElementById("ai-write-btn"), st = document.getElementById("ai-write-status");
+  const form = box.closest("form"); const store = "ai-answers-" + m[1]; { const hh = (form.querySelector('[name="hero_heading"]')?.value || "").replace(/\|/g, " ").trim(); const tp = box.querySelector("[data-ai-topic]"); if (hh && tp) tp.textContent = hh.charAt(0).toLowerCase() === hh.charAt(0) ? hh : hh.replace(/\bHomes\b/, "homes").replace(/\bWith\b/, "with"); }
+  try { const saved = JSON.parse(localStorage.getItem(store) || "{}"); box.querySelectorAll("[data-ai]").forEach((t) => { t.value = saved[t.dataset.ai] || ""; }); } catch {}
+  btn.addEventListener("click", async () => {
+    const answers = {}; box.querySelectorAll("[data-ai]").forEach((t) => { answers[t.dataset.ai] = t.value.trim(); });
+    try { localStorage.setItem(store, JSON.stringify(answers)); } catch {}
+    const filters = {}, qs = new URLSearchParams({ id: m[1] });
+    for (const [k, v] of new FormData(form)) { if (typeof v === "string" && v && v.length < 80 && !/(copy|heading|title|description|polygon|viewport|image|slug|label|eyebrow|angle|sort|rank)/.test(k)) { qs.append(k, v); filters[k] = filters[k] ? [].concat(filters[k], v) : v; } }
+    btn.disabled = true; st.textContent = "Writing… (about 20 seconds)";
+    try {
+      let count = null; try { count = (await (await fetch("/api/intent-match-count?" + qs)).json()).count; } catch {}
+      const heading = form.querySelector('[name="hero_heading"]')?.value || "";
+      const res = await fetch("/admin/api/intent-write", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: m[1], answers, filters, count, heading, questions: [...box.querySelectorAll("[data-ai]")].map((t) => t.previousElementSibling?.textContent || "") }) });
+      const j = await res.json(); if (!res.ok || !j.fields) throw new Error(j.error || "Failed");
+      for (const [k, v] of Object.entries(j.fields)) form.querySelectorAll(`[name="${k}"]`).forEach((el) => { if (!el.readOnly) { el.value = v; el.dispatchEvent(new Event("input", { bubbles: true })); el.style.background = "#fffbe6"; } });
+      st.textContent = "Done. Review the highlighted fields, then Save.";
+    } catch (err) { st.textContent = "Couldn't write: " + err.message; }
+    btn.disabled = false;
+  });
+})();
+</script>
+<label>Intro copy</label>
           <textarea name="intro_copy" required>{page.intro_copy || ""}</textarea>
           <label style="display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:6px;"><input type="checkbox" name="show_buyer_guidance" checked={page.show_buyer_guidance !== false} style="width:auto;" /> Show "What buyers should know" section</label>
           <label>Neighbourhood copy <span style="font-weight:400;color:var(--muted);">&mdash;&quot;What buyers should know&quot; body text</span></label>
@@ -927,5 +960,41 @@ select {
   };
   const kick = () => { clearTimeout(t); t = setTimeout(run, 300); }; form.addEventListener("change", kick); form.addEventListener("input", kick);
   run();
+})();
+</script><script is:inline>
+/* intent-questions-panel-v1 */
+(() => {
+  const m = location.pathname.match(/intent-pages\/([^/]+)\/edit/); const box = document.getElementById("ai-write"); if (!m || !box) return;
+  const form = box.closest("form");
+  const link = document.createElement("button"); link.type = "button"; link.textContent = "New questions";
+  link.style.cssText = "float:right;background:none;border:0;color:#2f6f73;font-size:13px;font-weight:600;cursor:pointer;padding:0;";
+  box.querySelector("strong")?.before(link);
+  const filters = () => { const f = {}; for (const [k, v] of new FormData(form)) if (typeof v === "string" && v && v.length < 80 && !/(copy|heading|title|description|polygon|viewport|image|slug|label|eyebrow|angle|sort|rank)/.test(k)) f[k] = f[k] ? [].concat(f[k], v) : v; return f; };
+  const apply = (qs) => qs.forEach((q, i) => { const t = box.querySelector(`[data-ai="q${i + 1}"]`); if (!t || !q?.question) return; t.previousElementSibling.textContent = q.question; t.placeholder = q.example ? "e.g. " + q.example : ""; });
+  const load = async (force) => {
+    const f = filters(); const heading = (form.querySelector('[name="hero_heading"]')?.value || "").replace(/\|/g, " ");
+    const k = "ai-q-" + m[1] + "-" + btoa(unescape(encodeURIComponent(JSON.stringify(f) + heading))).slice(0, 40);
+    if (!force) { try { const c = JSON.parse(localStorage.getItem(k) || "null"); if (c) return apply(c); } catch {} }
+    link.textContent = "Thinking…"; link.disabled = true;
+    try {
+      const city = form.querySelector('[name="city"]')?.value || "";
+      const j = await (await fetch("/admin/api/intent-questions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ heading, city, filters: f }) })).json();
+      if (Array.isArray(j.questions)) { link.style.color = ""; link.title = ""; apply(j.questions); try { localStorage.setItem(k, JSON.stringify(j.questions)); } catch {} } else { link.title = j.error || "No questions"; link.style.color = "#b42318"; }
+    } catch (err) { link.title = String(err); link.style.color = "#b42318"; }
+    link.textContent = "New questions"; link.disabled = false;
+  };
+  link.addEventListener("click", () => load(true)); let qt; form.addEventListener("change", (ev) => { const n = ev.target?.name || ""; if (ev.target?.closest?.("#ai-write") || /(copy|heading|title|description|label|eyebrow|slug|sort|rank|image)/.test(n)) return; clearTimeout(qt); qt = setTimeout(() => load(false), 1200); }); /* questions-follow-filters-v1 */
+  load(false);
+})();
+</script><script is:inline>
+/* use-example-v1: copy the grey example into the box to edit */
+(() => {
+  const box = document.getElementById("ai-write"); if (!box) return;
+  box.querySelectorAll("[data-ai]").forEach((t) => {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = "Use example";
+    b.style.cssText = "background:none;border:0;padding:2px 0 0;color:#2f6f73;font-size:12px;font-weight:600;cursor:pointer;display:block;";
+    b.addEventListener("click", () => { const ex = (t.placeholder || "").replace(/^e\.g\.\s*/i, ""); if (!ex) return; t.value = t.value.trim() ? t.value.trim() + " " + ex : ex; t.focus(); t.setSelectionRange(t.value.length, t.value.length); });
+    t.after(b);
+  });
 })();
 </script>
