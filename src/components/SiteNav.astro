@@ -164,7 +164,18 @@ const cleanAreaLabel = (value: string) =>
     .trim()
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
-const areaLinks: NavItem[] = areas.map((area: string) => ({
+// nav-areas-fallback-v1: pages that pass no areas get them from active listings
+const navAreasResolved: string[] = (Array.isArray(areas) && areas.length) ? areas : await (async () => {
+  try {
+    const cityName = String(city || "").trim().toLowerCase().replace(/-/g, " ");
+    if (!cityName) return [];
+    const { createClient } = await import("@supabase/supabase-js");
+    const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+    const { data } = await sb.from("listing_rows").select("normalized_area").ilike("normalized_city", cityName).eq("status", "A").limit(3000);
+    return Array.from(new Set((data || []).map((r: any) => String(r.normalized_area || "").trim()).filter(Boolean))).sort();
+  } catch { return []; }
+})();
+const areaLinks: NavItem[] = navAreasResolved.map((area: string) => ({
   label: cleanAreaLabel(area),
   href: `/${slugify(city)}/${slugify(area)}`,
 }));
@@ -1710,3 +1721,7 @@ const __nimg = (u: any, w: number) => { const s = String(u || ""); if (!/^https?
   if (mq.addEventListener) mq.addEventListener("change", apply);
 })();
 </script>
+<style is:global>
+  /* sticky-nav-body-clip-v1 - body overflow-x:hidden made body a scroll container and broke the sticky nav */
+  html body { overflow-x: clip !important; overflow-y: visible !important; }
+</style>
