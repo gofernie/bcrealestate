@@ -7619,3 +7619,23 @@ window.__lsStyleChip = (() => {
     el.hidden = el.children.length === 0;
   };
 })();
+
+/* photo-swap-fade-v1: hide the previous listing's photo until the new one has loaded */
+(function () {
+  if (window.__lhPhotoFade) return; window.__lhPhotoFade = true;
+  var css = document.createElement("style");
+  css.textContent = "#preview-sheet img.lh-swapping{opacity:0!important;transition:none!important}#preview-sheet img.lh-swapped{transition:opacity .2s ease!important}";
+  document.head.appendChild(css);
+  new MutationObserver(function (ms) {
+    ms.forEach(function (m) {
+      var i = m.target;
+      if (i.tagName !== "IMG" || m.attributeName !== "src" || !i.closest || !i.closest("#preview-sheet") || i.offsetWidth < 200) return;
+      if (i.complete && i.naturalWidth) return;
+      i.classList.remove("lh-swapped"); i.classList.add("lh-swapping");
+      var done = function () { i.classList.add("lh-swapped"); i.classList.remove("lh-swapping"); };
+      i.addEventListener("load", done, { once: true });
+      i.addEventListener("error", done, { once: true });
+      setTimeout(done, 8000);
+    });
+  }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["src"] });
+})();
