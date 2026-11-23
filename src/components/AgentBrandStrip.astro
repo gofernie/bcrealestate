@@ -23,6 +23,10 @@ const introCopy =
   ) ||
   "A local guide to homes, neighbourhoods, and the questions that come with a move. Browse at your own pace, then reach out when you’d like a straight answer.";
 
+// agent-about-v1
+const aboutText = String(site?.about_text || "").trim();
+const aboutFacts = (Array.isArray(site?.about_facts) ? site.about_facts : []).filter((f) => f && String(f.label || "").trim() && String(f.value || "").trim());
+
 const contactCopy =
   first(
     site?.contact_copy,
@@ -197,6 +201,18 @@ const initials = String(
       </button>
     )}
 
+    {isIntro && aboutText && (
+      <button
+        type="button"
+        class="agent-brand-strip__secondary agent-brand-strip__about-btn"
+        data-agent-brand-about
+        aria-expanded="false"
+        aria-controls="agent-brand-about-panel"
+      >
+        {agentFirstName ? `About ${agentFirstName}` : "About"}
+      </button>
+    )}
+
     {email && !isIntro && (
       <a class="agent-brand-strip__primary" href={`mailto:${email}`}>
         {isNudge && agentFirstName ? "Email " + agentFirstName : "Ask a question"}
@@ -219,6 +235,19 @@ const initials = String(
     )}
   </div>
 </div>
+
+{isIntro && aboutText && (
+  <div class="agent-brand-strip__about" id="agent-brand-about-panel" data-agent-brand-about-panel hidden>
+    <p class="agent-brand-strip__about-text">{aboutText}</p>
+    {aboutFacts.length > 0 && (
+      <dl class="agent-brand-strip__about-facts">
+        {aboutFacts.map((f) => (
+          <div><dt>{f.label}</dt><dd>{f.value}</dd></div>
+        ))}
+      </dl>
+    )}
+  </div>
+)}
 
 {isIntro && (email || isPlatformGuide) && (
   <form
@@ -1576,4 +1605,89 @@ const initials = String(
   .agent-brand-strip__markets a { padding: 4px 11px; border-radius: 999px; border: 1px solid rgba(16, 24, 40, .14); background: #fff; color: #101828; font-weight: 600; text-decoration: none; transition: border-color .15s, color .15s; }
   .agent-brand-strip__markets a:hover { border-color: var(--accent, #2f6f73); color: var(--accent, #2f6f73); }
   body:has(.agent-brand-strip__markets) .locus-market-strip { display: none !important; }
+</style>
+<script>
+  // agent-about-v1: About panel, exclusive with the contact form
+  document.querySelectorAll("[data-agent-brand-about]").forEach((btn) => {
+    const strip = btn.closest(".agent-brand-strip");
+    const panel = strip?.querySelector("[data-agent-brand-about-panel]");
+    const form = strip?.querySelector("[data-agent-brand-contact-form]");
+    const contactBtn = strip?.querySelector("[data-agent-brand-contact]");
+    if (!(panel instanceof HTMLElement)) return;
+    btn.addEventListener("click", () => {
+      const opening = panel.hidden;
+      panel.hidden = !opening;
+      btn.setAttribute("aria-expanded", String(opening));
+      if (opening && form instanceof HTMLElement && !form.hidden) {
+        form.hidden = true;
+        contactBtn?.setAttribute("aria-expanded", "false");
+      }
+    });
+    contactBtn?.addEventListener("click", () => {
+      if (!panel.hidden) { panel.hidden = true; btn.setAttribute("aria-expanded", "false"); }
+    });
+  });
+</script>
+
+<style is:global>
+  /* agent-about-v1 */
+  .agent-brand-strip__about { grid-column: 1 / -1; padding: 20px 24px 22px; border-top: 1px solid color-mix(in srgb, var(--accent, #2f8fb5) 22%, transparent); background: color-mix(in srgb, var(--accent, #2f8fb5) 4%, #fff); }
+  .agent-brand-strip__about[hidden] { display: none !important; }
+  .agent-brand-strip__about-text { margin: 0 0 14px; max-width: 70ch; font-size: 1rem; line-height: 1.6; color: #2b3438; }
+  .agent-brand-strip__about-facts { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; }
+  .agent-brand-strip__about-facts > div { padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--accent, #2f8fb5) 25%, #e3e8ea); border-radius: 6px; background: #fff; }
+  .agent-brand-strip__about-facts dt { margin: 0 0 2px; font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent, #2f8fb5); }
+  .agent-brand-strip__about-facts dd { margin: 0; font-size: .92rem; font-weight: 600; color: #1f2a2e; }
+  .agent-brand-strip__about-btn[aria-expanded="true"] { border-color: var(--accent, #2f8fb5) !important; color: var(--accent, #2f8fb5) !important; }
+  @media (max-width: 640px) { .agent-brand-strip__about { padding: 16px; } }
+</style>
+<style is:global>
+  /* agent-about-btn-style-v1 - match the phone (secondary) button */
+  html body .agent-brand-strip .agent-brand-strip__actions button.agent-brand-strip__about-btn {
+    appearance: none; -webkit-appearance: none; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 44px; padding: 0 18px; margin: 0;
+    background: #fff; color: #1f2a2e;
+    border: 1px solid #c9d5da; border-radius: 3px;
+    font: inherit; font-size: .9rem; font-weight: 700; line-height: 1; white-space: nowrap;
+    transition: border-color .15s ease, color .15s ease;
+  }
+  html body .agent-brand-strip .agent-brand-strip__actions button.agent-brand-strip__about-btn:hover,
+  html body .agent-brand-strip .agent-brand-strip__actions button.agent-brand-strip__about-btn[aria-expanded="true"] {
+    border-color: var(--accent, #2f8fb5); color: var(--accent, #2f8fb5);
+  }
+</style>
+<style is:global>
+  /* agent-about-drift-v1 - slow spectrum border on About button */
+  html body .agent-brand-strip .agent-brand-strip__actions button.agent-brand-strip__about-btn.agent-brand-strip__about-btn {
+    padding: 0 14px;
+    border: 1.5px solid transparent;
+    background:
+      linear-gradient(#fff, #fff) padding-box,
+      linear-gradient(110deg, #e0457b, #8b5cf6, #4f7be8, #1597a0, #8b5cf6, #e0457b) border-box;
+    background-size: 100% 100%, 300% 100%;
+    animation: aboutDrift 14s linear infinite !important;
+    animation-duration: 14s !important; animation-iteration-count: infinite !important;
+  }
+  html body .agent-brand-strip .agent-brand-strip__actions button.agent-brand-strip__about-btn.agent-brand-strip__about-btn:hover,
+  html body .agent-brand-strip .agent-brand-strip__actions button.agent-brand-strip__about-btn.agent-brand-strip__about-btn[aria-expanded="true"] {
+    color: #6d3fd1;
+    box-shadow: 0 4px 14px rgba(124, 58, 237, .18);
+  }
+  @keyframes aboutDrift {
+    from { background-position: 0 0, 0% 50%; }
+    to   { background-position: 0 0, 150% 50%; }
+  }
+</style>
+<style is:global>
+  /* agent-actions-equal-v1 - same height for every button in the agent actions row */
+  html body .agent-brand-strip .agent-brand-strip__actions { align-items: stretch; }
+  html body .agent-brand-strip .agent-brand-strip__actions > a,
+  html body .agent-brand-strip .agent-brand-strip__actions > button {
+    box-sizing: border-box !important;
+    min-height: 44px !important; height: 44px !important;
+    display: inline-flex !important; align-items: center !important; justify-content: center !important;
+    padding-top: 0 !important; padding-bottom: 0 !important;
+    line-height: 1 !important;
+  }
 </style>
