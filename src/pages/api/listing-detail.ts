@@ -55,7 +55,10 @@ export const GET: APIRoute = async ({ request }) => {
 
   const detailListingIds = canonicalListingId
     ? [canonicalListingId]
-    : [];const [floorplanResult, roomResult] =
+    : [];
+  // listing_rooms.listing_id stores the MLS number, so match on MLS too.
+  const roomListingIds = [...new Set([canonicalListingId, String(listingResult.data?.mls_number || ''), ...candidateListingIds].filter(Boolean))];
+  const [floorplanResult, roomResult] =
     await Promise.all([
       supabase
         .from("listing_floorplans")
@@ -65,7 +68,7 @@ export const GET: APIRoute = async ({ request }) => {
       supabase
         .from("listing_rooms")
         .select("*")
-        .in("listing_id", detailListingIds),
+        .in("listing_id", roomListingIds),
     ]);
 
   if (floorplanResult.error) {
