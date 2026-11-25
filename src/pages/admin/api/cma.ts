@@ -1,7 +1,7 @@
 // cma-v1: agent-only CMA endpoint. /admin/api/* needs a login (middleware admin-api-guard-v1).
 import type { APIRoute } from "astro";
 import { logAi } from "../../../lib/aiLog";
-import { findSubject, runCma, cityAreas, familyOf, valueSince, backtest, imgUrl, blindValue, type Subject } from "../../../lib/cma";
+import { findSubject, runCma, cityAreas, familyOf, valueSince, backtest, imgUrl, blindValue, suggestAddresses, type Subject } from "../../../lib/cma";
 
 export const prerender = false;
 
@@ -12,8 +12,8 @@ const n = (v: string | null) => { const x = Number(String(v ?? "").replace(/[^0-
 // cma-vision-v1: read listing photos + description and rate condition
 const envv = (k: string) => String((import.meta.env as any)[k] || (globalThis as any).process?.env?.[k] || "").trim();
 const VISION_CACHE = new Map<string, any>();
-async function readCondition(mls: string, user: any) {
-  if (VISION_CACHE.has(mls)) return VISION_CACHE.get(mls);
+async function readCondition(mls: string, user: any, fresh = false) {
+  if (!fresh && VISION_CACHE.has(mls)) return VISION_CACHE.get(mls);
   const key = envv("ANTHROPIC_API_KEY"); if (!key) return { error: "No ANTHROPIC_API_KEY set." };
   const { createClient } = await import("@supabase/supabase-js");
   const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -62,7 +62,8 @@ export const GET: APIRoute = async ({ url, locals }) => {
   const city = String(p.get("city") || "nanaimo").toLowerCase().replace(/[^a-z -]/g, "").trim() || "nanaimo";
   try {
     if (p.get("areas")) return json({ areas: await cityAreas(city) });
-    if (p.get("photoread")) return json(await readCondition(String(p.get("photoread")).replace(/[^A-Za-z0-9]/g, ""), (locals as any).adminAccess)); /* cma-vision-v1 */
+    if (p.get("suggest") != null) return json({ items: await suggestAddresses(city, String(p.get("suggest") || "")) }); /* cma-suggest-v1 */
+    if (p.get("photoread")) return json(await readCondition(String(p.get("photoread")).replace(/[^A-Za-z0-9]/g, ""), (locals as any).adminAccess, !!p.get("fresh"))); /* cma-vision-v1 */
     if (p.get("blind1")) return json(await blindValue(city, String(p.get("blind1")).replace(/[^A-Za-z0-9]/g, ""))); /* cma-blind-v1 */
     if (p.get("backtest")) return json(await backtest(city, familyOf(p.get("backtest")), Math.min(365, Number(p.get("days")) || 90), !!p.get("rows"), !!p.get("blind"))); /* cma-backtest-v1 */
     if (p.get("photos")) { /* cma-photos-v1: agent-only sold photo viewer */

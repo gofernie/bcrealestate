@@ -26,6 +26,14 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
     label { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: #5d6868; text-transform: uppercase; letter-spacing: .04em; }
     input, select { font: inherit; font-size: 15px; padding: 9px 11px; border: 1px solid #d6d1c4; border-radius: 9px; background: #fff; text-transform: none; letter-spacing: 0; color: #1f2a2a; }
     .grow { flex: 1 1 260px; }
+    .sugwrap { position: relative; display: block; }
+    .sugwrap input { width: 100%; box-sizing: border-box; }
+    .sug { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 40; background: #fff; border: 1px solid #d6d1c4; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.15); overflow: hidden; }
+    .sug-i { display: block; width: 100%; text-align: left; background: #fff; color: #1f2a2a; border: 0; border-radius: 0; padding: 9px 12px; font-weight: 400; border-bottom: 1px solid #f0ece3; }
+    .sug-i:last-child { border-bottom: 0; }
+    .sug-i b { display: block; font-size: 15px; font-weight: 700; text-transform: none; letter-spacing: 0; }
+    .sug-i span { display: block; font-size: 12px; color: #5d6868; text-transform: none; letter-spacing: 0; font-weight: 400; }
+    .sug-i:hover, .sug-i.on { background: #eef5f4; }
     .grid input, .grid select { width: 100%; min-width: 0; box-sizing: border-box; }
     .grid label { min-width: 0; }
     .msg.err.hint { background: #fdf3dc; color: #7a5a0c; }
@@ -161,6 +169,8 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
     .pr-busy { color: #5d6868; font-size: 14px; margin: 0; } .pr-err { color: #8a2b2b; font-size: 14px; margin: 0; }
     .pr-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 15px; }
     .pr-sug { color: #5d6868; font-size: 14px; }
+    .pr-again { margin-left: auto; background: none; color: #2f6f73; border: 1px solid #c6dcda; padding: 4px 10px; font-size: 12px; }
+    .pr-again:hover { background: #eef5f4; }
     .pr-apply { background: #2f6f73; color: #fff; padding: 6px 12px; font-size: 13px; }
     .pr-on { font-size: 12px; font-weight: 700; color: #1d6b48; background: #e3f3ec; padding: 3px 8px; border-radius: 4px; }
     .pr-sum { margin: 6px 0; font-size: 14px; }
@@ -227,7 +237,7 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
     <form class="card no-print" id="cma-form">
       <div class="find">
         <label class="grow">Address or MLS®
-          <input name="q" placeholder="e.g. 2640 Randle Rd or 1054650" autocomplete="off" />
+          <span class="sugwrap"><input name="q" placeholder="Start typing an address, or an MLS® number" autocomplete="off" /><div class="sug" id="sug" hidden></div></span>
         </label>
         <button type="submit">Value it</button>
       </div>
@@ -245,10 +255,10 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
             </select>
           </label>
           <label>Area <select name="area"><option value="">From listing</option></select></label>
-          <label>Finished sq ft <input name="sqft" inputmode="numeric" /></label>
-          <label>Beds <input name="beds" inputmode="numeric" /></label>
-          <label>Year built <input name="year" inputmode="numeric" /></label>
-          <label>Lot sq ft <input name="lot" inputmode="numeric" /></label>
+          <label>Finished sq ft <input name="sqft" inputmode="numeric" autocomplete="off" /></label>
+          <label>Beds <input name="beds" inputmode="numeric" autocomplete="off" /></label>
+          <label>Year built <input name="year" inputmode="numeric" autocomplete="off" /></label>
+          <label>Lot sq ft <input name="lot" inputmode="numeric" autocomplete="off" /></label>
           <label>Waterfront
             <select name="waterfront"><option value="">From listing</option><option value="no">No</option><option value="yes">Yes</option></select>
           </label>
@@ -408,19 +418,19 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
     function photoReadBlock() {
       var s = data.subject; if (!s || !s.mls || !s.image) return "";
       if (photoReadBusy) return '<div class="pr"><p class="pr-busy">' + (data.projectKind ? "Fixer / development listing: reading the photos and description to set condition…" : "Reading the photos and description…") + "</p></div>";
-      if (!photoRead) return '<div class="pr no-print"><button type="button" class="pr-btn" id="pr-go">📷 Read the photos</button><span class="foot"> Claude looks at the listing photos and description and suggests a condition setting.</span></div>';
+      if (!photoRead) return '<div class="pr no-print"><button type="button" class="pr-btn" id="pr-go">📷 Read the photos &amp; description</button><span class="foot"> Claude looks at the listing photos and description and sets a suggested condition.</span></div>';
       if (photoRead.error) return '<div class="pr"><p class="pr-err">' + esc(photoRead.error) + "</p></div>";
       var r = photoRead, pc = r.suggested_pct;
       return '<div class="pr"><div class="pr-head"><strong>From the photos: ' + nice(r.overall) + '</strong><span class="pr-sug">suggests ' + (pc > 0 ? "+" : pc < 0 ? "−" : "") + Math.abs(pc) + "%</span>" +
-        (cond !== pc ? '<button type="button" class="pr-apply" id="pr-apply">Apply ' + (pc > 0 ? "+" : pc < 0 ? "−" : "") + Math.abs(pc) + "%</button>" : '<span class="pr-on">applied</span>') + "</div>" +
+        (cond !== pc ? '<button type="button" class="pr-apply" id="pr-apply">Apply ' + (pc > 0 ? "+" : pc < 0 ? "−" : "") + Math.abs(pc) + "%</button>" : '<span class="pr-on">applied</span>') + '<button type="button" class="pr-again no-print" id="pr-again">↻ Read again</button></div>' +
         '<p class="pr-sum">' + esc(r.summary || "") + "</p>" +
         '<ul class="pr-areas">' + (r.areas || []).map(function (a) { return '<li><b class="pr-' + esc(a.rating) + '">' + esc(a.area) + " · " + esc(a.rating) + "</b> " + esc(a.note) + "</li>"; }).join("") + "</ul>" +
         '<p class="foot">Based on ' + r.photos + " photos and the description · " + esc(r.confidence || "medium") + " confidence · your call on the slider.</p></div>";
     }
-    function startPhotoRead(auto) {
+    function startPhotoRead(auto, fresh) {
       var forMls = data.subject.mls, condAtStart = cond;
       photoReadBusy = true; render();
-      fetch("/admin/api/cma?city=" + encodeURIComponent(city) + "&photoread=" + encodeURIComponent(forMls)).then(function (r) { return r.json(); }).then(function (j) {
+      fetch("/admin/api/cma?city=" + encodeURIComponent(city) + "&photoread=" + encodeURIComponent(forMls) + (fresh ? "&fresh=1" : "")).then(function (r) { return r.json(); }).then(function (j) {
         if (!data || data.subject.mls !== forMls) return; // a different home was valued meanwhile
         photoRead = j; photoRead.auto = !!auto; photoReadBusy = false;
         // fixers: the photos decide. development land: keep the land discount unless the photos say worse (buyers pay for the lot).
@@ -431,6 +441,7 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
     }
     function wirePhotoRead() {
       var go = document.getElementById("pr-go"); if (go) go.onclick = function () { startPhotoRead(false); };
+      var again = document.getElementById("pr-again"); if (again) again.onclick = function () { startPhotoRead(false, true); };
       var ap = document.getElementById("pr-apply"); if (ap) ap.onclick = function () { cond = photoRead.suggested_pct; render(); };
     }
     function condText() { return condLabel() + (cond ? " (" + (cond > 0 ? "+" : "") + cond + "%)" : ""); }
@@ -747,7 +758,39 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
     pv.onclick = function (e) { if (e.target === pv) closePhotos(); };
     document.addEventListener("keydown", function (e) { if (pv.hidden) return; if (e.key === "Escape") closePhotos(); if (!pv.querySelector(".pv-map").hidden) return; if (e.key === "ArrowLeft") pvShow(pvI - 1); if (e.key === "ArrowRight") pvShow(pvI + 1); });
 
-    form.onsubmit = function (e) { e.preventDefault(); run(); };
+    form.onsubmit = function (e) { e.preventDefault(); hideSug(); run(); };
+    form.setAttribute("autocomplete", "off");
+
+    // cma-suggest-v1: address type-ahead; picking one runs the CMA on that exact home
+    var sugBox = document.getElementById("sug"), sugTimer = null, sugItems = [], sugIdx = -1, lastQ = "";
+    function hideSug() { sugBox.hidden = true; sugIdx = -1; }
+    function clearManual() { ["type", "area", "sqft", "beds", "year", "lot", "waterfront"].forEach(function (n) { $(n).value = ""; }); ["sqft", "beds", "year", "lot"].forEach(function (n) { $(n).placeholder = ""; }); }
+    function drawSug() {
+      if (!sugItems.length) { hideSug(); return; }
+      sugBox.innerHTML = sugItems.map(function (s, i) {
+        return '<button type="button" class="sug-i' + (i === sugIdx ? " on" : "") + '" data-i="' + i + '"><b>' + esc(fixCase(s.address)) + "</b><span>" + esc(nice(s.area || "")) + (s.city ? ", " + esc(nice(s.city)) : "") + " · " + esc(s.status) + " · MLS® " + esc(s.mls) + "</span></button>";
+      }).join("");
+      sugBox.hidden = false;
+      sugBox.querySelectorAll(".sug-i").forEach(function (b) { b.onmousedown = function (e) { e.preventDefault(); pickSug(Number(b.getAttribute("data-i"))); }; });
+    }
+    function pickSug(i) { var s = sugItems[i]; if (!s) return; $("q").value = fixCase(s.address); hideSug(); clearManual(); run({ mls: s.mls }); }
+    $("q").addEventListener("input", function () {
+      var v = $("q").value.trim();
+      if (v !== lastQ) { clearManual(); lastQ = v; } // a new address must not inherit old hand-entered details
+      clearTimeout(sugTimer);
+      if (v.length < 3 || /^[A-Za-z]?\d{5,9}$/.test(v)) { hideSug(); return; }
+      sugTimer = setTimeout(function () {
+        fetch("/admin/api/cma?city=" + encodeURIComponent(city) + "&suggest=" + encodeURIComponent(v)).then(function (r) { return r.json(); }).then(function (j) { if ($("q").value.trim() !== v) return; sugItems = j.items || []; sugIdx = -1; drawSug(); }).catch(function () {});
+      }, 220);
+    });
+    $("q").addEventListener("keydown", function (e) {
+      if (sugBox.hidden) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); sugIdx = Math.min(sugItems.length - 1, sugIdx + 1); drawSug(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); sugIdx = Math.max(-1, sugIdx - 1); drawSug(); }
+      else if (e.key === "Enter" && sugIdx >= 0) { e.preventDefault(); pickSug(sugIdx); }
+      else if (e.key === "Escape") hideSug();
+    });
+    $("q").addEventListener("blur", function () { setTimeout(hideSug, 150); });
     var sf = document.getElementById("since-form"), so = document.getElementById("since-out");
     sf.onsubmit = function (e) {
       e.preventDefault();

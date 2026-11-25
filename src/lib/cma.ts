@@ -483,3 +483,29 @@ export async function blindValue(city: string, mls: string) {
   }
   return { error: "This sale isn't in the cached sold data." };
 }
+
+/** cma-suggest-v1: address type-ahead from the cache (listings + sales), this city's group first. */
+export async function suggestAddresses(city: string, q: string) {
+  const sb = db();
+  const addr = str(q).replace(/[%,]/g, " ").replace(/\s+/g, " ").trim();
+  if (addr.length < 3) return [];
+  const pattern = `%${addr.split(" ").join("%")}%`;
+  const group = cityGroup(city);
+  const [{ data: lr }, sold] = await Promise.all([
+    sb.from("listing_rows").select("address, mls_number, normalized_area, area, city, normalized_city, status, listed_at").ilike("address", pattern).order("listed_at", { ascending: false }).limit(20),
+    sb.from("sold_listings").select("address, mls_number, normalized_area, raw_area, city, sold_date, sold_price").ilike("address", pattern).order("sold_date", { ascending: false }).limit(10).then((r: any) => r.data || [], () => []),
+  ]);
+  const out: any[] = [], seen = new Set<string>();
+  const add = (o: any) => {
+    const k = lc(o.address).replace(/\s+/g, " "), m = "mls:" + str(o.mls);
+    if (!k) return;
+    if (seen.has(m)) { const prev = out.find((x) => str(x.mls) === str(o.mls)); if (prev && /^sold/.test(o.status)) prev.status += " · " + o.status; return; }
+    if (seen.has(k)) return;
+    seen.add(k); seen.add(m); out.push(o);
+  };
+  const inGroup = (c: any) => group.includes(areaKey(c));
+  for (const r of (lr || []).sort((a: any, b: any) => Number(inGroup(b.normalized_city) || inGroup(b.city)) - Number(inGroup(a.normalized_city) || inGroup(a.city))))
+    add({ address: r.address, mls: r.mls_number, area: r.normalized_area || r.area, city: r.city, status: r.status === "A" ? "active" : "listed before" });
+  for (const r of sold as any[]) add({ address: r.address, mls: r.mls_number, area: r.normalized_area || r.raw_area, city: r.city, status: `sold ${String(r.sold_date || "").slice(0, 7)}` });
+  return out.slice(0, 8);
+}
