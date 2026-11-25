@@ -96,7 +96,7 @@ const mainHandler = defineMiddleware(async (context, next) => {
         p === "/" ||
         isMobileHome ||
         p === "/nanaimo/mobile-homes" || p.startsWith("/nanaimo/mobile-homes/") ||
-        p === "/nanaimo/areas" ||
+        p === "/nanaimo/areas" || /^\/nanaimo\/[a-z0-9-]*mobile-homes[a-z0-9-]*$/.test(p) /* nm-area-pages-v1 */ ||
         p === "/nanaimo/park-directory" || p.startsWith("/nanaimo/park-directory/") ||
         p === "/mobile-home-parks-in-nanaimo" || p.startsWith("/mobile-home-parks-in-nanaimo/") ||
         /^\/(api|admin|_astro|_image|js|css|images|img|fonts|login|logout|shortlists|listings|account|unsubscribe|reset-password)(\/|$)/.test(p) ||
