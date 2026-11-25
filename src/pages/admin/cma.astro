@@ -118,6 +118,9 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
     .listgap.over strong { color: #a12f2f; }
     .listgap.under strong { color: #1d6b48; }
     .wide { text-align: center; font-size: 13px; color: #5d6868; margin: -2px 0 4px; }
+    .projwarn { background: #fbefef; border: 1px solid #efcaca; color: #7a2424; border-radius: 6px; padding: 10px 14px; font-size: 13px; line-height: 1.5; margin: 0 0 10px; }
+    .projwarn.dev { background: #fdf3dc; border-color: #ecd9a8; color: #6b4e0a; }
+    .projwarn em { font-style: normal; font-weight: 700; }
     .conf { border-radius: 10px; padding: 10px 14px; font-size: 13px; margin: 0 0 10px; line-height: 1.5; }
     .conf ul { margin: 4px 0 0; padding-left: 18px; }
     .conf-high { background: #e3f3ec; color: #1d6b48; }
@@ -151,7 +154,9 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
     .condslide input[type=range] { width: 100%; padding: 0; border: 0; accent-color: #2f6f73; position: relative; z-index: 1; background: transparent; }
     .condbox.up input[type=range] { accent-color: #1f8a55; }
     .condbox.down input[type=range] { accent-color: #c0392b; }
-    .condslide .mid { position: absolute; left: 50%; top: 2px; width: 3px; height: 18px; margin-left: -1.5px; background: #9aa5a5; border-radius: 2px; }
+    .condslide .mid { position: absolute; left: 66.667%; top: 2px; width: 3px; height: 18px; margin-left: -1.5px; background: #9aa5a5; border-radius: 2px; }
+    .condslide .ticks { position: relative; }
+    .condslide .ticks .avg { position: absolute; left: 66.667%; transform: translateX(-50%); top: -2px; }
     .ticks .avg { font: inherit; font-size: 12px; font-weight: 700; background: none; color: #2f6f73; padding: 2px 8px; border-radius: 6px; cursor: pointer; }
     .ticks .avg:hover { background: #e6efee; }
     .condhead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
@@ -171,6 +176,9 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
     .subjcard { display: flex; gap: 18px; align-items: stretch; }
     .subj-img { width: 190px; height: 130px; object-fit: cover; border-radius: 6px; flex: 0 0 auto; background: #eee; }
     .subj-main { flex: 1; min-width: 0; }
+    .subj-open { cursor: pointer; } .subj-open:hover { opacity: .9; }
+    .subj-link { background: none; border: 0; padding: 0; font: inherit; color: #1f2a2a; cursor: pointer; text-align: left; }
+    .subj-link:hover { color: #2f6f73; text-decoration: underline; } .subj-link span { font-size: 16px; }
     .subj-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
     .subj-kicker { margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #5d6868; }
     .subj-title { margin: 2px 0 2px; font-size: 24px; line-height: 1.2; }
@@ -303,7 +311,7 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
           if (j.nearby && !$("type").value) $("type").focus();
           return;
         }
-        data = j; off = {}; cond = 0;
+        data = j; off = {}; cond = j.autoCondition || 0;
         fill(j.subject);
         render();
       }).catch(function (e) { out.innerHTML = '<div class="msg err">' + esc(e.message) + "</div>"; });
@@ -336,7 +344,7 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
       var r = function (v) { return Math.round(v / 1000) * 1000; };
       return { lo: r(lo), likely: r(likely), hi: r(hi), wlo: r(wlo), whi: r(whi), n: on.length, base: r(likely / f) };
     }
-    function condLabel() { return cond < 0 ? "Dated" : cond > 0 ? "Updated" : "Average"; }
+    function condLabel() { return cond <= -11 ? "Fixer / project" : cond < 0 ? "Dated" : cond > 0 ? "Updated" : "Average"; }
     function condCls() { return cond > 0 ? " up" : cond < 0 ? " down" : ""; }
     // cma-listgap-v1: for active listings, compare the asking price with the CMA instead of blending it in
     function listGap(sm) {
@@ -349,6 +357,13 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
         '<p class="buyernote no-print"><strong>For your buyer:</strong> ' + buyer + " Set the condition slider to what you saw at the showing; the comps can't see condition.</p>";
     }
     function wideText(sm) { return sm ? "Half of similar sales landed between Low and High · 8 in 10 landed between <strong>" + k(sm.wlo) + "</strong> and <strong>" + k(sm.whi) + "</strong>" : ""; }
+    function projectBlock() {
+      var pj = data.subject && data.subject.project; if (!pj || !pj.length) return "";
+      var said = 'The description says: <em>' + pj.map(esc).join(", ") + "</em>. ";
+      if (data.projectKind === "fixer") return '<div class="projwarn"><strong>Fixer listing.</strong> ' + said + "In testing on past Nanaimo sales, the comps overvalued homes listed this way by about 20–30%, so condition has been set to <b>" + data.autoCondition + "%</b> to start. Move it if what you saw was better or worse.</div>";
+      if (data.autoCondition) return '<div class="projwarn dev"><strong>Marketed on land or development potential, with an older house.</strong> ' + said + "In testing, homes like this (built 1965 or earlier) sold about 9% below what the comps suggested; buyers pay for the lot, not the house. Condition has been set to <b>" + data.autoCondition + "%</b> to start, deliberately on the low side. Move it up if the house has real value.</div>";
+      return '<div class="projwarn dev"><strong>Marketed on land or development potential.</strong> ' + said + "In testing, homes listed this way with newer houses sold close to the comps on average but scattered widely, because the lot can be worth more or less than the house suggests. No automatic adjustment; use the slider for the house's condition, and weigh the lot yourself.</div>";
+    }
     function confBlock() {
       var c = data.confidence; if (!c) return "";
       var lab = { high: "High confidence", medium: "Medium confidence", low: "Low confidence" }[c.level];
@@ -359,12 +374,13 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
     function condNote(sm) {
       if (!sm) return "";
       if (!cond) return "Comps alone: <strong>" + money(sm.base) + "</strong> · no condition adjustment";
+      if (data.autoCondition && cond === data.autoCondition) return "Comps alone: <strong>" + money(sm.base) + "</strong> → auto-set for " + (data.projectKind === "fixer" ? "a fixer listing " : "an older house on development land ") + cond + "%: <strong>" + money(sm.likely) + "</strong> (<span class=\"delta\">" + signed(sm.likely - sm.base) + "</span>)";
       return "Comps alone: <strong>" + money(sm.base) + "</strong> → with condition " + (cond > 0 ? "+" : "") + cond + "%: <strong>" + money(sm.likely) + "</strong> (<span class=\"delta\">" + signed(sm.likely - sm.base) + "</span>)";
     }
     function condBlock(sm) {
       return '<div class="condbox' + condCls() + '"><div class="condhead"><strong>Condition adjustment</strong><span class="condval" id="cl">' + condText() + '</span></div>' +
         '<p class="foot" style="margin:4px 0 8px">MLS data doesn\'t know about updates or wear. Move this to reflect what you saw; it shifts the whole range by that percentage.</p>' +
-        '<div class="no-print condslide"><span class="mid" aria-hidden="true"></span><input type="range" id="cond" min="-10" max="10" step="1" value="' + cond + '" list="cond-ticks" title="Double-click to reset to average" /><datalist id="cond-ticks"><option value="0"></option></datalist><div class="ticks"><span>Dated −10%</span><button type="button" class="avg" id="cond-reset">Average</button><span>Updated +10%</span></div></div>' +
+        '<div class="no-print condslide"><span class="mid" aria-hidden="true"></span><input type="range" id="cond" min="-20" max="10" step="1" value="' + cond + '" list="cond-ticks" title="Double-click to reset to average" /><datalist id="cond-ticks"><option value="0"></option></datalist><div class="ticks"><span>Fixer / project −20%</span><button type="button" class="avg" id="cond-reset">Average</button><span>Updated +10%</span></div></div>' +
         '<p class="condnote" id="cn">' + condNote(sm) + '</p></div>';
     }
 
@@ -382,8 +398,8 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
       var subTitle = [nice(s.type || s.family), nice(s.area), s.mls ? "MLS® " + esc(s.mls) : "Entered by hand"].filter(Boolean).join(" · ");
       if (s.lastSold) subTitle += ' · <span class="subj-sold">Last sold <b>' + money(s.lastSold.price) + "</b> " + prettyDate(s.lastSold.date) + "</span>";
       var html = '<section class="card subjcard">' +
-        (s.image ? '<img class="subj-img" src="' + esc(s.image) + '" alt="" />' : "") +
-        '<div class="subj-main"><div class="subj-top"><div><p class="subj-kicker">Valuing</p><h2 class="subj-title">' + esc(fixCase(s.address) || (s.mls ? "MLS® " + s.mls : "Home entered by hand")) + '</h2><p class="subj-sub">' + subTitle + "</p></div>" +
+        (s.image ? '<img class="subj-img' + (s.status === "A" ? ' subj-open" data-subj-open="1" title="Open listing' : "") + '" src="' + esc(s.image) + '" alt="" />' : "") +
+        '<div class="subj-main"><div class="subj-top"><div><p class="subj-kicker">Valuing</p><h2 class="subj-title">' + (s.status === "A" ? '<button type="button" class="subj-link" data-subj-open="1">' + esc(fixCase(s.address) || "MLS® " + s.mls) + ' <span>📷</span></button>' : esc(fixCase(s.address) || (s.mls ? "MLS® " + s.mls : "Home entered by hand"))) + '</h2><p class="subj-sub">' + subTitle + "</p></div>" +
         '<button class="ghost no-print" id="print">Print</button></div>' +
         '<div class="subj-facts">' + facts + (s.listPrice && s.status === "A" ? '<span class="sf sf-list"><span>Listed at</span><strong>' + money(s.listPrice) + "</strong></span>" : "") + "</div></div></section>";
 
@@ -396,7 +412,7 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
           withTips('<div><span>High</span>', "x") + '<strong>' + (sm ? k(sm.hi) : "—") + "</strong></div></div>" +
           '<p class="wide" id="wide">' + wideText(sm) + "</p>" + '<div id="lg">' + listGap(sm) + "</div>" +
           condBlock(sm) +
-          confBlock() +
+          projectBlock() + confBlock() +
           '<p class="meta">' + (sm ? sm.n : 0) + " of " + data.comps.length + " comps ticked · " + esc(data.criteria) +
           (data.widened ? " (not enough close matches, so the search was widened)" : "") +
           "<br>Time adjustment: " + (data.index ? esc(data.index.ticker) + " sold index through " + esc(data.index.asOf) : "no index found, sale prices not time-adjusted") +
@@ -429,6 +445,8 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
       out.innerHTML = html;
 
       drawMaps();
+      // cma-subjopen-v1: active subject opens in the listing viewer
+      out.querySelectorAll("[data-subj-open]").forEach(function (el) { el.onclick = function () { var s2 = data.subject; openActive({ mls: s2.mls, address: s2.address, price: s2.listPrice, sqft: s2.sqft, beds: s2.beds, year: s2.year, lat: s2.lat, lng: s2.lng, area: s2.area, type: s2.type }); }; });
       out.querySelectorAll("[data-act]").forEach(function (bt) { bt.onclick = function () { var a = data.actives.find(function (x) { return String(x.mls) === bt.getAttribute("data-act"); }); openActive(a); }; });
       out.querySelectorAll("[data-ph]").forEach(function (bt) { bt.onclick = function () { var c = data.comps.find(function (x) { return x.mls === bt.getAttribute("data-ph"); }); openPhotos(c); }; });
       out.querySelectorAll("[data-c]").forEach(function (cb) { cb.onchange = function () { off[cb.getAttribute("data-c")] = !cb.checked; render(); }; });

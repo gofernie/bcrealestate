@@ -63,13 +63,36 @@ async function pageAll(build: (a: number, b: number) => any) {
 export type Subject = {
   mls?: string | null; address?: string | null; type?: string | null; family: Family; area?: string | null;
   sqft?: number | null; beds?: number | null; baths?: number | null; year?: number | null; lot?: number | null;
-  lat?: number | null; lng?: number | null; waterfront?: boolean | null; listPrice?: number | null; status?: string | null; image?: string | null; lastSold?: { price: number; date: string } | null;
+  lat?: number | null; lng?: number | null; waterfront?: boolean | null; listPrice?: number | null; status?: string | null; image?: string | null; lastSold?: { price: number; date: string } | null; project?: string[];
 };
 
-const ROW_COLS = "mls_number, address, image_url, normalized_type, normalized_area, area, normalized_city, city, beds, baths, sqft, year_built, lot_size_sqft, lot_size_acres, waterfront, ocean_view, lat, lng, price, status, listed_at";
+const ROW_COLS = "mls_number, address, image_url, description, normalized_type, normalized_area, area, normalized_city, city, beds, baths, sqft, year_built, lot_size_sqft, lot_size_acres, waterfront, ocean_view, lat, lng, price, status, listed_at";
+
+// cma-project-v1: listings sold for land / development / as a project don't value like finished homes
+const PROJECT_STRONG = /\b(rezon\w*|subdivi\w*|build[- ]to[- ]suit|tear[- ]?down|handyman|fixer[- ]?upper|t\.?l\.?c\.?|as[- ]is|land value|value is in the land|contractor'?s? special|renovator'?s?|needs (work|renovation|updating)|bring your (tools|ideas|vision))\b/gi;
+const PROJECT_WEAK = /\b(investors?|developers?|development (potential|opportunity|site)|holding property|redevelop\w*|potential to build)\b/gi;
+// Backtest Nov 2026 (Nanaimo houses, 12 months): fixer wording -> CMA ~+20-30% high; development wording -> ~0% on average but scattered.
+const FIXER = /teardown|tear down|tear-down|handyman|fixer|tlc|t\.l\.c|as-is|as is|needs (work|renovation|updating)|contractor|renovator|bring your/i;
+export function projectKind(terms?: string[]) { const t = (terms || []).join(" "); return !t ? null : FIXER.test(t) ? "fixer" : "development"; }
+export const FIXER_AUTO_CONDITION = -15;
+// Backtest: development wording + house built 1965 or earlier -> CMA ~+9% high (7 sales); newer houses ~0%.
+export const OLD_DEV_AUTO_CONDITION = -14; // Chris's call: start deliberately low; testing showed ~-8%
+export function autoConditionFor(s: Subject) {
+  const k = projectKind(s.project);
+  if (k === "fixer") return FIXER_AUTO_CONDITION;
+  if (k === "development" && s.year && s.year <= 1965) return OLD_DEV_AUTO_CONDITION;
+  return 0;
+}
+export function projectTerms(desc: any) {
+  const d = str(desc); if (!d) return [];
+  const strong = [...new Set((d.match(PROJECT_STRONG) || []).map((x) => x.toLowerCase()))];
+  const weak = [...new Set((d.match(PROJECT_WEAK) || []).map((x) => x.toLowerCase()))];
+  return strong.length || weak.length >= 2 ? [...strong, ...weak].slice(0, 6) : [];
+}
 
 function subjectFromRow(r: any): Subject {
   return {
+    project: projectTerms(r.description),
     mls: str(r.mls_number) || null, address: str(r.address) || null, type: r.normalized_type, family: familyOf(r.normalized_type),
     area: str(r.normalized_area || r.area) || null, sqft: num(r.sqft), beds: num(r.beds), baths: num(r.baths), year: num(r.year_built),
     lot: lotOf(r), lat: num(r.lat) ? Number(r.lat) : null, lng: Number.isFinite(Number(r.lng)) && Number(r.lng) !== 0 ? Number(r.lng) : null,
@@ -93,6 +116,7 @@ async function enrichSubject(s: Subject | null): Promise<Subject | null> {
     beds: s.beds || num(x.beds), baths: s.baths || num(x.baths), sqft: s.sqft || num(x.sqft),
     area: str(x.normalized_area) || s.area || str(x.raw_area) || null,
     lastSold: num(x.sold_price) ? { price: Number(x.sold_price), date: String(x.sold_date).slice(0, 10) } : null,
+    project: s.project && s.project.length ? s.project : projectTerms(x.description),
   };
 }
 
@@ -246,7 +270,7 @@ async function buildContext(city: string, fam: Family, cutoff = "") {
       waterfront: x.waterfront == null ? null : truthy(x.waterfront), image: imgUrl(x.image_url, "small"),
       listPrice: num(r.list_price), soldPrice: price, soldDate: String(r.sold_date).slice(0, 10), dom: r.dom ?? null,
       days: Math.max(0, Math.round((today.getTime() - new Date(String(r.sold_date) + "T12:00:00Z").getTime()) / DAY)),
-      timeFactor: tf, timePrice: price * tf,
+      timeFactor: tf, timePrice: price * tf, project: projectTerms(r.description),
     };
   });
 
@@ -329,7 +353,7 @@ export async function runCma(city: string, s: Subject, opts: { asOf?: string; sk
   const wSum = comps.reduce((t, c) => t + c.weight, 0) || 1;
   comps.forEach((c) => (c.weight = Math.round((c.weight / wSum) * 1000) / 10));
   const sm0 = summarize(comps);
-  const confidence = sm0 ? confidenceOf(sm0, fam, step > 0, s.waterfront) : { level: "low", reasons: ["No comps"], band: BANDS.low, core: CORE.low };
+  const confidence = sm0 ? confidenceOf(sm0, fam, step > 0, s.waterfront, s.project) : { level: "low", reasons: ["No comps"], band: BANDS.low, core: CORE.low };
 
   // 7. Competition: active listings like the subject
   if (opts.skipActives) return { subject: s, criteria: STEPS[step].label, widened: step > 0, poolSize: pool.length, index: null, rates, comps, actives: [], activeCount: 0, areas: [], confidence };
@@ -351,6 +375,7 @@ export async function runCma(city: string, s: Subject, opts: { asOf?: string; sk
     index: index ? { ticker: index.ticker, asOf: index.asOf } : null,
     rates: { source: rates.source, sqft: Math.round(rates.sqft), lot: Math.round(rates.lot * 100) / 100, year: Math.round(rates.year), medianPpsf: rates.ppsf },
     comps, actives: actives.slice(0, 12), activeCount: actives.length, areas, confidence,
+    projectKind: projectKind(s.project), autoCondition: autoConditionFor(s),
   };
 }
 
@@ -377,8 +402,11 @@ const BANDS: Record<string, [number, number]> = { high: [0.87, 1.15], medium: [0
 const CORE: Record<string, [number, number]> = { high: [0.945, 1.076], medium: [0.905, 1.065], low: [0.851, 1.147], mobile: [0.8, 1.09] };
 const TIER: Record<string, [number, number]> = { house: [350_000, 1_500_000], condo: [220_000, 800_000], townhouse: [300_000, 900_000], mobile: [150_000, 550_000], land: [0, Infinity], other: [0, Infinity] };
 
-export function confidenceOf(sm: { likely: number; spread: number; n: number }, fam: Family, widened: boolean, waterfront?: boolean | null) {
+export function confidenceOf(sm: { likely: number; spread: number; n: number }, fam: Family, widened: boolean, waterfront?: boolean | null, project?: string[]) {
   const low: string[] = [], med: string[] = [];
+  const pk = projectKind(project);
+  if (pk === "fixer") low.push("Listing reads as a fixer; in testing, finished-home comps overvalued these by about 20-30%");
+  else if (pk === "development") low.push("Listing is marketed on land or development potential; comps can miss that in either direction");
   if (fam === "mobile") low.push("Mobile homes are hard to value from comps (park, pad fees and age vary a lot)");
   if (widened) low.push("Not enough close matches, so the search was widened");
   if (sm.n < 6) low.push(`Only ${sm.n} comps`);
@@ -411,13 +439,13 @@ export async function backtest(city: string, fam: Family, days = 90, includeRows
   const subjects = (ctx.comps0 as any[]).filter((c) => c.days <= days && c.family === fam && (fam === "land" || c.sqft));
   const rows: any[] = [];
   for (const c of subjects) {
-    const s: Subject = { mls: c.mls, address: c.address, type: c.type, family: fam, area: c.area, sqft: c.sqft, beds: c.beds, year: c.year, lot: c.lot, lat: c.lat, lng: c.lng, waterfront: c.waterfront };
+    const s: Subject = { mls: c.mls, address: c.address, type: c.type, family: fam, area: c.area, sqft: c.sqft, beds: c.beds, year: c.year, lot: c.lot, lat: c.lat, lng: c.lng, waterfront: c.waterfront, project: c.project };
     const r = await runCma(city, s, { asOf: c.soldDate, skipActives: true, cutoff });
     const sm = summarize(r.comps);
     if (!sm) continue;
     // compare like with like: both in the sale month's money
     const back = 1 / c.timeFactor, pred = sm.likely * back, cf = (r as any).confidence;
-    rows.push({ level: cf.level, spread: Math.round(sm.spread * 1000) / 1000, wf: !!c.waterfront, likelyNow: Math.round(sm.likely), mls: c.mls, address: c.address, area: c.area, soldDate: c.soldDate, sold: c.soldPrice, predicted: Math.round(pred), lo: Math.round(pred * cf.band[0]), hi: Math.round(pred * cf.band[1]), err: pred / c.soldPrice - 1, comps: r.comps.length, widened: r.widened });
+    rows.push({ project: (c.project || []).length > 0, terms: c.project || [], year: c.year, level: cf.level, spread: Math.round(sm.spread * 1000) / 1000, wf: !!c.waterfront, likelyNow: Math.round(sm.likely), mls: c.mls, address: c.address, area: c.area, soldDate: c.soldDate, sold: c.soldPrice, predicted: Math.round(pred), lo: Math.round(pred * cf.band[0]), hi: Math.round(pred * cf.band[1]), err: pred / c.soldPrice - 1, comps: r.comps.length, widened: r.widened });
   }
   const abs = rows.map((r) => Math.abs(r.err)).sort((a, b) => a - b);
   const share = (f: (r: any) => boolean) => rows.length ? Math.round((rows.filter(f).length / rows.length) * 1000) / 10 : 0;
