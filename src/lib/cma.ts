@@ -279,7 +279,7 @@ export async function runCma(city: string, s: Subject, opts: { asOf?: string; sk
     if (fam !== "land" && s.sqft && (!num(r.sqft) || Math.abs(num(r.sqft)! / s.sqft - 1) > 0.25)) return false;
     if (s.lat && s.lng && num(r.lat) && Number(r.lng)) return km(s.lat, s.lng, Number(r.lat), Number(r.lng)) <= 3 || (!!s.area && areaKey(r.normalized_area || r.area) === areaKey(s.area));
     return !s.area || areaKey(r.normalized_area || r.area) === areaKey(s.area);
-  }).map((r: any) => ({ mls: r.mls_number, address: r.address, area: r.normalized_area || r.area, price: num(r.price), sqft: num(r.sqft), beds: num(r.beds), year: num(r.year_built), listedAt: r.listed_at }))
+  }).map((r: any) => ({ mls: r.mls_number, address: r.address, area: r.normalized_area || r.area, price: num(r.price), sqft: num(r.sqft), beds: num(r.beds), year: num(r.year_built), listedAt: r.listed_at, lat: num(r.lat), lng: Number.isFinite(Number(r.lng)) && Number(r.lng) !== 0 ? Number(r.lng) : null }))
     .sort((a: any, b: any) => (a.price || 0) - (b.price || 0));
 
   const areas = [...new Set(comps0.map((c) => areaKey(c.area)).filter(Boolean))].sort();

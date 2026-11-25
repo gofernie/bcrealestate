@@ -11,6 +11,8 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex, nofollow" />
   <title>Market valuation · Locus Admin</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script is:inline src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style is:global>
     body { margin: 0; font-family: "DM Sans", system-ui, sans-serif; background: #f6f4ef; color: #1f2a2a; }
     .wrap { max-width: 1120px; margin: 0 auto; padding: 24px 20px 60px; }
@@ -71,6 +73,15 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
     .conf-high { background: #e3f3ec; color: #1d6b48; }
     .conf-medium { background: #fdf3dc; color: #7a5a0c; }
     .conf-low { background: #f6e3e3; color: #8a2b2b; }
+    .cmap { height: 340px; border-radius: 10px; margin: 0 0 14px; border: 1px solid #e4e0d6; z-index: 0; }
+    .pin { display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; font: 700 12px/1 "DM Sans", system-ui, sans-serif; padding: 5px 7px; border-radius: 999px; box-shadow: 0 1px 4px rgba(0,0,0,.35); border: 2px solid #fff; }
+    .pin-sold { background: #2f6f73; color: #fff; min-width: 12px; text-align: center; }
+    .pin-off { background: #b9c0c0; color: #fff; }
+    .pin-act { background: #fff; color: #1f2a2a; border-color: #2f6f73; }
+    .pin-subj { background: #c0392b; color: #fff; font-size: 13px; padding: 6px 10px; }
+    .pin-n { display: inline-block; min-width: 20px; height: 20px; line-height: 20px; border-radius: 999px; background: #2f6f73; color: #fff; font-size: 11px; font-weight: 700; text-align: center; margin-right: 6px; }
+    tr.off .pin-n { background: #b9c0c0; }
+    @media print { .cmap { height: 260px; } }
     .condslide { position: relative; }
     .condslide input[type=range] { width: 100%; padding: 0; border: 0; accent-color: #2f6f73; position: relative; z-index: 1; background: transparent; }
     .condbox.up input[type=range] { accent-color: #1f8a55; }
@@ -305,11 +316,11 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
           (s.family !== "land" ? ", $" + data.rates.year.toLocaleString("en-CA") + " per year of age" : "") +
           " · City median $" + data.rates.medianPpsf + "/sq ft</p></section>";
 
-        html += '<section class="card"><h3 style="margin-top:0">Comparable sales</h3><table><thead><tr><th class="no-print"></th><th>Home</th><th class="r">Sold</th><th class="r">Size</th><th class="r">Beds</th><th class="r">Built</th><th class="r">Away</th><th class="r">Adjusted</th><th class="r">Weight</th></tr></thead><tbody>' +
-          data.comps.map(function (c) {
+        html += '<section class="card"><h3 style="margin-top:0">Comparable sales</h3><div class="cmap" id="map-comps"></div><table><thead><tr><th class="no-print"></th><th>Home</th><th class="r">Sold</th><th class="r">Size</th><th class="r">Beds</th><th class="r">Built</th><th class="r">Away</th><th class="r">Adjusted</th><th class="r">Weight</th></tr></thead><tbody>' +
+          data.comps.map(function (c, ci) {
             var adj = c.adjustments.map(function (a) { return "<div><span>" + esc(a.label) + "</span><span>" + signed(a.amount) + "</span></div>"; }).join("");
             return '<tr class="' + (off[c.mls] ? "off" : "") + '"><td class="no-print"><input type="checkbox" data-c="' + esc(c.mls) + '"' + (off[c.mls] ? "" : " checked") + " /></td>" +
-              "<td><button type=\"button\" class=\"lst sold\" data-ph=\"" + esc(c.mls) + "\">" + esc(c.address || "MLS® " + c.mls) + " 📷</button><br><span class=\"foot\">" + esc(c.area || "") + " · " + nice(c.type) + " · MLS® " + esc(c.mls) + "</span>" +
+              "<td><span class=\"pin-n\">" + (ci + 1) + "</span><button type=\"button\" class=\"lst sold\" data-ph=\"" + esc(c.mls) + "\">" + esc(c.address || "MLS® " + c.mls) + " 📷</button><br><span class=\"foot\">" + esc(c.area || "") + " · " + nice(c.type) + " · MLS® " + esc(c.mls) + "</span>" +
               c.flags.map(function (f) { return '<br><span class="flag">' + esc(f) + "</span>"; }).join("") +
               '<details class="adj"><summary>Adjustments</summary><div><span>Sold ' + esc(c.soldDate) + (c.listPrice ? " (listed " + k(c.listPrice) + ")" : "") + "</span><span>" + money(c.soldPrice) + "</span></div>" + adj + '<div><strong>Adjusted</strong><strong>' + money(c.adjusted) + "</strong></div></details></td>" +
               '<td class="r">' + money(c.soldPrice) + '<br><span class="foot">' + esc(c.soldDate) + "</span></td>" +
@@ -320,7 +331,7 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
       }
 
       if (data.actives.length) {
-        html += '<section class="card"><h3 style="margin-top:0">The competition: ' + data.activeCount + " similar active listings</h3><table><thead><tr><th>Home</th><th class=\"r\">Asking</th><th class=\"r\">Size</th><th class=\"r\">Beds</th><th class=\"r\">Built</th><th class=\"r\">Listed</th></tr></thead><tbody>" +
+        html += '<section class="card"><h3 style="margin-top:0">The competition: ' + data.activeCount + " similar active listings</h3><div class=\"cmap\" id=\"map-act\"></div><table><thead><tr><th>Home</th><th class=\"r\">Asking</th><th class=\"r\">Size</th><th class=\"r\">Beds</th><th class=\"r\">Built</th><th class=\"r\">Listed</th></tr></thead><tbody>" +
           data.actives.map(function (a) {
             return '<tr><td><a class="lst" href="/' + esc(city) + '/homes?mls=' + encodeURIComponent(a.mls) + '" target="_blank" rel="noopener">' + esc(a.address) + ' ↗</a><br><span class="foot">' + esc(a.area || "") + " · MLS® " + esc(a.mls) + '</span></td><td class="r">' + money(a.price) + '</td><td class="r">' + (a.sqft ? Math.round(a.sqft).toLocaleString("en-CA") : "—") + '</td><td class="r">' + (a.beds || "—") + '</td><td class="r">' + (a.year || "—") + '</td><td class="r">' + esc(String(a.listedAt || "").slice(0, 10)) + "</td></tr>";
           }).join("") + "</tbody></table></section>";
@@ -328,6 +339,7 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
       html += '<p class="foot">A market estimate for the agent\'s use, not an appraisal. Condition, renovations and views aren\'t in MLS data, so set the condition slider and untick comps that don\'t fit.</p>';
       out.innerHTML = html;
 
+      drawMaps();
       out.querySelectorAll("[data-ph]").forEach(function (bt) { bt.onclick = function () { var c = data.comps.find(function (x) { return x.mls === bt.getAttribute("data-ph"); }); openPhotos(c); }; });
       out.querySelectorAll("[data-c]").forEach(function (cb) { cb.onchange = function () { off[cb.getAttribute("data-c")] = !cb.checked; render(); }; });
       var sl = document.getElementById("cond");
@@ -335,6 +347,48 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
       if (sl) { sl.ondblclick = function () { setCond(0); sl.oninput(); }; var rb = document.getElementById("cond-reset"); if (rb) rb.onclick = function () { setCond(0); sl.oninput(); }; }
       if (sl) sl.oninput = function () { setCond(Number(sl.value)); var sm2 = summary(); var st = out.querySelectorAll(".range strong"); if (sm2) { st[0].textContent = k(sm2.lo); st[1].textContent = money(sm2.likely); st[2].textContent = k(sm2.hi); document.getElementById("wide").innerHTML = wideText(sm2); document.getElementById("lg").innerHTML = listGap(sm2); } document.getElementById("cl").textContent = condText(); document.getElementById("cn").innerHTML = condNote(sm2); };
       var pb = document.getElementById("print"); if (pb) pb.onclick = function () { window.print(); };
+    }
+
+    // cma-map-v1: subject + comps, subject + competition
+    var maps = [];
+    function baseMap(id) {
+      var el = document.getElementById(id); if (!el || !window.L) return null;
+      var m = L.map(el, { scrollWheelZoom: false });
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(m);
+      maps.push(m); return m;
+    }
+    function pinIcon(cls, text) { return L.divIcon({ className: "", html: '<div class="pin ' + cls + '">' + text + "</div>", iconSize: null }); }
+    function addSubject(m, pts) {
+      var s = data.subject; if (!s || !s.lat || !s.lng) return;
+      L.marker([s.lat, s.lng], { icon: pinIcon("pin-subj", "★ " + esc((s.address || "Subject").split(" ").slice(0, 3).join(" "))), zIndexOffset: 1000 }).addTo(m);
+      pts.push([s.lat, s.lng]);
+    }
+    function drawMaps() {
+      maps.forEach(function (m) { m.remove(); }); maps = [];
+      if (!window.L) return;
+      var mc = data.comps.length ? baseMap("map-comps") : null;
+      if (mc) {
+        var pts = []; addSubject(mc, pts);
+        data.comps.forEach(function (c, i) {
+          if (!c.lat || !c.lng) return;
+          var mk = L.marker([c.lat, c.lng], { icon: pinIcon(off[c.mls] ? "pin-off" : "pin-sold", String(i + 1)) }).addTo(mc);
+          mk.bindPopup("<strong>" + (i + 1) + ". " + esc(c.address || "MLS® " + c.mls) + "</strong><br>Sold " + money(c.soldPrice) + " · " + esc(c.soldDate) + "<br>Adjusted " + money(c.adjusted) + ' · weight ' + c.weight + '%<br><a href="#" data-pop-ph="' + esc(c.mls) + '">Photos →</a>');
+          mk.on("popupopen", function (e) { var a = e.popup.getElement().querySelector("[data-pop-ph]"); if (a) a.onclick = function (ev) { ev.preventDefault(); openPhotos(c); }; });
+          pts.push([c.lat, c.lng]);
+        });
+        if (pts.length) mc.fitBounds(pts, { padding: [30, 30], maxZoom: 16 });
+      }
+      var ma = data.actives.length ? baseMap("map-act") : null;
+      if (ma) {
+        var pa = []; addSubject(ma, pa);
+        data.actives.forEach(function (a) {
+          if (!a.lat || !a.lng) return;
+          L.marker([a.lat, a.lng], { icon: pinIcon("pin-act", k(a.price)) }).addTo(ma)
+            .bindPopup("<strong>" + esc(a.address) + "</strong><br>Asking " + money(a.price) + (a.sqft ? " · " + Math.round(a.sqft).toLocaleString("en-CA") + " sq ft" : "") + '<br><a href="/' + esc(city) + "/homes?mls=" + encodeURIComponent(a.mls) + '" target="_blank" rel="noopener">Open listing ↗</a>');
+          pa.push([a.lat, a.lng]);
+        });
+        if (pa.length) ma.fitBounds(pa, { padding: [30, 30], maxZoom: 16 });
+      }
     }
 
     // cma-photos-v1: agent-only sold listing viewer
