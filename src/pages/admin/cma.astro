@@ -155,6 +155,17 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
     .condcall-i { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; background: #e0b45a; color: #1f2a2a; font-weight: 800; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
     @media print { .condcall { background: none; color: #1f2a2a; border: 1px solid #1f2a2a; } .condcall strong { color: #1f2a2a; } }
     .condslide { position: relative; padding-top: 30px; }
+    .pr { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #d6d1c4; }
+    .pr-btn { background: #fff; color: #2f6f73; border: 1px solid #2f6f73; padding: 8px 14px; font-size: 14px; }
+    .pr-btn:hover { background: #eef5f4; }
+    .pr-busy { color: #5d6868; font-size: 14px; margin: 0; } .pr-err { color: #8a2b2b; font-size: 14px; margin: 0; }
+    .pr-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 15px; }
+    .pr-sug { color: #5d6868; font-size: 14px; }
+    .pr-apply { background: #2f6f73; color: #fff; padding: 6px 12px; font-size: 13px; }
+    .pr-on { font-size: 12px; font-weight: 700; color: #1d6b48; background: #e3f3ec; padding: 3px 8px; border-radius: 4px; }
+    .pr-sum { margin: 6px 0; font-size: 14px; }
+    .pr-areas { margin: 4px 0 6px; padding-left: 18px; font-size: 13px; line-height: 1.6; }
+    .pr-dated { color: #a12f2f; } .pr-average { color: #5d6868; } .pr-updated { color: #1d6b48; }
     .condbub { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; font-size: 13px; font-weight: 800; padding: 3px 8px; border-radius: 4px; background: #2f6f73; color: #fff; pointer-events: none; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
     .condbub::after { content: ""; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border-style: solid; border-width: 5px 5px 0; border-color: inherit; border-top-color: #2f6f73; border-left-color: transparent; border-right-color: transparent; }
     .condbub.down { background: #c0392b; } .condbub.down::after { border-top-color: #c0392b; }
@@ -319,7 +330,9 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
           if (j.nearby && !$("type").value) $("type").focus();
           return;
         }
-        data = j; off = {}; cond = j.autoCondition || 0;
+        data = j; off = {}; cond = j.autoCondition || 0; photoRead = null; photoReadBusy = false;
+        // cma-autovision-v1: fixer / development listings get their photos read automatically; the fixed % is the fallback
+        if (j.projectKind && j.subject && j.subject.mls && j.subject.image) setTimeout(function () { startPhotoRead(true); }, 0);
         fill(j.subject);
         render();
       }).catch(function (e) { out.innerHTML = '<div class="msg err">' + esc(e.message) + "</div>"; });
@@ -368,8 +381,11 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
     function projectBlock() {
       var pj = data.subject && data.subject.project; if (!pj || !pj.length) return "";
       var said = 'The description says: <em>' + pj.map(esc).join(", ") + "</em>. ";
-      if (data.projectKind === "fixer") return '<div class="projwarn"><strong>Fixer listing.</strong> ' + said + "In testing on past Nanaimo sales, the comps overvalued homes listed this way by about 20–30%, so condition has been set to <b>" + data.autoCondition + "%</b> to start. Move it if what you saw was better or worse.</div>";
-      if (data.autoCondition) return '<div class="projwarn dev"><strong>Marketed on land or development potential, with an older house.</strong> ' + said + "In testing, homes like this (built 1965 or earlier) sold about 9% below what the comps suggested; buyers pay for the lot, not the house. Condition has been set to <b>" + data.autoCondition + "%</b> to start, deliberately on the low side. Move it up if the house has real value.</div>";
+      var pr = photoRead && photoRead.auto && !photoRead.error ? photoRead : null, how;
+      if (data.projectKind === "development") how = pr ? (pr.suggested_pct < (data.autoCondition || 0) ? "condition is set from the photos (<b>" + pr.suggested_pct + "%</b>), which judged the house worse than the land discount" : "condition stays at the land discount (<b>" + (data.autoCondition || 0) + "%</b>); the photos alone suggest " + pr.suggested_pct + "% for the house itself") : photoReadBusy ? "the photos are being read (land discount " + (data.autoCondition || 0) + "% for now)" : "condition is set to <b>" + (data.autoCondition || 0) + "%</b> to start, deliberately on the low side";
+      else how = pr ? "condition is set from the photos (<b>" + pr.suggested_pct + "%</b>); the fixed " + data.autoCondition + "% is only used when photos can't be read" : photoReadBusy ? "the photos are being read to set condition (fallback " + data.autoCondition + "%)" : "condition is set to <b>" + data.autoCondition + "%</b> to start";
+      if (data.projectKind === "fixer") return '<div class="projwarn"><strong>Fixer listing.</strong> ' + said + "In testing on past Nanaimo sales, the comps overvalued homes listed this way by about 20–30%, so " + how + ". Move it if what you saw was better or worse.</div>";
+      if (data.autoCondition) return '<div class="projwarn dev"><strong>Marketed on land or development potential, with an older house.</strong> ' + said + "In testing, homes like this (built 1965 or earlier) sold about 9% below what the comps suggested; buyers pay for the lot, not the house, so " + how + ". Move it up if the house has real value.</div>";
       return '<div class="projwarn dev"><strong>Marketed on land or development potential.</strong> ' + said + "In testing, homes listed this way with newer houses sold close to the comps on average but scattered widely, because the lot can be worth more or less than the house suggests. No automatic adjustment; use the slider for the house's condition, and weigh the lot yourself.</div>";
     }
     function confBlock() {
@@ -387,10 +403,41 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
       b.textContent = cond === 0 ? "0%" : (cond > 0 ? "+" : "−") + Math.abs(cond) + "%" + (sm ? " · " + (d >= 0 ? "+" : "−") + "$" + Math.round(Math.abs(d) / 1000) + "K" : "");
       b.className = "condbub" + (cond > 0 ? " up" : cond < 0 ? " down" : "");
     }
+    // cma-vision-v1: ask Claude to read the photos and description
+    var photoRead = null, photoReadBusy = false;
+    function photoReadBlock() {
+      var s = data.subject; if (!s || !s.mls || !s.image) return "";
+      if (photoReadBusy) return '<div class="pr"><p class="pr-busy">' + (data.projectKind ? "Fixer / development listing: reading the photos and description to set condition…" : "Reading the photos and description…") + "</p></div>";
+      if (!photoRead) return '<div class="pr no-print"><button type="button" class="pr-btn" id="pr-go">📷 Read the photos</button><span class="foot"> Claude looks at the listing photos and description and suggests a condition setting.</span></div>';
+      if (photoRead.error) return '<div class="pr"><p class="pr-err">' + esc(photoRead.error) + "</p></div>";
+      var r = photoRead, pc = r.suggested_pct;
+      return '<div class="pr"><div class="pr-head"><strong>From the photos: ' + nice(r.overall) + '</strong><span class="pr-sug">suggests ' + (pc > 0 ? "+" : pc < 0 ? "−" : "") + Math.abs(pc) + "%</span>" +
+        (cond !== pc ? '<button type="button" class="pr-apply" id="pr-apply">Apply ' + (pc > 0 ? "+" : pc < 0 ? "−" : "") + Math.abs(pc) + "%</button>" : '<span class="pr-on">applied</span>') + "</div>" +
+        '<p class="pr-sum">' + esc(r.summary || "") + "</p>" +
+        '<ul class="pr-areas">' + (r.areas || []).map(function (a) { return '<li><b class="pr-' + esc(a.rating) + '">' + esc(a.area) + " · " + esc(a.rating) + "</b> " + esc(a.note) + "</li>"; }).join("") + "</ul>" +
+        '<p class="foot">Based on ' + r.photos + " photos and the description · " + esc(r.confidence || "medium") + " confidence · your call on the slider.</p></div>";
+    }
+    function startPhotoRead(auto) {
+      var forMls = data.subject.mls, condAtStart = cond;
+      photoReadBusy = true; render();
+      fetch("/admin/api/cma?city=" + encodeURIComponent(city) + "&photoread=" + encodeURIComponent(forMls)).then(function (r) { return r.json(); }).then(function (j) {
+        if (!data || data.subject.mls !== forMls) return; // a different home was valued meanwhile
+        photoRead = j; photoRead.auto = !!auto; photoReadBusy = false;
+        // fixers: the photos decide. development land: keep the land discount unless the photos say worse (buyers pay for the lot).
+        // apply the read unless the agent moved the slider while it was reading
+        if (!j.error && cond === condAtStart) cond = data.projectKind === "development" ? Math.min(j.suggested_pct, data.autoCondition || 0) : j.suggested_pct;
+        render();
+      }).catch(function (e) { photoRead = { error: e.message }; photoReadBusy = false; render(); });
+    }
+    function wirePhotoRead() {
+      var go = document.getElementById("pr-go"); if (go) go.onclick = function () { startPhotoRead(false); };
+      var ap = document.getElementById("pr-apply"); if (ap) ap.onclick = function () { cond = photoRead.suggested_pct; render(); };
+    }
     function condText() { return condLabel() + (cond ? " (" + (cond > 0 ? "+" : "") + cond + "%)" : ""); }
     function condNote(sm) {
       if (!sm) return "";
       if (!cond) return "Comps alone: <strong>" + money(sm.base) + "</strong> · no condition adjustment";
+      if (photoRead && !photoRead.error && cond === photoRead.suggested_pct) return "Comps alone: <strong>" + money(sm.base) + "</strong> → set from the photos " + (cond > 0 ? "+" : "") + cond + "%: <strong>" + money(sm.likely) + "</strong> (<span class=\"delta\">" + signed(sm.likely - sm.base) + "</span>)";
       if (data.autoCondition && cond === data.autoCondition) return "Comps alone: <strong>" + money(sm.base) + "</strong> → auto-set for " + (data.projectKind === "fixer" ? "a fixer listing " : "an older house on development land ") + cond + "%: <strong>" + money(sm.likely) + "</strong> (<span class=\"delta\">" + signed(sm.likely - sm.base) + "</span>)";
       return "Comps alone: <strong>" + money(sm.base) + "</strong> → with condition " + (cond > 0 ? "+" : "") + cond + "%: <strong>" + money(sm.likely) + "</strong> (<span class=\"delta\">" + signed(sm.likely - sm.base) + "</span>)";
     }
@@ -398,7 +445,7 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
       return '<div class="condbox' + condCls() + '"><div class="condhead"><strong>Condition adjustment</strong><span class="condval" id="cl">' + condText() + '</span></div>' +
         '<p class="condcall"><span class="condcall-i">!</span><span><strong>The comps can\'t see condition.</strong> MLS data doesn\'t know about updates, renos or wear. Set this to what you saw at the home; it moves the whole value range.</span></p>' +
         '<div class="no-print condslide"><span class="condbub" id="condbub"></span><span class="mid" aria-hidden="true"></span><input type="range" id="cond" min="-20" max="10" step="1" value="' + cond + '" list="cond-ticks" title="Double-click to reset to average" /><datalist id="cond-ticks"><option value="0"></option></datalist><div class="ticks"><span>Fixer / project −20%</span><button type="button" class="avg" id="cond-reset">Average</button><span>Updated +10%</span></div></div>' +
-        '<p class="condnote" id="cn">' + condNote(sm) + '</p></div>';
+        '<p class="condnote" id="cn">' + condNote(sm) + '</p>' + photoReadBlock() + '</div>';
     }
 
     function render() {
@@ -461,7 +508,7 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
       html += '<p class="foot">A market estimate for the agent\'s use, not an appraisal. Condition, renovations and views aren\'t in MLS data, so set the condition slider and untick comps that don\'t fit.</p>';
       out.innerHTML = html;
 
-      condBubble(summary());
+      condBubble(summary()); wirePhotoRead();
       drawMaps();
       // cma-subjopen-v1: active subject opens in the listing viewer
       out.querySelectorAll("[data-subj-open]").forEach(function (el) { el.onclick = function () {
