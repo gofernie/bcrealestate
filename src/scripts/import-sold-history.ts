@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
-import { normalizeType, getSqft, getLat, getLng, getDescription, getYearBuilt, getNormalizedLotSize } from "./rebuild-listing-rows";
+import { normalizeType, getSqft, getLat, getLng, getDescription, getYearBuilt, getNormalizedLotSize, getNormalizedAddress } from "./rebuild-listing-rows";
 
 const supabase = createClient(process.env.PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 const keyEntry = Object.entries(process.env).find(([k, v]) => /^REPLIERS\w*KEY$/i.test(k) && v);
@@ -66,6 +66,7 @@ function toRow(l: any) {
     baths: num(l?.details?.numBathrooms),
     year_built: num(safe(() => getYearBuilt(l))),
     lot_size_sqft: num(safe(() => (getNormalizedLotSize(l) as any)?.lotSizeSqft)),
+    address: String(safe(() => getNormalizedAddress(l)) ?? "").trim() || null,
     updated_at: new Date().toISOString(),
   };
 }

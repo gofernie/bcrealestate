@@ -20,7 +20,7 @@ function isKnownTownhouse(listing: any, address: string) {
     building.includes("painted village")
   );
 }
-const getNormalizedAddress = (listing: any) => {
+export const getNormalizedAddress = (listing: any) => {
   const addressObj =
     typeof listing?.address === "object" && listing.address !== null
       ? listing.address

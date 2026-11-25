@@ -34,6 +34,8 @@ function km(aLat: number, aLng: number, bLat: number, bLng: number) {
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin(dLng / 2) ** 2;
   return 12742 * Math.asin(Math.sqrt(h));
 }
+// cma-img-v1: VIREB photos are stored as relative paths on the Repliers CDN
+export const imgUrl = (v: any, size = "medium") => { const s = str(v); if (!s) return null; if (/^https?:\/\//i.test(s)) return s; return `https://cdn.repliers.io/${s.replace(/^\/+/, "")}?class=${size}`; };
 const lotOf = (r: any) => num(r?.lot_size_sqft) ?? (num(r?.lot_size_acres) ? Number(r.lot_size_acres) * 43560 : null);
 
 async function pageAll(build: (a: number, b: number) => any) {
@@ -54,7 +56,7 @@ export type Subject = {
   lat?: number | null; lng?: number | null; waterfront?: boolean | null; listPrice?: number | null; status?: string | null;
 };
 
-const ROW_COLS = "mls_number, address, normalized_type, normalized_area, area, normalized_city, city, beds, baths, sqft, year_built, lot_size_sqft, lot_size_acres, waterfront, ocean_view, lat, lng, price, status, listed_at";
+const ROW_COLS = "mls_number, address, image_url, normalized_type, normalized_area, area, normalized_city, city, beds, baths, sqft, year_built, lot_size_sqft, lot_size_acres, waterfront, ocean_view, lat, lng, price, status, listed_at";
 
 function subjectFromRow(r: any): Subject {
   return {
@@ -156,7 +158,7 @@ async function buildContext(city: string, fam: Family, cutoff = "") {
   const soldQuery = (cols: string) => pageAll((a, b) => sb.from("sold_listings").select(cols)
     .or(cityOr).gte("sold_date", since).order("sold_date", { ascending: false }).range(a, b));
   // beds/year/lot columns arrive with the 20261125 migration; fall back if they aren't there yet
-  const raw = await soldQuery(BASE + ", beds, baths, year_built, lot_size_sqft").catch(() => soldQuery(BASE));
+  const raw = await soldQuery(BASE + ", beds, baths, year_built, lot_size_sqft, address").catch(() => soldQuery(BASE + ", beds, baths, year_built, lot_size_sqft")).catch(() => soldQuery(BASE));
   const famMatch = (t: any) => { const f = familyOf(t); return f === fam || (fam === "condo" && f === "townhouse") || (fam === "townhouse" && f === "condo"); };
   let pool = raw.filter((r) => num(r.sold_price) && r.sold_date && famMatch(r.normalized_type) && !JUNK_TYPE.test(str(r.normalized_type)) && !JUNK_DESC.test(str(r.description).slice(0, 160)));
 
@@ -164,7 +166,7 @@ async function buildContext(city: string, fam: Family, cutoff = "") {
   const extra = new Map<string, any>();
   const ids = [...new Set(pool.map((r) => str(r.mls_number)))];
   for (let i = 0; i < ids.length; i += 200) {
-    const { data } = await sb.from("listing_rows").select("mls_number, address, beds, baths, year_built, lot_size_sqft, lot_size_acres, waterfront, ocean_view, normalized_area").in("mls_number", ids.slice(i, i + 200));
+    const { data } = await sb.from("listing_rows").select("mls_number, address, beds, baths, year_built, lot_size_sqft, lot_size_acres, waterfront, ocean_view, normalized_area, image_url").in("mls_number", ids.slice(i, i + 200));
     for (const r of data || []) { const k = str(r.mls_number), had = extra.get(k); if (!had || (!had.beds && r.beds)) extra.set(k, r); }
   }
 
@@ -176,11 +178,11 @@ async function buildContext(city: string, fam: Family, cutoff = "") {
     const x = extra.get(str(r.mls_number)) || {};
     const price = Number(r.sold_price), tf = timeFactor(String(r.sold_date));
     return {
-      mls: str(r.mls_number), address: str(x.address) || null, type: r.normalized_type, family: familyOf(r.normalized_type),
+      mls: str(r.mls_number), address: str(x.address) || str(r.address) || null, type: r.normalized_type, family: familyOf(r.normalized_type),
       area: str(r.normalized_area || x.normalized_area || r.raw_area) || null,
       sqft: num(r.sqft), beds: num(r.beds) ?? num(x.beds), baths: num(r.baths) ?? num(x.baths), year: num(r.year_built) ?? num(x.year_built), lot: num(r.lot_size_sqft) ?? lotOf(x),
       lat: num(r.lat) ? Number(r.lat) : null, lng: Number.isFinite(Number(r.lng)) && Number(r.lng) !== 0 ? Number(r.lng) : null,
-      waterfront: x.waterfront == null ? null : truthy(x.waterfront),
+      waterfront: x.waterfront == null ? null : truthy(x.waterfront), image: imgUrl(x.image_url, "small"),
       listPrice: num(r.list_price), soldPrice: price, soldDate: String(r.sold_date).slice(0, 10), dom: r.dom ?? null,
       days: Math.max(0, Math.round((today.getTime() - new Date(String(r.sold_date) + "T12:00:00Z").getTime()) / DAY)),
       timeFactor: tf, timePrice: price * tf,
@@ -279,7 +281,7 @@ export async function runCma(city: string, s: Subject, opts: { asOf?: string; sk
     if (fam !== "land" && s.sqft && (!num(r.sqft) || Math.abs(num(r.sqft)! / s.sqft - 1) > 0.25)) return false;
     if (s.lat && s.lng && num(r.lat) && Number(r.lng)) return km(s.lat, s.lng, Number(r.lat), Number(r.lng)) <= 3 || (!!s.area && areaKey(r.normalized_area || r.area) === areaKey(s.area));
     return !s.area || areaKey(r.normalized_area || r.area) === areaKey(s.area);
-  }).map((r: any) => ({ mls: r.mls_number, address: r.address, area: r.normalized_area || r.area, price: num(r.price), sqft: num(r.sqft), beds: num(r.beds), year: num(r.year_built), listedAt: r.listed_at, lat: num(r.lat), lng: Number.isFinite(Number(r.lng)) && Number(r.lng) !== 0 ? Number(r.lng) : null }))
+  }).map((r: any) => ({ mls: r.mls_number, address: r.address, area: r.normalized_area || r.area, price: num(r.price), sqft: num(r.sqft), beds: num(r.beds), year: num(r.year_built), listedAt: r.listed_at, image: imgUrl(r.image_url, "small"), lat: num(r.lat), lng: Number.isFinite(Number(r.lng)) && Number(r.lng) !== 0 ? Number(r.lng) : null }))
     .sort((a: any, b: any) => (a.price || 0) - (b.price || 0));
 
   const areas = [...new Set(comps0.map((c) => areaKey(c.area)).filter(Boolean))].sort();
@@ -370,4 +372,20 @@ export async function backtest(city: string, fam: Family, days = 90, includeRows
     rows: includeRows ? rows.map((r) => ({ ...r, err: Math.round(r.err * 10000) / 10000 })) : undefined,
     worst: [...rows].sort((a, b) => Math.abs(b.err) - Math.abs(a.err)).slice(0, 12).map((r) => ({ ...r, err: Math.round(r.err * 1000) / 10 })),
   };
+}
+
+/** cma-blind-v1: what the CMA would have said about one sold home using only sales from before it sold. */
+export async function blindValue(city: string, mls: string) {
+  for (const fam of ["house", "condo", "townhouse", "mobile"] as Family[]) {
+    const ctx = await getContext(city, fam);
+    const c = (ctx.comps0 as any[]).find((x) => x.mls === mls && x.family === fam);
+    if (!c) continue;
+    const s: Subject = { mls: c.mls, address: c.address, type: c.type, family: fam, area: c.area, sqft: c.sqft, beds: c.beds, year: c.year, lot: c.lot, lat: c.lat, lng: c.lng, waterfront: c.waterfront };
+    const r: any = await runCma(city, s, { asOf: c.soldDate, skipActives: true });
+    const sm = summarize(r.comps);
+    if (!sm) return { error: "Not enough earlier sales to value this one blind." };
+    const pred = sm.likely / c.timeFactor;
+    return { mls, sold: c.soldPrice, soldDate: c.soldDate, estimate: Math.round(pred / 1000) * 1000, errPct: Math.round((pred / c.soldPrice - 1) * 1000) / 10, confidence: r.confidence?.level, comps: r.comps.length };
+  }
+  return { error: "This sale isn't in the cached sold data." };
 }

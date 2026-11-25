@@ -4,6 +4,9 @@ import AdminTopNav from "../../components/AdminTopNav.astro";
 export const prerender = false;
 const city = (Astro.url.searchParams.get("city") || "nanaimo").toLowerCase();
 const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+// cma-map-v1: same light basemap as the site's listing modal
+const jawgToken = import.meta.env.PUBLIC_JAWG_ACCESS_TOKEN || "";
+const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d0562bb6d/{z}/{x}/{y}.png?access-token=${encodeURIComponent(jawgToken)}` : "";
 ---
 <html lang="en">
 <head>
@@ -46,21 +49,56 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
     a.lst:hover { text-decoration: underline; }
     button.lst { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: #2f6f73; cursor: pointer; text-align: left; }
     button.lst:hover { text-decoration: underline; }
-    .pv { position: fixed; inset: 0; background: rgba(15, 25, 25, .72); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .pv { position: fixed; inset: 0; background: rgba(15, 25, 25, .72); z-index: 1000; display: flex; align-items: flex-start; padding-top: 3vh; justify-content: center; padding: 20px; }
     .pv[hidden] { display: none; }
-    .pv-box { background: #fff; border-radius: 14px; width: min(980px, 100%); max-height: 94vh; overflow: auto; padding: 16px 18px; }
+    .pv-box { background: #f7f4ec; border-radius: 6px; width: min(980px, 100%); max-height: 94vh; overflow: hidden; display: flex; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+    .pv-scroll { flex: 1; overflow-y: auto; max-height: calc(94vh - 12px); margin: 6px 4px 6px 0; padding: 10px 14px 10px 18px; scrollbar-width: thin; scrollbar-color: #c9c3b4 transparent; }
+    .pv-scroll::-webkit-scrollbar { width: 8px; } .pv-scroll::-webkit-scrollbar-thumb { background: #c9c3b4; border-radius: 4px; } .pv-scroll::-webkit-scrollbar-track { background: transparent; }
     .pv-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
     .pv-title { font-size: 18px; }
     .pv-facts { font-size: 13px; color: #5d6868; margin-top: 4px; line-height: 1.5; }
-    .pv-close { background: #eef2f1; color: #1f2a2a; font-size: 22px; line-height: 1; padding: 6px 12px; }
-    .pv-stage { position: relative; background: #111; border-radius: 10px; display: flex; align-items: center; justify-content: center; height: min(58vh, 560px); }
+    .pv-nav { display: inline-flex; align-items: center; gap: 6px; }
+    .pv-nav button { background: #fff; color: #2f6f73; border: 1px solid #d6d1c4; border-radius: 4px; padding: 7px 11px; font-size: 13px; }
+    .pv-nav button:hover { background: #eef5f4; }
+    .pv-pos { font-size: 12px; color: #5d6868; min-width: 52px; text-align: center; white-space: nowrap; }
+    @media (max-width: 700px) { .pv-head { flex-wrap: wrap; } .pv-actions { flex-wrap: wrap; } }
+    .pv-actions { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+    .pv-tabs { display: inline-flex; border: 1px solid #d6d1c4; border-radius: 4px; overflow: hidden; background: #fff; }
+    .pv-tabs button { background: #fff; color: #2f6f73; border-radius: 0; padding: 7px 14px; font-size: 13px; }
+    .pv-tabs button + button { border-left: 1px solid #d6d1c4; }
+    .pv-tabs button.on { background: #2f6f73; color: #fff; }
+    .pv-map { position: absolute; inset: 0; border-radius: 4px; z-index: 3; background: #e9eef0; }
+    .pv-nomap { color: #5d6868; text-align: center; margin-top: 25%; }
+    .pin-big { font-size: 13px; padding: 6px 10px; }
+    .pv-close { background: #eef2f1; color: #1f2a2a; font-size: 22px; line-height: 1; padding: 6px 12px;  border-radius: 4px; }
+    .pv-stage { position: relative; background: #111; border-radius: 4px; display: flex; align-items: center; justify-content: center; height: min(58vh, 560px); }
     .pv-main { max-width: 100%; max-height: 100%; object-fit: contain; }
     .pv-prev, .pv-next { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,.85); color: #1f2a2a; font-size: 28px; padding: 4px 14px; }
     .pv-prev { left: 10px; } .pv-next { right: 10px; }
     .pv-count { position: absolute; bottom: 8px; right: 12px; color: #fff; font-size: 12px; background: rgba(0,0,0,.5); padding: 2px 8px; border-radius: 999px; }
     .pv-thumbs { display: flex; gap: 6px; overflow-x: auto; padding: 8px 0; }
-    .pv-thumbs img { height: 60px; border-radius: 6px; cursor: pointer; opacity: .6; flex: 0 0 auto; }
+    .pv-thumbs img { height: 60px; border-radius: 3px; cursor: pointer; opacity: .6; flex: 0 0 auto; }
     .pv-thumbs img.on { opacity: 1; outline: 2px solid #2f6f73; }
+    .pv-price { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 10px; }
+    .pv-price > div { background: #fff; border: 1px solid #e4e0d6; border-radius: 4px; padding: 8px 12px; min-width: 120px; }
+    .pv-price span, .pv-tile span { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #5d6868; }
+    .pv-price strong { display: block; font-size: 24px; line-height: 1.2; color: #1f2a2a; }
+    .pv-price em, .pv-tile em { display: block; font-style: normal; font-size: 12px; color: #5d6868; }
+    .pv-price .pv-cma { background: #e6efee; border-color: #c6dcda; } .pv-price .pv-cma strong { color: #2f6f73; }
+    .pv-price .pv-blind.good { background: #e3f3ec; border-color: #b9dfca; } .pv-price .pv-blind.good b { color: #1d6b48; }
+    .pv-price .pv-blind.ok { background: #fdf3dc; border-color: #ecd9a8; } .pv-price .pv-blind.ok b { color: #7a5a0c; }
+    .pv-price .pv-blind.miss { background: #fbefef; border-color: #efcaca; } .pv-price .pv-blind.miss b { color: #a12f2f; }
+    .pv-price .pv-cut { background: #fbefef; border-color: #efcaca; } .pv-price .pv-cut strong { color: #a12f2f; }
+    .pv-tiles { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 4px 2px 10px; }
+    .pv-tile { display: inline-flex; align-items: baseline; gap: 6px; font-size: 15px; }
+    .pv-tile strong { font-size: 15px; font-weight: 700; color: #1f2a2a; }
+    .pv-tile span { display: inline !important; }
+    .pv-tile em { display: inline !important; }
+    .pv-links { font-size: 13px; color: #5d6868; margin: 2px 0 10px; } .pv-links a { color: #2f6f73; font-weight: 600; }
+    .pv-roomsbox { margin: 8px 0; } .pv-roomsbox summary { cursor: pointer; font-weight: 700; color: #2f6f73; }
+    .pv-roomgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 18px; margin-top: 6px; }
+    .pv-roomgrid h4 { margin: 6px 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: #5d6868; }
+    .pv-roomgrid p { display: flex; justify-content: space-between; margin: 0; font-size: 13px; border-bottom: 1px dotted #e4e0d6; padding: 2px 0; }
     .pv-desc { white-space: pre-line; font-size: 14px; line-height: 1.55; margin: 6px 0 10px; }
     .tip { background: #eef2f1; border-radius: 10px; padding: 10px 14px; font-size: 14px; margin: -8px 0 18px; color: #1f2a2a; }
     .buyernote { background: #eef2f1; border-radius: 10px; padding: 8px 12px; font-size: 13px; margin: 4px auto 10px; max-width: 760px; text-align: center; }
@@ -73,12 +111,27 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
     .conf-high { background: #e3f3ec; color: #1d6b48; }
     .conf-medium { background: #fdf3dc; color: #7a5a0c; }
     .conf-low { background: #f6e3e3; color: #8a2b2b; }
+    .cmap .leaflet-popup-content-wrapper { border-radius: 6px; padding: 0; box-shadow: 0 4px 18px rgba(0,0,0,.25); }
+    .cmap .leaflet-popup-content { margin: 0; width: 250px !important; font-family: "DM Sans", system-ui, sans-serif; line-height: 1.35; }
+    .pop-t { font-size: 14px; font-weight: 700; color: #1f2a2a; margin-bottom: 2px; }
+    .pop-p { font-size: 18px; font-weight: 700; color: #1f2a2a; } .pop-p span { font-size: 12px; font-weight: 500; color: #5d6868; margin-left: 6px; }
+    .pop-m { font-size: 12px; color: #5d6868; margin: 2px 0 6px; } .pop-m b { color: #2f6f73; }
+    .cmap a.pop-a { display: inline-block; font-size: 12px; font-weight: 700; color: #2f6f73; text-decoration: none; border: 1px solid #c6dcda; background: #eef5f4; border-radius: 4px; padding: 4px 9px; }
+    .cmap a.pop-a:hover { background: #e0eeec; }
+    .pop > :not(.pop-img) { margin-left: 12px; margin-right: 12px; }
+    .pop > .pop-t { margin-top: 10px; } .pop > :last-child { margin-bottom: 12px; }
+    .cmap .leaflet-popup-close-button { top: 7px !important; right: 7px !important; width: 26px !important; height: 26px !important; border-radius: 50%; background: rgba(255,255,255,.92) !important; color: #1f2a2a !important; font: 700 18px/24px "DM Sans", system-ui, sans-serif !important; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,.3); z-index: 2; }
+    .cmap .leaflet-popup-close-button span { line-height: 24px; }
+    .cmap .leaflet-popup-close-button:hover { background: #fff !important; }
+    .pop-img { display: block; width: 100%; height: 140px; object-fit: cover; border-radius: 6px 6px 0 0; margin: 0; cursor: pointer; background: #eee; }
     .cmap { height: 340px; border-radius: 10px; margin: 0 0 14px; border: 1px solid #e4e0d6; z-index: 0; }
     .pin { display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; font: 700 12px/1 "DM Sans", system-ui, sans-serif; padding: 5px 7px; border-radius: 999px; box-shadow: 0 1px 4px rgba(0,0,0,.35); border: 2px solid #fff; }
     .pin-sold { background: #2f6f73; color: #fff; min-width: 12px; text-align: center; }
     .pin-off { background: #b9c0c0; color: #fff; }
     .pin-act { background: #fff; color: #1f2a2a; border-color: #2f6f73; }
-    .pin-subj { background: #c0392b; color: #fff; font-size: 13px; padding: 6px 10px; }
+    .pin-subj { background: #c0392b; color: #fff; font-size: 13px; padding: 6px 10px; position: relative; transform: translate(-50%, calc(-100% - 11px)); }
+    .pin-subj::after { content: ""; position: absolute; left: 50%; bottom: -9px; margin-left: -7px; border-style: solid; border-width: 9px 7px 0; border-color: #c0392b transparent transparent; }
+    .pin-subj::before { content: ""; position: absolute; left: 50%; bottom: -20px; margin-left: -6px; width: 8px; height: 8px; border-radius: 50%; background: #c0392b; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
     .pin-n { display: inline-block; min-width: 20px; height: 20px; line-height: 20px; border-radius: 999px; background: #2f6f73; color: #fff; font-size: 11px; font-weight: 700; text-align: center; margin-right: 6px; }
     tr.off .pin-n { background: #b9c0c0; }
     @media print { .cmap { height: 260px; } }
@@ -112,7 +165,7 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
 </head>
 <body>
   <div class="no-print"><AdminTopNav /></div>
-  <main class="wrap" data-city={city}>
+  <main class="wrap" data-city={city} data-tiles={tileUrl}>
     <p class="sub no-print" style="margin:0">Agent tool · not shown on any public page</p>
     <h1>Market valuation · {cityLabel}</h1>
     <p class="sub">Comparable sales from the cached sold data, time-adjusted with the {cityLabel} index.</p>
@@ -167,12 +220,14 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
 
     <div id="out"></div>
     <div id="pv" class="pv" hidden>
-      <div class="pv-box" role="dialog" aria-modal="true">
-        <div class="pv-head"><div><strong class="pv-title"></strong><div class="pv-facts"></div></div><button type="button" class="pv-close" aria-label="Close">×</button></div>
-        <div class="pv-stage"><button type="button" class="pv-prev" aria-label="Previous">‹</button><img class="pv-main" alt="" /><button type="button" class="pv-next" aria-label="Next">›</button><span class="pv-count"></span></div>
+      <div class="pv-box" role="dialog" aria-modal="true"><div class="pv-scroll">
+        <div class="pv-head"><div><strong class="pv-title"></strong><div class="pv-facts"></div></div><div class="pv-actions"><div class="pv-nav"><button type="button" class="pv-lprev" aria-label="Previous listing">‹ Prev</button><span class="pv-pos"></span><button type="button" class="pv-lnext" aria-label="Next listing">Next ›</button></div><div class="pv-tabs"><button type="button" data-pv="photos" class="on">Photos</button><button type="button" data-pv="map">Map</button></div><button type="button" class="pv-close" aria-label="Close">×</button></div></div>
+        <div class="pv-details"></div>
+        <div class="pv-stage"><button type="button" class="pv-prev" aria-label="Previous">‹</button><img class="pv-main" alt="" /><button type="button" class="pv-next" aria-label="Next">›</button><span class="pv-count"></span><div class="pv-map" hidden></div></div>
         <div class="pv-thumbs"></div>
+        <div class="pv-rooms"></div>
         <p class="pv-desc"></p>
-        <p class="foot" style="margin:0">Sold listing details for your own use. Don't share these photos or sold details publicly.</p>
+        <p class="foot pv-warn" style="margin:0">Sold listing details for your own use. Don't share these photos or sold details publicly.</p></div>
       </div>
     </div>
   </main>
@@ -333,13 +388,14 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
       if (data.actives.length) {
         html += '<section class="card"><h3 style="margin-top:0">The competition: ' + data.activeCount + " similar active listings</h3><div class=\"cmap\" id=\"map-act\"></div><table><thead><tr><th>Home</th><th class=\"r\">Asking</th><th class=\"r\">Size</th><th class=\"r\">Beds</th><th class=\"r\">Built</th><th class=\"r\">Listed</th></tr></thead><tbody>" +
           data.actives.map(function (a) {
-            return '<tr><td><a class="lst" href="/' + esc(city) + '/homes?mls=' + encodeURIComponent(a.mls) + '" target="_blank" rel="noopener">' + esc(a.address) + ' ↗</a><br><span class="foot">' + esc(a.area || "") + " · MLS® " + esc(a.mls) + '</span></td><td class="r">' + money(a.price) + '</td><td class="r">' + (a.sqft ? Math.round(a.sqft).toLocaleString("en-CA") : "—") + '</td><td class="r">' + (a.beds || "—") + '</td><td class="r">' + (a.year || "—") + '</td><td class="r">' + esc(String(a.listedAt || "").slice(0, 10)) + "</td></tr>";
+            return '<tr><td><button type="button" class="lst" data-act="' + esc(a.mls) + '">' + esc(a.address) + ' 📷</button><br><span class="foot">' + esc(a.area || "") + " · MLS® " + esc(a.mls) + '</span></td><td class="r">' + money(a.price) + '</td><td class="r">' + (a.sqft ? Math.round(a.sqft).toLocaleString("en-CA") : "—") + '</td><td class="r">' + (a.beds || "—") + '</td><td class="r">' + (a.year || "—") + '</td><td class="r">' + esc(String(a.listedAt || "").slice(0, 10)) + "</td></tr>";
           }).join("") + "</tbody></table></section>";
       }
       html += '<p class="foot">A market estimate for the agent\'s use, not an appraisal. Condition, renovations and views aren\'t in MLS data, so set the condition slider and untick comps that don\'t fit.</p>';
       out.innerHTML = html;
 
       drawMaps();
+      out.querySelectorAll("[data-act]").forEach(function (bt) { bt.onclick = function () { var a = data.actives.find(function (x) { return String(x.mls) === bt.getAttribute("data-act"); }); openActive(a); }; });
       out.querySelectorAll("[data-ph]").forEach(function (bt) { bt.onclick = function () { var c = data.comps.find(function (x) { return x.mls === bt.getAttribute("data-ph"); }); openPhotos(c); }; });
       out.querySelectorAll("[data-c]").forEach(function (cb) { cb.onchange = function () { off[cb.getAttribute("data-c")] = !cb.checked; render(); }; });
       var sl = document.getElementById("cond");
@@ -354,9 +410,13 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
     function baseMap(id) {
       var el = document.getElementById(id); if (!el || !window.L) return null;
       var m = L.map(el, { scrollWheelZoom: false });
-      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(m);
+      var tiles = root.getAttribute("data-tiles");
+      L.tileLayer(tiles || "https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: tiles ? 22 : 19, attribution: tiles ? '&copy; <a href="https://www.jawg.io/" target="_blank" rel="noopener">Jawg Maps</a> &copy; OpenStreetMap' : "&copy; OpenStreetMap" }).addTo(m);
       maps.push(m); return m;
     }
+    function fixCase(s) { return String(s || "").replace(/\b([A-Z])([A-Z]{2,})\b/g, function (w, a, b) { return a + b.toLowerCase(); }); }
+    function prettyDate(d) { try { return new Date(String(d).slice(0, 10) + "T12:00:00").toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" }); } catch (e) { return d; } }
+    function popImg(u) { return u ? '<img class="pop-img" src="' + esc(u) + '" alt="" loading="lazy" />' : ""; }
     function pinIcon(cls, text) { return L.divIcon({ className: "", html: '<div class="pin ' + cls + '">' + text + "</div>", iconSize: null }); }
     function addSubject(m, pts) {
       var s = data.subject; if (!s || !s.lat || !s.lng) return;
@@ -372,8 +432,8 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
         data.comps.forEach(function (c, i) {
           if (!c.lat || !c.lng) return;
           var mk = L.marker([c.lat, c.lng], { icon: pinIcon(off[c.mls] ? "pin-off" : "pin-sold", String(i + 1)) }).addTo(mc);
-          mk.bindPopup("<strong>" + (i + 1) + ". " + esc(c.address || "MLS® " + c.mls) + "</strong><br>Sold " + money(c.soldPrice) + " · " + esc(c.soldDate) + "<br>Adjusted " + money(c.adjusted) + ' · weight ' + c.weight + '%<br><a href="#" data-pop-ph="' + esc(c.mls) + '">Photos →</a>');
-          mk.on("popupopen", function (e) { var a = e.popup.getElement().querySelector("[data-pop-ph]"); if (a) a.onclick = function (ev) { ev.preventDefault(); openPhotos(c); }; });
+          mk.bindPopup('<div class="pop">' + popImg(c.image) + '<div class="pop-t">' + (i + 1) + ". " + esc(fixCase(c.address) || "MLS® " + c.mls) + '</div><div class="pop-p">' + money(c.soldPrice) + "<span>sold " + prettyDate(c.soldDate) + '</span></div><div class="pop-m">Adjusted <b>' + money(c.adjusted) + "</b> · weight " + c.weight + '%</div><a href="#" class="pop-a" data-pop-ph="' + esc(c.mls) + '">Photos &amp; details →</a></div>', { maxWidth: 260, minWidth: 240 });
+          mk.on("popupopen", function (e) { e.popup.getElement().querySelectorAll("[data-pop-ph], .pop-img").forEach(function (a) { a.onclick = function (ev) { ev.preventDefault(); openPhotos(c); }; }); });
           pts.push([c.lat, c.lng]);
         });
         if (pts.length) mc.fitBounds(pts, { padding: [30, 30], maxZoom: 16 });
@@ -384,7 +444,7 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
         data.actives.forEach(function (a) {
           if (!a.lat || !a.lng) return;
           L.marker([a.lat, a.lng], { icon: pinIcon("pin-act", k(a.price)) }).addTo(ma)
-            .bindPopup("<strong>" + esc(a.address) + "</strong><br>Asking " + money(a.price) + (a.sqft ? " · " + Math.round(a.sqft).toLocaleString("en-CA") + " sq ft" : "") + '<br><a href="/' + esc(city) + "/homes?mls=" + encodeURIComponent(a.mls) + '" target="_blank" rel="noopener">Open listing ↗</a>');
+            .bindPopup('<div class="pop">' + popImg(a.image) + '<div class="pop-t">' + esc(fixCase(a.address)) + '</div><div class="pop-p">' + money(a.price) + "<span>asking</span></div><div class=\"pop-m\">" + [a.sqft && Math.round(a.sqft).toLocaleString("en-CA") + " sq ft", a.beds && a.beds + " bed", a.year && "built " + a.year].filter(Boolean).join(" · ") + '</div><a href="#" class="pop-a" data-pop-act="1">Photos &amp; details →</a></div>', { maxWidth: 260, minWidth: 240 }).on("popupopen", function (e) { e.popup.getElement().querySelectorAll("[data-pop-act], .pop-img").forEach(function (l) { l.onclick = function (ev) { ev.preventDefault(); openActive(a); }; }); });
           pa.push([a.lat, a.lng]);
         });
         if (pa.length) ma.fitBounds(pa, { padding: [30, 30], maxZoom: 16 });
@@ -397,19 +457,135 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
       if (!pvImgs.length) return; pvI = (i + pvImgs.length) % pvImgs.length;
       pv.querySelector(".pv-main").src = pvImgs[pvI];
       pv.querySelector(".pv-count").textContent = (pvI + 1) + " / " + pvImgs.length;
-      pv.querySelectorAll(".pv-thumbs img").forEach(function (im, k) { im.classList.toggle("on", k === pvI); if (k === pvI) im.scrollIntoView({ block: "nearest", inline: "center" }); });
+      pv.querySelectorAll(".pv-thumbs img").forEach(function (im, k) { im.classList.toggle("on", k === pvI); if (k === pvI) { var st = im.parentNode; st.scrollLeft = im.offsetLeft - st.clientWidth / 2 + im.clientWidth / 2; } });
     }
-    function openPhotos(c) {
+    function pvClear() { pv.querySelector(".pv-main").removeAttribute("src"); pv.querySelector(".pv-thumbs").innerHTML = ""; pv.querySelector(".pv-desc").textContent = "Loading…"; }
+    function openActive(a) { pvClear(); openListing("active", a); }
+    function openPhotos(c) { pvClear(); openListing("sold", c); }
+    // cma-pvnav-v1: step through the list the viewer was opened from (ticked comps, or the competition)
+    function pvList(kind) { return kind === "sold" ? data.comps.filter(function (c) { return !off[c.mls]; }) : data.actives; }
+    function pvStep(d) {
+      if (!pvCur) return; var L2 = pvList(pvCur.kind), i = L2.indexOf(pvCur.o); if (i < 0 || L2.length < 2) return;
+      var mode = pv.querySelector(".pv-map").hidden ? "photos" : "map";
+      openListing(pvCur.kind, L2[(i + d + L2.length) % L2.length]);
+      if (mode === "map") pvMode("map");
+    }
+    pv.querySelector(".pv-lprev").onclick = function () { pvStep(-1); };
+    pv.querySelector(".pv-lnext").onclick = function () { pvStep(1); };
+    function tile(label, value, sub) { return value == null || value === "" ? "" : '<div class="pv-tile"><span>' + label + "</span><strong>" + value + "</strong>" + (sub ? "<em>" + sub + "</em>" : "") + "</div>"; }
+    function daysSince(d) { if (!d) return null; var n = Math.round((Date.now() - new Date(String(d).slice(0, 10) + "T12:00:00").getTime()) / 864e5); return n >= 0 ? n : null; }
+    function pvDetails(kind, o, j) {
+      j = j || {};
+      var sqft = o.sqft || j.sqft, beds = o.beds || j.beds, baths = o.baths || j.baths, year = o.year || j.year, lot = o.lot || j.lot;
+      var price = kind === "sold" ? o.soldPrice : (o.price || j.listPrice);
+      var html = '<div class="pv-price">';
+      if (kind === "sold") {
+        var list = o.listPrice || j.boardListPrice, orig = j.originalPrice;
+        var stl = list ? Math.round((o.soldPrice / list) * 1000) / 10 : null;
+        html += "<div><span>Sold</span><strong>" + money(o.soldPrice) + "</strong><em>" + esc(o.soldDate) + "</em></div>";
+        if (list) html += "<div><span>Last asking</span><strong>" + money(list) + "</strong><em>" + (stl ? stl + "% sale-to-list" : "") + "</em></div>";
+        if (orig && list && orig > list) html += "<div><span>Original asking</span><strong>" + money(orig) + "</strong><em>cut " + Math.round((1 - list / orig) * 1000) / 10 + "% before selling</em></div>";
+        if (o.dom != null) html += "<div><span>Days on market</span><strong>" + o.dom + "</strong></div>";
+        html += '<div class="pv-cma"><span>Adjusted to your subject</span><strong>' + money(o.adjusted) + "</strong><em>weight " + o.weight + "% in this CMA</em></div>";
+        html += '<div class="pv-blind" id="pv-blind"><span>Our estimate before it sold</span><strong>…</strong><em>checking the track record</em></div>';
+      } else {
+        var dom = daysSince(j.listedAt || o.listedAt), orig2 = j.originalPrice;
+        html += "<div><span>Asking</span><strong>" + money(price) + "</strong><em>" + (j.listedAt || o.listedAt ? "listed " + esc(String(j.listedAt || o.listedAt).slice(0, 10)) : "") + "</em></div>";
+        if (dom != null) html += "<div><span>Days on market</span><strong>" + dom + "</strong></div>";
+        if (orig2 && price && orig2 > price) html += '<div class="pv-cut"><span>Price cut</span><strong>−' + money(orig2 - price) + "</strong><em>from " + money(orig2) + " (−" + Math.round((1 - price / orig2) * 1000) / 10 + "%)" + (j.lastPriceChange ? " · " + esc(j.lastPriceChange) : "") + "</em></div>";
+        else if (orig2) html += "<div><span>Price changes</span><strong>None</strong><em>still at original asking</em></div>";
+      }
+      html += "</div><div class=\"pv-tiles\">" +
+        tile("Beds", beds) + tile("Baths", baths) +
+        tile("Finished sq ft", sqft ? Math.round(sqft).toLocaleString("en-CA") : null) +
+        tile("$ / sq ft", price && sqft ? "$" + Math.round(price / sqft) : null, kind === "sold" ? "sold" : "asking") +
+        tile("Built", year, year ? (new Date().getFullYear() - year) + " yrs old" : "") +
+        tile("Lot", lot ? Math.round(lot).toLocaleString("en-CA") + " sq ft" : null, lot ? (lot / 43560).toFixed(2) + " acres" : "") +
+        tile("Type", nice(/^(sale|lease|rent)$/i.test(String(j.propertyType || "")) ? o.type : (j.propertyType || o.type))) +
+        tile("Area", nice(o.area || j.area)) +
+        (o.distKm != null ? tile("From subject", o.distKm + " km") : "") +
+        tile("Waterfront", j.waterfront ? nice(j.waterfront) : null) + tile("View", j.view ? nice(j.view) : null) +
+        tile("Building", j.building && String(j.building).toLowerCase() !== String(o.area || j.area || "").toLowerCase() ? esc(j.building) : null) +
+        "</div>";
+      var links = [kind === "active" ? '<a href="/' + esc(city) + "/homes?mls=" + encodeURIComponent(o.mls) + '" target="_blank" rel="noopener">Full listing on the site ↗</a>' : "",
+        j.tour ? '<a href="' + esc(j.tour) + '" target="_blank" rel="noopener">Virtual tour ↗</a>' : "",
+        j.realtorCa ? '<a href="' + esc(j.realtorCa) + '" target="_blank" rel="noopener">REALTOR.ca ↗</a>' : "",
+        "MLS® " + esc(o.mls), j.brokerage ? "Listed by " + esc(j.brokerage) : ""].filter(Boolean);
+      return html + '<p class="pv-links">' + links.join(" · ") + "</p>";
+    }
+    // cma-blind-v1: value this sold comp the way a backtest does, with only earlier sales, and compare with what it sold for
+    var blindCache = {};
+    function pvBlind(o) {
+      var paint = function (b) {
+        var el = document.getElementById("pv-blind"); if (!el || pvCur.o !== o) return;
+        if (!b || b.error) { el.innerHTML = "<span>Our estimate before it sold</span><strong>—</strong><em>" + esc(b && b.error || "not available") + "</em>"; return; }
+        var a = Math.abs(b.errPct), cls = a <= 5 ? "good" : a <= 10 ? "ok" : "miss";
+        el.className = "pv-blind " + cls;
+        el.innerHTML = "<span>Our estimate before it sold</span><strong>" + money(b.estimate) + '</strong><em><b>' + (a < 0.5 ? "spot on" : a + "% " + (b.errPct > 0 ? "high" : "low")) + "</b> vs " + money(b.sold) + " actual" + (b.confidence ? " · " + esc(b.confidence) + " confidence" : "") + "</em>";
+      };
+      if (blindCache[o.mls]) return paint(blindCache[o.mls]);
+      fetch("/admin/api/cma?city=" + encodeURIComponent(city) + "&blind1=" + encodeURIComponent(o.mls)).then(function (r) { return r.json(); }).then(function (b) { blindCache[o.mls] = b; paint(b); }).catch(function () { paint(null); });
+    }
+    function pvRooms(rooms) {
+      if (!rooms || !rooms.length) return "";
+      var lv = {}; rooms.forEach(function (r) { var k = r.level || "Other"; (lv[k] = lv[k] || []).push(r); });
+      return '<details class="pv-roomsbox" open><summary>Room sizes (' + rooms.length + ")</summary><div class=\"pv-roomgrid\">" + Object.keys(lv).map(function (k) {
+        return '<div><h4>' + esc(k) + "</h4>" + lv[k].map(function (r) { return "<p><span>" + esc(r.name) + "</span><span>" + esc(r.size || "") + "</span></p>"; }).join("") + "</div>";
+      }).join("") + "</div></details>";
+    }
+    // cma-pvmap-v1: swap the photos for a map of this home and the subject
+    var pvMapObj = null, pvCur = null;
+    function pvMode(mode) {
+      var isMap = mode === "map", st = pv.querySelector(".pv-stage");
+      pv.querySelectorAll(".pv-tabs button").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-pv") === mode); });
+      st.querySelectorAll(".pv-main, .pv-prev, .pv-next, .pv-count").forEach(function (el) { el.style.visibility = isMap ? "hidden" : ""; });
+      pv.querySelector(".pv-thumbs").style.display = isMap ? "none" : "";
+      var mp = pv.querySelector(".pv-map"); mp.hidden = !isMap;
+      if (!isMap || !window.L || !pvCur) return;
+      var o = pvCur.o, s = data.subject;
+      if (pvMapObj) { pvMapObj.remove(); pvMapObj = null; }
+      if (!o.lat || !o.lng) { mp.innerHTML = '<p class="pv-nomap">No map position for this listing.</p>'; return; }
+      mp.innerHTML = "";
+      pvMapObj = L.map(mp, { scrollWheelZoom: true });
+      var tiles = root.getAttribute("data-tiles");
+      L.tileLayer(tiles || "https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: tiles ? 22 : 19, attribution: tiles ? "&copy; Jawg Maps &copy; OpenStreetMap" : "&copy; OpenStreetMap" }).addTo(pvMapObj);
+      var label = pvCur.kind === "sold" ? money(o.soldPrice) + " sold" : money(o.price) + " asking";
+      L.marker([o.lat, o.lng], { icon: pinIcon(pvCur.kind === "sold" ? "pin-sold pin-big" : "pin-act pin-big", esc(label)), zIndexOffset: 500 }).addTo(pvMapObj);
+      var pts = [[o.lat, o.lng]];
+      if (s && s.lat && s.lng && !(Math.abs(s.lat - o.lat) < 1e-6 && Math.abs(s.lng - o.lng) < 1e-6)) {
+        L.marker([s.lat, s.lng], { icon: pinIcon("pin-subj", "★ " + esc((s.address || "Subject").split(" ").slice(0, 3).join(" "))), zIndexOffset: 1000 }).addTo(pvMapObj);
+        L.polyline([[s.lat, s.lng], [o.lat, o.lng]], { color: "#c0392b", weight: 2, dashArray: "5 6", opacity: .8 }).addTo(pvMapObj);
+        pts.push([s.lat, s.lng]);
+      }
+      setTimeout(function () { pvMapObj.invalidateSize(); if (pts.length > 1) pvMapObj.fitBounds(pts, { padding: [60, 60], maxZoom: 16 }); else pvMapObj.setView(pts[0], 16); }, 30);
+    }
+    pv.querySelectorAll(".pv-tabs button").forEach(function (b) { b.onclick = function () { pvMode(b.getAttribute("data-pv")); }; });
+    function openListing(kind, o) {
+      pvCur = { kind: kind, o: o }; pvMode("photos");
+      var L3 = pvList(kind), pos = L3.indexOf(o);
+      pv.querySelector(".pv-pos").textContent = pos >= 0 ? (pos + 1) + " of " + L3.length : "";
+      pv.querySelector(".pv-nav").style.display = L3.length > 1 && pos >= 0 ? "" : "none";
       pv.hidden = false; document.body.style.overflow = "hidden";
-      pv.querySelector(".pv-title").textContent = c.address || "MLS® " + c.mls;
-      pv.querySelector(".pv-facts").innerHTML = "Sold <strong>" + money(c.soldPrice) + "</strong> on " + esc(c.soldDate) + (c.listPrice ? " · listed " + money(c.listPrice) : "") + (c.dom != null ? " · " + c.dom + " days on market" : "") + "<br>" + [c.sqft && Math.round(c.sqft).toLocaleString("en-CA") + " sq ft", c.beds && c.beds + " bed", c.baths && c.baths + " bath", c.year && "built " + c.year, c.lot && Math.round(c.lot).toLocaleString("en-CA") + " sq ft lot"].filter(Boolean).join(" · ") + " · adjusted <strong>" + money(c.adjusted) + "</strong>";
-      pv.querySelector(".pv-main").removeAttribute("src"); pv.querySelector(".pv-thumbs").innerHTML = ""; pv.querySelector(".pv-desc").textContent = "Loading photos…"; pv.querySelector(".pv-count").textContent = "";
-      fetch("/admin/api/cma?photos=" + encodeURIComponent(c.mls)).then(function (r) { return r.json(); }).then(function (j) {
+      pv.querySelector(".pv-scroll").scrollTop = 0;
+      pv.querySelector(".pv-title").textContent = o.address || "MLS® " + o.mls;
+      pv.querySelector(".pv-warn").hidden = kind !== "sold";
+      pv.querySelector(".pv-facts").innerHTML = "";
+      var stepping = !!pv.querySelector(".pv-main").getAttribute("src");
+      if (!stepping) { pv.querySelector(".pv-details").innerHTML = pvDetails(kind, o, null); pv.querySelector(".pv-rooms").innerHTML = ""; }
+      // keep the last photo and text in place until the next listing loads, so nothing jumps
+      var wasOpen = !!pv.querySelector(".pv-main").getAttribute("src");
+      if (!wasOpen) { pv.querySelector(".pv-thumbs").innerHTML = ""; pv.querySelector(".pv-desc").textContent = "Loading…"; }
+      pv.querySelector(".pv-count").textContent = "";
+      fetch("/admin/api/cma?photos=" + encodeURIComponent(o.mls)).then(function (r) { return r.json(); }).then(function (j) {
+        if (pvCur.o !== o) return; // a newer listing was opened meanwhile
+        if (kind === "sold") pvBlind(o);
+        pv.querySelector(".pv-details").innerHTML = j.error ? pvDetails(kind, o, null) : pvDetails(kind, o, j); pv.querySelector(".pv-rooms").innerHTML = j.error ? "" : pvRooms(j.rooms);
         pvImgs = j.images || [];
-        pv.querySelector(".pv-desc").textContent = j.error ? j.error : (j.description || "") + (j.brokerage ? "\n\nListed by " + j.brokerage : "");
+        pv.querySelector(".pv-desc").textContent = j.error ? j.error : (j.description || "");
         pv.querySelector(".pv-thumbs").innerHTML = pvImgs.map(function (u, k) { return '<img loading="lazy" src="' + esc(u) + '" data-k="' + k + '" alt="" />'; }).join("");
         pv.querySelectorAll(".pv-thumbs img").forEach(function (im) { im.onclick = function () { pvShow(Number(im.getAttribute("data-k"))); }; });
         if (pvImgs.length) pvShow(0); else pv.querySelector(".pv-count").textContent = "No photos";
+        pv.querySelector(".pv-scroll").scrollTop = 0;
       });
     }
     function closePhotos() { pv.hidden = true; document.body.style.overflow = ""; }
@@ -417,7 +593,7 @@ const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase(
     pv.querySelector(".pv-prev").onclick = function () { pvShow(pvI - 1); };
     pv.querySelector(".pv-next").onclick = function () { pvShow(pvI + 1); };
     pv.onclick = function (e) { if (e.target === pv) closePhotos(); };
-    document.addEventListener("keydown", function (e) { if (pv.hidden) return; if (e.key === "Escape") closePhotos(); if (e.key === "ArrowLeft") pvShow(pvI - 1); if (e.key === "ArrowRight") pvShow(pvI + 1); });
+    document.addEventListener("keydown", function (e) { if (pv.hidden) return; if (e.key === "Escape") closePhotos(); if (!pv.querySelector(".pv-map").hidden) return; if (e.key === "ArrowLeft") pvShow(pvI - 1); if (e.key === "ArrowRight") pvShow(pvI + 1); });
 
     form.onsubmit = function (e) { e.preventDefault(); run(); };
     var sf = document.getElementById("since-form"), so = document.getElementById("since-out");
