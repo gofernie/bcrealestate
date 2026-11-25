@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
-import { normalizeType, getSqft, getLat, getLng, getDescription } from "./rebuild-listing-rows";
+import { normalizeType, getSqft, getLat, getLng, getDescription, getYearBuilt, getNormalizedLotSize } from "./rebuild-listing-rows";
 
 const supabase = createClient(process.env.PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 const keyEntry = Object.entries(process.env).find(([k, v]) => /^REPLIERS\w*KEY$/i.test(k) && v);
@@ -61,6 +61,11 @@ function toRow(l: any) {
     list_date: day(l?.listDate),
     dom: Number.isFinite(Number(l?.daysOnMarket)) ? Number(l.daysOnMarket) : null,
     description: desc,
+    // cma-v1: home details so the CMA can adjust comps for beds, age and lot
+    beds: ((d: any) => { const t = (Number(d?.numBedrooms) || 0) + (Number(d?.numBedroomsPlus) || 0); return t > 0 ? t : null; })(l?.details),
+    baths: num(l?.details?.numBathrooms),
+    year_built: num(safe(() => getYearBuilt(l))),
+    lot_size_sqft: num(safe(() => (getNormalizedLotSize(l) as any)?.lotSizeSqft)),
     updated_at: new Date().toISOString(),
   };
 }

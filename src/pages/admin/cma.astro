@@ -1,0 +1,384 @@
+---
+// cma-v1: agent-only market valuation. Login required (middleware); never linked publicly, noindex.
+import AdminTopNav from "../../components/AdminTopNav.astro";
+export const prerender = false;
+const city = (Astro.url.searchParams.get("city") || "nanaimo").toLowerCase();
+const cityLabel = city.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+---
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Market valuation · Locus Admin</title>
+  <style is:global>
+    body { margin: 0; font-family: "DM Sans", system-ui, sans-serif; background: #f6f4ef; color: #1f2a2a; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 24px 20px 60px; }
+    h1 { font-size: 28px; margin: 6px 0 4px; }
+    .sub { color: #5d6868; margin: 0 0 20px; }
+    .card { background: #fff; border: 1px solid #e4e0d6; border-radius: 14px; padding: 18px 20px; margin-bottom: 16px; }
+    .find { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+    label { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: #5d6868; text-transform: uppercase; letter-spacing: .04em; }
+    input, select { font: inherit; font-size: 15px; padding: 9px 11px; border: 1px solid #d6d1c4; border-radius: 9px; background: #fff; text-transform: none; letter-spacing: 0; color: #1f2a2a; }
+    .grow { flex: 1 1 260px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-top: 14px; }
+    button { font: inherit; font-weight: 700; border: 0; border-radius: 9px; padding: 10px 18px; background: #2f6f73; color: #fff; cursor: pointer; }
+    button.ghost { background: #eef2f1; color: #2f6f73; }
+    details summary { cursor: pointer; color: #2f6f73; font-weight: 600; margin-top: 12px; }
+    .msg { padding: 12px 14px; border-radius: 10px; background: #fdf3dc; color: #7a5a0c; margin-bottom: 16px; }
+    .msg.err { background: #f6e3e3; color: #8a2b2b; }
+    .matches a { display: block; padding: 8px 0; color: #2f6f73; cursor: pointer; border-bottom: 1px solid #eee; }
+    .range { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 12px; text-align: center; margin: 6px 0 10px; }
+    .range div span { display: block; font-size: 12px; font-weight: 600; color: #5d6868; text-transform: uppercase; letter-spacing: .05em; }
+    .range div strong { font-size: 26px; }
+    .range .likely strong { font-size: 38px; color: #2f6f73; }
+    .cond { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+    .cond input[type=range] { flex: 1 1 260px; padding: 0; border: 0; }
+    .ticks { display: flex; justify-content: space-between; font-size: 12px; color: #5d6868; flex: 1 1 260px; }
+    .condbox { border: 1px solid #e4e0d6; border-radius: 12px; padding: 12px 14px; margin: 14px 0 10px; background: #faf9f5; }
+    .condbox.up { border-color: #8cc9a4; background: #eef8f1; }
+    .condbox.down { border-color: #e3a2a2; background: #fbefef; }
+    .condbox.up .condval, .condbox.up .condnote .delta { color: #1d6b48; }
+    .condbox.down .condval, .condbox.down .condnote .delta { color: #a12f2f; }
+    a.lst { color: #2f6f73; font-weight: 600; text-decoration: none; }
+    a.lst:hover { text-decoration: underline; }
+    button.lst { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: #2f6f73; cursor: pointer; text-align: left; }
+    button.lst:hover { text-decoration: underline; }
+    .pv { position: fixed; inset: 0; background: rgba(15, 25, 25, .72); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .pv[hidden] { display: none; }
+    .pv-box { background: #fff; border-radius: 14px; width: min(980px, 100%); max-height: 94vh; overflow: auto; padding: 16px 18px; }
+    .pv-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
+    .pv-title { font-size: 18px; }
+    .pv-facts { font-size: 13px; color: #5d6868; margin-top: 4px; line-height: 1.5; }
+    .pv-close { background: #eef2f1; color: #1f2a2a; font-size: 22px; line-height: 1; padding: 6px 12px; }
+    .pv-stage { position: relative; background: #111; border-radius: 10px; display: flex; align-items: center; justify-content: center; height: min(58vh, 560px); }
+    .pv-main { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .pv-prev, .pv-next { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,.85); color: #1f2a2a; font-size: 28px; padding: 4px 14px; }
+    .pv-prev { left: 10px; } .pv-next { right: 10px; }
+    .pv-count { position: absolute; bottom: 8px; right: 12px; color: #fff; font-size: 12px; background: rgba(0,0,0,.5); padding: 2px 8px; border-radius: 999px; }
+    .pv-thumbs { display: flex; gap: 6px; overflow-x: auto; padding: 8px 0; }
+    .pv-thumbs img { height: 60px; border-radius: 6px; cursor: pointer; opacity: .6; flex: 0 0 auto; }
+    .pv-thumbs img.on { opacity: 1; outline: 2px solid #2f6f73; }
+    .pv-desc { white-space: pre-line; font-size: 14px; line-height: 1.55; margin: 6px 0 10px; }
+    .tip { background: #eef2f1; border-radius: 10px; padding: 10px 14px; font-size: 14px; margin: -8px 0 18px; color: #1f2a2a; }
+    .buyernote { background: #eef2f1; border-radius: 10px; padding: 8px 12px; font-size: 13px; margin: 4px auto 10px; max-width: 760px; text-align: center; }
+    .listgap { text-align: center; font-size: 14px; margin: 6px 0 8px; color: #1f2a2a; }
+    .listgap.over strong { color: #a12f2f; }
+    .listgap.under strong { color: #1d6b48; }
+    .wide { text-align: center; font-size: 13px; color: #5d6868; margin: -2px 0 4px; }
+    .conf { border-radius: 10px; padding: 10px 14px; font-size: 13px; margin: 0 0 10px; line-height: 1.5; }
+    .conf ul { margin: 4px 0 0; padding-left: 18px; }
+    .conf-high { background: #e3f3ec; color: #1d6b48; }
+    .conf-medium { background: #fdf3dc; color: #7a5a0c; }
+    .conf-low { background: #f6e3e3; color: #8a2b2b; }
+    .condslide { position: relative; }
+    .condslide input[type=range] { width: 100%; padding: 0; border: 0; accent-color: #2f6f73; position: relative; z-index: 1; background: transparent; }
+    .condbox.up input[type=range] { accent-color: #1f8a55; }
+    .condbox.down input[type=range] { accent-color: #c0392b; }
+    .condslide .mid { position: absolute; left: 50%; top: 2px; width: 3px; height: 18px; margin-left: -1.5px; background: #9aa5a5; border-radius: 2px; }
+    .ticks .avg { font: inherit; font-size: 12px; font-weight: 700; background: none; color: #2f6f73; padding: 2px 8px; border-radius: 6px; cursor: pointer; }
+    .ticks .avg:hover { background: #e6efee; }
+    .condhead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+    .condval { font-weight: 700; color: #2f6f73; }
+    .condnote { margin: 10px 0 0; font-size: 14px; }
+    .ticks { display: flex; justify-content: space-between; font-size: 12px; color: #5d6868; }
+    .meta { font-size: 13px; color: #5d6868; line-height: 1.6; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #5d6868; padding: 8px 6px; border-bottom: 2px solid #e4e0d6; white-space: nowrap; }
+    td { padding: 9px 6px; border-bottom: 1px solid #eee; vertical-align: top; }
+    tr.off td { opacity: .4; }
+    td.r, th.r { text-align: right; white-space: nowrap; }
+    .adj { font-size: 12px; color: #5d6868; margin-top: 4px; }
+    .adj div { display: flex; justify-content: space-between; gap: 12px; }
+    .flag { display: inline-block; font-size: 11px; background: #fdf3dc; color: #7a5a0c; border-radius: 999px; padding: 1px 8px; margin: 3px 4px 0 0; }
+    .w { display: inline-block; height: 6px; background: #2f6f73; border-radius: 3px; vertical-align: middle; margin-right: 6px; }
+    .subj { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 14px; }
+    .subj b { color: #5d6868; font-weight: 600; margin-right: 4px; }
+    .foot { font-size: 12px; color: #5d6868; }
+    .toolbar { display: flex; gap: 8px; justify-content: flex-end; }
+    @media print { .no-print, nav, header { display: none !important; } body { background: #fff; } .card { border: 0; padding: 0; } }
+  </style>
+</head>
+<body>
+  <div class="no-print"><AdminTopNav /></div>
+  <main class="wrap" data-city={city}>
+    <p class="sub no-print" style="margin:0">Agent tool · not shown on any public page</p>
+    <h1>Market valuation · {cityLabel}</h1>
+    <p class="sub">Comparable sales from the cached sold data, time-adjusted with the {cityLabel} index.</p>
+    <p class="tip no-print"><strong>Working with a buyer?</strong> Run any active listing through this too. It gives you an independent read on the home from the sales around it, so you can see whether the list price is right before you write an offer.</p>
+
+    <form class="card no-print" id="cma-form">
+      <div class="find">
+        <label class="grow">Address or MLS®
+          <input name="q" placeholder="e.g. 2640 Randle Rd or 1054650" autocomplete="off" />
+        </label>
+        <button type="submit">Value it</button>
+      </div>
+      <details id="manual">
+        <summary>Enter or correct the details</summary>
+        <div class="grid">
+          <label>Type
+            <select name="type">
+              <option value="">From listing</option>
+              <option value="house">House</option>
+              <option value="condo">Condo</option>
+              <option value="townhouse">Townhouse</option>
+              <option value="mobile home">Mobile home</option>
+              <option value="land">Land</option>
+            </select>
+          </label>
+          <label>Area <select name="area"><option value="">From listing</option></select></label>
+          <label>Finished sq ft <input name="sqft" inputmode="numeric" /></label>
+          <label>Beds <input name="beds" inputmode="numeric" /></label>
+          <label>Year built <input name="year" inputmode="numeric" /></label>
+          <label>Lot sq ft <input name="lot" inputmode="numeric" /></label>
+          <label>Waterfront
+            <select name="waterfront"><option value="">From listing</option><option value="no">No</option><option value="yes">Yes</option></select>
+          </label>
+        </div>
+        <p class="foot">Leave the address blank and fill these in to value a home that has never been listed since the cache started. Without an address there's no map position, so comps are matched by area.</p>
+      </details>
+    </form>
+
+    <form class="card no-print" id="since-form">
+      <h3 style="margin:0 0 4px">Market since purchase</h3>
+      <p class="foot" style="margin:0 0 12px">For past clients: what their purchase price is worth today on the {cityLabel} sold index. A market-movement figure, not a valuation of the home.</p>
+      <div class="find">
+        <label>Bought for <input name="price" inputmode="numeric" placeholder="e.g. 525000" /></label>
+        <label>Month bought <input name="month" type="month" /></label>
+        <label>Type
+          <select name="type"><option value="house">House</option><option value="condo">Condo</option><option value="townhouse">Townhouse</option><option value="mobile home">Mobile home</option></select>
+        </label>
+        <button type="submit">Calculate</button>
+      </div>
+      <p id="since-out" class="meta" style="margin:12px 0 0"></p>
+    </form>
+
+    <div id="out"></div>
+    <div id="pv" class="pv" hidden>
+      <div class="pv-box" role="dialog" aria-modal="true">
+        <div class="pv-head"><div><strong class="pv-title"></strong><div class="pv-facts"></div></div><button type="button" class="pv-close" aria-label="Close">×</button></div>
+        <div class="pv-stage"><button type="button" class="pv-prev" aria-label="Previous">‹</button><img class="pv-main" alt="" /><button type="button" class="pv-next" aria-label="Next">›</button><span class="pv-count"></span></div>
+        <div class="pv-thumbs"></div>
+        <p class="pv-desc"></p>
+        <p class="foot" style="margin:0">Sold listing details for your own use. Don't share these photos or sold details publicly.</p>
+      </div>
+    </div>
+  </main>
+
+  <script is:inline>
+  (function () {
+    var root = document.querySelector("[data-city]");
+    var city = root.getAttribute("data-city");
+    var form = document.getElementById("cma-form");
+    var out = document.getElementById("out");
+    var data = null, off = {}, cond = 0;
+    var $ = function (n) { return form.elements[n]; };
+    var money = function (v) { return v == null ? "—" : "$" + Math.round(v).toLocaleString("en-CA"); };
+    var k = function (v) { return v == null ? "—" : v >= 1e6 ? "$" + (v / 1e6).toFixed(2) + "M" : "$" + Math.round(v / 1000) + "K"; };
+    var signed = function (v) { return (v >= 0 ? "+" : "−") + "$" + Math.abs(Math.round(v)).toLocaleString("en-CA"); };
+    var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+    var nice = function (s) { return esc(String(s || "").replace(/\b\w/g, function (c) { return c.toUpperCase(); })); };
+
+    fetch("/admin/api/cma?areas=1&city=" + encodeURIComponent(city)).then(function (r) { return r.json(); }).then(function (j) {
+      (j.areas || []).forEach(function (a) { var o = document.createElement("option"); o.value = a; o.textContent = a; $("area").appendChild(o); });
+    }).catch(function () {});
+
+    function params(extra) {
+      var p = new URLSearchParams({ city: city });
+      var q = $("q").value.trim();
+      if (extra && extra.mls) p.set("mls", extra.mls);
+      else if (/^[A-Za-z]?\d{5,9}$/.test(q)) p.set("mls", q);
+      else if (q) p.set("address", q);
+      ["type", "area", "sqft", "beds", "year", "lot", "waterfront"].forEach(function (n) { var v = $(n).value.trim(); if (v) p.set(n, v); });
+      return p;
+    }
+
+    function run(extra) {
+      out.innerHTML = '<div class="msg">Pulling comparable sales…</div>';
+      fetch("/admin/api/cma?" + params(extra).toString()).then(function (r) { return r.json(); }).then(function (j) {
+        if (j.matches) {
+          out.innerHTML = '<div class="card matches"><strong>Which home?</strong>' + j.matches.map(function (m) {
+            return '<a data-mls="' + esc(m.mls) + '">' + esc(m.address) + ' · ' + esc(m.area || "") + ' · ' + esc(m.type || "") + ' · MLS® ' + esc(m.mls) + (m.status === "A" ? " · active" : "") + '</a>';
+          }).join("") + "</div>";
+          out.querySelectorAll("[data-mls]").forEach(function (a) { a.onclick = function () { run({ mls: a.getAttribute("data-mls") }); }; });
+          return;
+        }
+        if (j.error) {
+          out.innerHTML = '<div class="msg err">' + esc(j.error) + "</div>";
+          if (j.subject) fill(j.subject);
+          document.getElementById("manual").open = true;
+          return;
+        }
+        data = j; off = {}; cond = 0;
+        fill(j.subject);
+        render();
+      }).catch(function (e) { out.innerHTML = '<div class="msg err">' + esc(e.message) + "</div>"; });
+    }
+
+    function fill(s) {
+      if (!s) return;
+      if (s.sqft && !$("sqft").value) $("sqft").placeholder = s.sqft;
+      if (s.beds && !$("beds").value) $("beds").placeholder = s.beds;
+      if (s.year && !$("year").value) $("year").placeholder = s.year;
+      if (s.lot && !$("lot").value) $("lot").placeholder = Math.round(s.lot);
+    }
+
+    // Weighted percentile over the ticked comps
+    function pct(list, p) {
+      var s = list.slice().sort(function (a, b) { return a.v - b.v; });
+      var tot = s.reduce(function (t, x) { return t + x.w; }, 0), acc = 0;
+      for (var i = 0; i < s.length; i++) { acc += s[i].w; if (acc / tot >= p) return s[i].v; }
+      return s.length ? s[s.length - 1].v : null;
+    }
+    function summary() {
+      var on = data.comps.filter(function (c) { return !off[c.mls]; }).map(function (c) { return { v: c.adjusted, w: Math.max(c.weight, 0.1) }; });
+      if (!on.length) return null;
+      var f = 1 + cond / 100;
+      // cma-confidence-v1: range = likely × backtested band for this confidence level
+      var band = (data.confidence && data.confidence.band) || [0.85, 1.15];
+      var core = (data.confidence && data.confidence.core) || [0.94, 1.07];
+      var likely = pct(on, 0.5) * f, lo = likely * core[0], hi = likely * core[1], wlo = likely * band[0], whi = likely * band[1];
+      var r = function (v) { return Math.round(v / 1000) * 1000; };
+      return { lo: r(lo), likely: r(likely), hi: r(hi), wlo: r(wlo), whi: r(whi), n: on.length, base: r(likely / f) };
+    }
+    function condLabel() { return cond < 0 ? "Dated" : cond > 0 ? "Updated" : "Average"; }
+    function condCls() { return cond > 0 ? " up" : cond < 0 ? " down" : ""; }
+    // cma-listgap-v1: for active listings, compare the asking price with the CMA instead of blending it in
+    function listGap(sm) {
+      var s = data.subject; if (!sm || !s || s.status !== "A" || !s.listPrice) return "";
+      var g = s.listPrice / sm.likely - 1, pc = Math.round(Math.abs(g) * 100);
+      var where = pc < 2 ? "in line with the CMA" : pc + "% " + (g > 0 ? "above" : "below") + " the CMA";
+      var inside = s.listPrice >= sm.lo && s.listPrice <= sm.hi ? "inside the middle range" : s.listPrice >= sm.wlo && s.listPrice <= sm.whi ? "outside the middle range but inside the 8-in-10 range" : "outside the 8-in-10 range";
+      var buyer = pc < 2 ? "The list price lines up with the sales around it." : g > 0 ? "Priced above what nearby sales support. Worth a closer look at what this home has that the comps don't before your buyer offers." : "Priced below what nearby sales support. Check the photos and condition for why, or it may be a chance for your buyer.";
+      return '<p class="listgap ' + (pc < 2 ? "" : g > 0 ? "over" : "under") + '">Listed at <strong>' + money(s.listPrice) + "</strong> · " + where + " (" + inside + ")</p>" +
+        '<p class="buyernote no-print"><strong>For your buyer:</strong> ' + buyer + " Set the condition slider to what you saw at the showing; the comps can't see condition.</p>";
+    }
+    function wideText(sm) { return sm ? "Half of similar sales landed between Low and High · 8 in 10 landed between <strong>" + k(sm.wlo) + "</strong> and <strong>" + k(sm.whi) + "</strong>" : ""; }
+    function confBlock() {
+      var c = data.confidence; if (!c) return "";
+      var lab = { high: "High confidence", medium: "Medium confidence", low: "Low confidence" }[c.level];
+      var tip = { high: "Tested on past Nanaimo sales: the Likely figure was usually within about 6% of what the home actually sold for.", medium: "Tested on past sales: the Likely figure was usually within about 8% of the actual sale price.", low: "Treat as a rough guide. Tested on past sales: the Likely figure was often 14% or more off the actual sale price." }[c.level];
+      return '<div class="conf conf-' + c.level + '"><strong>' + lab + "</strong> · " + tip + (c.reasons && c.reasons.length ? '<ul>' + c.reasons.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>" : "") + "</div>";
+    }
+    function condText() { return condLabel() + (cond ? " (" + (cond > 0 ? "+" : "") + cond + "%)" : ""); }
+    function condNote(sm) {
+      if (!sm) return "";
+      if (!cond) return "Comps alone: <strong>" + money(sm.base) + "</strong> · no condition adjustment";
+      return "Comps alone: <strong>" + money(sm.base) + "</strong> → with condition " + (cond > 0 ? "+" : "") + cond + "%: <strong>" + money(sm.likely) + "</strong> (<span class=\"delta\">" + signed(sm.likely - sm.base) + "</span>)";
+    }
+    function condBlock(sm) {
+      return '<div class="condbox' + condCls() + '"><div class="condhead"><strong>Condition adjustment</strong><span class="condval" id="cl">' + condText() + '</span></div>' +
+        '<p class="foot" style="margin:4px 0 8px">MLS data doesn\'t know about updates or wear. Move this to reflect what you saw; it shifts the whole range by that percentage.</p>' +
+        '<div class="no-print condslide"><span class="mid" aria-hidden="true"></span><input type="range" id="cond" min="-10" max="10" step="1" value="' + cond + '" list="cond-ticks" title="Double-click to reset to average" /><datalist id="cond-ticks"><option value="0"></option></datalist><div class="ticks"><span>Dated −10%</span><button type="button" class="avg" id="cond-reset">Average</button><span>Updated +10%</span></div></div>' +
+        '<p class="condnote" id="cn">' + condNote(sm) + '</p></div>';
+    }
+
+    function render() {
+      var s = data.subject, sm = summary();
+      var maxW = Math.max.apply(null, data.comps.map(function (c) { return c.weight; }).concat([1]));
+      var subj = [
+        ["Home", esc(s.address || (s.mls ? "MLS® " + s.mls : "Entered by hand"))],
+        ["Type", nice(s.type || s.family)], ["Area", esc(s.area || "—")],
+        ["Size", s.sqft ? Math.round(s.sqft).toLocaleString("en-CA") + " sq ft" : "—"], ["Beds", s.beds || "—"],
+        ["Built", s.year || "—"], ["Lot", s.lot ? Math.round(s.lot).toLocaleString("en-CA") + " sq ft" : "—"],
+        s.listPrice && s.status === "A" ? ["Listed at", money(s.listPrice)] : null,
+      ].filter(Boolean).map(function (x) { return "<span><b>" + x[0] + "</b>" + x[1] + "</span>"; }).join("");
+
+      var html = '<section class="card"><div class="toolbar no-print"><button class="ghost" id="print">Print</button></div><div class="subj">' + subj + "</div></section>";
+
+      if (!data.comps.length) {
+        html += '<div class="msg err">No comparable sales found, even after widening the search. Check the type and size.</div>';
+      } else {
+        html += '<section class="card"><div class="range">' +
+          '<div><span>Low</span><strong>' + (sm ? k(sm.lo) : "—") + "</strong></div>" +
+          '<div class="likely"><span>Likely</span><strong>' + (sm ? money(sm.likely) : "—") + "</strong></div>" +
+          '<div><span>High</span><strong>' + (sm ? k(sm.hi) : "—") + "</strong></div></div>" +
+          '<p class="wide" id="wide">' + wideText(sm) + "</p>" + '<div id="lg">' + listGap(sm) + "</div>" +
+          condBlock(sm) +
+          confBlock() +
+          '<p class="meta">' + (sm ? sm.n : 0) + " of " + data.comps.length + " comps ticked · " + esc(data.criteria) +
+          (data.widened ? " (not enough close matches, so the search was widened)" : "") +
+          "<br>Time adjustment: " + (data.index ? esc(data.index.ticker) + " sold index through " + esc(data.index.asOf) : "no index found, sale prices not time-adjusted") +
+          " · Rates " + esc(data.rates.source) + ": $" + data.rates.sqft + "/sq ft of size difference" +
+          (s.family === "house" || s.family === "land" ? ", $" + data.rates.lot + "/sq ft of lot" : "") +
+          (s.family !== "land" ? ", $" + data.rates.year.toLocaleString("en-CA") + " per year of age" : "") +
+          " · City median $" + data.rates.medianPpsf + "/sq ft</p></section>";
+
+        html += '<section class="card"><h3 style="margin-top:0">Comparable sales</h3><table><thead><tr><th class="no-print"></th><th>Home</th><th class="r">Sold</th><th class="r">Size</th><th class="r">Beds</th><th class="r">Built</th><th class="r">Away</th><th class="r">Adjusted</th><th class="r">Weight</th></tr></thead><tbody>' +
+          data.comps.map(function (c) {
+            var adj = c.adjustments.map(function (a) { return "<div><span>" + esc(a.label) + "</span><span>" + signed(a.amount) + "</span></div>"; }).join("");
+            return '<tr class="' + (off[c.mls] ? "off" : "") + '"><td class="no-print"><input type="checkbox" data-c="' + esc(c.mls) + '"' + (off[c.mls] ? "" : " checked") + " /></td>" +
+              "<td><button type=\"button\" class=\"lst sold\" data-ph=\"" + esc(c.mls) + "\">" + esc(c.address || "MLS® " + c.mls) + " 📷</button><br><span class=\"foot\">" + esc(c.area || "") + " · " + nice(c.type) + " · MLS® " + esc(c.mls) + "</span>" +
+              c.flags.map(function (f) { return '<br><span class="flag">' + esc(f) + "</span>"; }).join("") +
+              '<details class="adj"><summary>Adjustments</summary><div><span>Sold ' + esc(c.soldDate) + (c.listPrice ? " (listed " + k(c.listPrice) + ")" : "") + "</span><span>" + money(c.soldPrice) + "</span></div>" + adj + '<div><strong>Adjusted</strong><strong>' + money(c.adjusted) + "</strong></div></details></td>" +
+              '<td class="r">' + money(c.soldPrice) + '<br><span class="foot">' + esc(c.soldDate) + "</span></td>" +
+              '<td class="r">' + (c.sqft ? Math.round(c.sqft).toLocaleString("en-CA") : "—") + '</td><td class="r">' + (c.beds || "—") + '</td><td class="r">' + (c.year || "—") + "</td>" +
+              '<td class="r">' + (c.distKm != null ? c.distKm + " km" : "—") + '</td><td class="r"><strong>' + money(c.adjusted) + "</strong></td>" +
+              '<td class="r"><span class="w" style="width:' + Math.round((c.weight / maxW) * 40) + 'px"></span>' + c.weight + "%</td></tr>";
+          }).join("") + "</tbody></table></section>";
+      }
+
+      if (data.actives.length) {
+        html += '<section class="card"><h3 style="margin-top:0">The competition: ' + data.activeCount + " similar active listings</h3><table><thead><tr><th>Home</th><th class=\"r\">Asking</th><th class=\"r\">Size</th><th class=\"r\">Beds</th><th class=\"r\">Built</th><th class=\"r\">Listed</th></tr></thead><tbody>" +
+          data.actives.map(function (a) {
+            return '<tr><td><a class="lst" href="/' + esc(city) + '/homes?mls=' + encodeURIComponent(a.mls) + '" target="_blank" rel="noopener">' + esc(a.address) + ' ↗</a><br><span class="foot">' + esc(a.area || "") + " · MLS® " + esc(a.mls) + '</span></td><td class="r">' + money(a.price) + '</td><td class="r">' + (a.sqft ? Math.round(a.sqft).toLocaleString("en-CA") : "—") + '</td><td class="r">' + (a.beds || "—") + '</td><td class="r">' + (a.year || "—") + '</td><td class="r">' + esc(String(a.listedAt || "").slice(0, 10)) + "</td></tr>";
+          }).join("") + "</tbody></table></section>";
+      }
+      html += '<p class="foot">A market estimate for the agent\'s use, not an appraisal. Condition, renovations and views aren\'t in MLS data, so set the condition slider and untick comps that don\'t fit.</p>';
+      out.innerHTML = html;
+
+      out.querySelectorAll("[data-ph]").forEach(function (bt) { bt.onclick = function () { var c = data.comps.find(function (x) { return x.mls === bt.getAttribute("data-ph"); }); openPhotos(c); }; });
+      out.querySelectorAll("[data-c]").forEach(function (cb) { cb.onchange = function () { off[cb.getAttribute("data-c")] = !cb.checked; render(); }; });
+      var sl = document.getElementById("cond");
+      var setCond = function (v) { cond = Math.abs(v) <= 1 ? 0 : v; if (Number(sl.value) !== cond) sl.value = cond; var bx = document.querySelector(".condbox"); bx.classList.toggle("up", cond > 0); bx.classList.toggle("down", cond < 0); };
+      if (sl) { sl.ondblclick = function () { setCond(0); sl.oninput(); }; var rb = document.getElementById("cond-reset"); if (rb) rb.onclick = function () { setCond(0); sl.oninput(); }; }
+      if (sl) sl.oninput = function () { setCond(Number(sl.value)); var sm2 = summary(); var st = out.querySelectorAll(".range strong"); if (sm2) { st[0].textContent = k(sm2.lo); st[1].textContent = money(sm2.likely); st[2].textContent = k(sm2.hi); document.getElementById("wide").innerHTML = wideText(sm2); document.getElementById("lg").innerHTML = listGap(sm2); } document.getElementById("cl").textContent = condText(); document.getElementById("cn").innerHTML = condNote(sm2); };
+      var pb = document.getElementById("print"); if (pb) pb.onclick = function () { window.print(); };
+    }
+
+    // cma-photos-v1: agent-only sold listing viewer
+    var pv = document.getElementById("pv"), pvImgs = [], pvI = 0;
+    function pvShow(i) {
+      if (!pvImgs.length) return; pvI = (i + pvImgs.length) % pvImgs.length;
+      pv.querySelector(".pv-main").src = pvImgs[pvI];
+      pv.querySelector(".pv-count").textContent = (pvI + 1) + " / " + pvImgs.length;
+      pv.querySelectorAll(".pv-thumbs img").forEach(function (im, k) { im.classList.toggle("on", k === pvI); if (k === pvI) im.scrollIntoView({ block: "nearest", inline: "center" }); });
+    }
+    function openPhotos(c) {
+      pv.hidden = false; document.body.style.overflow = "hidden";
+      pv.querySelector(".pv-title").textContent = c.address || "MLS® " + c.mls;
+      pv.querySelector(".pv-facts").innerHTML = "Sold <strong>" + money(c.soldPrice) + "</strong> on " + esc(c.soldDate) + (c.listPrice ? " · listed " + money(c.listPrice) : "") + (c.dom != null ? " · " + c.dom + " days on market" : "") + "<br>" + [c.sqft && Math.round(c.sqft).toLocaleString("en-CA") + " sq ft", c.beds && c.beds + " bed", c.baths && c.baths + " bath", c.year && "built " + c.year, c.lot && Math.round(c.lot).toLocaleString("en-CA") + " sq ft lot"].filter(Boolean).join(" · ") + " · adjusted <strong>" + money(c.adjusted) + "</strong>";
+      pv.querySelector(".pv-main").removeAttribute("src"); pv.querySelector(".pv-thumbs").innerHTML = ""; pv.querySelector(".pv-desc").textContent = "Loading photos…"; pv.querySelector(".pv-count").textContent = "";
+      fetch("/admin/api/cma?photos=" + encodeURIComponent(c.mls)).then(function (r) { return r.json(); }).then(function (j) {
+        pvImgs = j.images || [];
+        pv.querySelector(".pv-desc").textContent = j.error ? j.error : (j.description || "") + (j.brokerage ? "\n\nListed by " + j.brokerage : "");
+        pv.querySelector(".pv-thumbs").innerHTML = pvImgs.map(function (u, k) { return '<img loading="lazy" src="' + esc(u) + '" data-k="' + k + '" alt="" />'; }).join("");
+        pv.querySelectorAll(".pv-thumbs img").forEach(function (im) { im.onclick = function () { pvShow(Number(im.getAttribute("data-k"))); }; });
+        if (pvImgs.length) pvShow(0); else pv.querySelector(".pv-count").textContent = "No photos";
+      });
+    }
+    function closePhotos() { pv.hidden = true; document.body.style.overflow = ""; }
+    pv.querySelector(".pv-close").onclick = closePhotos;
+    pv.querySelector(".pv-prev").onclick = function () { pvShow(pvI - 1); };
+    pv.querySelector(".pv-next").onclick = function () { pvShow(pvI + 1); };
+    pv.onclick = function (e) { if (e.target === pv) closePhotos(); };
+    document.addEventListener("keydown", function (e) { if (pv.hidden) return; if (e.key === "Escape") closePhotos(); if (e.key === "ArrowLeft") pvShow(pvI - 1); if (e.key === "ArrowRight") pvShow(pvI + 1); });
+
+    form.onsubmit = function (e) { e.preventDefault(); run(); };
+    var sf = document.getElementById("since-form"), so = document.getElementById("since-out");
+    sf.onsubmit = function (e) {
+      e.preventDefault();
+      var q = new URLSearchParams({ city: city, since: sf.elements.month.value, price: sf.elements.price.value.replace(/[^0-9]/g, ""), type: sf.elements.type.value });
+      so.textContent = "Calculating…";
+      fetch("/admin/api/cma?" + q.toString()).then(function (r) { return r.json(); }).then(function (j) {
+        if (j.error) { so.innerHTML = '<span style="color:#8a2b2b">' + esc(j.error) + "</span>"; return; }
+        var mon = function (m) { return new Date(m + "-15").toLocaleDateString("en-CA", { month: "short", year: "numeric" }); };
+        so.innerHTML = "<strong style=\"font-size:22px;color:#1f2a2a\">" + money(j.value) + "</strong> &nbsp;" + (j.change >= 0 ? "+" : "") + j.change + "% since " + mon(j.month) +
+          "<br>" + money(j.price) + " moved by the " + esc(j.ticker) + " sold index from " + mon(j.month) + " to " + mon(j.asOf) + ". Index history starts " + mon(j.first) + ".";
+      }).catch(function (err) { so.textContent = err.message; });
+    };
+  })();
+  </script>
+</body>
+</html>

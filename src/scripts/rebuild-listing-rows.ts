@@ -1292,7 +1292,7 @@ const normalizeImages = (listing: any) => {
   return images;
 };
 
-const getYearBuilt = (listing: any) => {
+export const getYearBuilt = (listing: any) => {
   const candidates = [
     listing?.yearBuilt,
     listing?.year_built,
@@ -1359,7 +1359,7 @@ export const getSqft = (listing: any) => {
 };
 
 
-const getNormalizedLotSize = (listing: any) => {
+export const getNormalizedLotSize = (listing: any) => {
   /* STRUCTURED REPLIERS LOT DATA */
   const structuredSquareFeet = Number(
     listing?.lot?.squareFeet || 0
