@@ -22,8 +22,8 @@ async function readCondition(mls: string, user: any, fresh = false) {
   if (!r) return { error: "No listing record with photos for this home." };
   const all = (Array.isArray(r.images) ? r.images : []).map((x: any) => imgUrl(typeof x === "string" ? x : x?.url || x?.src || "", "medium")).filter(Boolean) as string[];
   if (all.length < 3) return { error: "Not enough photos to judge condition." };
-  // spread 10 picks across the set (interiors sit in the middle of most listings)
-  const n = Math.min(10, all.length), picks = [...new Set(Array.from({ length: n }, (_, i) => all[Math.min(all.length - 1, Math.round((i * (all.length - 1)) / (n - 1)))]))];
+  // spread 15 picks across the set (interiors sit in the middle of most listings)
+  const n = Math.min(15, all.length), picks = [...new Set(Array.from({ length: n }, (_, i) => all[Math.min(all.length - 1, Math.round((i * (all.length - 1)) / (n - 1)))]))];
   const prompt = `You are helping a BC real estate agent judge the condition of a ${r.normalized_type || "home"}${r.year_built ? ` built in ${r.year_built}` : ""} for a market valuation. Comparable sales are typical homes in average condition for their age. Look at the listing photos and read the description, then rate how this home's finish and condition compare with a typical home of its age in the area.
 
 Description: """${String(r.description || "").slice(0, 2500)}"""
