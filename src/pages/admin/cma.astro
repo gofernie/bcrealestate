@@ -150,11 +150,19 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
     .pin-n { display: inline-block; min-width: 20px; height: 20px; line-height: 20px; border-radius: 999px; background: #2f6f73; color: #fff; font-size: 11px; font-weight: 700; text-align: center; margin-right: 6px; }
     tr.off .pin-n { background: #b9c0c0; }
     @media print { .cmap { height: 260px; } }
-    .condslide { position: relative; }
+    .condcall { display: flex; gap: 10px; align-items: flex-start; margin: 8px 0 12px; padding: 10px 12px; background: #1f2a2a; color: #f4f1ea; border-radius: 6px; font-size: 15px; line-height: 1.45; }
+    .condcall strong { color: #fff; font-size: 16px; }
+    .condcall-i { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; background: #e0b45a; color: #1f2a2a; font-weight: 800; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
+    @media print { .condcall { background: none; color: #1f2a2a; border: 1px solid #1f2a2a; } .condcall strong { color: #1f2a2a; } }
+    .condslide { position: relative; padding-top: 30px; }
+    .condbub { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; font-size: 13px; font-weight: 800; padding: 3px 8px; border-radius: 4px; background: #2f6f73; color: #fff; pointer-events: none; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+    .condbub::after { content: ""; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border-style: solid; border-width: 5px 5px 0; border-color: inherit; border-top-color: #2f6f73; border-left-color: transparent; border-right-color: transparent; }
+    .condbub.down { background: #c0392b; } .condbub.down::after { border-top-color: #c0392b; }
+    .condbub.up { background: #1f8a55; } .condbub.up::after { border-top-color: #1f8a55; }
     .condslide input[type=range] { width: 100%; padding: 0; border: 0; accent-color: #2f6f73; position: relative; z-index: 1; background: transparent; }
     .condbox.up input[type=range] { accent-color: #1f8a55; }
     .condbox.down input[type=range] { accent-color: #c0392b; }
-    .condslide .mid { position: absolute; left: 66.667%; top: 2px; width: 3px; height: 18px; margin-left: -1.5px; background: #9aa5a5; border-radius: 2px; }
+    .condslide .mid { position: absolute; left: 66.667%; top: 32px; width: 3px; height: 18px; margin-left: -1.5px; background: #9aa5a5; border-radius: 2px; }
     .condslide .ticks { position: relative; }
     .condslide .ticks .avg { position: absolute; left: 66.667%; transform: translateX(-50%); top: -2px; }
     .ticks .avg { font: inherit; font-size: 12px; font-weight: 700; background: none; color: #2f6f73; padding: 2px 8px; border-radius: 6px; cursor: pointer; }
@@ -370,6 +378,15 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
       var tip = { high: "Tested on past Nanaimo sales: the Likely figure was usually within about 6% of what the home actually sold for.", medium: "Tested on past sales: the Likely figure was usually within about 8% of the actual sale price.", low: "Treat as a rough guide. Tested on past sales: the Likely figure was often 14% or more off the actual sale price." }[c.level];
       return '<div class="conf conf-' + c.level + '"><strong>' + lab + "</strong> · " + tip + (c.reasons && c.reasons.length ? '<ul>' + c.reasons.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>" : "") + "</div>";
     }
+    // cma-condbub-v1: live % and $ change riding on the slider dot
+    function condBubble(sm) {
+      var b = document.getElementById("condbub"), sl = document.getElementById("cond"); if (!b || !sl) return;
+      var min = Number(sl.min), max = Number(sl.max), p = (cond - min) / (max - min);
+      b.style.left = "calc(" + (p * 100) + "% + " + (9 - p * 18) + "px)";
+      var d = sm ? sm.likely - sm.base : 0;
+      b.textContent = cond === 0 ? "0%" : (cond > 0 ? "+" : "−") + Math.abs(cond) + "%" + (sm ? " · " + (d >= 0 ? "+" : "−") + "$" + Math.round(Math.abs(d) / 1000) + "K" : "");
+      b.className = "condbub" + (cond > 0 ? " up" : cond < 0 ? " down" : "");
+    }
     function condText() { return condLabel() + (cond ? " (" + (cond > 0 ? "+" : "") + cond + "%)" : ""); }
     function condNote(sm) {
       if (!sm) return "";
@@ -379,8 +396,8 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
     }
     function condBlock(sm) {
       return '<div class="condbox' + condCls() + '"><div class="condhead"><strong>Condition adjustment</strong><span class="condval" id="cl">' + condText() + '</span></div>' +
-        '<p class="foot" style="margin:4px 0 8px">MLS data doesn\'t know about updates or wear. Move this to reflect what you saw; it shifts the whole range by that percentage.</p>' +
-        '<div class="no-print condslide"><span class="mid" aria-hidden="true"></span><input type="range" id="cond" min="-20" max="10" step="1" value="' + cond + '" list="cond-ticks" title="Double-click to reset to average" /><datalist id="cond-ticks"><option value="0"></option></datalist><div class="ticks"><span>Fixer / project −20%</span><button type="button" class="avg" id="cond-reset">Average</button><span>Updated +10%</span></div></div>' +
+        '<p class="condcall"><span class="condcall-i">!</span><span><strong>The comps can\'t see condition.</strong> MLS data doesn\'t know about updates, renos or wear. Set this to what you saw at the home; it moves the whole value range.</span></p>' +
+        '<div class="no-print condslide"><span class="condbub" id="condbub"></span><span class="mid" aria-hidden="true"></span><input type="range" id="cond" min="-20" max="10" step="1" value="' + cond + '" list="cond-ticks" title="Double-click to reset to average" /><datalist id="cond-ticks"><option value="0"></option></datalist><div class="ticks"><span>Fixer / project −20%</span><button type="button" class="avg" id="cond-reset">Average</button><span>Updated +10%</span></div></div>' +
         '<p class="condnote" id="cn">' + condNote(sm) + '</p></div>';
     }
 
@@ -398,8 +415,8 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
       var subTitle = [nice(s.type || s.family), nice(s.area), s.mls ? "MLS® " + esc(s.mls) : "Entered by hand"].filter(Boolean).join(" · ");
       if (s.lastSold) subTitle += ' · <span class="subj-sold">Last sold <b>' + money(s.lastSold.price) + "</b> " + prettyDate(s.lastSold.date) + "</span>";
       var html = '<section class="card subjcard">' +
-        (s.image ? '<img class="subj-img' + (s.status === "A" ? ' subj-open" data-subj-open="1" title="Open listing' : "") + '" src="' + esc(s.image) + '" alt="" />' : "") +
-        '<div class="subj-main"><div class="subj-top"><div><p class="subj-kicker">Valuing</p><h2 class="subj-title">' + (s.status === "A" ? '<button type="button" class="subj-link" data-subj-open="1">' + esc(fixCase(s.address) || "MLS® " + s.mls) + ' <span>📷</span></button>' : esc(fixCase(s.address) || (s.mls ? "MLS® " + s.mls : "Home entered by hand"))) + '</h2><p class="subj-sub">' + subTitle + "</p></div>" +
+        (s.image ? '<img class="subj-img' + (s.status === "A" || s.lastSold ? ' subj-open" data-subj-open="1" title="Open listing' : "") + '" src="' + esc(s.image) + '" alt="" />' : "") +
+        '<div class="subj-main"><div class="subj-top"><div><p class="subj-kicker">Valuing</p><h2 class="subj-title">' + (s.status === "A" || s.lastSold ? '<button type="button" class="subj-link" data-subj-open="1">' + esc(fixCase(s.address) || "MLS® " + s.mls) + ' <span>📷</span></button>' : esc(fixCase(s.address) || (s.mls ? "MLS® " + s.mls : "Home entered by hand"))) + '</h2><p class="subj-sub">' + subTitle + "</p></div>" +
         '<button class="ghost no-print" id="print">Print</button></div>' +
         '<div class="subj-facts">' + facts + (s.listPrice && s.status === "A" ? '<span class="sf sf-list"><span>Listed at</span><strong>' + money(s.listPrice) + "</strong></span>" : "") + "</div></div></section>";
 
@@ -444,16 +461,21 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
       html += '<p class="foot">A market estimate for the agent\'s use, not an appraisal. Condition, renovations and views aren\'t in MLS data, so set the condition slider and untick comps that don\'t fit.</p>';
       out.innerHTML = html;
 
+      condBubble(summary());
       drawMaps();
       // cma-subjopen-v1: active subject opens in the listing viewer
-      out.querySelectorAll("[data-subj-open]").forEach(function (el) { el.onclick = function () { var s2 = data.subject; openActive({ mls: s2.mls, address: s2.address, price: s2.listPrice, sqft: s2.sqft, beds: s2.beds, year: s2.year, lat: s2.lat, lng: s2.lng, area: s2.area, type: s2.type }); }; });
+      out.querySelectorAll("[data-subj-open]").forEach(function (el) { el.onclick = function () {
+        var s2 = data.subject, base = { mls: s2.mls, address: s2.address, sqft: s2.sqft, beds: s2.beds, baths: s2.baths, year: s2.year, lot: s2.lot, lat: s2.lat, lng: s2.lng, area: s2.area, type: s2.type };
+        if (s2.status === "A") { base.price = s2.listPrice; openActive(base); }
+        else { base.soldPrice = s2.lastSold.price; base.soldDate = s2.lastSold.date; pvClear(); openListing("sold", base); }
+      }; });
       out.querySelectorAll("[data-act]").forEach(function (bt) { bt.onclick = function () { var a = data.actives.find(function (x) { return String(x.mls) === bt.getAttribute("data-act"); }); openActive(a); }; });
       out.querySelectorAll("[data-ph]").forEach(function (bt) { bt.onclick = function () { var c = data.comps.find(function (x) { return x.mls === bt.getAttribute("data-ph"); }); openPhotos(c); }; });
       out.querySelectorAll("[data-c]").forEach(function (cb) { cb.onchange = function () { off[cb.getAttribute("data-c")] = !cb.checked; render(); }; });
       var sl = document.getElementById("cond");
       var setCond = function (v) { cond = Math.abs(v) <= 1 ? 0 : v; if (Number(sl.value) !== cond) sl.value = cond; var bx = document.querySelector(".condbox"); bx.classList.toggle("up", cond > 0); bx.classList.toggle("down", cond < 0); };
       if (sl) { sl.ondblclick = function () { setCond(0); sl.oninput(); }; var rb = document.getElementById("cond-reset"); if (rb) rb.onclick = function () { setCond(0); sl.oninput(); }; }
-      if (sl) sl.oninput = function () { setCond(Number(sl.value)); var sm2 = summary(); var st = out.querySelectorAll(".range strong"); if (sm2) { st[0].textContent = k(sm2.lo); st[1].textContent = money(sm2.likely); st[2].textContent = k(sm2.hi); document.getElementById("wide").innerHTML = wideText(sm2); document.getElementById("lg").innerHTML = listGap(sm2); } document.getElementById("cl").textContent = condText(); document.getElementById("cn").innerHTML = condNote(sm2); };
+      if (sl) sl.oninput = function () { setCond(Number(sl.value)); var sm2 = summary(); var st = out.querySelectorAll(".range strong"); if (sm2) { st[0].textContent = k(sm2.lo); st[1].textContent = money(sm2.likely); st[2].textContent = k(sm2.hi); document.getElementById("wide").innerHTML = wideText(sm2); document.getElementById("lg").innerHTML = listGap(sm2); } document.getElementById("cl").textContent = condText(); document.getElementById("cn").innerHTML = condNote(sm2); condBubble(sm2); };
       var pb = document.getElementById("print"); if (pb) pb.onclick = function () { window.print(); };
     }
 
@@ -538,7 +560,7 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
         if (list) html += "<div><span>Last asking</span><strong>" + money(list) + "</strong><em>" + (stl ? stl + "% sale-to-list" : "") + "</em></div>";
         if (orig && list && orig > list) html += "<div><span>Original asking</span><strong>" + money(orig) + "</strong><em>cut " + Math.round((1 - list / orig) * 1000) / 10 + "% before selling</em></div>";
         if (o.dom != null) html += "<div><span>Days on market</span><strong>" + o.dom + "</strong></div>";
-        html += '<div class="pv-cma"><span>Adjusted to your subject</span><strong>' + money(o.adjusted) + "</strong><em>weight " + o.weight + "% in this CMA</em></div>";
+        if (o.adjusted != null) html += '<div class="pv-cma"><span>Adjusted to your subject</span><strong>' + money(o.adjusted) + "</strong><em>weight " + o.weight + "% in this CMA</em></div>";
         html += '<div class="pv-blind" id="pv-blind"><span>Our estimate before it sold</span><strong>…</strong><em>checking the track record</em></div>';
       } else {
         var dom = daysSince(j.listedAt || o.listedAt), orig2 = j.originalPrice;

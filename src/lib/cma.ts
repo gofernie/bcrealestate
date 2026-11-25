@@ -74,7 +74,7 @@ const PROJECT_WEAK = /\b(investors?|developers?|development (potential|opportuni
 // Backtest Nov 2026 (Nanaimo houses, 12 months): fixer wording -> CMA ~+20-30% high; development wording -> ~0% on average but scattered.
 const FIXER = /teardown|tear down|tear-down|handyman|fixer|tlc|t\.l\.c|as-is|as is|needs (work|renovation|updating)|contractor|renovator|bring your/i;
 export function projectKind(terms?: string[]) { const t = (terms || []).join(" "); return !t ? null : FIXER.test(t) ? "fixer" : "development"; }
-export const FIXER_AUTO_CONDITION = -15;
+export const FIXER_AUTO_CONDITION = -12; // Chris's call for fixers / renos
 // Backtest: development wording + house built 1965 or earlier -> CMA ~+9% high (7 sales); newer houses ~0%.
 export const OLD_DEV_AUTO_CONDITION = -14; // Chris's call: start deliberately low; testing showed ~-8%
 export function autoConditionFor(s: Subject) {
@@ -469,11 +469,16 @@ export async function blindValue(city: string, mls: string) {
     const ctx = await getContext(city, fam);
     const c = (ctx.comps0 as any[]).find((x) => x.mls === mls && x.family === fam);
     if (!c) continue;
-    const s: Subject = { mls: c.mls, address: c.address, type: c.type, family: fam, area: c.area, sqft: c.sqft, beds: c.beds, year: c.year, lot: c.lot, lat: c.lat, lng: c.lng, waterfront: c.waterfront };
+    let project = c.project || [];
+    if (!project.length) { // sold records keep only 400 chars of description; the listing record has it all
+      const { data: lr } = await db().from("listing_rows").select("description").eq("mls_number", mls).limit(1);
+      project = projectTerms(lr?.[0]?.description);
+    }
+    const s: Subject = { mls: c.mls, address: c.address, type: c.type, family: fam, area: c.area, sqft: c.sqft, beds: c.beds, year: c.year, lot: c.lot, lat: c.lat, lng: c.lng, waterfront: c.waterfront, project };
     const r: any = await runCma(city, s, { asOf: c.soldDate, skipActives: true });
     const sm = summarize(r.comps);
     if (!sm) return { error: "Not enough earlier sales to value this one blind." };
-    const pred = sm.likely / c.timeFactor;
+    const pred = (sm.likely / c.timeFactor) * (1 + autoConditionFor(s) / 100); // what the tool would have shown, auto condition included
     return { mls, sold: c.soldPrice, soldDate: c.soldDate, estimate: Math.round(pred / 1000) * 1000, errPct: Math.round((pred / c.soldPrice - 1) * 1000) / 10, confidence: r.confidence?.level, comps: r.comps.length };
   }
   return { error: "This sale isn't in the cached sold data." };
