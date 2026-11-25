@@ -3,6 +3,16 @@
 // (beds, year built, lot, waterfront) by MLS number. Older sales are moved to today with the
 // city's market_months sold index. Nothing here is public: it is only called from /admin/api/cma.
 import { createClient } from "@supabase/supabase-js";
+import { CITY_FETCH_GROUPS } from "./listings/refreshListingMarket";
+
+// cma-group-v1: neighbouring towns whose sales count as local comps (Lantzville with Nanaimo, the site's own groups elsewhere)
+const CMA_GROUPS: Record<string, string[]> = { nanaimo: ["Lantzville"] };
+export function cityGroup(city: string) {
+  const k = city.toLowerCase().replace(/-/g, " ");
+  const extra = CMA_GROUPS[k] || CITY_FETCH_GROUPS[k] || CITY_FETCH_GROUPS[city] || [];
+  return [...new Set([k, ...extra.map((c) => c.toLowerCase())])];
+}
+const groupOr = (city: string) => cityGroup(city).flatMap((c) => [`city.ilike."${c}"`, `market_city.ilike."${c}"`]).join(",");
 
 const db = () => createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
 const DAY = 864e5;
@@ -53,7 +63,7 @@ async function pageAll(build: (a: number, b: number) => any) {
 export type Subject = {
   mls?: string | null; address?: string | null; type?: string | null; family: Family; area?: string | null;
   sqft?: number | null; beds?: number | null; baths?: number | null; year?: number | null; lot?: number | null;
-  lat?: number | null; lng?: number | null; waterfront?: boolean | null; listPrice?: number | null; status?: string | null;
+  lat?: number | null; lng?: number | null; waterfront?: boolean | null; listPrice?: number | null; status?: string | null; image?: string | null; lastSold?: { price: number; date: string } | null;
 };
 
 const ROW_COLS = "mls_number, address, image_url, normalized_type, normalized_area, area, normalized_city, city, beds, baths, sqft, year_built, lot_size_sqft, lot_size_acres, waterfront, ocean_view, lat, lng, price, status, listed_at";
@@ -63,12 +73,36 @@ function subjectFromRow(r: any): Subject {
     mls: str(r.mls_number) || null, address: str(r.address) || null, type: r.normalized_type, family: familyOf(r.normalized_type),
     area: str(r.normalized_area || r.area) || null, sqft: num(r.sqft), beds: num(r.beds), baths: num(r.baths), year: num(r.year_built),
     lot: lotOf(r), lat: num(r.lat) ? Number(r.lat) : null, lng: Number.isFinite(Number(r.lng)) && Number(r.lng) !== 0 ? Number(r.lng) : null,
-    waterfront: r.waterfront == null ? null : truthy(r.waterfront), listPrice: num(r.price), status: str(r.status) || null,
+    waterfront: r.waterfront == null ? null : truthy(r.waterfront), listPrice: num(r.price), status: str(r.status) || null, image: imgUrl(r.image_url, "medium"), baths: num(r.baths),
+  };
+}
+
+// cma-enrich-v1: a listing record can lack position/year/lot that the home's sold record has; merge them.
+async function enrichSubject(s: Subject | null): Promise<Subject | null> {
+  if (!s) return s;
+  const sb = db();
+  const q = s.mls ? sb.from("sold_listings").select("*").eq("mls_number", s.mls) : s.address ? sb.from("sold_listings").select("*").ilike("address", s.address) : null;
+  if (!q) return s;
+  const rows: any[] = await q.order("sold_date", { ascending: false }).limit(3).then((r: any) => r.data || [], () => []);
+  const x = rows[0]; if (!x) return s;
+  const lng = Number.isFinite(Number(x.lng)) && Number(x.lng) !== 0 ? Number(x.lng) : null;
+  return {
+    ...s,
+    lat: s.lat || num(x.lat), lng: s.lng || lng,
+    year: s.year || num(x.year_built), lot: s.lot || num(x.lot_size_sqft),
+    beds: s.beds || num(x.beds), baths: s.baths || num(x.baths), sqft: s.sqft || num(x.sqft),
+    area: str(x.normalized_area) || s.area || str(x.raw_area) || null,
+    lastSold: num(x.sold_price) ? { price: Number(x.sold_price), date: String(x.sold_date).slice(0, 10) } : null,
   };
 }
 
 /** Find the subject home by MLS number or address. Returns matches to pick from when the address is ambiguous. */
 export async function findSubject(city: string, q: { mls?: string; address?: string }) {
+  const r: any = await findSubjectRaw(city, q);
+  if (r.subject) r.subject = await enrichSubject(r.subject);
+  return r;
+}
+async function findSubjectRaw(city: string, q: { mls?: string; address?: string }) {
   const sb = db();
   const mls = str(q.mls).replace(/[^A-Za-z0-9]/g, "");
   if (mls) {
@@ -81,14 +115,41 @@ export async function findSubject(city: string, q: { mls?: string; address?: str
   }
   const addr = str(q.address).replace(/[%,]/g, " ").replace(/\s+/g, " ").trim();
   if (addr.length < 4) return { subject: null, matches: [], error: "Enter an MLS number or more of the address." };
-  const { data } = await sb.from("listing_rows").select(ROW_COLS)
-    .ilike("address", `%${addr}%`).or(`normalized_city.ilike.${city},city.ilike.${city}`)
-    .order("listed_at", { ascending: false }).limit(12);
+  // cma-addr-v2: match "7255 ellesmere drive" to "7255 Ellesmere Dr" in any city (Lantzville etc.), preferring this city
+  const SUFFIX = /^(drive|dr|road|rd|street|st|avenue|ave|av|place|pl|crescent|cres|cr|way|court|ct|lane|ln|boulevard|blvd|terrace|terr|trail|trl|close|circle|cir|highway|hwy|view|rise|grove|gr)$/i;
+  const words = addr.split(" ").filter((w, i, a) => !(i === a.length - 1 && a.length > 1 && SUFFIX.test(w)));
+  const pattern = `%${words.join("%")}%`;
+  const { data } = await sb.from("listing_rows").select(ROW_COLS).ilike("address", pattern).order("listed_at", { ascending: false }).limit(25);
+  const inCity = (r: any) => [r.normalized_city, r.city].some((v) => areaKey(v) === areaKey(city));
   const seen = new Set<string>();
-  const rows = (data || []).filter((r: any) => { const k = lc(r.address); if (!k || seen.has(k)) return false; seen.add(k); return true; });
+  let rows = (data || []).sort((a: any, b: any) => Number(inCity(b)) - Number(inCity(a)))
+    .filter((r: any) => { const k = lc(r.address); if (!k || seen.has(k)) return false; seen.add(k); return true; }).slice(0, 12);
   if (rows.length === 1) return { subject: subjectFromRow(rows[0]), matches: [] };
-  if (!rows.length) return { subject: null, matches: [], error: "No home at that address has been listed since the cache started. Enter the details by hand instead." };
-  return { subject: null, matches: rows.map((r: any) => ({ mls: r.mls_number, address: r.address, area: r.normalized_area || r.area, type: r.normalized_type, status: r.status })) };
+  if (rows.length > 1) return { subject: null, matches: rows.map((r: any) => ({ mls: r.mls_number, address: r.address, area: r.normalized_area || r.area, city: r.city || r.normalized_city, type: r.normalized_type, status: r.status })) };
+  // Sold before the active feed started? The sold cache keeps addresses now.
+  const sold: any[] = await sb.from("sold_listings").select("mls_number, address, city, normalized_type, normalized_area, raw_area, sqft, beds, baths, year_built, lot_size_sqft, lat, lng, sold_price, sold_date")
+    .ilike("address", pattern).order("sold_date", { ascending: false }).limit(5).then((r: any) => r.data || [], () => []);
+  if (sold.length) {
+    const x = sold[0];
+    return { subject: { mls: x.mls_number, address: x.address, type: x.normalized_type, family: familyOf(x.normalized_type), area: x.normalized_area || x.raw_area, sqft: num(x.sqft), beds: num(x.beds), baths: num(x.baths), year: num(x.year_built), lot: num(x.lot_size_sqft), lat: num(x.lat), lng: Number.isFinite(Number(x.lng)) && Number(x.lng) !== 0 ? Number(x.lng) : null, status: "sold" } as Subject, matches: [] };
+  }
+  // Not in the cache, but its street may be: borrow a neighbour's position so comps can still be matched by distance.
+  const streetWords = words.filter((w) => !/^\d+[a-z]?$/i.test(w));
+  let nearby: any = null;
+  if (streetWords.length) {
+    const { data: nb, error: nbErr } = await sb.from("listing_rows").select("address, lat, lng, normalized_area, area, city").ilike("address", `%${streetWords.join("%")}%`).limit(10);
+    if (nbErr) console.error("CMA street lookup failed:", nbErr.message);
+    let n0: any = (nb || []).find((r: any) => num(r.lat));
+    if (!n0) {
+      const sn: any[] = await sb.from("sold_listings").select("address, lat, lng, normalized_area, raw_area, city").ilike("address", `%${streetWords.join("%")}%`).limit(10).then((r: any) => r.data || [], () => []);
+      const s0 = sn.find((r: any) => num(r.lat));
+      if (s0) n0 = { ...s0, area: s0.raw_area };
+    }
+    if (n0 && num(n0.lat)) nearby = { address: n0.address, lat: Number(n0.lat), lng: Number(n0.lng), area: n0.normalized_area || n0.area, city: n0.city };
+  }
+  return { subject: null, matches: [], nearby, error: nearby
+    ? `${addr} hasn't been listed or sold since the cache started. Enter its type and size below and value it again; it will be placed on the map next to ${nearby.address}.`
+    : "No home at that address has been listed or sold since the cache started. Enter the details by hand instead." };
 }
 
 /** Monthly sold index for the city + property type, falling back to the city composite. */
@@ -151,7 +212,7 @@ async function buildContext(city: string, fam: Family, cutoff = "") {
   const sb = db();
   const today = new Date();
   const since = iso(new Date(today.getTime() - 730 * DAY));
-  const cityOr = `city.ilike.${city},market_city.ilike.${city},city.ilike."${city.replace(/-/g, " ")}"`;
+  const cityOr = groupOr(city);
 
   // 1. Pool: two years of this city's sales of the same kind of property
   const BASE = "mls_number, normalized_type, normalized_area, raw_area, sqft, lat, lng, list_price, sold_price, sold_date, dom, description";
@@ -305,7 +366,7 @@ export async function valueSince(city: string, family: Family, month: string, pr
 export async function cityAreas(city: string) {
   const sb = db();
   const since = iso(new Date(Date.now() - 730 * DAY));
-  const rows = await pageAll((a, b) => sb.from("sold_listings").select("normalized_area").or(`city.ilike.${city},market_city.ilike.${city}`).gte("sold_date", since).range(a, b));
+  const rows = await pageAll((a, b) => sb.from("sold_listings").select("normalized_area").or(groupOr(city)).gte("sold_date", since).range(a, b));
   return [...new Set(rows.map((r: any) => areaKey(r.normalized_area)).filter(Boolean))].sort();
 }
 

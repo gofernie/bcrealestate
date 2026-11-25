@@ -48,8 +48,10 @@ export const GET: APIRoute = async ({ url, locals }) => {
     if (p.get("mls") || p.get("address")) {
       const found: any = await findSubject(city, { mls: p.get("mls") || "", address: p.get("address") || "" });
       if (found.matches?.length) return json({ matches: found.matches });
-      if (!found.subject && !p.get("type")) return json({ error: found.error || "Not found" }, 404);
+      if (!found.subject && !p.get("type")) return json({ error: found.error || "Not found", nearby: found.nearby || null }, 404);
       subject = found.subject;
+      // cma-addr-v2: never-listed home on a known street: use the neighbour's position and area
+      if (!subject && found.nearby) subject = { family: familyOf(p.get("type")), address: String(p.get("address") || "").replace(/\b\w/g, (c) => c.toUpperCase()), lat: found.nearby.lat, lng: found.nearby.lng, area: found.nearby.area } as Subject;
     }
     // Anything typed into the form overrides what the cache has
     const type = p.get("type");
