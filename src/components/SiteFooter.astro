@@ -61,11 +61,12 @@ try {
     .eq("city", primaryMarketSlug)
     .eq("is_published", true);
   if (site?.id) searchQuery = searchQuery.eq("site_id", site.id);
-  const [areasRes, searchesRes, sitesRes] = await Promise.all([
+  const { memo } = await import("../lib/memo");
+  const [areasRes, searchesRes, sitesRes] = await memo("footer:" + primaryMarketSlug + ":" + (site?.id || "") + ":" + (site?.domain || ""), 10 * 60 * 1000, () => Promise.all([
     supabase.from("area_boundaries").select("area_slug").in("city", cityKeys),
     searchQuery.order("featured_rank", { ascending: true, nullsFirst: false }).order("sort_order", { ascending: true }).limit(40),
     site?.domain ? supabase.from("sites").select("city").eq("domain", site.domain) : Promise.resolve({ data: [] }),
-  ]);
+  ]));
 
   const cityWords = primaryMarketSlug.replace(/-/g, " ");
   areaLinks = Array.from(new Set((areasRes.data || []).map((r) => String(r.area_slug || "").trim()).filter(Boolean)))

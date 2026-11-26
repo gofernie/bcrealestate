@@ -175,7 +175,8 @@ const navAreasResolved: string[] = (Array.isArray(areas) && areas.length) ? area
     if (!cityName) return [];
     const { createClient } = await import("@supabase/supabase-js");
     const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-    const { data } = await sb.from("listing_rows").select("normalized_area").ilike("normalized_city", cityName).eq("status", "A").limit(3000);
+    const { memo } = await import("../lib/memo");
+    const { data } = await memo("nav-areas:" + cityName, 10 * 60 * 1000, () => sb.from("listing_rows").select("normalized_area").ilike("normalized_city", cityName).eq("status", "A").limit(3000));
     return Array.from(new Set((data || []).map((r: any) => String(r.normalized_area || "").trim()).filter(Boolean))).sort();
   } catch { return []; }
 })();

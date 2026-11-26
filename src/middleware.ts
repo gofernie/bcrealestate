@@ -42,6 +42,8 @@ async function getSiteCityMap() {
 async function purgeAfterAdminSave(pathname: string, referer: string) {
   if (import.meta.env.DEV) return;
   try {
+    // cache-purge-v2: CRM, CMA, email and session work never changes public pages, so it never purges (it used to fall through to all-pages)
+    if (/^\/(admin\/(api\/(people|person-email|cma|session-[a-z-]+)|people|person|intent-sessions|leads|watches|buyers)|api\/(buyers|buyer-detail|shortlists))(\/|$)/.test(pathname) || /\/admin\/(person|people|intent-sessions|leads|watches|buyers)(\/|\?|$)/.test(referer)) return;
     const m = `${pathname} ${referer}`.match(/\/admin\/sites\/([0-9a-f-]{36})/i);
     const tags: string[] = [];
     if (m) {
