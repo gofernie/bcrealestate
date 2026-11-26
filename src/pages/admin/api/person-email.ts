@@ -108,6 +108,123 @@ async function sellerCtx(request: Request, sb: any, mls: string) {
 }
 const kk = (v: number) => (v >= 1e6 ? "$" + (v / 1e6).toFixed(2) + "M" : "$" + Math.round(v / 1000) + "K");
 
+// intel-blocks v1: market intel pieces dropped into emails as [Name · City] lines
+const IB = {
+  wrap: (title: string, inner: string, foot = "") => `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:540px;margin:10px 0;border:1px solid #e4e0d6;border-radius:8px;background:#faf9f6"><tr><td style="padding:14px 16px">${title ? `<div style="font-size:10px;letter-spacing:1px;font-weight:bold;color:#2f4a68;text-transform:uppercase;margin-bottom:8px">${title}</div>` : ""}${inner}${foot ? `<div style="font-size:11px;color:#777777;margin-top:8px">${foot}</div>` : ""}</td></tr></table>`,
+  avg: (a: number[]) => { const v = a.filter((x) => x > 0); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : 0; },
+  pct: (a: number, b: number) => (a > 0 && b > 0 ? Math.round((a / b - 1) * 1000) / 10 : null),
+  arrow: (n: number | null) => (n == null ? "" : `<span style="color:${n >= 0 ? "#2f4a68" : "#b03a2e"}">${n >= 0 ? "&#9650;" : "&#9660;"} ${Math.abs(n)}%</span>`),
+  lab: "font-size:10px;letter-spacing:1px;font-weight:bold;color:#777777;text-transform:uppercase",
+  T: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"`,
+};
+const INTEL: Record<string, (P: any) => string> = {
+  "Market snapshot": (P) => {
+    const mh = P.monthlyHistory || [], L: any = mh.at(-1); if (!L) return "";
+    const cell = (l: string, big: string, sub: string, first = false) => `<td width="25%" valign="top" style="padding:4px 8px;${first ? "" : "border-left:1px solid #e6e2d8;"}"><div style="${IB.lab}">${l}</div><div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;color:#1a1a1a;margin:4px 0 2px">${big}</div><div style="font-size:11px;color:#777777">${sub}</div></td>`;
+    const cells = [
+      cell("Active listings", (() => { const a = Number(L.activeListings || P.liveActiveCount || P.activeCount || P.activeListings || P.ratioActive || 0); return a ? Math.round(a).toLocaleString("en-CA") : "-"; })(), P.monthsOfSupply != null ? `${Number(P.monthsOfSupply).toFixed(1)} months of supply` : L.label, true),
+      cell("New listings", String(L.newListings || 0), `in ${L.label}`),
+      cell("Sales", String(L.sales || 0), L.saleToList ? `at ${Number(L.saleToList).toFixed(1)}% of asking` : `in ${L.label}`),
+      L.medianSoldPrice ? cell("Median price", kk(L.medianSoldPrice), "single-family, sold") : "",
+    ].join("");
+    return IB.wrap(`${P.cityLabel} market \u00b7 ${L.label}`, `${IB.T}><tr>${cells}</tr></table>`, "The latest month can still fill in as sales are reported.");
+  },
+  "Market read": (P) => {
+    const R = P.marketPulseRead, mh = P.monthlyHistory || [];
+    const r3 = mh.slice(-3), p3 = mh.slice(-15, -12);
+    const nlA = IB.avg(r3.map((m: any) => m.newListings)), slA = IB.avg(r3.map((m: any) => m.sales));
+    const nl = IB.pct(nlA, IB.avg(p3.map((m: any) => m.newListings))), sl = IB.pct(slA, IB.avg(p3.map((m: any) => m.sales)));
+    const stat = (l: string, v: number, n: number | null) => `<td width="50%" valign="top" style="padding:4px 8px 4px 0"><div style="${IB.lab}">${l}</div><div style="font-family:Georgia,'Times New Roman',serif;font-size:26px;color:#1a1a1a;margin:2px 0">${Math.round(v)} <span style="font-family:Arial,sans-serif;font-size:13px">${IB.arrow(n)}</span></div><div style="font-size:11px;color:#777777">a month, vs. the same 3 months last year</div></td>`;
+    const head = R ? `<div style="font-family:Georgia,'Times New Roman',serif;font-size:22px;line-height:1.2;color:#1a1a1a">${R.headline}</div><div style="font-size:13px;color:#555555;margin:6px 0 10px">${R.detail}</div>` : "";
+    const stats = nlA || slA ? `${IB.T}><tr>${stat("New listings", nlA, nl)}${stat("Sales", slA, sl)}</tr></table>` : "";
+    const s = Number(P.salesToActive), mos = P.monthsOfSupply;
+    let gauge = "";
+    if (s > 0) {
+      const pos = Math.max(1, Math.min(96, Math.round((s / 32) * 100)));
+      const seg = (w: number, c: string) => `<td width="${w}%" height="8" bgcolor="${c}" style="height:8px;background:${c};font-size:0;line-height:0">&nbsp;</td>`;
+      gauge = `<div style="margin-top:12px;font-size:12px;color:#333333"><b>Sales are ${s.toFixed(0)}% of active listings</b>${mos != null ? ` \u00b7 ${Number(mos).toFixed(1)} months of supply` : ""}</div>`
+        + `${IB.T} style="margin-top:6px"><tr><td width="${pos}%" style="font-size:0;line-height:0">&nbsp;</td><td style="font-size:12px;line-height:12px;color:#2f4a68">&#9660;</td></tr></table>`
+        + `${IB.T}><tr>${seg(37, "#cfdcea")}${seg(26, "#e2ded4")}${seg(37, "#f3dccd")}</tr></table>`
+        + `${IB.T}><tr><td width="37%" style="font-size:11px;color:#777777;padding-top:3px">Buyer's market</td><td width="26%" align="center" style="font-size:11px;color:#777777;padding-top:3px">Balanced</td><td width="37%" align="right" style="font-size:11px;color:#777777;padding-top:3px">Seller's market</td></tr></table>`;
+    }
+    if (!head && !stats && !gauge) return "";
+    return IB.wrap(`${P.cityLabel} market read`, head + stats + gauge);
+  },
+  "Listings vs sales": (P) => {
+    const mh = (P.monthlyHistory || []).slice(-12); if (mh.length < 4) return "";
+    const max = Math.max(1, ...mh.map((m: any) => Math.max(m.newListings || 0, m.sales || 0)));
+    const bar = (v: number, c: string) => { const h = Math.max(1, Math.round((90 * v) / max)); return `<td valign="bottom" style="padding:0 1px"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="7" height="${h}" bgcolor="${c}" style="width:7px;height:${h}px;background:${c};font-size:0;line-height:0">&nbsp;</td></tr></table></td>`; };
+    const cols = mh.map((m: any) => `<td valign="bottom" align="center" style="padding:0 2px"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>${bar(m.newListings || 0, "#2f4a68")}${bar(m.sales || 0, "#c07a35")}</tr></table></td>`).join("");
+    const labs = mh.map((m: any) => `<td align="center" style="font-size:9px;color:#888888;padding-top:4px">${String(m.label).split(" ")[0]}</td>`).join("");
+    const legend = `<span style="color:#2f4a68">&#9632;</span> New listings &nbsp;&nbsp; <span style="color:#c07a35">&#9632;</span> Sales`;
+    return IB.wrap(`${P.cityLabel}: new listings and sales`, `<div style="font-size:12px;color:#555555;margin-bottom:8px">${legend}</div>${IB.T}><tr style="height:92px">${cols}</tr><tr>${labs}</tr></table>`, `Last 12 months, to ${mh.at(-1).label}. The latest month is preliminary.`);
+  },
+  "Price trend": (P) => {
+    const mh = (P.monthlyHistory || []).slice(-24).filter((m: any) => m.medianSoldPrice > 0); if (mh.length < 6) return "";
+    const vals = mh.map((m: any) => Number(m.medianSoldPrice)), max = Math.max(...vals), min = Math.min(...vals);
+    const base = Math.max(0, Math.floor((min - (max - min) * 0.6 - 1) / 10000) * 10000);
+    const ch = IB.pct(vals[vals.length - 1], vals[0]);
+    const cols = mh.map((m: any) => { const h = Math.round(12 + (70 * (m.medianSoldPrice - base)) / Math.max(1, max - base)); return `<td valign="bottom" style="padding:0 1px"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td height="${h}" bgcolor="#7d8fa8" style="height:${h}px;background:#7d8fa8;font-size:0;line-height:0">&nbsp;</td></tr></table></td>`; }).join("");
+    const head = `<div style="font-size:13px;color:#333333;margin-bottom:8px">Median single-family sold price: <b>${kk(vals[0])}</b> in ${mh[0].label} &rarr; <b>${kk(vals[vals.length - 1])}</b> in ${mh.at(-1).label}${ch != null ? ` (${ch >= 0 ? "+" : ""}${ch}%)` : ""}</div>`;
+    const ends = `${IB.T}><tr><td style="font-size:9px;color:#888888;padding-top:4px">${mh[0].label}</td><td align="right" style="font-size:9px;color:#888888;padding-top:4px">${mh.at(-1).label}</td></tr></table>`;
+    return IB.wrap(`${P.cityLabel} prices`, `${head}${IB.T}><tr style="height:84px">${cols}</tr></table>${ends}`, `Bars start at ${kk(base)}, not zero. Single months bounce around, so the overall direction is what matters.`);
+  },
+};
+async function askSold(sb: any, slug: string, label: string) {
+  const keys = [...new Set([slug, label, String(label).toLowerCase(), slug.replace(/-/g, " ")])];
+  const { data: comps } = await sb.from("market_indexes").select("ticker").is("prop_type", null).is("area_slug", null).is("parent_ticker", null).in("city", keys).limit(1);
+  const tk = comps?.[0]?.ticker; if (!tk) return null;
+  const sinceD = new Date(Date.now() - 480 * 864e5).toISOString().slice(0, 10);
+  const [{ data: ticks }, { data: months }] = await Promise.all([
+    sb.from("market_ticks").select("day, ask_index").eq("ticker", tk).gte("day", sinceD).not("ask_index", "is", null).order("day").limit(1000),
+    sb.from("market_months").select("month, sold_index, thin, method").eq("ticker", tk).gte("month", sinceD).order("month").limit(100),
+  ]);
+  const now = new Date(), ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  const thisM = ym(now), prevM = ym(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+  const F = (months || []).filter((r: any) => { const d = String(r.month).slice(0, 10); return r.sold_index != null && !r.thin && d < thisM && d !== prevM; });
+  if (F.some((r: any) => r.method === "median")) return null;
+  const ask = (ticks || []).map((x: any) => ({ t: new Date(String(x.day).slice(0, 10) + "T12:00:00").getTime(), v: Number(x.ask_index) }));
+  const pts: any[] = [];
+  for (const r of F) {
+    const d = String(r.month).slice(0, 10), md = new Date(d + "T12:00:00");
+    const endT = new Date(md.getFullYear(), md.getMonth() + 1, 1).getTime(), startT = new Date(md.getFullYear(), md.getMonth() - 2, 1).getTime();
+    const win = ask.filter((q: any) => q.t >= startT && q.t < endT); if (win.length < 3) continue;
+    const a = win.reduce((s: number, q: any) => s + q.v, 0) / win.length, v = Number(r.sold_index);
+    if (v > 0) pts.push({ d, s: (a / v - 1) * 100, a, v });
+  }
+  const out = pts.slice(-12); return out.length >= 2 ? { ticker: tk, pts: out } : null;
+}
+INTEL["Asking vs sold"] = (P) => {
+  const X = P._as; if (!X) return "";
+  const pts = X.pts, last = pts[pts.length - 1], prev = pts[Math.max(0, pts.length - 4)];
+  const delta = last.s - prev.s, trend = Math.abs(delta) < 0.5 ? "steady" : delta > 0 ? "widening" : "narrowing";
+  const askMove = (last.a / prev.a - 1) * 100, soldMove = (last.v / prev.v - 1) * 100;
+  const note = trend === "widening" ? (askMove > soldMove ? "sellers asking further above what is selling" : "sale prices slipping below asking")
+    : trend === "narrowing" ? (soldMove > askMove ? "sale prices catching up to asking" : "asking prices coming down toward sales") : "asking and sales moving together";
+  const arrow = trend === "steady" ? "&rarr;" : trend === "widening" ? "&uarr;" : "&darr;";
+  const pill = trend === "narrowing" ? "#1f6b60" : trend === "widening" ? "#b03a2e" : "#777777";
+  const MN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const mon = (d: string) => `${MN[Number(d.slice(5, 7)) - 1]} ${d.slice(2, 4)}`;
+  const cell = (l: string, v: string, sub: string, first = false) => `<td width="50%" valign="top" style="padding:4px 8px;${first ? "padding-left:0;" : "border-left:1px solid #e6e2d8;"}"><div style="${IB.lab}">${l}</div><div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;color:#1a1a1a;margin:4px 0 2px">${v}</div><div style="font-size:11px;color:#777777">${sub}</div></td>`;
+  const top = `${IB.T}><tr>${cell("Asking index", kk(last.a), "what sellers are asking", true)}${cell("Sold index", kk(last.v), `what sold in ${mon(last.d)}`)}</tr></table>`;
+  const s = last.s;
+  const head = `<div style="margin:12px 0 2px;font-size:14px;color:#1a1a1a"><b>Asking is ${Math.abs(s).toFixed(1)}% ${s >= 0 ? "above" : "below"} sales</b> <span style="color:${pill};font-size:12px">${arrow} ${trend}</span></div><div style="font-size:12px;color:#555555;margin-bottom:8px">${note.charAt(0).toUpperCase() + note.slice(1)}.</div>`;
+  const vs = pts.map((q: any) => q.s), lo = Math.min(0, Math.min(...vs)), hi = Math.max(1, Math.max(...vs));
+  const cols = pts.map((q: any, i: number) => { const h = Math.max(2, Math.round(6 + (50 * (q.s - lo)) / ((hi - lo) || 1))); const c = i === pts.length - 1 ? "#2f4a68" : "#a9b6c8"; return `<td valign="bottom" style="padding:0 2px"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td height="${h}" bgcolor="${c}" style="height:${h}px;background:${c};font-size:0;line-height:0">&nbsp;</td></tr></table></td>`; }).join("");
+  const ends = `${IB.T}><tr><td style="font-size:9px;color:#888888;padding-top:4px">${mon(pts[0].d)}</td><td align="right" style="font-size:9px;color:#888888;padding-top:4px">${mon(last.d)}</td></tr></table>`;
+  const mean = s > 1 ? `Homes are selling about ${s.toFixed(1)}% below the general asking level, so pricing close to recent sales is what gets homes sold.` : s < -1 ? "Homes are selling above the general asking level, a sign of competition for well-priced listings." : "Homes are selling close to the general asking level.";
+  return IB.wrap(`${P.cityLabel}: asking vs sold`, `${top}${head}${IB.T}><tr style="height:58px">${cols}</tr></table>${ends}<div style="font-size:12px;color:#333333;margin-top:8px">${mean}</div>`, "Spread each month: average asking index over 3 months vs. the sold index. Latest month left out until its sales are in.");
+};
+const INTEL_RE = /^\[(Market snapshot|Market read|Listings vs sales|Price trend|Asking vs sold) \u00b7 [^\]\n]+\][ \t]*$/gm;
+async function withIntel(sb: any, html: string) {
+  const re = /\[(Market snapshot|Market read|Listings vs sales|Price trend|Asking vs sold) \u00b7 ([^\]<]+)\]/g;
+  const found = [...html.matchAll(re)]; if (!found.length) return html;
+  const slugOf = (c: string) => String(c).toLowerCase().trim().replace(/\s+/g, "-");
+  const cache: Record<string, any> = {};
+  for (const m of found) { const s = slugOf(m[2]); if (!(s in cache)) { try { cache[s] = await getMarketPulse(sb, s); } catch (e) { console.error("intel pulse failed", s, e); cache[s] = null; } } }
+  for (const m of found) { const P = cache[slugOf(m[2])]; if (m[1] === "Asking vs sold" && P && P._as === undefined) { try { P._as = await askSold(sb, slugOf(m[2]), P.cityLabel); } catch (e) { console.error("asking vs sold failed", e); P._as = null; } } }
+  return html.replace(re, (_a: string, name: string, city: string) => { const P = cache[slugOf(city)]; if (!P) return ""; try { return INTEL[name]?.(P) || ""; } catch (e) { console.error("intel block failed", name, e); return ""; } });
+}
 export const GET: APIRoute = async ({ url, locals, request }) => {
   try {
     const siteId = String(url.searchParams.get("site_id") || ""), key = String(url.searchParams.get("key") || "");
@@ -231,6 +348,7 @@ export const GET: APIRoute = async ({ url, locals, request }) => {
         `\nLast contact: ${last == null ? "none logged" : last === 0 ? "today" : last + " day" + (last === 1 ? "" : "s") + " ago"}` +
         (S.gap != null && S.gap >= 0.02 ? "\nA pricing conversation is due." : "\nKeep them posted on the market.");
     }
+    { const IDEF: Record<string, string[]> = { market: ["Market snapshot", "Market read", "Listings vs sales"], price: ["Market read", "Asking vs sold"], sellerupdate: ["Market snapshot", "Market read", "Asking vs sold"], value: ["Price trend", "Market read"], since: ["Price trend", "Market read"], loved: ["Market snapshot", "Market read"], checkin: ["Market snapshot", "Market read"], rates: ["Price trend"] }; if (pulse) for (const it of ideas as any[]) { const bl = IDEF[it.id]; if (bl && it.body) it.body = String(it.body).trimEnd() + "\n\n" + bl.map((x) => `[${x} \u00b7 ${area}]`).join("\n"); } }
     return json({ ok: true, ideas, area, context });
   } catch (e: any) {
     return json({ ok: false, error: e?.message || "Couldn't build ideas" }, 500);
@@ -259,9 +377,10 @@ export const POST: APIRoute = async ({ request, locals }) => {
     const from = `${agent.agentName.replace(/["<>]/g, "").trim() || "Your agent"} <${localPart}@${senderDomain}>`;
     const sig = [agent.agentName, agent.brokerage || env("LEAD_BROKERAGE"), agent.agentEmail].filter(Boolean).join("\n");
     const optout = `You're receiving this because you've been in touch with ${agent.agentName}. Reply "unsubscribe" and I won't email you again.`;
-    const plain = `${text}\n\n--\n${sig}\n\n${optout}`;
-    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1a1a1a;max-width:560px">${toHtml(text)}<br><br><div style="color:#555;font-size:13px">${toHtml(sig)}</div><div style="color:#999;font-size:12px;margin-top:16px">${toHtml(optout)}</div></div>`;
+    const plain = `${text.replace(INTEL_RE, "").replace(/\n{3,}/g, "\n\n").trim()}\n\n--\n${sig}\n\n${optout}`;
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1a1a1a;max-width:560px">${await withIntel(sb, toHtml(text))}<br><br><div style="color:#555;font-size:13px">${toHtml(sig)}</div><div style="color:#999;font-size:12px;margin-top:16px">${toHtml(optout)}</div></div>`;
 
+    if (b.preview) return json({ ok: true, html });
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${rkey}`, "content-type": "application/json" },

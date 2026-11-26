@@ -123,7 +123,7 @@ export async function getMarketPulse(supabase: any, cityInput: string) {
   return {
     city, cityLabel, monthlyHistory, marketPulseRead, salesToActive, monthsOfSupply, priorSalesToActive,
     pulseSupply, pulseSupplyYoY, pulseSupplyLabel, pulseSupplyNoun, salesRollingAverage, salesYoY,
-    hasInventoryPulse, activeInventoryAverage, activeListingsRollingAverage, daysOnMarketRollingAverage,
+    hasInventoryPulse, activeInventoryAverage, liveActiveCount, activeListingsRollingAverage, daysOnMarketRollingAverage,
     daysOnMarketContext, saleToListRollingAverage, saleToListContext, islandRank, islandList,
   };
 }
