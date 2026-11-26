@@ -109,6 +109,16 @@ async function sellerCtx(request: Request, sb: any, mls: string) {
 const kk = (v: number) => (v >= 1e6 ? "$" + (v / 1e6).toFixed(2) + "M" : "$" + Math.round(v / 1000) + "K");
 
 const CHART_ORIGIN = (env("EMAIL_ASSET_ORIGIN") || "https://bc.realestate").replace(/\/$/, "");
+// season-line v1: which months listings and sales peak/dip, averaged over up to 2 years (latest preliminary month left out)
+const MNL: Record<string, string> = { Jan: "January", Feb: "February", Mar: "March", Apr: "April", May: "May", Jun: "June", Jul: "July", Aug: "August", Sep: "September", Oct: "October", Nov: "November", Dec: "December" };
+function seasonLine(all: any[]) {
+  const hist = all.slice(-25, -1), cal: Record<string, { n: number; s: number; c: number }> = {};
+  for (const m of hist) { const k = String(m.label).split(" ")[0]; if (!MNL[k]) continue; const e = (cal[k] ||= { n: 0, s: 0, c: 0 }); e.n += Number(m.newListings) || 0; e.s += Number(m.sales) || 0; e.c++; }
+  const ks = Object.keys(cal); if (ks.length < 10) return "";
+  const pick = (f: "n" | "s", dir: number) => ks.reduce((b, k) => (dir * (cal[k][f] / cal[k].c - cal[b][f] / cal[b].c) > 0 ? k : b), ks[0]);
+  const nHi = pick("n", 1), nLo = pick("n", -1), sHi = pick("s", 1), sLo = pick("s", -1);
+  return `${hist.length >= 23 ? "Over the past two years" : "Over the past year"}, new listings peak in ${MNL[nHi]} and are thinnest in ${MNL[nLo]}. ${sHi === nHi ? "Sales peak then too" : `Sales peak in ${MNL[sHi]}`} and are slowest in ${MNL[sLo]}.`;
+}
 // intel-blocks v1: market intel pieces dropped into emails as [Name · City] lines
 const IB = {
   wrap: (title: string, inner: string, foot = "") => `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:540px;margin:10px 0;border:1px solid #e4e0d6;border-radius:8px;background:#faf9f6"><tr><td style="padding:14px 16px">${title ? `<div style="font-size:10px;letter-spacing:1px;font-weight:bold;color:#2f4a68;text-transform:uppercase;margin-bottom:8px">${title}</div>` : ""}${inner}${foot ? `<div style="font-size:11px;color:#777777;margin-top:8px">${foot}</div>` : ""}</td></tr></table>`,
@@ -160,7 +170,7 @@ const INTEL: Record<string, (P: any) => string> = {
     const labs = mh.map((m: any) => `<td width="${(100 / mh.length).toFixed(2)}%" align="center" style="font-size:11px;color:#666666;padding-top:6px">${String(m.label).split(" ")[0]}</td>`).join("");
     const legend = `<span style="color:#2f4a68">&#9644;</span> New listings &nbsp;&nbsp; <span style="color:#c07a35">&#9644;</span> Sales${prev.length ? ` &nbsp;&nbsp; <span style="color:#a9b6c8">- - -</span> Same months last year` : ""}`;
     const img = `<img src="${src}" width="508" alt="${P.cityLabel}: ${L.newListings || 0} new listings and ${L.sales || 0} sales in ${L.label}" style="display:block;width:100%;max-width:508px;height:auto;border:0">`;
-    return IB.wrap(`${P.cityLabel}: new listings and sales`, `<div style="font-size:12px;color:#555555;margin-bottom:8px">${legend}</div>${img}${IB.T}><tr>${labs}</tr></table>`, `Last 12 months, to ${L.label}. The latest month is preliminary.`);
+    return IB.wrap(`${P.cityLabel}: new listings and sales`, `<div style="font-size:12px;color:#555555;margin-bottom:8px">${legend}</div>${img}${IB.T}><tr>${labs}</tr></table>${(() => { const sl = seasonLine(all); return sl ? `<div style="font-size:13px;line-height:1.45;color:#333333;margin-top:10px">${sl}</div>` : ""; })()}`, `Last 12 months, to ${L.label}. The latest month is preliminary.`);
   },
   "Price trend": (P) => {
     const mh = (P.monthlyHistory || []).slice(-24).filter((m: any) => m.medianSoldPrice > 0); if (mh.length < 6) return "";
