@@ -28,7 +28,7 @@ const PLATFORM_ONLY = [
 ];
 // Screens about one site, and the query param that names it.
 const SITE_SCOPED: [RegExp, string][] = [
-  [/^\/admin\/(leads|intent-sessions|digests|watches|buyers|create-shortlist)\/?$/, "site_id"],
+  [/^\/admin\/(people|person|leads|intent-sessions|digests|watches|buyers|create-shortlist)\/?$/, "site_id"], /* crm-v1 */
   [/^\/admin\/intent-pages\/new\/?$/, "site_id"],
   [/^\/admin\/intent-pages\/?$/, "site_id"],
   [/^\/admin\/guides\/?$/, "site"],
