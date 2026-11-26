@@ -108,6 +108,7 @@ async function sellerCtx(request: Request, sb: any, mls: string) {
 }
 const kk = (v: number) => (v >= 1e6 ? "$" + (v / 1e6).toFixed(2) + "M" : "$" + Math.round(v / 1000) + "K");
 
+const CHART_ORIGIN = (env("EMAIL_ASSET_ORIGIN") || "https://bc.realestate").replace(/\/$/, "");
 // intel-blocks v1: market intel pieces dropped into emails as [Name · City] lines
 const IB = {
   wrap: (title: string, inner: string, foot = "") => `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:540px;margin:10px 0;border:1px solid #e4e0d6;border-radius:8px;background:#faf9f6"><tr><td style="padding:14px 16px">${title ? `<div style="font-size:10px;letter-spacing:1px;font-weight:bold;color:#2f4a68;text-transform:uppercase;margin-bottom:8px">${title}</div>` : ""}${inner}${foot ? `<div style="font-size:11px;color:#777777;margin-top:8px">${foot}</div>` : ""}</td></tr></table>`,
@@ -151,13 +152,15 @@ const INTEL: Record<string, (P: any) => string> = {
     return IB.wrap(`${P.cityLabel} market read`, head + stats + gauge);
   },
   "Listings vs sales": (P) => {
-    const mh = (P.monthlyHistory || []).slice(-12); if (mh.length < 4) return "";
-    const max = Math.max(1, ...mh.map((m: any) => Math.max(m.newListings || 0, m.sales || 0)));
-    const bar = (v: number, c: string) => { const h = Math.max(1, Math.round((90 * v) / max)); return `<td valign="bottom" style="padding:0 1px"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="7" height="${h}" bgcolor="${c}" style="width:7px;height:${h}px;background:${c};font-size:0;line-height:0">&nbsp;</td></tr></table></td>`; };
-    const cols = mh.map((m: any) => `<td valign="bottom" align="center" style="padding:0 2px"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>${bar(m.newListings || 0, "#2f4a68")}${bar(m.sales || 0, "#c07a35")}</tr></table></td>`).join("");
-    const labs = mh.map((m: any) => `<td align="center" style="font-size:9px;color:#888888;padding-top:4px">${String(m.label).split(" ")[0]}</td>`).join("");
-    const legend = `<span style="color:#2f4a68">&#9632;</span> New listings &nbsp;&nbsp; <span style="color:#c07a35">&#9632;</span> Sales`;
-    return IB.wrap(`${P.cityLabel}: new listings and sales`, `<div style="font-size:12px;color:#555555;margin-bottom:8px">${legend}</div>${IB.T}><tr style="height:92px">${cols}</tr><tr>${labs}</tr></table>`, `Last 12 months, to ${mh.at(-1).label}. The latest month is preliminary.`);
+    const all = P.monthlyHistory || [], mh = all.slice(-12); if (mh.length < 4) return "";
+    const prev = all.length >= mh.length + 12 ? all.slice(-mh.length - 12, -12) : [];
+    const q = (a: any[], k: string) => a.map((m: any) => Math.round(Number(m[k]) || 0)).join(",");
+    const src = `${CHART_ORIGIN}/api/chart/ls.png?n=${q(mh, "newListings")}&s=${q(mh, "sales")}${prev.length ? `&pn=${q(prev, "newListings")}&ps=${q(prev, "sales")}` : ""}`.replace(/&/g, "&amp;");
+    const L: any = mh.at(-1);
+    const labs = mh.map((m: any) => `<td width="${(100 / mh.length).toFixed(2)}%" align="center" style="font-size:11px;color:#666666;padding-top:6px">${String(m.label).split(" ")[0]}</td>`).join("");
+    const legend = `<span style="color:#2f4a68">&#9644;</span> New listings &nbsp;&nbsp; <span style="color:#c07a35">&#9644;</span> Sales${prev.length ? ` &nbsp;&nbsp; <span style="color:#a9b6c8">- - -</span> Same months last year` : ""}`;
+    const img = `<img src="${src}" width="508" alt="${P.cityLabel}: ${L.newListings || 0} new listings and ${L.sales || 0} sales in ${L.label}" style="display:block;width:100%;max-width:508px;height:auto;border:0">`;
+    return IB.wrap(`${P.cityLabel}: new listings and sales`, `<div style="font-size:12px;color:#555555;margin-bottom:8px">${legend}</div>${img}${IB.T}><tr>${labs}</tr></table>`, `Last 12 months, to ${L.label}. The latest month is preliminary.`);
   },
   "Price trend": (P) => {
     const mh = (P.monthlyHistory || []).slice(-24).filter((m: any) => m.medianSoldPrice > 0); if (mh.length < 6) return "";
