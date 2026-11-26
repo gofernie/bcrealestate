@@ -1,0 +1,259 @@
+---
+// ListingViewer: reusable listing pop-up (price boxes, facts, links, photos, map, rooms, description).
+// Built from the CMA viewer. Open from any page with:
+//   ListingViewer.open({ mls, kind: "active" | "sold", o: { mls, address, price, soldPrice, soldDate, listPrice, dom, sqft, beds, baths, year, lot, type, area, lat, lng },
+//                        url, city, list: [same-shaped opts for Prev/Next], subject: { lat, lng, address }, tiles, tips: { "Label": "explainer" },
+//                        warn, onDetails: function (el, kind, o, j) {} })
+---
+<style is:inline>
+  .pv { position: fixed; inset: 0; background: rgba(15, 25, 25, .72); z-index: 1000; display: flex; align-items: flex-start; justify-content: center; padding: 20px; }
+  .pv[hidden] { display: none; }
+  :where(#lv) button { border: 0; cursor: pointer; font: inherit; }
+  .pv-box { background: #f7f4ec; border-radius: 6px; width: min(980px, 100%); max-height: 94vh; overflow: hidden; display: flex; box-shadow: 0 10px 40px rgba(0,0,0,.35); color: #1f2a2a; }
+  .pv-scroll { flex: 1; overflow-y: auto; max-height: calc(94vh - 12px); margin: 6px 4px 6px 0; padding: 10px 14px 10px 18px; scrollbar-width: thin; scrollbar-color: #c9c3b4 transparent; }
+  .pv-scroll::-webkit-scrollbar { width: 8px; } .pv-scroll::-webkit-scrollbar-thumb { background: #c9c3b4; border-radius: 4px; } .pv-scroll::-webkit-scrollbar-track { background: transparent; }
+  .pv-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
+  .pv-title { font-size: 18px; }
+  .pv-facts { font-size: 13px; color: #5d6868; margin-top: 4px; line-height: 1.5; }
+  .qm { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 5px; border-radius: 50%; border: 1px solid #b8b2a3; color: #7a7466; font-size: 10px; font-weight: 700; line-height: 1; cursor: help; vertical-align: 1px; text-transform: none; letter-spacing: 0; background: #fff; }
+  .qm:hover, .qm:focus { border-color: #2f6f73; color: #2f6f73; outline: none; }
+  .qm-box { position: absolute; top: 20px; left: -10px; z-index: 30; width: 270px; padding: 9px 11px; background: #1f2a2a; color: #f4f1ea; border-radius: 4px; font-size: 12.5px; font-weight: 400; line-height: 1.45; text-align: left; white-space: normal; box-shadow: 0 6px 18px rgba(0,0,0,.25); text-transform: none; letter-spacing: 0; }
+  body span.qm:hover span.qm-box, body span.qm:focus-visible span.qm-box { display: block !important; }
+  .qm.flip .qm-box { left: auto !important; right: -10px; transform: none !important; }
+  body span.qm { display: inline-flex !important; } body span.qm span.qm-box { display: none !important; }
+  span.qm-box { text-transform: none !important; letter-spacing: normal !important; font-size: 12.5px !important; font-weight: 400 !important; color: #f4f1ea !important; font-style: normal !important; line-height: 1.45 !important; }
+  span.qm { text-transform: none !important; letter-spacing: 0 !important; font-size: 10px !important; font-weight: 700 !important; }
+  .pv-nav { display: inline-flex; align-items: center; gap: 6px; }
+  .pv-nav button { background: #fff; color: #2f6f73; border: 1px solid #d6d1c4; border-radius: 4px; padding: 7px 11px; font-size: 13px; }
+  .pv-nav button:hover { background: #eef5f4; }
+  .pv-pos { font-size: 12px; color: #5d6868; min-width: 52px; text-align: center; white-space: nowrap; }
+  @media (max-width: 700px) { .pv-head { flex-wrap: wrap; } .pv-actions { flex-wrap: wrap; } }
+  .pv-actions { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+  .pv-tabs { display: inline-flex; border: 1px solid #d6d1c4; border-radius: 4px; overflow: hidden; background: #fff; }
+  .pv-tabs button { background: #fff; color: #2f6f73; border-radius: 0; padding: 7px 14px; font-size: 13px; }
+  .pv-tabs button + button { border-left: 1px solid #d6d1c4; }
+  .pv-tabs button.on { background: #2f6f73; color: #fff; }
+  .pv-map { position: absolute; inset: 0; border-radius: 4px; z-index: 3; background: #e9eef0; }
+  .pv-nomap { color: #5d6868; text-align: center; margin-top: 25%; }
+  .pv-close { background: #eef2f1; color: #1f2a2a; font-size: 22px; line-height: 1; padding: 6px 12px; border-radius: 4px; }
+  .pv-stage { position: relative; background: #111; border-radius: 4px; display: flex; align-items: center; justify-content: center; height: min(58vh, 560px); }
+  .pv-main { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .pv-prev, .pv-next { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,.85); color: #1f2a2a; font-size: 28px; padding: 4px 14px; border-radius: 4px; }
+  .pv-prev { left: 10px; } .pv-next { right: 10px; }
+  .pv-count { position: absolute; bottom: 8px; right: 12px; color: #fff; font-size: 12px; background: rgba(0,0,0,.5); padding: 2px 8px; border-radius: 999px; }
+  .pv-thumbs { display: flex; gap: 6px; overflow-x: auto; padding: 8px 0; }
+  .pv-thumbs img { height: 60px; border-radius: 3px; cursor: pointer; opacity: .6; flex: 0 0 auto; }
+  .pv-thumbs img.on { opacity: 1; outline: 2px solid #2f6f73; }
+  .pv-price { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 10px; }
+  .pv-price > div { background: #fff; border: 1px solid #e4e0d6; border-radius: 4px; padding: 8px 12px; min-width: 120px; }
+  .pv-price span, .pv-tile span { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #5d6868; }
+  .pv-price strong { display: block; font-size: 24px; line-height: 1.2; color: #1f2a2a; }
+  .pv-price em, .pv-tile em { display: block; font-style: normal; font-size: 12px; color: #5d6868; }
+  .pv-price .pv-cma { background: #e6efee; border-color: #c6dcda; } .pv-price .pv-cma strong { color: #2f6f73; }
+  .pv-price .pv-blind.good { background: #e3f3ec; border-color: #b9dfca; } .pv-price .pv-blind.good b { color: #1d6b48; }
+  .pv-price .pv-blind.ok { background: #fdf3dc; border-color: #ecd9a8; } .pv-price .pv-blind.ok b { color: #7a5a0c; }
+  .pv-price .pv-blind.miss { background: #fbefef; border-color: #efcaca; } .pv-price .pv-blind.miss b { color: #a12f2f; }
+  .pv-price .pv-cut { background: #fbefef; border-color: #efcaca; } .pv-price .pv-cut strong { color: #a12f2f; }
+  .pv-tiles { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 4px 2px 10px; }
+  .pv-tile { display: inline-flex; align-items: baseline; gap: 6px; font-size: 15px; }
+  .pv-tile strong { font-size: 15px; font-weight: 700; color: #1f2a2a; }
+  .pv-tile span { display: inline !important; }
+  .pv-tile em { display: inline !important; }
+  .pv-links { font-size: 13px; color: #5d6868; margin: 2px 0 10px; } .pv-links a { color: #2f6f73; font-weight: 600; }
+  .pv-roomsbox { margin: 8px 0; } .pv-roomsbox summary { cursor: pointer; font-weight: 700; color: #2f6f73; }
+  .pv-roomgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 18px; margin-top: 6px; }
+  .pv-roomgrid h4 { margin: 6px 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: #5d6868; }
+  .pv-roomgrid p { display: flex; justify-content: space-between; margin: 0; font-size: 13px; border-bottom: 1px dotted #e4e0d6; padding: 2px 0; }
+  .pv-desc { white-space: pre-line; font-size: 14px; line-height: 1.55; margin: 6px 0 10px; }
+  .pv-warn { font-size: 12px; color: #5d6868; }
+  .lv-pin { display: inline-block; white-space: nowrap; transform: translate(-50%, -100%); background: #2f6f73; color: #fff; font: 700 13px/1 Arial, sans-serif; padding: 6px 10px; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+  .lv-pin.sold { background: #a12f2f; }
+  .leaflet-tooltip.lv-dist { background: #fff; border: 1px solid #c0392b; color: #c0392b; font: 700 12px/1.2 Arial, sans-serif; padding: 3px 8px; border-radius: 999px; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+  .leaflet-tooltip.lv-dist::before { display: none; } .lv-pin.subj { background: #1f2a2a; }
+</style>
+<div id="lv" class="pv" hidden>
+  <div class="pv-box" role="dialog" aria-modal="true"><div class="pv-scroll">
+    <div class="pv-head"><div><strong class="pv-title"></strong><div class="pv-facts"></div></div><div class="pv-actions"><div class="pv-nav"><button type="button" class="pv-lprev" aria-label="Previous listing">‹ Prev</button><span class="pv-pos"></span><button type="button" class="pv-lnext" aria-label="Next listing">Next ›</button></div><div class="pv-tabs"><button type="button" data-pv="photos" class="on">Photos</button><button type="button" data-pv="map">Map</button></div><button type="button" class="pv-close" aria-label="Close">×</button></div></div>
+    <div class="pv-details"></div>
+    <div class="pv-stage"><button type="button" class="pv-prev" aria-label="Previous">‹</button><img class="pv-main" alt="" /><button type="button" class="pv-next" aria-label="Next">›</button><span class="pv-count"></span><div class="pv-map" hidden></div></div>
+    <div class="pv-thumbs"></div>
+    <div class="pv-rooms"></div>
+    <p class="pv-desc"></p>
+    <p class="pv-warn" style="margin:0" hidden></p>
+  </div></div>
+</div>
+<script is:inline>
+(function () {
+  if (window.ListingViewer) return;
+  var pv = document.getElementById("lv"); if (!pv) return;
+  var $q = function (s) { return pv.querySelector(s); };
+  var money = function (v) { return v == null || v === "" ? "—" : "$" + Math.round(v).toLocaleString("en-CA"); };
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+  var nice = function (s) { return esc(String(s || "").replace(/\b\w/g, function (c) { return c.toUpperCase(); })); };
+  var imgs = [], idx = 0, cur = null, tok = 0, mapObj = null, srcFn = null;
+  var DEFAULT_TIPS = {
+    "Asking": "The current list price on the MLS®.",
+    "Sold": "The final sale price and the sold date (when the deal went firm), from the MLS® sold record.",
+    "Last asking": "The list price at the time it sold. Sale-to-list is the sold price divided by this; over 100% means it sold above asking.",
+    "Original asking": "The first list price. The note shows how far the price came down before it sold.",
+    "Price cut": "Original list price minus today's asking, from the board's price history. The date is the most recent price change.",
+    "Price changes": "From the board's price history. None means it's still at its first list price.",
+    "$ / sq ft": "Price divided by finished square footage. Uses the sold price for sales and the asking price for active listings."
+  };
+  function tile(label, value, sub) { return value == null || value === "" ? "" : '<div class="pv-tile"><span>' + label + "</span><strong>" + value + "</strong>" + (sub ? "<em>" + sub + "</em>" : "") + "</div>"; }
+  function daysSince(d) { if (!d) return null; var n = Math.round((Date.now() - new Date(String(d).slice(0, 10) + "T12:00:00").getTime()) / 864e5); return n >= 0 ? n : null; }
+  function withTips(html, kind) {
+    var T = Object.assign({}, DEFAULT_TIPS, { "Days on market": kind === "sold" ? "Days from listing to firm sale, as reported by the board." : "Days since it was listed, counted to today." }, (cur && cur.opts.tips) || {});
+    return html.replace(/<span>([^<]{1,40})<\/span>/g, function (m, l) { return T[l] ? "<span>" + l + '<span class="qm" tabindex="0" aria-label="How this is calculated">?<span class="qm-box">' + esc(T[l]) + "</span></span></span>" : m; });
+  }
+  function km(a1, o1, a2, o2) { var R = 6371, r = Math.PI / 180, dA = (a2 - a1) * r, dO = (o2 - o1) * r; var h = Math.sin(dA / 2) * Math.sin(dA / 2) + Math.cos(a1 * r) * Math.cos(a2 * r) * Math.sin(dO / 2) * Math.sin(dO / 2); return 2 * R * Math.asin(Math.sqrt(h)); }
+  function fmtKm(d) { return d < 1 ? Math.round(d * 1000 / 10) * 10 + " m" : d.toFixed(1) + " km"; }
+  function distTile(o, j) {
+    var d = o.distKm != null ? Number(o.distKm) : null, s = cur && cur.opts.subject, la = Number(o.lat || j.lat), ln = Number(o.lng || j.lng);
+    if (d == null && s && s.lat && s.lng && la && ln && !(Math.abs(s.lat - la) < 1e-6 && Math.abs(s.lng - ln) < 1e-6)) d = km(Number(s.lat), Number(s.lng), la, ln);
+    return d == null ? "" : tile((cur && cur.opts.subjectLabel) || "From subject", fmtKm(d));
+  }
+  function details(kind, o, j) {
+    j = j || {};
+    var sqft = o.sqft || j.sqft, beds = o.beds || j.beds, baths = o.baths || j.baths, year = o.year || j.year, lot = o.lot || j.lot;
+    var price = kind === "sold" ? o.soldPrice : (o.price || j.listPrice);
+    var html = '<div class="pv-price">';
+    if (kind === "sold") {
+      var list = o.listPrice || j.boardListPrice, orig = j.originalPrice;
+      var stl = list && o.soldPrice ? Math.round((o.soldPrice / list) * 1000) / 10 : null;
+      html += "<div><span>Sold</span><strong>" + money(o.soldPrice) + "</strong><em>" + esc(o.soldDate || "") + "</em></div>";
+      if (list) html += "<div><span>Last asking</span><strong>" + money(list) + "</strong><em>" + (stl ? stl + "% sale-to-list" : "") + "</em></div>";
+      if (orig && list && orig > list) html += "<div><span>Original asking</span><strong>" + money(orig) + "</strong><em>cut " + Math.round((1 - list / orig) * 1000) / 10 + "% before selling</em></div>";
+      if (o.dom != null) html += "<div><span>Days on market</span><strong>" + o.dom + "</strong></div>";
+    } else {
+      var dom = daysSince(j.listedAt || o.listedAt), orig2 = j.originalPrice;
+      html += "<div><span>Asking</span><strong>" + money(price) + "</strong><em>" + (j.listedAt || o.listedAt ? "listed " + esc(String(j.listedAt || o.listedAt).slice(0, 10)) : "") + "</em></div>";
+      if (dom != null) html += "<div><span>Days on market</span><strong>" + dom + "</strong></div>";
+      if (orig2 && price && orig2 > price) html += '<div class="pv-cut"><span>Price cut</span><strong>−' + money(orig2 - price) + "</strong><em>from " + money(orig2) + " (−" + Math.round((1 - price / orig2) * 1000) / 10 + "%)" + (j.lastPriceChange ? " · " + esc(j.lastPriceChange) : "") + "</em></div>";
+      else if (orig2) html += "<div><span>Price changes</span><strong>None</strong><em>still at original asking</em></div>";
+    }
+    html += "</div><div class=\"pv-tiles\">" +
+      tile("Beds", beds) + tile("Baths", baths) +
+      tile("Finished sq ft", sqft ? Math.round(sqft).toLocaleString("en-CA") : null) +
+      tile("$ / sq ft", price && sqft ? "$" + Math.round(price / sqft) : null, kind === "sold" ? "sold" : "asking") +
+      tile("Built", year, year ? (new Date().getFullYear() - year) + " yrs old" : "") +
+      tile("Lot", lot ? Math.round(lot).toLocaleString("en-CA") + " sq ft" : null, lot ? (lot / 43560).toFixed(2) + " acres" : "") +
+      tile("Type", nice(/^(sale|lease|rent)$/i.test(String(j.propertyType || "")) ? o.type : (j.propertyType || o.type))) +
+      tile("Area", nice(o.area || j.area)) +
+      distTile(o, j) +
+      tile("Waterfront", j.waterfront ? nice(j.waterfront) : null) + tile("View", j.view ? nice(j.view) : null) +
+      tile("Building", j.building && String(j.building).toLowerCase() !== String(o.area || j.area || "").toLowerCase() ? esc(j.building) : null) +
+      "</div>";
+    var site = cur.opts.url || (cur.opts.city ? "/" + cur.opts.city + "/homes?mls=" + encodeURIComponent(o.mls) : "");
+    var links = [kind === "active" && site ? '<a href="' + esc(site) + '" target="_blank" rel="noopener">Full listing on the site ↗</a>' : "",
+      j.tour ? '<a href="' + esc(j.tour) + '" target="_blank" rel="noopener">Virtual tour ↗</a>' : "",
+      j.realtorCa ? '<a href="' + esc(j.realtorCa) + '" target="_blank" rel="noopener">REALTOR.ca ↗</a>' : "",
+      "MLS® " + esc(o.mls), j.brokerage ? "Listed by " + esc(j.brokerage) : ""].filter(Boolean);
+    return withTips(html, kind) + '<p class="pv-links">' + links.join(" · ") + "</p>";
+  }
+  function rooms(list) {
+    if (!list || !list.length) return "";
+    var lv = {}; list.forEach(function (r) { var k = r.level || "Other"; (lv[k] = lv[k] || []).push(r); });
+    return '<details class="pv-roomsbox" open><summary>Room sizes (' + list.length + ")</summary><div class=\"pv-roomgrid\">" + Object.keys(lv).map(function (k) {
+      return "<div><h4>" + esc(k) + "</h4>" + lv[k].map(function (r) { return "<p><span>" + esc(r.name) + "</span><span>" + esc(r.size || "") + "</span></p>"; }).join("") + "</div>";
+    }).join("") + "</div></details>";
+  }
+  function show(i) {
+    if (!imgs.length) return; idx = (i + imgs.length) % imgs.length;
+    $q(".pv-main").src = imgs[idx];
+    $q(".pv-count").textContent = (idx + 1) + " / " + imgs.length;
+    pv.querySelectorAll(".pv-thumbs img").forEach(function (im, k) { im.classList.toggle("on", k === idx); if (k === idx) { var st = im.parentNode; st.scrollLeft = im.offsetLeft - st.clientWidth / 2 + im.clientWidth / 2; } });
+  }
+  function loadLeaflet(cb) {
+    if (window.L) return cb();
+    if (!document.getElementById("lv-leaflet-css")) { var c = document.createElement("link"); c.id = "lv-leaflet-css"; c.rel = "stylesheet"; c.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(c); }
+    var s = document.createElement("script"); s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; s.onload = cb; document.head.appendChild(s);
+  }
+  function pin(cls, text) { return L.divIcon({ className: "", iconSize: null, html: '<div class="lv-pin ' + cls + '">' + text + "</div>" }); }
+  function mode(m) {
+    var isMap = m === "map", st = $q(".pv-stage");
+    pv.querySelectorAll(".pv-tabs button").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-pv") === m); });
+    st.querySelectorAll(".pv-main, .pv-prev, .pv-next, .pv-count").forEach(function (el) { el.style.visibility = isMap ? "hidden" : ""; });
+    $q(".pv-thumbs").style.display = isMap ? "none" : "";
+    var mp = $q(".pv-map"); mp.hidden = !isMap;
+    if (!isMap || !cur) return;
+    var o = cur.o, j = cur.j || {}, lat = o.lat || j.lat || j.latitude, lng = o.lng || j.lng || j.longitude, s = cur.opts.subject;
+    if (mapObj) { mapObj.remove(); mapObj = null; }
+    if (!lat || !lng) { mp.innerHTML = '<p class="pv-nomap">No map position for this listing.</p>'; return; }
+    mp.innerHTML = "";
+    loadLeaflet(function () {
+      if (mp.hidden) return;
+      mapObj = L.map(mp, { scrollWheelZoom: true });
+      var tiles = cur.opts.tiles;
+      L.tileLayer(tiles || "https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: tiles ? 22 : 19, attribution: tiles ? "&copy; Jawg Maps &copy; OpenStreetMap" : "&copy; OpenStreetMap" }).addTo(mapObj);
+      var price = cur.kind === "sold" ? money(o.soldPrice) + " sold" : (o.price || j.listPrice ? money(o.price || j.listPrice) + " asking" : esc(o.address || "MLS® " + o.mls));
+      L.marker([lat, lng], { icon: pin(cur.kind === "sold" ? "sold" : "", esc(price)), zIndexOffset: 500 }).addTo(mapObj);
+      var pts = [[lat, lng]];
+      if (s && s.lat && s.lng && !(Math.abs(s.lat - lat) < 1e-6 && Math.abs(s.lng - lng) < 1e-6)) {
+        L.marker([s.lat, s.lng], { icon: pin("subj", "★ " + esc((s.address || "Subject").split(" ").slice(0, 3).join(" "))), zIndexOffset: 1000 }).addTo(mapObj);
+        L.polyline([[s.lat, s.lng], [lat, lng]], { color: "#c0392b", weight: 2, dashArray: "5 6", opacity: .8 }).addTo(mapObj).bindTooltip(fmtKm(km(Number(s.lat), Number(s.lng), Number(lat), Number(lng))), { permanent: true, direction: "center", className: "lv-dist" });
+        pts.push([s.lat, s.lng]);
+      }
+      setTimeout(function () { mapObj.invalidateSize(); if (pts.length > 1) mapObj.fitBounds(pts, { padding: [60, 60], maxZoom: 16 }); else mapObj.setView(pts[0], 16); }, 30);
+    });
+  }
+  function mlsOf(x) { return String((x && (x.mls || (x.o && x.o.mls))) || ""); }
+  function open(opts) {
+    opts = opts || {};
+    var o = Object.assign({}, opts.o || {}); if (!o.mls) o.mls = opts.mls;
+    if (!o.mls) return;
+    var kind = opts.kind || "active", t = ++tok;
+    cur = { opts: opts, o: o, kind: kind, j: null };
+    var list = opts.list || [], pos = -1;
+    for (var i = 0; i < list.length; i++) if (mlsOf(list[i]) === String(o.mls)) { pos = i; break; }
+    $q(".pv-pos").textContent = pos >= 0 ? (pos + 1) + " of " + list.length : "";
+    $q(".pv-nav").style.display = list.length > 1 && pos >= 0 ? "" : "none";
+    pv.hidden = false; document.body.style.overflow = "hidden";
+    $q(".pv-scroll").scrollTop = 0;
+    $q(".pv-title").textContent = o.address || "MLS® " + o.mls;
+    var w = $q(".pv-warn"); w.textContent = opts.warn != null ? opts.warn : (kind === "sold" ? "Sold listing details for your own use. Don't share these photos or sold details publicly." : ""); w.hidden = !w.textContent;
+    var stepping = !!$q(".pv-main").getAttribute("src");
+    mode("photos");
+    if (!stepping) { $q(".pv-details").innerHTML = details(kind, o, null); $q(".pv-rooms").innerHTML = ""; $q(".pv-thumbs").innerHTML = ""; $q(".pv-desc").textContent = "Loading…"; }
+    $q(".pv-count").textContent = "";
+    fetch(srcFn ? srcFn(o.mls) : "/admin/api/cma?photos=" + encodeURIComponent(o.mls)).then(function (r) { return r.json(); }).then(function (j) {
+      if (t !== tok) return;
+      cur.j = j.error ? null : j;
+      if (!o.address && j.address) $q(".pv-title").textContent = j.address;
+      $q(".pv-details").innerHTML = details(kind, o, cur.j);
+      $q(".pv-rooms").innerHTML = j.error ? "" : rooms(j.rooms);
+      imgs = j.images || [];
+      $q(".pv-desc").textContent = j.error ? j.error : (j.description || "");
+      $q(".pv-thumbs").innerHTML = imgs.map(function (u, k) { return '<img loading="lazy" src="' + esc(u) + '" data-k="' + k + '" alt="" />'; }).join("");
+      pv.querySelectorAll(".pv-thumbs img").forEach(function (im) { im.onclick = function () { show(Number(im.getAttribute("data-k"))); }; });
+      if (imgs.length) show(0); else { $q(".pv-main").removeAttribute("src"); $q(".pv-count").textContent = "No photos"; }
+      $q(".pv-scroll").scrollTop = 0;
+      if (typeof opts.onDetails === "function") { try { opts.onDetails($q(".pv-details"), kind, o, j); } catch (e) { console.error(e); } }
+    }).catch(function () { if (t === tok) $q(".pv-desc").textContent = "Couldn't load this listing."; });
+  }
+  function step(d) {
+    if (!cur) return; var list = cur.opts.list || []; if (list.length < 2) return;
+    var i = -1; for (var k = 0; k < list.length; k++) if (mlsOf(list[k]) === String(cur.o.mls)) { i = k; break; }
+    if (i < 0) return;
+    var wasMap = !$q(".pv-map").hidden, next = list[(i + d + list.length) % list.length];
+    open(Object.assign({}, next, { list: list }));
+    if (wasMap) mode("map");
+  }
+  function close() { pv.hidden = true; document.body.style.overflow = ""; $q(".pv-main").removeAttribute("src"); if (mapObj) { mapObj.remove(); mapObj = null; } }
+  pv.querySelectorAll(".pv-tabs button").forEach(function (b) { b.onclick = function () { mode(b.getAttribute("data-pv")); }; });
+  $q(".pv-lprev").onclick = function () { step(-1); };
+  $q(".pv-lnext").onclick = function () { step(1); };
+  $q(".pv-close").onclick = close;
+  $q(".pv-prev").onclick = function () { show(idx - 1); };
+  $q(".pv-next").onclick = function () { show(idx + 1); };
+  pv.onclick = function (e) { if (e.target === pv) close(); };
+  document.addEventListener("keydown", function (e) { if (pv.hidden) return; if (e.key === "Escape") close(); if (!$q(".pv-map").hidden) return; if (e.key === "ArrowLeft") show(idx - 1); if (e.key === "ArrowRight") show(idx + 1); });
+  pv.addEventListener("mouseover", function (e) {
+    var q = e.target.closest && e.target.closest(".qm"); if (!q) return;
+    q.classList.remove("flip");
+    var right = q.getBoundingClientRect().left - 10 + 290, limit = $q(".pv-box").getBoundingClientRect().right - 8;
+    if (right > limit) q.classList.add("flip");
+  });
+  window.ListingViewer = { open: open, close: close, setSource: function (fn) { srcFn = typeof fn === "function" ? fn : null; } };
+})();
+</script>

@@ -282,6 +282,35 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
     </form>
 
     <div id="out"></div>
+    <style is:inline>
+      .ct-h { margin-top: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+      .vt { display: inline-flex; border: 1px solid #d6d1c4; border-radius: 4px; overflow: hidden; background: #fff; font-size: 12px; font-weight: 600; }
+      .vt button { border: 0; background: #fff; color: #2f6f73; padding: 5px 12px; cursor: pointer; font: inherit; border-radius: 0; }
+      .vt button + button { border-left: 1px solid #d6d1c4; } .vt button.on { background: #2f6f73; color: #fff; }
+      .ctg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+      @media (max-width: 1000px) { .ctg { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+      @media (max-width: 720px) { .ctg { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 460px) { .ctg { grid-template-columns: 1fr; } }
+      .ct { position: relative; background: #fff; border: 1px solid #e4e0d6; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; transition: opacity .15s; }
+      .ct.off { opacity: .45; }
+      .ct-img { position: relative; aspect-ratio: 4 / 3; background: #e9e5dc; cursor: pointer; overflow: hidden; }
+      .ct-img img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .25s; } .ct-img:hover img { transform: scale(1.04); }
+      .ct-noimg { position: absolute; inset: 0; display: grid; place-items: center; color: #8a8378; font-size: 12px; }
+      .ct-n { position: absolute; bottom: 8px; left: 8px; background: #2f6f73; color: #fff; font-weight: 700; font-size: 12px; border-radius: 999px; min-width: 22px; height: 22px; display: grid; place-items: center; padding: 0 6px; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+      .ct.off .ct-n { background: #8a8378; }
+      .ct-tick { position: absolute; top: 8px; left: 8px; z-index: 2; background: rgba(255,255,255,.92); border-radius: 4px; padding: 4px; line-height: 0; cursor: pointer; }
+      .ct-tick input { margin: 0; width: 16px; height: 16px; cursor: pointer; }
+      .ct-body { padding: 10px 12px 12px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+      .ct-addr { font-weight: 700; font-size: 14px; text-align: left; padding: 0; line-height: 1.3; }
+      .ct-row { display: flex; justify-content: space-between; gap: 8px; }
+      .ct-row span { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #5d6868; }
+      .ct-row strong { display: block; font-size: 16px; color: #1f2a2a; }
+      .ct-row em { display: block; font-style: normal; font-size: 11.5px; color: #5d6868; }
+      .ct-row .r { text-align: right; } .ct-row .r strong { color: #2f6f73; }
+      .ct-row em .w { display: inline-block; vertical-align: middle; height: 5px; border-radius: 3px; background: #2f6f73; }
+      .ct-facts { font-size: 12px; color: #5d6868; }
+      .ct .adj { margin-top: auto; }
+    </style>
     <div id="pv" class="pv" hidden>
       <div class="pv-box" role="dialog" aria-modal="true"><div class="pv-scroll">
         <div class="pv-head"><div><strong class="pv-title"></strong><div class="pv-facts"></div></div><div class="pv-actions"><div class="pv-nav"><button type="button" class="pv-lprev" aria-label="Previous listing">‹ Prev</button><span class="pv-pos"></span><button type="button" class="pv-lnext" aria-label="Next listing">Next ›</button></div><div class="pv-tabs"><button type="button" data-pv="photos" class="on">Photos</button><button type="button" data-pv="map">Map</button></div><button type="button" class="pv-close" aria-label="Close">×</button></div></div>
@@ -459,6 +488,8 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
         '<p class="condnote" id="cn">' + condNote(sm) + '</p>' + photoReadBlock() + '</div>';
     }
 
+    var view = "tiles"; try { view = localStorage.getItem("cma-view") || "tiles"; } catch (e) {}
+    function vt() { return '<span class="vt no-print"><button type="button" data-view="tiles"' + (view === "tiles" ? ' class="on"' : "") + '>Tiles</button><button type="button" data-view="table"' + (view === "table" ? ' class="on"' : "") + ">Table</button></span>"; }
     function render() {
       var s = data.subject, sm = summary();
       var maxW = Math.max.apply(null, data.comps.map(function (c) { return c.weight; }).concat([1]));
@@ -496,7 +527,8 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
           (s.family !== "land" ? ", $" + data.rates.year.toLocaleString("en-CA") + " per year of age" : "") +
           " · City median $" + data.rates.medianPpsf + "/sq ft</p></section>";
 
-        html += '<section class="card"><h3 style="margin-top:0">Comparable sales</h3><div class="cmap" id="map-comps"></div><table><thead><tr><th class="no-print"></th><th>Home</th><th class="r">Sold</th><th class="r">Size</th><th class="r">Beds</th><th class="r">Built</th><th class="r">Away</th><th class="r">Adjusted</th><th class="r">Weight</th></tr></thead><tbody>' +
+        if (view === "table") {
+          html += '<section class="card"><h3 class="ct-h">Comparable sales' + vt() + '</h3><div class="cmap" id="map-comps"></div><table><thead><tr><th class="no-print"></th><th>Home</th><th class="r">Sold</th><th class="r">Size</th><th class="r">Beds</th><th class="r">Built</th><th class="r">Away</th><th class="r">Adjusted</th><th class="r">Weight</th></tr></thead><tbody>' +
           data.comps.map(function (c, ci) {
             var adj = c.adjustments.map(function (a) { return "<div><span>" + esc(a.label) + "</span><span>" + signed(a.amount) + "</span></div>"; }).join("");
             return '<tr class="' + (off[c.mls] ? "off" : "") + '"><td class="no-print"><input type="checkbox" data-c="' + esc(c.mls) + '"' + (off[c.mls] ? "" : " checked") + " /></td>" +
@@ -508,13 +540,39 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
               '<td class="r">' + (c.distKm != null ? c.distKm + " km" : "—") + '</td><td class="r"><strong>' + money(c.adjusted) + "</strong></td>" +
               '<td class="r"><span class="w" style="width:' + Math.round((c.weight / maxW) * 40) + 'px"></span>' + c.weight + "%</td></tr>";
           }).join("") + "</tbody></table></section>";
+        } else {
+          html += '<section class="card"><h3 class="ct-h">Comparable sales' + vt() + '</h3><div class="cmap" id="map-comps"></div><div class="ctg">' +
+            data.comps.map(function (c, ci) {
+              var adj = c.adjustments.map(function (a) { return "<div><span>" + esc(a.label) + "</span><span>" + signed(a.amount) + "</span></div>"; }).join("");
+              var facts = [c.sqft ? Math.round(c.sqft).toLocaleString("en-CA") + " sq ft" : "", c.beds ? c.beds + " bd" : "", c.year ? "built " + c.year : "", c.distKm != null ? c.distKm + " km away" : ""].filter(Boolean).join(" · ");
+              return '<div class="ct' + (off[c.mls] ? " off" : "") + '">' +
+                '<label class="ct-tick no-print" title="Use this comp"><input type="checkbox" data-c="' + esc(c.mls) + '"' + (off[c.mls] ? "" : " checked") + " /></label>" +
+                '<div class="ct-img" data-ph="' + esc(c.mls) + '">' + (c.image ? '<img src="' + esc(c.image) + '" alt="" loading="lazy" />' : '<span class="ct-noimg">No photo</span>') + '<span class="ct-n">' + (ci + 1) + "</span></div>" +
+                '<div class="ct-body"><button type="button" class="lst sold ct-addr" data-ph="' + esc(c.mls) + '">' + esc(fixCase(c.address) || "MLS® " + c.mls) + '</button><div class="foot">' + esc(c.area || "") + " · " + nice(c.type) + " · MLS® " + esc(c.mls) + "</div>" +
+                c.flags.map(function (f) { return '<span class="flag">' + esc(f) + "</span>"; }).join(" ") +
+                '<div class="ct-row"><div><span>Sold</span><strong>' + money(c.soldPrice) + "</strong><em>" + prettyDate(c.soldDate) + '</em></div><div class="r"><span>Adjusted</span><strong>' + money(c.adjusted) + '</strong><em><i class="w" style="width:' + Math.round((c.weight / maxW) * 40) + 'px"></i> ' + c.weight + "%</em></div></div>" +
+                '<div class="ct-facts">' + facts + "</div>" +
+                '<details class="adj"><summary>Adjustments</summary><div><span>Sold ' + esc(c.soldDate) + (c.listPrice ? " (listed " + k(c.listPrice) + ")" : "") + "</span><span>" + money(c.soldPrice) + "</span></div>" + adj + '<div><strong>Adjusted</strong><strong>' + money(c.adjusted) + "</strong></div></details></div></div>";
+            }).join("") + "</div></section>";
+        }
       }
 
       if (data.actives.length) {
-        html += '<section class="card"><h3 style="margin-top:0">The competition: ' + data.activeCount + " similar active listings</h3><div class=\"cmap\" id=\"map-act\"></div><table><thead><tr><th>Home</th><th class=\"r\">Asking</th><th class=\"r\">Size</th><th class=\"r\">Beds</th><th class=\"r\">Built</th><th class=\"r\">Listed</th></tr></thead><tbody>" +
+        if (view === "table") {
+          html += '<section class="card"><h3 class="ct-h">The competition: ' + data.activeCount + " similar active listings" + vt() + "</h3><div class=\"cmap\" id=\"map-act\"></div><table><thead><tr><th>Home</th><th class=\"r\">Asking</th><th class=\"r\">Size</th><th class=\"r\">Beds</th><th class=\"r\">Built</th><th class=\"r\">Listed</th></tr></thead><tbody>" +
           data.actives.map(function (a) {
             return '<tr><td><button type="button" class="lst" data-act="' + esc(a.mls) + '">' + esc(a.address) + ' 📷</button><br><span class="foot">' + esc(a.area || "") + " · MLS® " + esc(a.mls) + '</span></td><td class="r">' + money(a.price) + '</td><td class="r">' + (a.sqft ? Math.round(a.sqft).toLocaleString("en-CA") : "—") + '</td><td class="r">' + (a.beds || "—") + '</td><td class="r">' + (a.year || "—") + '</td><td class="r">' + esc(String(a.listedAt || "").slice(0, 10)) + "</td></tr>";
           }).join("") + "</tbody></table></section>";
+        } else {
+          html += '<section class="card"><h3 class="ct-h">The competition: ' + data.activeCount + " similar active listings" + vt() + '</h3><div class="cmap" id="map-act"></div><div class="ctg">' +
+            data.actives.map(function (a) {
+              var facts = [a.sqft ? Math.round(a.sqft).toLocaleString("en-CA") + " sq ft" : "", a.beds ? a.beds + " bd" : "", a.year ? "built " + a.year : ""].filter(Boolean).join(" · ");
+              return '<div class="ct"><div class="ct-img" data-act="' + esc(a.mls) + '">' + (a.image ? '<img src="' + esc(a.image) + '" alt="" loading="lazy" />' : '<span class="ct-noimg">No photo</span>') + "</div>" +
+                '<div class="ct-body"><button type="button" class="lst ct-addr" data-act="' + esc(a.mls) + '">' + esc(fixCase(a.address)) + '</button><div class="foot">' + esc(a.area || "") + " · MLS® " + esc(a.mls) + "</div>" +
+                '<div class="ct-row"><div><span>Asking</span><strong>' + money(a.price) + "</strong><em>" + (a.listedAt ? "listed " + prettyDate(a.listedAt) : "") + "</em></div></div>" +
+                '<div class="ct-facts">' + facts + "</div></div></div>";
+            }).join("") + "</div></section>";
+        }
       }
       html += '<p class="foot">A market estimate for the agent\'s use, not an appraisal. Condition, renovations and views aren\'t in MLS data, so set the condition slider and untick comps that don\'t fit.</p>';
       out.innerHTML = html;
@@ -534,6 +592,7 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
       var setCond = function (v) { cond = v; if (Number(sl.value) !== cond) sl.value = cond; var bx = document.querySelector(".condbox"); bx.classList.toggle("up", cond > 0); bx.classList.toggle("down", cond < 0); };
       if (sl) { sl.ondblclick = function () { setCond(0); sl.oninput(); }; var rb = document.getElementById("cond-reset"); if (rb) rb.onclick = function () { setCond(0); sl.oninput(); }; }
       if (sl) sl.oninput = function () { setCond(Number(sl.value)); var sm2 = summary(); var st = out.querySelectorAll(".range strong"); if (sm2) { st[0].textContent = k(sm2.lo); st[1].textContent = money(sm2.likely); st[2].textContent = k(sm2.hi); document.getElementById("wide").innerHTML = wideText(sm2); document.getElementById("lg").innerHTML = listGap(sm2); } document.getElementById("cl").textContent = condText(); document.getElementById("cn").innerHTML = condNote(sm2); condBubble(sm2); };
+      out.querySelectorAll("[data-view]").forEach(function (b) { b.onclick = function () { view = b.getAttribute("data-view"); try { localStorage.setItem("cma-view", view); } catch (e) {} render(); }; });
       var pb = document.getElementById("print"); if (pb) pb.onclick = function () { window.print(); };
     }
 

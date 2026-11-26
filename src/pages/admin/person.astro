@@ -2,6 +2,7 @@
 // crm-v1: one person — contact, stage, follow-up, notes and the full timeline
 import AdminTopNav from "../../components/AdminTopNav.astro";
 import CrmStyles from "../../components/crm/CrmStyles.astro";
+import ListingViewer from "../../components/ListingViewer.astro";
 import { loadPeople, timelineFor, STAGES, fmtPhone, todayStr, plusDays, when, fuText, sbAdmin, bdText } from "../../lib/crm";
 export const prerender = false;
 
@@ -10,11 +11,13 @@ const access: any = (Astro.locals as any).adminAccess || null;
 const siteId = String(Astro.url.searchParams.get("site_id") || "");
 const key = String(Astro.url.searchParams.get("key") || "");
 const allowed = UUID.test(siteId) && (!access || access.isPlatformAdmin || (access.siteIds || []).includes(siteId));
-let p: any = null, items: any[] = [], tasks: any[] = [], allPeople: any[] = [], partner: any = null;
+let p: any = null, items: any[] = [], tasks: any[] = [], allPeople: any[] = [], partner: any = null, pCity = "", sellerListing: any = null;
 if (allowed && /^[ep]:/.test(key)) {
   const { people, detail } = await loadPeople(siteId); allPeople = people;
   p = people.find((x: any) => x.keys.includes(key)) || null; partner = p && p.partnerKey ? people.find((x: any) => x.keys.includes(p.partnerKey)) || null : null;
   if (p) items = await timelineFor(siteId, p, detail.get(p.key));
+  if (p && p.listingMls) { const { data: sl } = await sbAdmin().from("listing_rows").select("address, price, status").eq("mls_number", p.listingMls).limit(1); sellerListing = sl?.[0] || { address: "MLS® " + p.listingMls }; }
+  if (p) { const dd: any = detail.get(p.key) || {}; pCity = String(dd.leads?.[0]?.city || dd.sessions?.[0]?.city || "").toLowerCase().trim().replace(/\s+/g, "-"); }
   if (p) { const { data: tk } = await sbAdmin().from("crm_tasks").select("*").eq("site_id", siteId).in("person_key", p.keys).order("due_on", { ascending: true, nullsFirst: false }).order("created_at", { ascending: true }); tasks = tk || []; }
 }
 const back = `/admin/people?site_id=${encodeURIComponent(siteId)}`;
@@ -76,7 +79,7 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
   </style>
 </head>
 <body>
-  <style is:inline>body:not(.editing) .ed{display:none!important}body.editing .vw{display:none!important}.stats i[data-k]{cursor:pointer}.stats i[data-k]:hover{text-decoration:underline}.ti.k-lead{box-shadow:inset 3px 0 0 #2c4f8c}.ti{transition:background .5s}.ti.hl{background:#fff4cf}.pf{display:block;font-size:.72rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#8a8378}.pf input{display:block;width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #d9d2c6;border-radius:6px;padding:9px 10px;font:inherit;font-size:.95rem;text-transform:none;letter-spacing:0;font-weight:500;color:#181614;background:#fff}.pf input:focus{outline:2px solid #181614;outline-offset:-1px}#pf-saved{color:#a3352a}.em-modal{position:fixed;inset:0;background:rgba(24,22,20,.45);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto}.em-modal[hidden]{display:none}.em-box{background:#fff;border-radius:12px;width:100%;max-width:980px;box-shadow:0 20px 60px rgba(0,0,0,.25)}.em-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #f0ebe2;font-size:1.05rem}.em-x{border:0;background:none;font-size:1rem;cursor:pointer;color:#8a8378}.em-body{display:grid;grid-template-columns:290px minmax(0,1fr)}.em-ideas{border-right:1px solid #f0ebe2;padding:16px;background:#faf8f4;border-bottom-left-radius:12px}.em-lbl{font-size:.72rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#8a8378;margin-bottom:10px}.em-idea{display:block;width:100%;text-align:left;border:1px solid #e6dfd3;background:#fff;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;font:inherit}.em-idea:hover{border-color:#b9b0a2}.em-idea b{display:block;font-size:.9rem}.em-idea span{display:block;font-size:.78rem;color:#8a8378;margin-top:2px}.em-idea.on{border-color:#181614;box-shadow:0 0 0 1px #181614}.em-rand{width:100%;border:1px dashed #c9c2b6;background:none;border-radius:8px;padding:9px;cursor:pointer;font:inherit;font-weight:700;font-size:.85rem;margin-top:4px}.em-draft{padding:16px 20px;display:grid;gap:12px}.pf select,.pf textarea{display:block;width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #d9d2c6;border-radius:6px;padding:9px 10px;font:inherit;font-size:.95rem;text-transform:none;letter-spacing:0;font-weight:500;color:#181614;background:#fff}.pf textarea{resize:vertical;line-height:1.5;min-height:300px}.em-foot{display:flex;justify-content:flex-end;align-items:center;gap:12px}#em-msg{font-size:.85rem;color:#8a8378}.em-wait{font-size:.85rem;color:#8a8378}@media (max-width:760px){.em-body{grid-template-columns:1fr}.em-ideas{border-right:0;border-bottom:1px solid #f0ebe2}}</style>
+  <style is:inline>body:not(.editing) .ed{display:none!important}body.editing .vw{display:none!important}.stats i[data-k]{cursor:pointer}.stats i[data-k]:hover{text-decoration:underline}.ti.k-lead{box-shadow:inset 3px 0 0 #2c4f8c}.ti{transition:background .5s}.ti.hl{background:#fff4cf}.pf{display:block;font-size:.72rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#8a8378}.pf input{display:block;width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #d9d2c6;border-radius:6px;padding:9px 10px;font:inherit;font-size:.95rem;text-transform:none;letter-spacing:0;font-weight:500;color:#181614;background:#fff}.pf input:focus{outline:2px solid #181614;outline-offset:-1px}#pf-saved{color:#a3352a}.em-modal{position:fixed;inset:0;background:rgba(24,22,20,.45);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto}.em-modal[hidden]{display:none}.em-box{background:#fff;border-radius:12px;width:100%;max-width:980px;box-shadow:0 20px 60px rgba(0,0,0,.25)}.em-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #f0ebe2;font-size:1.05rem}.em-x{border:0;background:none;font-size:1rem;cursor:pointer;color:#8a8378}.em-body{display:grid;grid-template-columns:290px minmax(0,1fr)}.em-ideas{border-right:1px solid #f0ebe2;padding:16px;background:#faf8f4;border-bottom-left-radius:12px}.em-lbl{font-size:.72rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#8a8378;margin-bottom:10px}.em-idea{display:block;width:100%;text-align:left;border:1px solid #e6dfd3;background:#fff;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;font:inherit}.em-idea:hover{border-color:#b9b0a2}.em-idea b{display:block;font-size:.9rem}.em-idea span{display:block;font-size:.78rem;color:#8a8378;margin-top:2px}.em-idea.on{border-color:#181614;box-shadow:0 0 0 1px #181614}.em-rand{width:100%;border:1px dashed #c9c2b6;background:none;border-radius:8px;padding:9px;cursor:pointer;font:inherit;font-weight:700;font-size:.85rem;margin-top:4px}.em-draft{padding:16px 20px;display:grid;gap:12px}.pf select,.pf textarea{display:block;width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #d9d2c6;border-radius:6px;padding:9px 10px;font:inherit;font-size:.95rem;text-transform:none;letter-spacing:0;font-weight:500;color:#181614;background:#fff}.pf textarea{resize:vertical;line-height:1.5;min-height:300px}.em-foot{display:flex;justify-content:flex-end;align-items:center;gap:12px}#em-msg{font-size:.85rem;color:#8a8378}.em-wait{font-size:.85rem;color:#8a8378}@media (max-width:760px){.em-body{grid-template-columns:1fr}.em-ideas{border-right:0;border-bottom:1px solid #f0ebe2}}.home-link{border:0;background:none;padding:0;font:inherit;color:#1f6b60;font-weight:600;cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:rgba(31,107,96,.35);text-underline-offset:2px}.home-link:hover{text-decoration-color:#1f6b60}.td .home-link{margin-right:12px}.tt .home-link{font-weight:700;color:#181614}.em-ctx{background:#fff7e6;border:1px solid #f0dcb0;border-radius:8px;padding:10px 12px;font-size:.8rem;line-height:1.5;color:#5a4410;margin-bottom:14px;white-space:pre-line}</style>
   <AdminTopNav siteId={siteId} />
   <main class="crm">
     <div class="crumb"><a href={back}>← People</a></div>
@@ -90,6 +93,8 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
               {p.emails.map((e: string) => <a href="#" class="em-link" data-to={e} style="color:inherit;">{e}</a>)}
               {p.phones.map((x: string) => <span>{fmtPhone(x)}</span>)}
               {p.address && <span>📍 {p.address}</span>}
+              {sellerListing && <span>🏷 Selling: <button type="button" class="home-link" data-mls={p.listingMls} data-addr={sellerListing.address} data-price="" data-url="">{sellerListing.address}</button></span>}
+              {p.boughtPrice && p.boughtMonth && <span>🏠 Bought {"$" + Math.round(p.boughtPrice).toLocaleString("en-CA")} · {new Date(p.boughtMonth + "-15T12:00:00").toLocaleDateString("en-CA", { month: "short", year: "numeric" })}</span>}
               {p.birthday && <span>🎂 {bdText(p.birthday)}</span>}
               {partner && <span>Partner: <a href={partnerHref} style="color:#181614;font-weight:700;">{partner.name} →</a>{partner.phones[0] ? ` · ${fmtPhone(partner.phones[0])}` : ""}{partner.birthday ? ` · 🎂 ${bdText(partner.birthday)}` : ""}</span>}
               {!partner && p.spouseName && <span>Spouse: {p.spouseName}{p.spousePhone ? ` · ${p.spousePhone}` : ""}{p.spouseEmail ? ` · ${p.spouseEmail}` : ""}{p.spouseBirthday ? ` · 🎂 ${bdText(p.spouseBirthday)}` : ""} <button class="rename" id="sp-promote" type="button" style="color:#1f6b60;font-weight:700;">make {p.spouseName} a contact</button></span>}
@@ -110,6 +115,10 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
             <label class="pf">Email<input id="pf-email" type="email" value={p.emails[0] || ""} autocomplete="off" /></label>
             <label class="pf">Phone<input id="pf-phone" type="tel" value={p.phones[0] ? fmtPhone(p.phones[0]) : ""} autocomplete="off" /></label>
             <label class="pf">Birthday<input id="pf-bday" type="date" value={p.birthday || ""} /></label>
+            <label class="pf">Their listing (MLS®)<input id="pf-listing" value={p.listingMls || ""} placeholder="e.g. 1042340" autocomplete="off" /></label>
+            <label class="pf">Bought for<input id="pf-bprice" inputmode="numeric" value={p.boughtPrice ? String(Math.round(p.boughtPrice)) : ""} placeholder="e.g. 740000" autocomplete="off" /></label>
+            <label class="pf">Month bought<input id="pf-bmonth" type="month" value={p.boughtMonth || ""} /></label>
+            <label class="pf">Home type<select id="pf-btype"><option value="house" selected={!p.boughtType || p.boughtType === "house"}>House</option><option value="townhouse" selected={p.boughtType === "townhouse"}>Townhouse</option><option value="apartment" selected={p.boughtType === "apartment"}>Apartment / condo</option></select></label>
             <label class="pf" style="grid-column:1/-1;">Address<input id="pf-address" value={p.address || ""} autocomplete="off" /></label>
           </div>
           <div class="saved" id="pf-saved"></div>
@@ -202,7 +211,7 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
             {items.map((i) => (
               <div class={"ti k-" + i.kind}>
                 <div class="ic">{ICON[i.kind] || "•"}</div>
-                <div><div class="tt">{i.title}</div>{i.detail && <div class="td">{i.detail}</div>}</div>
+                <div><div class="tt">{i.homes && i.homes.length === 1 && !i.detail ? <button type="button" class="home-link" data-mls={i.homes[0].mls} data-addr={i.homes[0].address} data-price={i.homes[0].price} data-url={i.homes[0].url || ""}>{i.title}</button> : i.title}</div>{i.detail && <div class="td">{i.detail}</div>}{i.homes && (i.homes.length > 1 || i.detail) && <div class="td">{i.homes.slice(0, 8).map((h: any) => <button type="button" class="home-link" data-mls={h.mls} data-addr={h.address} data-price={h.price} data-url={h.url || ""}>{h.address}{h.price ? ` (${h.price})` : ""}</button>)}{i.homes.length > 8 && <span>+{i.homes.length - 8} more</span>}</div>}</div>
                 <div class="tw">{when(i.at)}{i.href && <a href={i.href} target={i.href.startsWith("/admin") ? undefined : "_blank"}>Open</a>}</div>
               </div>
             ))}
@@ -218,7 +227,7 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
           <div class="em-head"><strong>Email {p.name}</strong><button type="button" id="em-close" class="em-x" title="Close">✕</button></div>
           <div class="em-body">
             <div class="em-ideas">
-              <div class="em-lbl">Not sure what to say? Pick an idea</div>
+              <div id="em-ctx" class="em-ctx" hidden></div><div class="em-lbl">Not sure what to say? Pick an idea</div>
               <div id="em-list"><div class="em-wait">Loading ideas…</div></div>
               <button type="button" id="em-random" class="em-rand">🎲 Surprise me</button>
             </div>
@@ -232,9 +241,10 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
         </div>
       </div>
     )}
+  <ListingViewer />
   </main>
   {p && (
-    <script is:inline define:vars={{ siteId, pkey: p.key }}>
+    <script is:inline define:vars={{ siteId, pkey: p.key, pCity }}>
       (function () {
         function post(body) {
           return fetch("/admin/api/people", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ site_id: siteId, key: pkey }, body)) }).then(function (r) { return r.json(); });
@@ -254,15 +264,16 @@ function v(id) { var el = document.getElementById(id); return el ? el.value.trim
         document.querySelectorAll(".stats i[data-k]").forEach(function (c) { c.addEventListener("click", function () { var hits = document.querySelectorAll(".ti.k-" + c.dataset.k + (c.dataset.k === "love" ? ", .ti.k-react" : "")); if (!hits.length) return; hits[0].scrollIntoView({ behavior: "smooth", block: "center" }); hits.forEach(function (h) { h.classList.add("hl"); }); setTimeout(function () { hits.forEach(function (h) { h.classList.remove("hl"); }); }, 2500); }); });
         var emM = document.getElementById("em-modal");
         if (emM) {
-          var emIdeas = null, emCur = -1, emTx = document.getElementById("em-text"), emSub = document.getElementById("em-subject"), emMsg = document.getElementById("em-msg");
+          var emAuto = new URLSearchParams(location.search).get("email") || "", emIdeas = null, emCur = -1, emTx = document.getElementById("em-text"), emSub = document.getElementById("em-subject"), emMsg = document.getElementById("em-msg");
           emTx.addEventListener("input", function () { emTx.dataset.dirty = "1"; });
           var emPick = function (i) { var it = emIdeas && emIdeas[i]; if (!it) return; if (emTx.dataset.dirty === "1" && emTx.value.trim() && !confirm("Replace your draft with this idea?")) return; emSub.value = it.subject; emTx.value = it.body; emTx.dataset.dirty = "0"; emCur = i; document.querySelectorAll("#em-list .em-idea").forEach(function (b, k) { b.classList.toggle("on", k === i); }); emTx.focus(); emTx.setSelectionRange(0, 0); emTx.scrollTop = 0; };
-          var emLoad = function () { var list = document.getElementById("em-list"); fetch("/admin/api/person-email?site_id=" + encodeURIComponent(siteId) + "&key=" + encodeURIComponent(pkey)).then(function (r) { return r.json(); }).then(function (j) { emIdeas = j.ideas || []; list.innerHTML = ""; if (!emIdeas.length) { list.textContent = j.error || "No ideas right now."; return; } emIdeas.forEach(function (it, i) { var b = document.createElement("button"); b.type = "button"; b.className = "em-idea"; var tt = document.createElement("b"); tt.textContent = it.icon + " " + it.label; var s = document.createElement("span"); s.textContent = it.why || ""; b.appendChild(tt); b.appendChild(s); b.addEventListener("click", function () { emPick(i); }); list.appendChild(b); }); }).catch(function () { list.textContent = "Couldn't load ideas."; }); };
+          var emLoad = function () { var list = document.getElementById("em-list"); fetch("/admin/api/person-email?site_id=" + encodeURIComponent(siteId) + "&key=" + encodeURIComponent(pkey)).then(function (r) { return r.json(); }).then(function (j) { var cx = document.getElementById("em-ctx"); if (cx && j.context) { cx.textContent = j.context; cx.hidden = false; } emIdeas = j.ideas || []; list.innerHTML = ""; if (!emIdeas.length) { list.textContent = j.error || "No ideas right now."; return; } emIdeas.forEach(function (it, i) { var b = document.createElement("button"); b.type = "button"; b.className = "em-idea"; var tt = document.createElement("b"); tt.textContent = it.icon + " " + it.label; var s = document.createElement("span"); s.textContent = it.why || ""; b.appendChild(tt); b.appendChild(s); b.addEventListener("click", function () { emPick(i); }); list.appendChild(b); }); if (emAuto) { var ai = 0; emIdeas.forEach(function (it, i) { if (it.id === emAuto) ai = i; }); emPick(ai); emAuto = ""; } }).catch(function () { list.textContent = "Couldn't load ideas."; }); };
           var emOpen = function (to) { emM.hidden = false; document.body.style.overflow = "hidden"; if (to) document.getElementById("em-to").value = to; if (!emIdeas) emLoad(); };
           var emClose = function () { emM.hidden = true; document.body.style.overflow = ""; };
           var emBtn = document.getElementById("em-open"); if (emBtn) emBtn.addEventListener("click", function () { emOpen(""); });
           document.querySelectorAll(".em-link").forEach(function (a) { a.addEventListener("click", function (e) { e.preventDefault(); emOpen(a.dataset.to); }); });
           document.getElementById("em-close").addEventListener("click", emClose);
+          if (emAuto) emOpen("");
           emM.addEventListener("click", function (e) { if (e.target === emM) emClose(); });
           document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !emM.hidden) emClose(); });
           document.getElementById("em-random").addEventListener("click", function () { if (!emIdeas || !emIdeas.length) return; var i = emIdeas.length === 1 ? 0 : emCur; while (emIdeas.length > 1 && i === emCur) i = Math.floor(Math.random() * emIdeas.length); emPick(i); });
@@ -277,15 +288,18 @@ function v(id) { var el = document.getElementById(id); return el ? el.value.trim
               .catch(function () { btn.disabled = false; btn.textContent = "Send"; emMsg.textContent = "Failed"; });
           });
         }
-        var et = document.getElementById("edit-toggle");
+        var homeBtns = Array.prototype.slice.call(document.querySelectorAll(".home-link")), byMls = {}, homeList = [];
+        homeBtns.forEach(function (b) { var m = b.dataset.mls; if (!m || byMls[m]) return; byMls[m] = { mls: m, o: { mls: m, address: b.dataset.addr || "" }, url: b.dataset.url || "", city: pCity }; homeList.push(byMls[m]); });
+        homeBtns.forEach(function (b) { b.addEventListener("click", function () { var o = byMls[b.dataset.mls]; if (o && window.ListingViewer) window.ListingViewer.open(Object.assign({}, o, { list: homeList })); }); });
+var et = document.getElementById("edit-toggle");
         function setEdit(on) { document.body.classList.toggle("editing", on); if (et) { et.textContent = on ? "Done" : "Edit"; et.classList.toggle("dark", on); } try { if (on) sessionStorage.setItem("person-edit:" + pkey, "1"); else sessionStorage.removeItem("person-edit:" + pkey); } catch (e) {} }
         try { if (sessionStorage.getItem("person-edit:" + pkey)) setEdit(true); } catch (e) {}
-        var pfIds = ["pf-name", "pf-email", "pf-phone", "pf-address", "pf-bday"], pfInit = pfIds.map(function (id) { return v(id); });
+        var pfIds = ["pf-name", "pf-email", "pf-phone", "pf-address", "pf-bday", "pf-listing", "pf-bprice", "pf-bmonth", "pf-btype"], pfInit = pfIds.map(function (id) { return v(id); });
         function saveProfile() {
           var dirty = pfIds.some(function (id, i) { return v(id) !== pfInit[i]; });
           if (!dirty) { setEdit(false); return; }
           et.textContent = "Saving…";
-          post({ action: "profile", name: v("pf-name"), email: v("pf-email"), phone: v("pf-phone"), address: v("pf-address"), birthday: v("pf-bday") }).then(function (j) { if (j.ok) { setEdit(false); location.reload(); } else { et.textContent = "Done"; flash("pf-saved", j.error || "Failed"); } });
+          post({ action: "profile", name: v("pf-name"), email: v("pf-email"), phone: v("pf-phone"), address: v("pf-address"), birthday: v("pf-bday"), listing_mls: v("pf-listing"), bought_price: v("pf-bprice"), bought_month: v("pf-bmonth"), bought_type: v("pf-btype") }).then(function (j) { if (j.ok) { setEdit(false); location.reload(); } else { et.textContent = "Done"; flash("pf-saved", j.error || "Failed"); } });
         }
         if (et) et.addEventListener("click", function () { if (document.body.classList.contains("editing")) saveProfile(); else { setEdit(true); var n = document.getElementById("pf-name"); if (n) { n.focus(); n.select(); } } });
         pfIds.forEach(function (id) { var el = document.getElementById(id); if (el) el.addEventListener("keydown", function (e) { if (e.key === "Enter") saveProfile(); }); });

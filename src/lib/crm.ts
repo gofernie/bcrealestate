@@ -1,5 +1,6 @@
 // crm-v1: one record per person, built from leads, sessions, reactions, emails, shortlists and watches.
 import { createClient } from "@supabase/supabase-js";
+import { mapListing, listingUrl, siteBase, fmtPrice } from "./sessionHomes";
 
 export const STAGES = [
   ["new", "New"], ["active", "Active"], ["showing", "Showing"], ["offer", "Offer"],
@@ -30,7 +31,7 @@ async function inChunks(sb: any, table: string, cols: string, col: string, vals:
 
 export type Person = {
   key: string; keys: string[]; name: string; emails: string[]; phones: string[];
-  stage: string; followup: string | null; followupNote: string | null; metaKey: string | null; address: string | null; birthday: string | null; spouseName: string | null; spousePhone: string | null; spouseEmail: string | null; spouseBirthday: string | null; partnerKey: string | null; manual: boolean;
+  stage: string; followup: string | null; followupNote: string | null; metaKey: string | null; address: string | null; birthday: string | null; spouseName: string | null; spousePhone: string | null; spouseEmail: string | null; spouseBirthday: string | null; partnerKey: string | null; manual: boolean; listingMls: string | null; boughtPrice: number | null; boughtMonth: string | null; boughtType: string | null;
   firstSeen: number; lastActivity: number; lastWhat: string; lastAgentTouch: number;
   counts: { enquiries: number; loves: number; likes: number; passes: number; shortlists: number; emails: number; notes: number; watches: number };
   recentLoves: number; sessionIds: string[]; sources: string[];
@@ -128,7 +129,7 @@ export async function loadPeople(siteId: string, opts: { onlyKeys?: string[] } =
     if (!g.leads.length && !g.sends.length && !g.watches.length && !g.manual) continue;
     const p: Person = {
       key, keys, name: m?.display_name || names[0]?.[1] || emails[0] || (phones[0] ? fmtPhone(phones[0]) : "Unnamed"),
-      emails, phones, stage: m?.stage || "new", followup: m?.next_followup_at || null, followupNote: m?.followup_note || null, metaKey: m?.person_key || null, address: m?.address || null, birthday: m?.birthday || null, spouseName: m?.spouse_name || null, spousePhone: m?.spouse_phone || null, spouseEmail: m?.spouse_email || null, spouseBirthday: m?.spouse_birthday || null, partnerKey: m?.partner_key || null, manual: !!g.manual,
+      emails, phones, stage: m?.stage || "new", followup: m?.next_followup_at || null, followupNote: m?.followup_note || null, metaKey: m?.person_key || null, address: m?.address || null, birthday: m?.birthday || null, spouseName: m?.spouse_name || null, spousePhone: m?.spouse_phone || null, spouseEmail: m?.spouse_email || null, spouseBirthday: m?.spouse_birthday || null, partnerKey: m?.partner_key || null, listingMls: m?.listing_mls || null, boughtPrice: m?.bought_price != null ? Number(m.bought_price) : null, boughtMonth: m?.bought_month || null, boughtType: m?.bought_type || null, manual: !!g.manual,
       firstSeen: all.length ? Math.min(...all) : ts(m?.created_at), lastActivity: acts[0]?.[0] || (all.length ? Math.max(...all) : ts(m?.created_at)), lastWhat: acts[0]?.[1] || (g.manual ? "Added by you" : ""),
       lastAgentTouch: Math.max(0, ...touches),
       counts: { enquiries: g.leads.length, loves: reacts.filter((r: any) => r.decision === "love").length, likes: reacts.filter((r: any) => r.decision === "like").length, passes: reacts.filter((r: any) => r.decision === "pass").length, shortlists: g.sends.length, emails: sent.length, notes: pnotes.length, watches: g.watches.length },
@@ -145,13 +146,14 @@ export async function loadPeople(siteId: string, opts: { onlyKeys?: string[] } =
 // Timeline for one person, newest first
 export async function timelineFor(siteId: string, p: Person, d: any) {
   const sb = sbAdmin();
-  const items: { at: number; kind: string; title: string; detail?: string; href?: string }[] = [];
+  const items: { at: number; kind: string; title: string; detail?: string; href?: string; homes?: any[] }[] = [];
   const sq = (sid: string) => `/admin/intent-sessions?site_id=${encodeURIComponent(siteId)}&session=${encodeURIComponent(sid)}`;
   for (const l of d.leads) {
     const src = String(l.source || "");
     const title = l.question ? `Asked: ${l.question}` : src === "saved_search" ? "Saved a search" : /showing/i.test(src) ? "Requested a showing" : "Sent an enquiry";
     const msg = String(l.message || "").split("\n").filter((x: string) => x.trim() && !/^\s*(Criteria|Question):/.test(x) && !/^I'm interested in this property and have a question\.?$/i.test(x.trim())).slice(0, 3).join(" · ");
-    items.push({ at: ts(l.created_at), kind: "lead", title, detail: [msg, l.city && `${l.city}${l.slug ? " / " + l.slug : ""}`].filter(Boolean).join(" · "), href: l.session_id ? sq(l.session_id) : undefined });
+    const lmsg = String(l.message || ""), lmls = (lmsg.match(/[?&]mls=(\d+)/) || [])[1], laddr = ((lmsg.match(/Property:\s*([^\n·]+)/) || [])[1] || "").trim();
+    items.push({ at: ts(l.created_at), kind: "lead", title, detail: [msg, l.city && `${l.city}${l.slug ? " / " + l.slug : ""}`].filter(Boolean).join(" · "), href: l.session_id ? sq(l.session_id) : undefined, homes: lmls ? [{ mls: lmls, address: laddr || "MLS® " + lmls, price: "" }] : undefined });
   }
   const firstBySession = new Map<string, any>();
   for (const s of d.sessions) { const f = firstBySession.get(s.session_id); if (!f || ts(s.created_at) < ts(f.created_at)) firstBySession.set(s.session_id, s); }
@@ -167,14 +169,33 @@ export async function timelineFor(siteId: string, p: Person, d: any) {
     if (!partsA.length) continue;
     const parts = partsA.join(", ") + (partsA.length === 1 ? ((loves.length + likes.length + passes.length) === 1 ? " home" : " homes") : "");
     const names = [...loves, ...likes].slice(0, 4).map((r: any) => `${r.address || r.mls_number}${r.price ? " (" + r.price + ")" : ""}`).join(" · ");
-    items.push({ at: Math.max(...rs.map((r: any) => r.t)), kind: loves.length ? "love" : "react", title: parts.charAt(0).toUpperCase() + parts.slice(1), detail: names, href: sq(rs[0].session_id) });
+    const rhomes = [...loves, ...likes].filter((r: any) => r.mls_number).map((r: any) => ({ mls: String(r.mls_number), address: String(r.address || "MLS® " + r.mls_number), price: r.price ? (isNaN(Number(r.price)) ? String(r.price) : fmtPrice(Number(r.price))) : "" }));
+    items.push({ at: Math.max(...rs.map((r: any) => r.t)), kind: loves.length ? "love" : "react", title: parts.charAt(0).toUpperCase() + parts.slice(1), detail: rhomes.length ? undefined : names, href: sq(rs[0].session_id), homes: rhomes.length ? rhomes : undefined });
   }
   // browsing: distinct homes opened per day (listing events)
   if (p.sessionIds.length) {
     const { data: ev } = await sb.from("intent_listing_events").select("session_id, listing_id, created_at").in("session_id", p.sessionIds.slice(0, 50)).order("created_at", { ascending: false }).limit(3000);
     const bd = new Map<string, { t: number; homes: Set<string>; sid: string }>();
     for (const e of ev || []) { const t = ts(e.created_at); const k = day(t); const x = bd.get(k) || { t, homes: new Set<string>(), sid: e.session_id }; x.t = Math.max(x.t, t); if (e.listing_id) x.homes.add(String(e.listing_id)); bd.set(k, x); }
-    for (const x of bd.values()) if (x.homes.size) items.push({ at: x.t, kind: "browse", title: `Looked at ${x.homes.size} home${x.homes.size === 1 ? "" : "s"}`, href: sq(x.sid) });
+    const allIds = [...new Set([...bd.values()].flatMap((x) => [...x.homes]))].slice(0, 300);
+    const homeBy = new Map();
+    let lbase = "";
+    try {
+      lbase = String((await siteBase(sb, siteId)) || "");
+      if (allIds.length) {
+        const { data: hr } = await sb.from("listing_rows").select("*").in("id", allIds);
+        for (const h of (hr || []).map(mapListing)) homeBy.set(String(h.id), h);
+        const missing = allIds.filter((id) => !homeBy.has(id));
+        if (missing.length) { const { data: hr2 } = await sb.from("listing_rows").select("*").in("mls_number", missing); for (const r of hr2 || []) homeBy.set(String((r as any).mls_number), mapListing(r)); }
+      }
+    } catch (e) { console.error("browse homes lookup failed", e); }
+    for (const x of bd.values()) if (x.homes.size) {
+      const hs: any[] = [...x.homes].map((id) => homeBy.get(id)).filter(Boolean);
+      const one = x.homes.size === 1 && hs.length === 1 ? hs[0] : null;
+      const detail = one ? (one.price ? fmtPrice(one.price) : "") : hs.slice(0, 4).map((h) => `${h.address}${h.price ? " (" + fmtPrice(h.price) + ")" : ""}`).join(" · ") + (hs.length > 4 ? ` · +${hs.length - 4} more` : "");
+      const bhomes = hs.filter((h) => h.mls).map((h) => ({ mls: String(h.mls), address: String(h.address || "MLS® " + h.mls), price: h.price ? fmtPrice(h.price) : "", url: lbase ? listingUrl(lbase, String(h.city || ""), String(h.mls), x.sid) : "" }));
+      items.push({ homes: bhomes.length ? bhomes : undefined, at: x.t, kind: "browse", title: one ? `Looked at ${one.address}` : `Looked at ${x.homes.size} home${x.homes.size === 1 ? "" : "s"}`, detail: bhomes.length ? undefined : (detail || undefined), href: one && one.mls && lbase ? listingUrl(lbase, String(one.city || ""), String(one.mls), x.sid) : sq(x.sid) });
+    }
   }
   for (const m of d.messages) items.push({ at: ts(m.created_at), kind: "sent", title: `You emailed: ${m.subject || "(no subject)"}`, detail: String(m.body || "").replace(/\s+/g, " ").slice(0, 160) });
   for (const s of d.sends) {

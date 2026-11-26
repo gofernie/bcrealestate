@@ -267,7 +267,7 @@ async function buildContext(city: string, fam: Family, cutoff = "") {
       area: str(r.normalized_area || x.normalized_area || r.raw_area) || null,
       sqft: num(r.sqft), beds: num(r.beds) ?? num(x.beds), baths: num(r.baths) ?? num(x.baths), year: num(r.year_built) ?? num(x.year_built), lot: num(r.lot_size_sqft) ?? lotOf(x),
       lat: num(r.lat) ? Number(r.lat) : null, lng: Number.isFinite(Number(r.lng)) && Number(r.lng) !== 0 ? Number(r.lng) : null,
-      waterfront: x.waterfront == null ? null : truthy(x.waterfront), image: imgUrl(x.image_url, "small"),
+      waterfront: x.waterfront == null ? null : truthy(x.waterfront), image: imgUrl(x.image_url, "medium"),
       listPrice: num(r.list_price), soldPrice: price, soldDate: String(r.sold_date).slice(0, 10), dom: r.dom ?? null,
       days: Math.max(0, Math.round((today.getTime() - new Date(String(r.sold_date) + "T12:00:00Z").getTime()) / DAY)),
       timeFactor: tf, timePrice: price * tf, project: projectTerms(r.description),

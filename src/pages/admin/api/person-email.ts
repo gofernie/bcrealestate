@@ -11,6 +11,7 @@ const env = (k: string) => String((import.meta.env as any)[k] || (globalThis as 
 const json = (o: any, status = 200) => new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 const escH = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 function linkOrButton(u: string) {
+  if (/\/report\/[0-9a-f-]{36}/i.test(u)) return `<br><a href="${u}" style="display:inline-block;margin-top:8px;background:#1f6b60;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;padding:11px 18px;border-radius:6px">See the comparable sales report &rarr;</a>`;
   const m = u.match(/\/([a-z0-9-]+)\/market-intelligence/i);
   if (!m) return `<a href="${u}" style="color:#1f6b60">${u}</a>`;
   const city = m[1].replace(/-/g, " ").replace(/\b\w/g, (x) => x.toUpperCase());
@@ -20,7 +21,7 @@ const toHtml = (t: string) => escH(t).replace(/https?:\/\/[^\s<]+/g, (u) => link
 const money = (n: number) => (n > 0 ? "$" + Math.round(n).toLocaleString("en-CA") : "");
 const nice = (d: string) => new Date(d + "T12:00").toLocaleDateString("en-CA", { month: "long", day: "numeric" });
 const TYPE_OF: Record<string, string> = { market: "market", rates: "financing", loved: "homes", checkin: "checkin", value: "market" };
-const ORDER: Record<string, number> = { birthday: 0, pbirthday: 1, loved: 2, market: 3, rates: 4, value: 5, checkin: 6 };
+const ORDER: Record<string, number> = { since: 4.5, price: -2, sellerupdate: -1, birthday: 0, pbirthday: 1, loved: 2, market: 3, rates: 4, value: 5, checkin: 6 };
 
 async function agentFor(sb: any, siteId: string) {
   let agentName = "", agentEmail = "", siteName = "", brokerage = "";
@@ -59,15 +60,49 @@ const daysUntil = (b: string | null) => {
   return diff <= 14 ? diff : null;
 };
 
-export const GET: APIRoute = async ({ url, locals }) => {
+async function sellerCtx(request: Request, sb: any, mls: string) {
+  const { data: lr } = await sb.from("listing_rows").select("*").eq("mls_number", mls).limit(1);
+  const L: any = lr?.[0]; if (!L) return null;
+  const city = String(L.normalized_city || L.city || "").toLowerCase().trim().replace(/\s+/g, "-");
+  const origin = new URL(request.url).origin, cookie = request.headers.get("cookie") || "";
+  const get = (q: string) => fetch(`${origin}/admin/api/cma?${q}`, { headers: { cookie } }).then((r) => r.json()).catch(() => null);
+  const [cma, ph]: any[] = await Promise.all([get(`city=${encodeURIComponent(city)}&mls=${encodeURIComponent(mls)}`), get(`photos=${encodeURIComponent(mls)}`)]);
+  const listPrice = Number(L.price || cma?.subject?.listPrice || 0);
+  const listedAt = String(ph?.listedAt || L.listed_at || "").slice(0, 10);
+  const dom = listedAt ? Math.max(0, Math.round((Date.now() - new Date(listedAt + "T12:00:00").getTime()) / 864e5)) : null;
+  let likely = 0, lo = 0, hi = 0, compsN = 0;
+  const comps = Array.isArray(cma?.comps) ? cma.comps.filter((c: any) => c.adjusted > 0) : [];
+  if (comps.length) {
+    const s = comps.map((c: any) => ({ v: c.adjusted, w: Math.max(Number(c.weight) || 0, 0.1) })).sort((a: any, b: any) => a.v - b.v);
+    const tot = s.reduce((t: number, x: any) => t + x.w, 0); let acc = 0, med = s[s.length - 1].v;
+    for (const x of s) { acc += x.w; if (acc / tot >= 0.5) { med = x.v; break; } }
+    const f = 1 + (Number(cma.autoCondition) || 0) / 100, core = cma?.confidence?.core || [0.94, 1.07];
+    const r = (v: number) => Math.round(v / 1000) * 1000;
+    likely = r(med * f); lo = r(likely * core[0]); hi = r(likely * core[1]); compsN = comps.length;
+  }
+  const actives = Array.isArray(cma?.actives) ? cma.actives : [];
+  const cheaper = actives.filter((a: any) => String(a.mls) !== String(mls) && a.price && listPrice && a.price < listPrice).length;
+  const gap = likely && listPrice ? listPrice / likely - 1 : null;
+  const suggested = likely ? Math.floor(likely / 10000) * 10000 - 1000 : 0;
+  const snapshot = { v: 4, city, mls, address: String(L.address || ph?.address || "MLS® " + mls), listPrice, listedAt, likely, lo, hi, criteria: cma?.criteria || "", activeCount: Number(cma?.activeCount || actives.length || 0),
+    subject: { beds: cma?.subject?.beds, baths: cma?.subject?.baths, sqft: cma?.subject?.sqft, year: cma?.subject?.year, lot: cma?.subject?.lot, type: cma?.subject?.type, area: cma?.subject?.area },
+    comps: comps.map((c: any) => ({ mls: c.mls, image: c.image, address: c.address, area: c.area, soldDate: c.soldDate, soldPrice: c.soldPrice, sqft: c.sqft, beds: c.beds, year: c.year, distKm: c.distKm, adjusted: c.adjusted })),
+    actives: actives.filter((a: any) => String(a.mls) !== String(mls)).map((a: any) => ({ mls: a.mls, image: a.image, address: a.address, area: a.area, price: a.price, sqft: a.sqft, beds: a.beds, year: a.year, listedAt: a.listedAt })) };
+  return { snapshot, mls, city, address: String(L.address || ph?.address || "MLS® " + mls), listPrice, listedAt, dom, orig: Number(ph?.originalPrice || 0), likely, lo, hi, compsN, activeCount: Number(cma?.activeCount || actives.length || 0), cheaper, gap, suggested };
+}
+const kk = (v: number) => (v >= 1e6 ? "$" + (v / 1e6).toFixed(2) + "M" : "$" + Math.round(v / 1000) + "K");
+
+export const GET: APIRoute = async ({ url, locals, request }) => {
   try {
     const siteId = String(url.searchParams.get("site_id") || ""), key = String(url.searchParams.get("key") || "");
     const c: any = await load(locals, siteId, key);
     if (c.error) return json({ ok: false, error: c.error }, c.status);
     const { site, people, p, d } = c;
     const sb = sbAdmin();
+    let seller: any = null;
+    if (p.listingMls) { try { seller = await sellerCtx(request, sb, String(p.listingMls)); } catch (e) { console.error("seller ctx failed", e); } }
     const first = /@/.test(p.name) ? "there" : String(p.name).trim().split(/\s+/)[0];
-    const rawCity = String(d.leads?.[0]?.city || d.sessions?.[0]?.city || (site as any)?.city || "nanaimo");
+    const rawCity = String(seller?.city || d.leads?.[0]?.city || d.sessions?.[0]?.city || (site as any)?.city || "nanaimo");
     const city = rawCity.toLowerCase().trim().replace(/\s+/g, "-");
     let pulse: any = null;
     try { pulse = await getMarketPulse(sb, city); } catch (e) { console.error("pulse failed", e); }
@@ -75,6 +110,33 @@ export const GET: APIRoute = async ({ url, locals }) => {
     let base = "";
     try { base = String((await siteBase(sb, siteId)) || "").replace(/\/$/, ""); } catch {}
     const reportUrl = base ? `${base}/${city}/market-intelligence` : "";
+    let since: any = null;
+    if (p.boughtPrice && p.boughtMonth) {
+      try {
+        const origin = new URL(request.url).origin, cookie = request.headers.get("cookie") || "";
+        const q = (ty: string) => fetch(`${origin}/admin/api/cma?city=${encodeURIComponent(city)}&since=${encodeURIComponent(p.boughtMonth)}&price=${Math.round(p.boughtPrice)}${ty ? `&type=${encodeURIComponent(ty)}` : ""}`, { headers: { cookie } }).then((r) => r.json()).catch(() => null);
+        let sj: any = await q(String(p.boughtType || "house"));
+        if (!sj || sj.error) sj = await q("");
+        if (sj && !sj.error && sj.value) since = sj;
+      } catch (e) { console.error("since-purchase failed", e); }
+    }
+    const monL = (m: string) => new Date(String(m).slice(0, 7) + "-15T12:00:00").toLocaleDateString("en-CA", { month: "long", year: "numeric" });
+    const sinceLine = since ? `\n\u2022 You bought in ${monL(p.boughtMonth)} for ${money(p.boughtPrice)}. The market has moved ${since.change >= 0 ? "up" : "down"} ${Math.abs(since.change)}% since, about ${money(since.value)} in today's terms` : "";
+    let reportLink = "";
+    if (seller && seller.likely) {
+      try {
+        const since24 = new Date(Date.now() - 864e5).toISOString();
+        const { data: ex } = await sb.from("cma_reports").select("id").eq("site_id", siteId).eq("mls", seller.mls).eq("data->>v", "4").gte("created_at", since24).order("created_at", { ascending: false }).limit(1);
+        let rid = ex?.[0]?.id;
+        if (!rid) {
+          const agent = await agentFor(sb, siteId);
+          const { data: ins, error: insErr } = await sb.from("cma_reports").insert({ site_id: siteId, mls: seller.mls, person_key: p.key, data: { ...seller.snapshot, since: since ? { price: p.boughtPrice, month: p.boughtMonth, value: since.value, change: since.change, ticker: since.ticker, asOf: since.asOf } : null, read: pulse?.marketPulseRead || null, areaLabel: area, agent, generatedAt: new Date().toISOString() } }).select("id").single();
+          if (insErr) console.error("cma_reports insert failed:", insErr.message);
+          rid = ins?.id;
+        }
+        if (rid && base) reportLink = `${base}/report/${rid}`;
+      } catch (e) { console.error("report snapshot failed", e); }
+    }
     const loves = (d.reactions || []).filter((r: any) => r.decision === "love").sort((a: any, b: any) => String(b.updated_at || b.created_at).localeCompare(String(a.updated_at || a.created_at)));
     const partner: any = p.partnerKey ? people.find((x: any) => x.keys.includes(p.partnerKey)) : null;
     const pFirst = partner && !/@/.test(partner.name) ? String(partner.name).trim().split(/\s+/)[0] : "";
@@ -105,6 +167,26 @@ export const GET: APIRoute = async ({ url, locals }) => {
         body: `${hi}\n\nA quick heads-up on rates. On ${nice(R.announcedOn)} the Bank of Canada ${verb}.${R.note ? ` ${R.note}` : ""}\n\nWhat it means for you:\n\u2022 ${varLine}\n\u2022 Fixed rates follow bond yields, not the Bank's rate, so they don't move in lockstep. It's worth checking current offers before you commit.\n\u2022 ${owner ? "If your mortgage renews in the next year, it's a good time to start comparing options." : "If you have a pre-approval, check when it expires. Most hold a rate for 90 to 120 days."}\n\nThe next decision is ${nice(R.nextDecision)}. If it helps, I can connect you with a mortgage broker for a quick, no-obligation rate check.` });
     }
 
+    if (seller) {
+      const S = seller, dd = S.dom != null ? `${S.dom} days on the market` : "";
+      const pctGap = S.gap != null ? Math.round(S.gap * 100) : null;
+      const sread = pulse?.marketPulseRead;
+      const short = String(S.address).split(",")[0];
+      if (S.likely && pctGap != null && pctGap >= 2 && S.suggested && S.suggested < S.listPrice) {
+        ideas.push({ id: "price", icon: "📉", label: `Pricing check: ${short}`, why: `Asking ~${pctGap}% above the CMA${S.dom != null ? ` · ${S.dom} days listed` : ""}`,
+          subject: `${short}: where we stand and a pricing idea`,
+          body: `${hi}\n\nI wanted to give you an honest update on ${short} and how it sits in today's market.\n\nWhere we are:\n\u2022 Listed at ${money(S.listPrice)}${dd ? `, ${dd}` : ""}${S.orig > S.listPrice ? ` (down from ${money(S.orig)})` : ""}${sinceLine}\n\u2022 ${S.activeCount} similar homes are for sale right now${S.cheaper ? `, and ${S.cheaper} of the closest matches are priced below ours` : ""}\n\nWhat recent sales tell us:\n\u2022 I ran a fresh valuation from ${S.compsN} comparable sales nearby, adjusted for size, lot, age and today's market.\n\u2022 It points to a likely value around ${money(S.likely)}, with similar homes mostly selling between ${kk(S.lo)} and ${kk(S.hi)}.\n\u2022 Our asking price is about ${pctGap}% above that.${sread ? `\n\u2022 Across ${area}: ${sread.headline} ${sread.detail}` : ""}\n\nMy recommendation:\nAn adjustment to ${money(S.suggested)} would put us in line with what buyers are paying now. A new price also puts the home in front of buyers whose searches stopped below our current price, and it shows up as a price change in their alerts.${reportLink ? `\n\nHere are the comparable sales I used, so you can see exactly where the numbers come from: ${reportLink}` : ""}\n\nI'd like to walk you through the comparable sales. Do you have 15 minutes this week for a call or a coffee?` });
+      }
+      ideas.push({ id: "sellerupdate", icon: "🏷", label: "Seller check-in", why: dd ? `Listed ${dd}` : "Keep them in the loop", subject: `Update on ${short}`,
+        body: `${hi}\n\nA quick update on ${short}${dd ? `, now ${dd}` : ""}.\n\n\u2022 There are ${S.activeCount} similar homes for sale right now.${S.likely ? `\n\u2022 Recent comparable sales point to a likely value around ${money(S.likely)}.` : ""}${sread ? `\n\u2022 Across ${area}: ${sread.headline}` : ""}\n\nI'll keep you posted on showings and feedback. Is there anything you'd like me to change or try?` });
+    }
+    if (since) {
+      const tl = p.boughtType === "townhouse" ? "townhouse" : p.boughtType === "apartment" ? "condo" : "home";
+      const sread = pulse?.marketPulseRead;
+      ideas.push({ id: "since", icon: "🏠", label: "Your home since you bought", why: `${since.change >= 0 ? "+" : "−"}${Math.abs(since.change)}% since ${monL(p.boughtMonth)}`,
+        subject: `What's happened to ${area} ${tl} values since you bought`,
+        body: `${hi}\n\nI was looking at the ${area} market and thought you'd find this interesting.\n\nWhen you bought in ${monL(p.boughtMonth)}, you paid ${money(p.boughtPrice)}. Since then, ${area} ${tl} prices have moved ${since.change >= 0 ? "up" : "down"} ${Math.abs(since.change)}% on the local sold-price index, which would put that same purchase at about ${money(since.value)} today.\n\nThat's a market-movement figure, not a valuation of your home: updates, condition and the lot all make a difference. If you'd like a proper estimate, I'm happy to put one together, no pressure.${sread ? `\n\nWhere the market is right now: ${sread.headline} ${sread.detail}` : ""}` });
+    }
     if (loves.length) {
       const addr = String(loves[0].address || "the home you liked");
       const more = loves.length - 1;
@@ -125,7 +207,15 @@ export const GET: APIRoute = async ({ url, locals }) => {
     if (pbd != null && pFirst) ideas.push({ id: "pbirthday", icon: "🎂", label: `${pFirst}'s birthday`, why: pbd === 0 ? "Today" : pbd < 0 ? "Yesterday" : `In ${pbd} day${pbd === 1 ? "" : "s"}`, subject: `Happy birthday to ${pFirst}!`, body: `Hi ${first},\n\nI hear it's ${pFirst}'s birthday${pbd === 0 ? " today" : pbd < 0 ? "" : " coming up"}. Please pass along my best wishes!\n\nHope you're both doing well.` });
 
     ideas.sort((a, b) => (ORDER[a.id] ?? 9) - (ORDER[b.id] ?? 9));
-    return json({ ok: true, ideas, area });
+    let context = "";
+    if (seller) {
+      const S = seller, last = p.lastAgentTouch ? Math.round((Date.now() - p.lastAgentTouch) / 864e5) : null;
+      context = `🏷 Selling ${String(S.address).split(",")[0]} · asking ${money(S.listPrice)}${S.dom != null ? ` · ${S.dom} days on market` : ""}` +
+        (S.likely ? `\nCMA likely ${money(S.likely)} · asking is ${S.gap >= 0 ? "" : "−"}${Math.abs(Math.round(S.gap * 100))}% ${S.gap >= 0 ? "above" : "below"} it` : "") +
+        `\nLast contact: ${last == null ? "none logged" : last === 0 ? "today" : last + " day" + (last === 1 ? "" : "s") + " ago"}` +
+        (S.gap != null && S.gap >= 0.02 ? "\nA pricing conversation is due." : "\nKeep them posted on the market.");
+    }
+    return json({ ok: true, ideas, area, context });
   } catch (e: any) {
     return json({ ok: false, error: e?.message || "Couldn't build ideas" }, 500);
   }

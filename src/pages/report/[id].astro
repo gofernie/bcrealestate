@@ -1,0 +1,183 @@
+---
+// Shareable CMA report snapshot (linked from seller emails). Unlisted, noindex, no sold photos.
+import { createClient } from "@supabase/supabase-js";
+import ListingViewer from "../../components/ListingViewer.astro";
+export const prerender = false;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const id = String(Astro.params.id || "");
+let row: any = null;
+if (UUID.test(id)) {
+  const sb = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
+  const { data } = await sb.from("cma_reports").select("data, created_at").eq("id", id).maybeSingle();
+  row = data;
+}
+if (!row) Astro.response.status = 404;
+const d: any = row?.data || {};
+let subj: any = null;
+if (row && d.mls) {
+  const sb2 = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.SUPABASE_SERVICE_ROLE_KEY);
+  const { data: sr } = await sb2.from("listing_rows").select("lat, lng").eq("mls_number", d.mls).not("lat", "is", null).limit(1);
+  if (sr?.[0]?.lat) subj = { lat: Number(sr[0].lat), lng: Number(sr[0].lng), address: String(d.address || "").split(",")[0] };
+}
+const money = (v: any) => (Number(v) > 0 ? "$" + Math.round(Number(v)).toLocaleString("en-CA") : "—");
+const short = (v: any) => (Number(v) >= 1e6 ? "$" + (Number(v) / 1e6).toFixed(2) + "M" : Number(v) > 0 ? "$" + Math.round(Number(v) / 1000) + "K" : "—");
+const date = (s: any) => (s ? new Date(String(s).slice(0, 10) + "T12:00:00").toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" }) : "");
+const num = (v: any) => (Number(v) > 0 ? Math.round(Number(v)).toLocaleString("en-CA") : "—");
+const gap = d.likely && d.listPrice ? Math.round((d.listPrice / d.likely - 1) * 100) : null;
+const agent = d.agent || {};
+const SHOW_SOLD_PHOTOS = true; // sold-listing photos: only turn on if your board allows them in client CMAs
+const facts = (x: any) => [x.sqft ? `${num(x.sqft)} sq ft` : "", x.beds ? `${x.beds} bd` : "", x.year ? `built ${x.year}` : ""].filter(Boolean).join(" · ");
+const monL = (m: any) => (m ? new Date(String(m).slice(0, 7) + "-15T12:00:00").toLocaleDateString("en-CA", { month: "long", year: "numeric" }) : "");
+const title = d.address ? `Market report · ${String(d.address).split(",")[0]}` : "Market report";
+---
+<html lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>{title}</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style is:inline>
+    body { margin: 0; background: #f4f1ea; color: #1f2a2a; font-family: "DM Sans", Arial, sans-serif; }
+    main { max-width: 920px; margin: 0 auto; padding: 32px 20px 60px; }
+    .kick { font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #5d6868; }
+    h1 { font-size: 30px; margin: 4px 0 6px; } h2 { font-size: 18px; margin: 0 0 12px; }
+    .by { color: #5d6868; font-size: 14px; }
+    .card { background: #fff; border: 1px solid #e4e0d6; border-radius: 8px; padding: 20px; margin-top: 18px; }
+    .val { display: flex; gap: 14px; flex-wrap: wrap; text-align: center; }
+    .val > div { flex: 1; min-width: 150px; padding: 12px; border-radius: 6px; background: #f7f4ec; }
+    .val span { display: block; font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: #5d6868; }
+    .val strong { display: block; font-size: 26px; margin-top: 4px; }
+    .val em { display: block; font-style: normal; font-size: 12px; color: #5d6868; margin-top: 3px; }
+    .val .likely { background: #e6efee; } .val .likely strong { color: #2f6f73; font-size: 32px; }
+    .note { font-size: 14px; color: #3d4848; line-height: 1.55; margin: 12px 0 0; }
+    .read { background: #f7f4ec; border-radius: 6px; padding: 12px 14px; font-size: 14px; line-height: 1.55; }
+    table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    th { text-align: left; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #5d6868; border-bottom: 2px solid #e4e0d6; padding: 8px 6px; }
+    td { border-bottom: 1px solid #efebe2; padding: 9px 6px; vertical-align: top; }
+    .r { text-align: right; } td small { display: block; color: #5d6868; font-size: 12px; }
+    .adj { font-weight: 700; color: #2f6f73; }
+    .tw { overflow-x: auto; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    @media (max-width: 860px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media (max-width: 640px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .lc { display: flex; flex-direction: column; background: #fff; border: 1px solid #e4e0d6; border-radius: 8px; overflow: hidden; color: inherit; text-decoration: none; }
+    .lc[data-lv] { cursor: pointer; transition: box-shadow .15s, transform .15s; } .lc[data-lv]:hover { box-shadow: 0 6px 18px rgba(0,0,0,.12); transform: translateY(-2px); }
+    a.lc { transition: box-shadow .15s, transform .15s; } a.lc:hover { box-shadow: 0 6px 18px rgba(0,0,0,.12); transform: translateY(-2px); }
+    .lc-img { position: relative; aspect-ratio: 4 / 3; background: #e9e5dc; overflow: hidden; }
+    .lc-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .lc-ph { position: absolute; inset: 0; display: grid; place-items: center; color: #9a9384; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; background: repeating-linear-gradient(135deg, #efebe2, #efebe2 10px, #e9e5dc 10px, #e9e5dc 20px); }
+    .lc-n { position: absolute; top: 8px; left: 8px; background: #2f6f73; color: #fff; font-weight: 700; font-size: 12px; border-radius: 999px; min-width: 22px; height: 22px; display: grid; place-items: center; padding: 0 6px; }
+    .lc-tag { position: absolute; bottom: 8px; left: 8px; background: rgba(31,42,42,.82); color: #fff; font-size: 11px; font-weight: 700; border-radius: 4px; padding: 3px 7px; }
+    .lc-tag.sold { background: #a12f2f; }
+    .lc-b { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 3px; flex: 1; }
+    .lc-p { font-size: 18px; } .lc-a { font-weight: 600; font-size: 13.5px; } .lc-m { font-size: 12px; color: #5d6868; }
+    .lc-adj { margin-top: auto; padding-top: 8px; border-top: 1px solid #efebe2; display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+    .lc-adj span { font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #5d6868; } .lc-adj b { color: #2f6f73; font-size: 15px; }
+    @media print { .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } .lc { break-inside: avoid; } }
+    .foot { font-size: 12px; color: #5d6868; line-height: 1.5; margin-top: 22px; }
+    .print { float: right; background: #2f6f73; color: #fff; border: 0; border-radius: 6px; padding: 9px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+    @media print { .print { display: none; } body { background: #fff; } .card { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <main>
+    {!row && <p>This report link isn't valid. Please ask your REALTOR® for a new one.</p>}
+    {row && (
+      <>
+        <button class="print" type="button" onclick="window.print()">Print / Save as PDF</button>
+        <div class="kick">Comparable sales report</div>
+        <h1>{d.address}</h1>
+        <div class="by">Prepared by {agent.agentName}{agent.brokerage ? `, ${agent.brokerage}` : ""} · {date(d.generatedAt || row.created_at)}</div>
+
+        <section class="card">
+          <div class="val">
+            <div><span>Low</span><strong>{short(d.lo)}</strong></div>
+            <div class="likely"><span>Likely value</span><strong>{money(d.likely)}</strong></div>
+            <div><span>High</span><strong>{short(d.hi)}</strong></div>
+          </div>
+          <p class="note">
+            {d.listPrice ? <>Current asking price: <strong>{money(d.listPrice)}</strong>{gap != null && (gap === 0 ? ", in line with the likely value." : `, about ${Math.abs(gap)}% ${gap > 0 ? "above" : "below"} the likely value.`)} </> : ""}
+            Based on {(d.comps || []).length} comparable sales{d.criteria ? ` (${d.criteria})` : ""}. Most similar homes sold between {short(d.lo)} and {short(d.hi)}.
+          </p>
+        </section>
+
+        {d.since && (
+          <section class="card">
+            <h2>Since you bought</h2>
+            <div class="val">
+              <div><span>You paid</span><strong>{money(d.since.price)}</strong><em>{monL(d.since.month)}</em></div>
+              <div class="likely"><span>Market movement</span><strong>{d.since.change >= 0 ? "+" : "−"}{Math.abs(d.since.change)}%</strong><em>on the local sold-price index</em></div>
+              <div><span>In today's terms</span><strong>{money(d.since.value)}</strong><em>{d.since.asOf ? `to ${monL(d.since.asOf)}` : ""}</em></div>
+            </div>
+            <p class="note">Your purchase price moved by the {d.since.ticker || "local"} sold-price index from {monL(d.since.month)}{d.since.asOf ? ` to ${monL(d.since.asOf)}` : " to today"}. This shows how the market has moved, not what your home is worth; the likely value above is based on comparable sales.</p>
+          </section>
+        )}
+
+        {d.read && (
+          <section class="card">
+            <h2>The {d.areaLabel || "local"} market right now</h2>
+            <div class="read"><strong>{d.read.headline}</strong> {d.read.detail}</div>
+          </section>
+        )}
+
+        <section class="card">
+          <h2>Comparable sales</h2>
+          <div class="grid">
+            {(d.comps || []).map((c: any, i: number) => (
+              <div class="lc" data-lv data-kind="sold" data-o={JSON.stringify({ mls: c.mls, address: c.address, soldPrice: c.soldPrice, soldDate: c.soldDate, sqft: c.sqft, beds: c.beds, year: c.year, area: c.area })}>
+                <div class="lc-img">{SHOW_SOLD_PHOTOS && c.image ? <img src={c.image} alt="" loading="lazy" /> : <span class="lc-ph">Sold</span>}<span class="lc-n">{i + 1}</span><span class="lc-tag sold">Sold {date(c.soldDate)}</span></div>
+                <div class="lc-b">
+                  <strong class="lc-p">{money(c.soldPrice)}</strong>
+                  <div class="lc-a">{c.address}</div>
+                  <div class="lc-m">{[facts(c), c.distKm != null ? `${c.distKm} km away` : ""].filter(Boolean).join(" · ")}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p class="note">The likely value comes from these sales: each one is brought to today's market using the local sold-price index and corrected for differences in size, lot and age, with more weight on the closest, newest and most similar homes.</p>
+        </section>
+
+        {(d.actives || []).length > 0 && (
+          <section class="card">
+            <h2>The competition: {d.activeCount} similar homes for sale</h2>
+            <div class="grid">
+              {d.actives.map((a: any) => (
+                <a class="lc" href={a.mls && d.city ? `/${d.city}/homes?mls=${encodeURIComponent(a.mls)}` : undefined} target="_blank" rel="noopener" data-lv data-kind="active" data-o={JSON.stringify({ mls: a.mls, address: a.address, price: a.price, sqft: a.sqft, beds: a.beds, year: a.year, area: a.area, listedAt: a.listedAt })}>
+                  <div class="lc-img">{a.image ? <img src={a.image} alt="" loading="lazy" /> : <span class="lc-ph">For sale</span>}<span class="lc-tag">For sale</span></div>
+                  <div class="lc-b">
+                    <strong class="lc-p">{money(a.price)}</strong>
+                    <div class="lc-a">{a.address}</div>
+                    <div class="lc-m">{facts(a)}</div>
+                    <div class="lc-m">{a.listedAt ? `Listed ${date(a.listedAt)}` : ""}</div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <p class="foot">A market estimate prepared by your REALTOR® for your use, not an appraisal. Sales data from the MLS® System; condition, renovations and views aren't in MLS® data, which is why we'll talk through the comparables together. Figures as of {date(d.generatedAt || row.created_at)}.{agent.agentEmail ? ` Questions: ${agent.agentEmail}` : ""}</p>
+      </>
+    )}
+  </main>
+  <ListingViewer />
+  <script is:inline define:vars={{ reportId: id, siteCity: d.city || "", subj }}>
+    (function () {
+      function go() {
+        if (!window.ListingViewer) return setTimeout(go, 50);
+        window.ListingViewer.setSource(function (mls) { return "/api/report-listing?report=" + encodeURIComponent(reportId) + "&mls=" + encodeURIComponent(mls); });
+        var groups = {};
+        document.querySelectorAll("[data-lv]").forEach(function (el) {
+          var o = {}; try { o = JSON.parse(el.getAttribute("data-o") || "{}"); } catch (e) {}
+          if (!o.mls) return;
+          var g = el.getAttribute("data-kind") || "active";
+          var opt = { mls: o.mls, kind: g, o: o, city: siteCity, warn: "", subject: subj, subjectLabel: "From your home" };
+          (groups[g] = groups[g] || []).push(opt);
+          el.addEventListener("click", function (e) { e.preventDefault(); window.ListingViewer.open(Object.assign({}, opt, { list: groups[g] })); });
+        });
+      }
+      go();
+    })();
+  </script>
+</body>
+</html>

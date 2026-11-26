@@ -33,6 +33,7 @@ const due = people.filter((p) => dueOf(p).length).sort((a, b) => String(dueOf(a)
 const hot = people.filter((p) => !["closed", "past", "notnow"].includes(p.stage) && p.lastActivity > day3 && p.lastActivity > p.lastAgentTouch && (p.counts.loves + p.counts.likes + p.counts.enquiries) > 0 && !due.includes(p))
   .sort((a, b) => b.recentLoves - a.recentLoves || b.lastActivity - a.lastActivity);
 const fresh = people.filter((p) => !p.manual && p.stage === "new" && !p.lastAgentTouch && p.firstSeen > day14 && !due.includes(p) && !hot.includes(p));
+const sellers = people.filter((p) => p.listingMls && Date.now() - (p.lastAgentTouch || 0) > 7 * 864e5).sort((a, b) => (a.lastAgentTouch || 0) - (b.lastAgentTouch || 0));
 const stageCount = (s: string) => people.filter((p) => p.stage === s).length;
 const fc: any = {
   tasks: people.filter((p) => tasksOf(p).length).length,
@@ -80,6 +81,12 @@ const FILTERS = [["tasks", "Has tasks"], ["overdue", "Overdue"], ["loved", "Love
             <p class="hint">First seen in the last 2 weeks, no email or note yet.</p>
             {fresh.slice(0, 8).map((p) => <a class="t" href={href(p)}><strong>{p.name}</strong><span>{p.lastWhat || "New"} · {ago(p.firstSeen)}</span></a>)}
             {!fresh.length && <div class="empty">All caught up.</div>}
+          </div>
+          <div class="crm-card">
+            <h3>Sellers to update {!!(sellers.length) && <span class="n">{sellers.length}</span>}</h3>
+            <p class="hint">Your listings with no contact in 7+ days.</p>
+            {sellers.slice(0, 8).map((p) => <a class="t" href={href(p) + "&email=price"}><strong>{p.name}</strong><span>{p.lastAgentTouch ? `Last contact ${ago(p.lastAgentTouch)}` : "No contact logged yet"} · send an update</span></a>)}
+            {!sellers.length && <div class="empty">All sellers up to date.</div>}
           </div>
         </section>
 
