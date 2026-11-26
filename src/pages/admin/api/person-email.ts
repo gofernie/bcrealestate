@@ -10,8 +10,24 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const env = (k: string) => String((import.meta.env as any)[k] || (globalThis as any).process?.env?.[k] || "").trim();
 const json = (o: any, status = 200) => new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 const escH = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-function linkOrButton(u: string) {
-  if (/\/report\/[0-9a-f-]{36}/i.test(u)) return `<br><a href="${u}" style="display:inline-block;margin-top:8px;background:#1f6b60;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;padding:11px 18px;border-radius:6px">See the comparable sales report &rarr;</a>`;
+function chartHtml(g?: string) {
+  if (!g) return "";
+  const [ask, likely, sug, ...comps] = g.split("_").map(Number);
+  if (!ask || !likely || comps.length < 2) return "";
+  const kv = (v: number) => "$" + (v * 1000).toLocaleString("en-CA");
+  const rows: any[] = [{ v: ask, l: "Your asking price", c: "#c0392b", b: 1 }, { v: likely, l: "Likely value", c: "#1f6b60", b: 1 }];
+  if (sug && sug < ask) rows.push({ v: sug, l: "Suggested price", c: "#2c3e50", b: 1 });
+  for (const v of comps) if (v > 0) rows.push({ v, l: "Comparable sale", c: "#c9c3b6", b: 0 });
+  rows.sort((a, b) => b.v - a.v);
+  const max = rows[0].v, min = rows[rows.length - 1].v;
+  const base = Math.max(0, Math.floor((min - (max - min) * 0.3 - 1) / 10) * 10);
+  const tr = rows.map((r) => {
+    const w = Math.round(8 + 72 * (r.v - base) / Math.max(1, max - base));
+    return `<tr><td style="padding:3px 10px 3px 0;font-size:12px;white-space:nowrap;width:125px;color:${r.b ? "#222222" : "#666666"};${r.b ? "font-weight:bold;" : ""}">${r.l}</td><td style="padding:3px 0"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td width="${w}%" bgcolor="${r.c}" style="background:${r.c};height:16px;font-size:0;line-height:0;border-radius:3px">&nbsp;</td><td style="padding-left:6px;font-size:12px;color:#333333;white-space:nowrap;${r.b ? "font-weight:bold;" : ""}">${kv(r.v)}</td></tr></table></td></tr>`;
+  }).join("");
+  return `<br><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:540px;margin:12px 0 4px;border:1px solid #e4e0d6;border-radius:8px;background:#faf9f6"><tr><td style="padding:14px 16px"><div style="font-weight:bold;font-size:15px;color:#222222;margin-bottom:8px">Where your asking price sits</div><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">${tr}</table><div style="font-size:11px;color:#777777;margin-top:8px">Comparable sales are adjusted to your home. Bars start at ${kv(base)}, not zero, so the differences are easier to see.</div></td></tr></table>`;
+}function linkOrButton(u: string) {
+  if (/\/report\/[0-9a-f-]{36}/i.test(u)) return chartHtml((u.match(/[?&](?:amp;)?g=([0-9_]+)/) || [])[1]) + `<br><a href="${u.replace(/\?.*$/, "")}" style="display:inline-block;margin-top:8px;background:#1f6b60;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;padding:11px 18px;border-radius:6px">See the comparable sales report &rarr;</a>`;
   const m = u.match(/\/([a-z0-9-]+)\/market-intelligence/i);
   if (!m) return `<a href="${u}" style="color:#1f6b60">${u}</a>`;
   const city = m[1].replace(/-/g, " ").replace(/\b\w/g, (x) => x.toUpperCase());
@@ -134,7 +150,7 @@ export const GET: APIRoute = async ({ url, locals, request }) => {
           if (insErr) console.error("cma_reports insert failed:", insErr.message);
           rid = ins?.id;
         }
-        if (rid && base) reportLink = `${base}/report/${rid}`;
+        if (rid && base) { const gk = (n: number) => Math.round((Number(n) || 0) / 1000); const gc = (seller.snapshot?.comps || []).map((c: any) => gk(c.adjusted)).filter((n: number) => n > 0).slice(0, 8); reportLink = `${base}/report/${rid}?g=${[gk(seller.listPrice), gk(seller.likely), gk(seller.suggested), ...gc].join("_")}`; }
       } catch (e) { console.error("report snapshot failed", e); }
     }
     const loves = (d.reactions || []).filter((r: any) => r.decision === "love").sort((a: any, b: any) => String(b.updated_at || b.created_at).localeCompare(String(a.updated_at || a.created_at)));

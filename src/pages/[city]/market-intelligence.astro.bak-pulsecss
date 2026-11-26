@@ -6,6 +6,7 @@ import { getSite } from "../../lib/getSite";
 import { getNavIntentPages } from "../../lib/getNavIntentPages";
 import MarketTicker from "../../components/MarketTicker.astro";
 import MarketShare from "../../components/MarketShare.astro";
+import MarketPulseCard from "../../components/MarketPulseCard.astro";
 
 
 const supabase = createClient(
@@ -2066,144 +2067,7 @@ const ladderSub = ladderCheap.length ? `The cheapest ways in: ${ladderCheap.map(
 .type-breakdown__count { margin: 4px 0 0; color: var(--market-muted); font-size: .7rem; }
 .type-breakdown__note { margin: 0 0 4px; color: var(--market-muted); font-size: .85rem; }
 </style>
-<section data-pulse-lead style="width:min(1400px, calc(100% - 4rem));margin:28px auto 8px;">
-<div
-  class="market-pulse"
-  style="display:grid;grid-template-columns:minmax(255px,.75fr) minmax(0,1.5fr);gap:34px;align-items:stretch;"
->
-            <aside class="market-pulse__read">
-  <div data-pulse-left style="margin:0 0 22px;padding-bottom:18px;border-bottom:1px solid rgba(0,0,0,.09);"><span data-pulse-date style="display:block;margin-top:0;font-size:1.02rem;font-weight:700;letter-spacing:0;text-transform:none;line-height:1.1;color:inherit;">{monthlyHistory.at(-1)?.month ? new Intl.DateTimeFormat("en-CA", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${monthlyHistory.at(-1)?.month}T00:00:00Z`)) : ""}</span>{(() => { const m = String(monthlyHistory.at(-1)?.month || "").slice(0, 10); const d = new Date(); const prev = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)).toISOString().slice(0, 10); return m === prev; })() && (<span data-pulse-prelim style="display:block;margin-top:4px;font-size:.74rem;font-weight:500;letter-spacing:0;text-transform:none;font-style:italic;opacity:.7;">Preliminary: sales reported after month end are added nightly.</span>)}<span data-updated style="display:block;margin-top:8px;font-size:.72rem;letter-spacing:0;text-transform:none;opacity:.6;">Updated {new Intl.DateTimeFormat("en-CA", { month: "long", day: "numeric", year: "numeric", timeZone: "America/Edmonton" }).format(new Date())} · statistically indexed nightly</span></div><p class="market-pulse__eyebrow">Market read</p>
-
-  <h3>{marketPulseRead.headline}</h3>
-
-  <p style="font-size:1.02rem !important;line-height:1.45 !important;margin-top:12px !important;">{marketPulseRead.detail}</p>
-
-  <span class="market-pulse__evidence">
-    {/* who-benefits-v1 */ salesToActive == null ? marketPulseRead.evidence : (() => {
-      const h = String(marketPulseRead.headline || "");
-      if (/buyers? (have|hold)/i.test(h)) return "Good time to buy: room to negotiate on price and conditions.";
-      if (/sellers? (have|hold)/i.test(h)) return "Good time to sell: well-priced homes are drawing strong interest.";
-      if (/tilt\w* toward buyers/i.test(h)) return "Balanced, with an edge to buyers: there's room to negotiate on the right home.";
-      if (/tilt\w* toward sellers/i.test(h)) return "Balanced, with an edge to sellers: well-priced homes still move quickly.";
-      return "Fair deals both ways: pricing right matters more than timing.";
-    })()}
-  </span>{islandRank && (<details data-island-rank style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(0,0,0,.09);font-size:.82rem;line-height:1.45;letter-spacing:0;text-transform:none;">
-  <summary style="cursor:pointer;font-weight:500;opacity:.85;">{(islandRank as any).rank === 1 ? "The most active" : `#${(islandRank as any).rank} most active`} of {(islandRank as any).total} Island markets this week{String((islandRank as any).name).toLowerCase() !== String(cityLabel).toLowerCase() ? ` (${(islandRank as any).name})` : ""} · {(islandRank as any).deals} new {(islandRank as any).deals === 1 ? "deal" : "deals"} in the last 7 days <span style="text-decoration:underline;opacity:.7;white-space:nowrap;">See all</span></summary>
-  <ol style="margin:10px 0 0;padding:0;list-style:none;display:grid;gap:2px;">
-    {islandList.map((r: any, idx: number) => { const me = String(r.market_name).toLowerCase() === String((islandRank as any).name).toLowerCase(); return (
-      <li style={`display:flex;justify-content:space-between;gap:10px;padding:3px 8px;border-radius:6px;${me ? "background:rgba(0,0,0,.08);font-weight:700;" : ""}`}>
-        <span>{idx + 1}. {r.market_name}</span>
-        <span style="font-variant-numeric:tabular-nums;opacity:.75;">{Math.round(Number(r.activity_index) * 100)}%</span>
-      </li>); })}
-  </ol>
-  <span style="display:block;margin-top:8px;font-size:.72rem;opacity:.6;">Pending deals as a share of active listings. Updated nightly.</span>
-</details>)}
-</aside>
-   <div class="market-pulse__story">
-              
-
-                                          <div
-                class="market-pulse__number"
-                style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:12px 0 22px;"
-              >
-                <div style="min-width:0;">
-                  <span
-                    style="display:block;min-height:34px;margin-bottom:7px;color:var(--market-muted);font-size:.95rem;font-weight:850;letter-spacing:.08em;line-height:1.25;text-transform:uppercase;"
-                  >{pulseSupplyLabel}</span>
-
-                  <strong
-                    style="display:block;color:var(--accent,#258fd0);font-family:var(--f-display,Georgia,serif);font-size:clamp(2.5rem,4vw,3.7rem);font-weight:500;letter-spacing:-.045em;line-height:.95;"
-                  >
-                    {pulseSupply != null ? Math.round(pulseSupply).toLocaleString() : "\u2014"}<span aria-hidden="true" data-arrow-next-to-value-v1 style={pulseSupplyYoY != null && pulseSupplyYoY < 0 ? "display:inline-grid;place-items:center;width:1.45em;height:1.45em;margin-left:.25em;border-radius:999px;font-family:system-ui,-apple-system,sans-serif;font-size:.5em;font-weight:900;line-height:1;letter-spacing:0;vertical-align:.2em;padding-bottom:.08em;background:color-mix(in srgb,currentColor 20%,transparent);color:#a65353;" : "display:inline-grid;place-items:center;width:1.45em;height:1.45em;margin-left:.25em;border-radius:999px;font-family:system-ui,-apple-system,sans-serif;font-size:.5em;font-weight:900;line-height:1;letter-spacing:0;vertical-align:.2em;padding-bottom:.08em;background:color-mix(in srgb,currentColor 20%,transparent);color:var(--accent,#258fd0);"}>{pulseSupplyYoY != null && pulseSupplyYoY < 0 ? "▼" : "▲"}</span>
-                  </strong>
-
-                  <p
-                    style="display:block;margin:12px 0 0;color:var(--market-text);font-size:1.05rem;font-weight:750;line-height:1.3;"
-                  >
-                    
-
-                    {pulseSupplyYoY != null
-                      ? `${Math.abs(pulseSupplyYoY).toFixed(0)}% ${
-                          pulseSupplyYoY >= 0 ? "more" : "fewer"
-                        } ${pulseSupplyNoun}`
-                      : "Year-over-year comparison unavailable"}
-
-                    <small
-                      style="display:block;margin-top:3px;color:var(--market-muted);font-size:.85rem;font-weight:400;line-height:1.35;"
-                    >
-                      vs. the same 3-month period last year
-                    </small>
-                  </p>
-                </div>
-
-                <div
-                  style="min-width:0;padding-left:16px;border-left:1px solid var(--market-line);"
-                >
-                  <span
-                    style="display:block;min-height:34px;margin-bottom:7px;color:var(--market-muted);font-size:.95rem;font-weight:850;letter-spacing:.08em;line-height:1.25;text-transform:uppercase;"
-                  >
-                    Average sales / month
-                  </span>
-
-                  <strong
-                    style="display:block;color:#c17f3a;font-family:var(--f-display,Georgia,serif);font-size:clamp(2.5rem,4vw,3.7rem);font-weight:500;letter-spacing:-.045em;line-height:.95;"
-                  >
-                    {salesRollingAverage != null
-                      ? Math.round(salesRollingAverage).toLocaleString()
-                      : "—"}<span aria-hidden="true" data-arrow-next-to-value-v1 style={salesYoY != null && salesYoY < 0 ? "display:inline-grid;place-items:center;width:1.45em;height:1.45em;margin-left:.25em;border-radius:999px;font-family:system-ui,-apple-system,sans-serif;font-size:.5em;font-weight:900;line-height:1;letter-spacing:0;vertical-align:.2em;padding-bottom:.08em;background:color-mix(in srgb,currentColor 20%,transparent);color:#a65353;" : "display:inline-grid;place-items:center;width:1.45em;height:1.45em;margin-left:.25em;border-radius:999px;font-family:system-ui,-apple-system,sans-serif;font-size:.5em;font-weight:900;line-height:1;letter-spacing:0;vertical-align:.2em;padding-bottom:.08em;background:color-mix(in srgb,currentColor 20%,transparent);color:var(--accent,#258fd0);"}>{salesYoY != null && salesYoY < 0 ? "▼" : "▲"}</span>
-                  </strong>
-
-                  <p
-                    style="display:block;margin:12px 0 0;color:var(--market-text);font-size:1.05rem;font-weight:750;line-height:1.3;"
-                  >
-                    
-
-                    {salesYoY != null
-                      ? `${Math.abs(salesYoY).toFixed(0)}% ${
-                          salesYoY >= 0 ? "more" : "fewer"
-                        } sales`
-                      : "Year-over-year comparison unavailable"}
-
-                    <small
-                      style="display:block;margin-top:3px;color:var(--market-muted);font-size:.85rem;font-weight:400;line-height:1.35;"
-                    >
-                      vs. the same 3-month period last year
-                    </small>
-                  </p>
-                </div>
-              </div>
-              {salesToActive != null && (
-                <div class="market-balance">
-                  <div class="market-balance__head"><span>Sales-to-active ratio</span><strong>{salesToActive.toFixed(0)}%</strong><em>{monthsOfSupply != null ? `${monthsOfSupply.toFixed(1)} months of supply` : ""}</em>{priorSalesToActive != null && <em class="market-balance__was"><span class="market-balance__was-dot"></span>{priorSalesToActive.toFixed(0)}% a year ago</em>}</div>
-                  <div class="market-balance__track"><i class="mb-buyers"></i><i class="mb-balanced"></i><i class="mb-sellers"></i>{priorSalesToActive != null && <span class="market-balance__prior" title={`A year ago: ${priorSalesToActive.toFixed(0)}%`} style={`left:${Math.min(Math.max((priorSalesToActive / 30) * 100, 2), 98)}%`}></span>}<b style={`left:${Math.min(Math.max((salesToActive / 30) * 100, 2), 98)}%`}></b></div>
-                  <div class="market-balance__scale"><span>Buyer's market</span><span>Balanced</span><span>Seller's market</span></div>
-                </div>
-              )}
-              <h3 style="margin-top:24px;">The numbers behind it.</h3>
-
-              <p>
-  Over the last three months, the market averaged {hasInventoryPulse && activeInventoryAverage != null && <><strong>{Math.round(activeInventoryAverage).toLocaleString()} active listings</strong>,{" "}</>}
-  <strong>{activeListingsRollingAverage != null
-    ? Math.round(activeListingsRollingAverage).toLocaleString()
-    : "—"} new listings</strong>
-  and
-  <strong>{salesRollingAverage != null
-    ? Math.round(salesRollingAverage).toLocaleString()
-    : "—"} sales per month</strong>.
-  Median days on market averaged
-  <strong>{daysOnMarketRollingAverage != null
-    ? `${Math.round(daysOnMarketRollingAverage)} days`
-    : "—"}</strong>{daysOnMarketContext ? ` — ${daysOnMarketContext}` : ""}.
-  Sale-to-list averaged
-  <strong>{saleToListRollingAverage != null
-    ? `${saleToListRollingAverage.toFixed(1)}%`
-    : "—"}</strong>{saleToListContext ? `, ${saleToListContext}` : ""}.
-</p>
-            </div>
-
-            
-          </div>
-</section>
+<MarketPulseCard city={city} fx={false} />
 <MarketTicker city={city} accent={accent} />
 <MarketShare city={city} accent={accent} />
 
