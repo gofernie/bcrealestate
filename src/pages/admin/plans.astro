@@ -1,0 +1,102 @@
+---
+// crm-plans v1: build and edit email plans (drips)
+import AdminTopNav from "../../components/AdminTopNav.astro";
+import CrmStyles from "../../components/crm/CrmStyles.astro";
+import { loadPlans, MERGE_HELP } from "../../lib/drips";
+export const prerender = false;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const access: any = (Astro.locals as any).adminAccess || null;
+const siteId = String(Astro.url.searchParams.get("site_id") || "");
+const allowed = UUID.test(siteId) && (!access || access.isPlatformAdmin || (access.siteIds || []).includes(siteId));
+const plans: any[] = allowed ? await loadPlans(siteId) : [];
+const back = `/admin/people?site_id=${encodeURIComponent(siteId)}`;
+---
+<html lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Email plans · Locus Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <CrmStyles />
+  <style is:global>
+    .crumb { font-size:.82rem; margin-bottom:14px; } .crumb a { color:#6f6a63; text-decoration:none; } .crumb a:hover { text-decoration:underline; }
+    .pl-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:18px; } .pl-head h1 { margin:0; }
+    .pl-lede { color:#6f6a63; font-size:.92rem; max-width:640px; margin:6px 0 0; line-height:1.5; } .pl-btns { display:flex; gap:8px; }
+    .pl-list { display:grid; gap:12px; } .pl-card { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:16px 18px; }
+    .pl-name { font-weight:800; font-size:1rem; } .pl-sub { font-size:.84rem; color:#6f6a63; margin-top:3px; } .pl-desc { font-size:.86rem; margin-top:6px; } .pl-empty { color:#8a8378; padding:18px 0; }
+    .pe { padding:18px; margin-bottom:18px; } .pe-top { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+    .pf { display:block; font-size:.72rem; font-weight:800; letter-spacing:.07em; text-transform:uppercase; color:#8a8378; }
+    .pf input, .pe-sub, .pe-body { display:block; width:100%; box-sizing:border-box; margin-top:6px; border:1px solid #d9d2c6; border-radius:6px; padding:9px 10px; font:inherit; font-size:.95rem; color:#181614; background:#fff; text-transform:none; letter-spacing:0; font-weight:500; }
+    .pe-sub { margin-top:10px; } .pe-body { min-height:190px; resize:vertical; line-height:1.5; }
+    .pe-help { font-size:.8rem; color:#6f6a63; line-height:1.8; margin:12px 0 4px; } .pe-help code { background:#f4f0e9; border-radius:4px; padding:1px 6px; font-size:.78rem; cursor:help; }
+    .pe-step { border:1px solid #ece6dc; border-radius:10px; padding:14px; margin-top:14px; background:#fcfbf8; }
+    .pe-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; } .pe-dl { font-size:.85rem; display:flex; align-items:center; gap:6px; }
+    .pe-day { width:70px; border:1px solid #d9d2c6; border-radius:6px; padding:6px 8px; font:inherit; } .pe-mode { border:1px solid #d9d2c6; border-radius:6px; padding:6px 8px; font:inherit; font-size:.85rem; background:#fff; }
+    .pe-tools { margin-left:auto; display:flex; gap:4px; } .pe-tools button { border:1px solid #e0d9cd; background:#fff; border-radius:5px; width:28px; height:28px; cursor:pointer; color:#6f6a63; } .pe-tools button:hover { border-color:#181614; color:#181614; }
+    .pe-ib { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+    .emi { border:1px solid #d9d2c6; background:#fff; color:#2f4a68; border-radius:999px; padding:4px 10px; font:inherit; font-size:12px; cursor:pointer; } .emi:hover { border-color:#2f4a68; }
+    .pe-foot { display:flex; align-items:center; gap:8px; margin-top:16px; flex-wrap:wrap; } #pe-add { margin-right:auto; } #pe-msg { font-size:.85rem; color:#a3352a; }
+  </style>
+</head>
+<body>
+  <AdminTopNav siteId={siteId} />
+  <main class="crm">
+    <div class="crumb"><a href={back}>← People</a></div>
+    <div class="pl-head">
+      <div><h1>Email plans</h1><p class="pl-lede">A plan is a series of emails sent on a schedule after you start it for someone. Emails set to review wait for you as a task before anything goes out. Everyone gets an unsubscribe link.</p></div>
+      {allowed && <div class="pl-btns">{!plans.length && <button class="btn" id="pl-seed" type="button">Load starter plans</button>}<button class="btn dark" id="pl-new" type="button">+ New plan</button></div>}
+    </div>
+    {!allowed && <p>Open this from a site's People page.</p>}
+    <div id="pl-editor" class="crm-card pe" hidden></div>
+    <div id="pl-list" class="pl-list">
+      {plans.map((p) => (
+        <div class="crm-card pl-card">
+          <div><div class="pl-name">{p.name}</div><div class="pl-sub">{p.steps.length} email{p.steps.length === 1 ? "" : "s"}{p.days ? ` over ${p.days} days` : ""} · {p.active} active</div>{p.description && <div class="pl-desc">{p.description}</div>}</div>
+          <button class="btn" type="button" data-edit={p.id}>Edit</button>
+        </div>
+      ))}
+      {allowed && !plans.length && <div class="pl-empty">No plans yet. Load the starter plans to see how they work, then edit them to sound like you.</div>}
+    </div>
+  </main>
+  <script is:inline define:vars={{ siteId, PLANS: plans, MERGE: MERGE_HELP }}>
+    (function () {
+      var ed = document.getElementById("pl-editor"); if (!ed) return;
+      var INTEL = ["Market snapshot", "Market read", "Listings vs sales", "Price trend", "Asking vs sold"];
+      var cur = null;
+      function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+      function post(b) { return fetch("/admin/api/plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ site_id: siteId }, b)) }).then(function (r) { return r.json(); }); }
+      function msg(t) { var m = document.getElementById("pe-msg"); if (m) m.textContent = t; }
+      function sync() {
+        if (!cur) return;
+        cur.name = ed.querySelector("#pe-name").value; cur.description = ed.querySelector("#pe-desc").value; cur.stop_when_closed = ed.querySelector("#pe-stop").checked;
+        cur.steps = Array.prototype.map.call(ed.querySelectorAll(".pe-step"), function (r) { return { day_offset: r.querySelector(".pe-day").value, mode: r.querySelector(".pe-mode").value, subject: r.querySelector(".pe-sub").value, body: r.querySelector(".pe-body").value }; });
+      }
+      function render() {
+        var h = '<div class="pe-top"><label class="pf">Plan name<input id="pe-name" value="' + esc(cur.name) + '" placeholder="e.g. New buyer lead"></label><label class="pf">What it is for<input id="pe-desc" value="' + esc(cur.description) + '" placeholder="Optional"></label><label style="grid-column:1/-1;font-size:.88rem;display:flex;gap:8px;align-items:center;cursor:pointer;"><input type="checkbox" id="pe-stop"' + (cur.stop_when_closed ? " checked" : "") + '> Stop this plan when they move to Closed or Past client</label></div>';
+        h += '<div class="pe-help"><b>Fill-ins:</b> ' + MERGE.map(function (m) { return '<code title="' + esc(m[1]) + '">' + esc(m[0]) + '</code>'; }).join(" ") + '<br>Market blocks use the city from the person\u2019s latest enquiry. Day 0 goes out the day you start the plan.</div>';
+        cur.steps.forEach(function (s, i) {
+          h += '<div class="pe-step"><div class="pe-row"><b>Email ' + (i + 1) + '</b><label class="pe-dl">Day <input class="pe-day" type="number" min="0" max="3650" value="' + esc(s.day_offset) + '"></label><select class="pe-mode"><option value="review"' + (s.mode !== "auto" ? " selected" : "") + '>Review before sending</option><option value="auto"' + (s.mode === "auto" ? " selected" : "") + '>Send automatically</option></select><span class="pe-tools"><button type="button" data-mv="-1" data-i="' + i + '" title="Move up">\u2191</button><button type="button" data-mv="1" data-i="' + i + '" title="Move down">\u2193</button><button type="button" data-rm="' + i + '" title="Remove">\u2715</button></span></div>';
+          h += '<input class="pe-sub" placeholder="Subject" value="' + esc(s.subject) + '"><textarea class="pe-body" placeholder="Message">' + esc(s.body) + '</textarea>';
+          h += '<div class="pe-ib">' + INTEL.map(function (n) { return '<button type="button" class="emi" data-ib="' + esc(n) + '">+ ' + esc(n) + '</button>'; }).join("") + '</div></div>';
+        });
+        h += '<div class="pe-foot"><button type="button" class="btn" id="pe-add">+ Add email</button><span id="pe-msg"></span>' + (cur.id ? '<button type="button" class="btn" id="pe-del">Delete plan</button>' : '') + '<button type="button" class="btn" id="pe-cancel">Cancel</button><button type="button" class="btn dark" id="pe-save">Save plan</button></div>';
+        ed.innerHTML = h; ed.hidden = false;
+      }
+      function open(plan) { cur = plan ? JSON.parse(JSON.stringify(plan)) : { id: "", name: "", description: "", steps: [{ day_offset: 0, mode: "review", subject: "", body: "{hi}\n\n" }] }; render(); document.getElementById("pl-list").hidden = true; ed.scrollIntoView({ behavior: "smooth", block: "start" }); }
+      function close() { cur = null; ed.hidden = true; ed.innerHTML = ""; document.getElementById("pl-list").hidden = false; }
+      ed.addEventListener("click", function (e) {
+        var t = e.target.closest("button"); if (!t) return;
+        if (t.dataset.ib) { var ta = t.closest(".pe-step").querySelector(".pe-body"); ta.value = ta.value.replace(/\s*$/, "") + "\n\n[" + t.dataset.ib + " \u00b7 {city}]"; ta.focus(); return; }
+        if (t.dataset.mv) { sync(); var i = +t.dataset.i, j = i + +t.dataset.mv; if (j < 0 || j >= cur.steps.length) return; var x = cur.steps[i]; cur.steps[i] = cur.steps[j]; cur.steps[j] = x; render(); return; }
+        if (t.dataset.rm) { sync(); if (cur.steps.length === 1) { msg("A plan needs at least one email"); return; } cur.steps.splice(+t.dataset.rm, 1); render(); return; }
+        if (t.id === "pe-add") { sync(); var last = cur.steps[cur.steps.length - 1]; cur.steps.push({ day_offset: (last ? +last.day_offset || 0 : 0) + 7, mode: "review", subject: "", body: "{hi}\n\n" }); render(); return; }
+        if (t.id === "pe-cancel") { close(); return; }
+        if (t.id === "pe-del") { if (!confirm("Delete this plan? Anyone on it stops getting its emails.")) return; post({ action: "plan_delete", id: cur.id }).then(function (j) { if (j.ok) location.reload(); else msg(j.error || "Failed"); }); return; }
+        if (t.id === "pe-save") { sync(); t.disabled = true; msg("Saving\u2026"); post({ action: "plan_save", id: cur.id, name: cur.name, description: cur.description, stop_when_closed: !!cur.stop_when_closed, steps: cur.steps }).then(function (j) { if (j.ok) location.reload(); else { t.disabled = false; msg(j.error || "Failed"); } }); }
+      });
+      document.querySelectorAll("[data-edit]").forEach(function (b) { b.addEventListener("click", function () { var p = PLANS.filter(function (x) { return x.id === b.dataset.edit; })[0]; if (p) open(p); }); });
+      var nb = document.getElementById("pl-new"); if (nb) nb.addEventListener("click", function () { open(null); });
+      var sd = document.getElementById("pl-seed"); if (sd) sd.addEventListener("click", function () { sd.disabled = true; sd.textContent = "Loading\u2026"; fetch("/admin/api/plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ site_id: siteId, action: "seed" }) }).then(function (r) { return r.text().then(function (x) { var j = null; try { j = JSON.parse(x); } catch (e) {} if (j && j.ok) { location.reload(); return; } sd.disabled = false; sd.textContent = "Load starter plans"; var m = document.getElementById("pl-err") || sd.parentNode.appendChild(Object.assign(document.createElement("div"), { id: "pl-err" })); m.style.cssText = "flex-basis:100%;color:#a3352a;font-size:.85rem;margin-top:6px;max-width:520px;"; m.textContent = "HTTP " + r.status + ": " + (j ? j.error : x.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 300)); }); }).catch(function (e) { sd.disabled = false; sd.textContent = "Load starter plans"; alert("Network error: " + e); }); });
+    })();
+  </script>
+</body>
+</html>

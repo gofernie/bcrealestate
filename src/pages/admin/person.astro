@@ -3,6 +3,7 @@
 import AdminTopNav from "../../components/AdminTopNav.astro";
 import CrmStyles from "../../components/crm/CrmStyles.astro";
 import ListingViewer from "../../components/ListingViewer.astro";
+import { planPanelData } from "../../lib/drips";
 import { loadPeople, timelineFor, STAGES, fmtPhone, todayStr, plusDays, when, fuText, sbAdmin, bdText } from "../../lib/crm";
 export const prerender = false;
 
@@ -11,15 +12,17 @@ const access: any = (Astro.locals as any).adminAccess || null;
 const siteId = String(Astro.url.searchParams.get("site_id") || "");
 const key = String(Astro.url.searchParams.get("key") || "");
 const allowed = UUID.test(siteId) && (!access || access.isPlatformAdmin || (access.siteIds || []).includes(siteId));
-let p: any = null, items: any[] = [], tasks: any[] = [], allPeople: any[] = [], partner: any = null, pCity = "", sellerListing: any = null;
+let planDetail: any = null; let p: any = null, items: any[] = [], tasks: any[] = [], allPeople: any[] = [], partner: any = null, pCity = "", sellerListing: any = null;
 if (allowed && /^[ep]:/.test(key)) {
   const { people, detail } = await loadPeople(siteId); allPeople = people;
   p = people.find((x: any) => x.keys.includes(key)) || null; partner = p && p.partnerKey ? people.find((x: any) => x.keys.includes(p.partnerKey)) || null : null;
-  if (p) items = await timelineFor(siteId, p, detail.get(p.key));
+  if (p) { items = await timelineFor(siteId, p, detail.get(p.key)); planDetail = detail.get(p.key) || null; }
   if (p && p.listingMls) { const { data: sl } = await sbAdmin().from("listing_rows").select("address, price, status").eq("mls_number", p.listingMls).limit(1); sellerListing = sl?.[0] || { address: "MLS® " + p.listingMls }; }
   if (p) { const dd: any = detail.get(p.key) || {}; pCity = String(dd.leads?.[0]?.city || dd.sessions?.[0]?.city || "").toLowerCase().trim().replace(/\s+/g, "-"); }
   if (p) { const { data: tk } = await sbAdmin().from("crm_tasks").select("*").eq("site_id", siteId).in("person_key", p.keys).order("due_on", { ascending: true, nullsFirst: false }).order("created_at", { ascending: true }); tasks = tk || []; }
 }
+let planData: any = { plans: [], enrolls: [], ready: [], optedOut: false };
+if (p) planData = await planPanelData(siteId, p.keys, p, planDetail);
 const back = `/admin/people?site_id=${encodeURIComponent(siteId)}`;
 const enqTitle = items.filter((i) => i.kind === "lead").map((i) => i.title).join(" · ");
 const partnerHref = partner ? `/admin/person?site_id=${encodeURIComponent(siteId)}&key=${encodeURIComponent(partner.key)}` : "";
@@ -187,6 +190,72 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
             </div>
           </aside>
           <div class="maincol">
+          <section class="crm-card tasks" id="plans-panel" data-site={siteId} data-key={p.key}>
+            <h2 style="display:flex;justify-content:space-between;align-items:center;gap:10px;">Email plans <a href={`/admin/plans?site_id=${encodeURIComponent(siteId)}`} style="font-size:.78rem;font-weight:700;color:#1f6b60;text-decoration:none;letter-spacing:0;text-transform:none;">Manage plans →</a></h2>
+            {planData.optedOut && <div class="tk-empty" style="color:#a3352a;font-weight:700;">Unsubscribed from plan emails.</div>}
+            {!planData.optedOut && planData.consent && (
+              <div class="tk-empty" style={"white-space:normal;" + (planData.consent.ok ? "" : "color:#a3352a;font-weight:700;")}>
+                {planData.consent.text}{" "}
+                {planData.consent.kind === "express"
+                  ? <button class="rename pl-consent" type="button" data-on="0">undo</button>
+                  : <button class="rename pl-consent" type="button" data-on="1" style="color:#1f6b60;font-weight:700;">They said yes to emails</button>}
+              </div>
+            )}
+            {planData.ready.map((r: any) => (
+              <div class="tk">
+                <span title="Ready to send">✉</span>
+                <div><div class="tk-t">Ready to send: {r.subject}</div><div class="tk-d" style="white-space:normal;">{r.plan}{r.error ? ` · couldn't send on its own: ${r.error}` : ""}</div></div>
+                <div style="display:flex;gap:6px;"><button class="btn dark pl-act" type="button" data-act="ready_send" data-id={r.id}>Send</button><button class="btn pl-edit" type="button" data-id={r.id} data-sub={r.subject} data-body={r.body}>Edit</button></div>
+                <button class="tk-x pl-act" type="button" data-act="ready_skip" data-id={r.id} title="Skip this email">✕</button>
+              </div>
+            ))}
+            {planData.enrolls.map((e: any) => (
+              <div class="tk">
+                <span style="font-size:.75rem;color:#8a8378;">{e.status === "active" ? "▶" : e.status === "paused" ? "❚❚" : "■"}</span>
+                <div><div class="tk-t">{e.plan}</div><div class="tk-d" style="white-space:normal;">{e.line}</div></div>
+                <div style="display:flex;gap:6px;">
+                  {e.status === "active" && <button class="btn pl-act" type="button" data-act="enroll" data-st="paused" data-id={e.id}>Pause</button>}
+                  {e.status === "paused" && <button class="btn pl-act" type="button" data-act="enroll" data-st="active" data-id={e.id}>Resume</button>}
+                </div>
+                {(e.status === "active" || e.status === "paused") ? <button class="tk-x pl-act" type="button" data-act="enroll" data-st="stopped" data-id={e.id} title="Stop this plan">✕</button> : <span></span>}
+              </div>
+            ))}
+            {!planData.enrolls.length && !planData.ready.length && !planData.optedOut && <div class="tk-empty">Not on a plan.</div>}
+            {!planData.optedOut && planData.plans.length > 0 && p.emails[0] && planData.consent && planData.consent.ok && (
+              <div style="display:flex;gap:8px;padding:10px 18px 4px;">
+                <select id="pl-pick" style="flex:1;border:1px solid #d9d2c6;border-radius:6px;padding:8px 10px;font:inherit;font-size:.9rem;background:#fff;">{planData.plans.map((x: any) => <option value={x.id}>{x.name}</option>)}</select>
+                <button class="btn dark" id="pl-assign" type="button">Start plan</button>
+              </div>
+            )}
+            {!planData.plans.length && <div class="tk-empty"><a href={`/admin/plans?site_id=${encodeURIComponent(siteId)}`} style="color:#1f6b60;font-weight:700;">Set up your first plan →</a></div>}
+            <div class="saved" id="pl-saved" style="padding:0 18px;"></div>
+            <script is:inline>
+              (function () {
+                var P = document.getElementById("plans-panel"); if (!P) return;
+                var site = P.dataset.site, key = P.dataset.key;
+                function post(b) { return fetch("/admin/api/plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ site_id: site, key: key }, b)) }).then(function (r) { return r.json(); }); }
+                function msg(t) { var m = document.getElementById("pl-saved"); if (m) m.textContent = t; }
+                var a = document.getElementById("pl-assign");
+                if (a) a.addEventListener("click", function () { var s = document.getElementById("pl-pick"); if (!confirm("Start \"" + s.options[s.selectedIndex].text + "\" for this person?")) return; a.disabled = true; msg("Starting…"); post({ action: "assign", plan_id: s.value }).then(function (j) { if (j.ok) location.reload(); else { a.disabled = false; msg(j.error || "Failed"); } }); });
+                P.querySelectorAll(".pl-act").forEach(function (b) { b.addEventListener("click", function () {
+                  var act = b.dataset.act;
+                  if (act === "ready_send" && !confirm("Send this email now?")) return;
+                  if (act === "enroll" && b.dataset.st === "stopped" && !confirm("Stop this plan for this person?")) return;
+                  b.disabled = true; msg("Saving…");
+                  post({ action: act === "enroll" ? "enroll_status" : act, status: b.dataset.st, id: b.dataset.id }).then(function (j) { if (j.ok) location.reload(); else { b.disabled = false; msg(j.error || "Failed"); } });
+                }); });
+                P.querySelectorAll(".pl-consent").forEach(function (b) { b.addEventListener("click", function () { var on = b.dataset.on === "1"; if (on && !confirm("Confirm they said yes to getting emails from you (in writing, or on a call you've noted)? Keep a record of how they agreed.")) return; b.disabled = true; msg("Saving..."); post({ action: "consent_set", on: on }).then(function (j) { if (j.ok) location.reload(); else { b.disabled = false; msg(j.error || "Failed"); } }); }); });
+                var hooked = false;
+                P.querySelectorAll(".pl-edit").forEach(function (b) { b.addEventListener("click", function () {
+                  var open = document.getElementById("em-open"); if (!open) { msg("No email address on this contact"); return; }
+                  window.__dripSend = b.dataset.id; open.click();
+                  var s = document.getElementById("em-subject"), t = document.getElementById("em-text");
+                  s.value = b.dataset.sub || ""; t.value = b.dataset.body || ""; t.dataset.dirty = "1";
+                  if (!hooked) { hooked = true; var c = document.getElementById("em-close"); if (c) c.addEventListener("click", function () { window.__dripSend = ""; }); document.addEventListener("keydown", function (e) { if (e.key === "Escape") window.__dripSend = ""; }); }
+                }); });
+              })();
+            </script>
+          </section>
           <section class="crm-card tasks">
             <h2>Tasks</h2>
             {openTasks.map((t) => (
@@ -331,7 +400,7 @@ function v(id) { var el = document.getElementById(id); return el ? el.value.trim
           var emAuto = new URLSearchParams(location.search).get("email") || "", emIdeas = null, emCur = -1, emTx = document.getElementById("em-text"), emSub = document.getElementById("em-subject"), emMsg = document.getElementById("em-msg");
           emTx.addEventListener("input", function () { emTx.dataset.dirty = "1"; });
           var emPick = function (i) { var it = emIdeas && emIdeas[i]; if (!it) return; if (emTx.dataset.dirty === "1" && emTx.value.trim() && !confirm("Replace your draft with this idea?")) return; emSub.value = it.subject; emTx.value = it.body; emTx.dataset.dirty = "0"; emCur = i; document.querySelectorAll("#em-list .em-idea").forEach(function (b, k) { b.classList.toggle("on", k === i); }); emTx.focus(); emTx.setSelectionRange(0, 0); emTx.scrollTop = 0; };
-          var emLoad = function () { var list = document.getElementById("em-list"); fetch("/admin/api/person-email?site_id=" + encodeURIComponent(siteId) + "&key=" + encodeURIComponent(pkey)).then(function (r) { return r.json(); }).then(function (j) { var cx = document.getElementById("em-ctx"); if (cx && j.context) { cx.textContent = j.context; cx.hidden = false; } emIdeas = j.ideas || []; list.innerHTML = ""; if (!emIdeas.length) { list.textContent = j.error || "No ideas right now."; return; } emIdeas.forEach(function (it, i) { var b = document.createElement("button"); b.type = "button"; b.className = "em-idea"; var tt = document.createElement("b"); tt.textContent = it.icon + " " + it.label; var s = document.createElement("span"); s.textContent = it.why || ""; b.appendChild(tt); b.appendChild(s); b.addEventListener("click", function () { emPick(i); }); list.appendChild(b); }); if (emAuto) { var ai = 0; emIdeas.forEach(function (it, i) { if (it.id === emAuto) ai = i; }); emPick(ai); emAuto = ""; } }).catch(function () { list.textContent = "Couldn't load ideas."; }); };
+          var emLoad = function () { var list = document.getElementById("em-list"); fetch("/admin/api/person-email?site_id=" + encodeURIComponent(siteId) + "&key=" + encodeURIComponent(pkey)).then(function (r) { return r.json(); }).then(function (j) { var cx = document.getElementById("em-ctx"); if (cx && j.context) { cx.textContent = j.context; cx.hidden = false; } emIdeas = j.ideas || []; list.innerHTML = ""; if (!emIdeas.length) { list.textContent = j.error || "No ideas right now."; return; } var emGrp = ""; emIdeas.forEach(function (it, i) { if (it.group && it.group !== emGrp) { emGrp = it.group; var gh = document.createElement("div"); gh.className = "em-lbl"; gh.style.marginTop = "16px"; gh.textContent = it.group; list.appendChild(gh); } var b = document.createElement("button"); b.type = "button"; b.className = "em-idea"; var tt = document.createElement("b"); tt.textContent = it.icon + " " + it.label; var s = document.createElement("span"); s.textContent = it.why || ""; b.appendChild(tt); b.appendChild(s); b.addEventListener("click", function () { emPick(i); }); list.appendChild(b); }); if (emAuto) { var ai = 0; emIdeas.forEach(function (it, i) { if (it.id === emAuto) ai = i; }); emPick(ai); emAuto = ""; } }).catch(function () { list.textContent = "Couldn't load ideas."; }); };
           var emOpen = function (to) { emM.hidden = false; document.body.style.overflow = "hidden"; if (to) document.getElementById("em-to").value = to; if (!emIdeas) emLoad(); };
           var emClose = function () { emM.hidden = true; document.body.style.overflow = ""; };
           var emBtn = document.getElementById("em-open"); if (emBtn) emBtn.addEventListener("click", function () { emOpen(""); });
@@ -346,7 +415,7 @@ function v(id) { var el = document.getElementById(id); return el ? el.value.trim
             if (!emSub.value.trim() || !emTx.value.trim()) { emMsg.textContent = "Add a subject and message"; return; }
             if (!confirm("Send this email to " + to + "?")) return;
             btn.disabled = true; btn.textContent = "Sending…"; emMsg.textContent = "";
-            fetch("/admin/api/person-email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ site_id: siteId, key: pkey, to: to, subject: emSub.value, body: emTx.value, idea: emCur >= 0 && emIdeas && emIdeas[emCur] ? emIdeas[emCur].id : "" }) })
+            fetch("/admin/api/person-email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ site_id: siteId, key: pkey, to: to, subject: emSub.value, body: emTx.value, idea: emCur >= 0 && emIdeas && emIdeas[emCur] ? emIdeas[emCur].id : "", drip_send_id: window.__dripSend || "" }) })
               .then(function (r) { return r.json(); })
               .then(function (j) { if (j.ok) { emMsg.textContent = "Sent ✓"; setTimeout(function () { location.reload(); }, 700); } else { btn.disabled = false; btn.textContent = "Send"; emMsg.textContent = j.error || "Failed"; } })
               .catch(function () { btn.disabled = false; btn.textContent = "Send"; emMsg.textContent = "Failed"; });

@@ -4,6 +4,8 @@ import { sbAdmin, loadPeople } from "../../../lib/crm";
 import { getMarketPulse } from "../../../lib/marketPulse";
 import { siteBase } from "../../../lib/sessionHomes";
 import { RATES } from "../../../lib/rates";
+import { unsubUrl } from "../../../lib/unsub";
+import { closeDripSend } from "../../../lib/crm";
 export const prerender = false;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -353,6 +355,17 @@ export const GET: APIRoute = async ({ url, locals, request }) => {
     if (pbd != null && pFirst) ideas.push({ id: "pbirthday", icon: "🎂", label: `${pFirst}'s birthday`, why: pbd === 0 ? "Today" : pbd < 0 ? "Yesterday" : `In ${pbd} day${pbd === 1 ? "" : "s"}`, subject: `Happy birthday to ${pFirst}!`, body: `Hi ${first},\n\nI hear it's ${pFirst}'s birthday${pbd === 0 ? " today" : pbd < 0 ? "" : " coming up"}. Please pass along my best wishes!\n\nHope you're both doing well.` });
 
     ideas.sort((a, b) => (ORDER[a.id] ?? 9) - (ORDER[b.id] ?? 9));
+    try {
+      const { data: pls } = await sb.from("crm_plans").select("id, name").eq("site_id", siteId).order("name");
+      const pids = (pls || []).map((x: any) => x.id);
+      if (pids.length) {
+        const { data: pst } = await sb.from("crm_plan_steps").select("id, plan_id, position, subject, body").in("plan_id", pids).order("position");
+        const ag = await agentFor(sb, siteId);
+        const mv: Record<string, string> = { hi, first_name: first, names: first + (pFirst ? ` and ${pFirst}` : ""), city: area, city_report: reportUrl, loved_home: String(loves[0]?.address || "the homes you saved"), agent_name: ag.agentName, agent_first: String(ag.agentName).split(/\s+/)[0] };
+        const mg = (s: string) => String(s || "").replace(/\{(\w+)\}/g, (m: string, k: string) => (k in mv ? mv[k] : m));
+        for (const pl of pls || []) { const ss = (pst || []).filter((s: any) => s.plan_id === pl.id); ss.forEach((s: any, i: number) => ideas.push({ id: "plan:" + s.id, group: "From your plans", icon: "\u{1F4CB}", label: mg(s.subject), why: `${pl.name} \u00b7 email ${i + 1} of ${ss.length}`, subject: mg(s.subject), body: mg(s.body) })); }
+      }
+    } catch (e) { console.error("plan ideas failed", e); }
     let context = "";
     if (seller) {
       const S = seller, last = p.lastAgentTouch ? Math.round((Date.now() - p.lastAgentTouch) / 864e5) : null;
@@ -389,18 +402,21 @@ export const POST: APIRoute = async ({ request, locals }) => {
     const localPart = agent.agentName.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").split(/\s+/)[0].replace(/[^a-z0-9]/g, "") || "notify";
     const from = `${agent.agentName.replace(/["<>]/g, "").trim() || "Your agent"} <${localPart}@${senderDomain}>`;
     const sig = [agent.agentName, agent.brokerage || env("LEAD_BROKERAGE"), agent.agentEmail].filter(Boolean).join("\n");
-    const optout = `You're receiving this because you've been in touch with ${agent.agentName}. Reply "unsubscribe" and I won't email you again.`;
+    let unUrl = ""; try { unUrl = unsubUrl(String((await siteBase(sb, siteId)) || ""), siteId, p.key); } catch {}
+    const optLead = `You're receiving this because you've been in touch with ${agent.agentName}.`;
+    const optout = `${optLead} Unsubscribe: ${unUrl}`;
     const plain = `${text.replace(INTEL_RE, "").replace(/\n{3,}/g, "\n\n").trim()}\n\n--\n${sig}\n\n${optout}`;
-    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1a1a1a;max-width:560px">${await withIntel(sb, toHtml(text))}<br><br><div style="color:#555;font-size:13px">${toHtml(sig)}</div><div style="color:#999;font-size:12px;margin-top:16px">${toHtml(optout)}</div></div>`;
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1a1a1a;max-width:560px">${await withIntel(sb, toHtml(text))}<br><br><div style="color:#555;font-size:13px">${toHtml(sig)}</div><div style="color:#999;font-size:12px;margin-top:16px">${escH(optLead)} <a href="${unUrl}" style="color:#999">Unsubscribe</a></div></div>`;
 
     if (b.preview) return json({ ok: true, html });
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${rkey}`, "content-type": "application/json" },
-      body: JSON.stringify({ from, to: [to], subject, text: plain, html, reply_to: agent.agentEmail }),
+      body: JSON.stringify({ from, to: [to], subject, text: plain, html, reply_to: agent.agentEmail, headers: unUrl ? { "List-Unsubscribe": `<${unUrl}>` } : undefined }),
     });
     const out: any = await r.json().catch(() => ({}));
     if (!r.ok) return json({ ok: false, error: out?.message || "Email send failed" }, 502);
+    if (b.drip_send_id && UUID.test(String(b.drip_send_id))) await closeDripSend(sb, siteId, String(b.drip_send_id), "sent", { subject, body: text });
 
     const { error: logErr } = await sb.from("session_messages").insert({
       session_id: p.sessionIds[0] || null, site_id: siteId, lead_id: d.leads?.[0]?.id || null, channel: "email",
@@ -416,3 +432,4 @@ export const POST: APIRoute = async ({ request, locals }) => {
     return json({ ok: false, error: e?.message || "Send failed" }, 500);
   }
 };
+export { toHtml, withIntel, agentFor, INTEL_RE };

@@ -238,3 +238,16 @@ export function when(t: number) {
   const sameYear = new Date(t).getFullYear() === new Date().getFullYear();
   return new Date(t).toLocaleString("en-CA", sameYear ? { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
+
+// crm-plans v1: keep "next follow-up" in step with open tasks; close a queued plan email
+export async function syncNextFollowup(sb: any, siteId: string, key: string) {
+  const { data: nt } = await sb.from("crm_tasks").select("title, due_on").eq("site_id", siteId).eq("person_key", key).is("done_at", null).not("due_on", "is", null).order("due_on", { ascending: true }).limit(1).maybeSingle();
+  const { data: cur } = await sb.from("crm_people").select("stage").eq("site_id", siteId).eq("person_key", key).maybeSingle();
+  await sb.from("crm_people").upsert({ site_id: siteId, person_key: key, stage: cur?.stage || "new", next_followup_at: nt?.due_on || null, followup_note: nt?.title || null, updated_at: new Date().toISOString() }, { onConflict: "site_id,person_key" });
+}
+export async function closeDripSend(sb: any, siteId: string, id: string, status: "sent" | "skipped", patch: any = {}) {
+  const now = new Date().toISOString();
+  const { data: r } = await sb.from("crm_drip_sends").update({ status, error: null, ...(status === "sent" ? { sent_at: now } : {}), ...patch }).eq("id", id).eq("site_id", siteId).eq("status", "ready").select("task_id, person_key").maybeSingle();
+  if (r?.task_id) { await sb.from("crm_tasks").update({ done_at: now }).eq("id", r.task_id); await syncNextFollowup(sb, siteId, r.person_key); }
+  return r;
+}

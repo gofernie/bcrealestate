@@ -1,6 +1,7 @@
 // crm-v1: save stage / follow-up / name, add notes, mark followed up
 import type { APIRoute } from "astro";
 import { sbAdmin, STAGES, stageLabel, keysFor, normEmailX, normPhoneX } from "../../../lib/crm";
+import { stopClosedPlans } from "../../../lib/drips";
 export const prerender = false;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const json = (o: any, status = 200) => new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
@@ -24,6 +25,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     if (b.action === "stage") {
       const s = String(b.stage || "");
       if (!STAGES.some(([k]) => k === s)) return json({ ok: false, error: "Bad stage" }, 400);
+      if (s !== (cur?.stage || "new") && ["closed", "past"].includes(s)) await stopClosedPlans(sb, siteId, key, note);
       if (s !== (cur?.stage || "new")) { await upsert({ stage: s }); await note(`Stage: ${stageLabel(cur?.stage || "new")} → ${stageLabel(s)}`, "system"); }
     } else if (b.action === "followup") {
       const d = b.date ? String(b.date).slice(0, 10) : null;
