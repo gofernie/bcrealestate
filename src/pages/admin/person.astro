@@ -130,6 +130,11 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
               <div class="vw" style="margin-bottom:10px;"><span id="stage-badge" class={"stage stage-" + p.stage} style="font-size:.85rem;">{(STAGES.find(([k]) => k === p.stage) || STAGES[0])[1]}</span></div>
               <select id="stage" class="ed">{STAGES.map(([k, l]) => <option value={k} selected={k === p.stage}>{l}</option>)}</select>
               <div class="saved" id="stage-saved"></div>
+              <div style="display:flex;gap:16px;margin:8px 0 2px;font-size:.9rem;">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:normal;"><input type="checkbox" id="role-buyer" checked={p.isBuyer} /> Buyer</label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:normal;"><input type="checkbox" id="role-seller" checked={p.isSeller} /> Seller</label>
+              </div>
+              <div class="saved" id="roles-saved"></div>
               <div class="stats">
                 {!!(p.counts.loves) && <i class="love" data-k="love" title="Show in timeline">♥ {p.counts.loves} loved</i>}
                 {!!(p.counts.likes) && <i data-k="react" title="Show in timeline">{p.counts.likes} liked</i>}
@@ -308,7 +313,8 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
           return fetch("/admin/api/people", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ site_id: siteId, key: pkey }, body)) }).then(function (r) { return r.json(); });
         }
         function flash(id, msg) { var el = document.getElementById(id); if (el) el.textContent = msg; }
-        var st = document.getElementById("stage");
+        ["buyer", "seller"].forEach(function (r) { var cb = document.getElementById("role-" + r); if (cb) cb.addEventListener("change", function () { flash("roles-saved", "Saving..."); post({ action: "roles", is_buyer: document.getElementById("role-buyer").checked, is_seller: document.getElementById("role-seller").checked }).then(function (j) { flash("roles-saved", j && j.ok ? "Saved" : ((j && j.error) || "Couldn't save")); }); }); });
+      var st = document.getElementById("stage");
         st.addEventListener("change", function () { flash("stage-saved", "Saving…"); post({ action: "stage", stage: st.value }).then(function (j) { flash("stage-saved", j.ok ? "Saved" : (j.error || "Failed")); var bg = document.getElementById("stage-badge"); if (j.ok && bg) { bg.textContent = st.options[st.selectedIndex].text; bg.className = "stage stage-" + st.value; } }); });
         var d = document.getElementById("task-due"), tt = document.getElementById("task-title");
         document.querySelectorAll(".quick button").forEach(function (b) { b.addEventListener("click", function () { d.value = b.dataset.d; document.querySelectorAll(".quick button").forEach(function (x) { x.classList.remove("on"); }); b.classList.add("on"); }); });

@@ -36,14 +36,14 @@ const fresh = people.filter((p) => !p.manual && p.stage === "new" && !p.lastAgen
 const sellers = people.filter((p) => p.listingMls && Date.now() - (p.lastAgentTouch || 0) > 7 * 864e5).sort((a, b) => (a.lastAgentTouch || 0) - (b.lastAgentTouch || 0));
 const stageCount = (s: string) => people.filter((p) => p.stage === s).length;
 const fc: any = {
-  tasks: people.filter((p) => tasksOf(p).length).length,
+  buyers: people.filter((p) => p.isBuyer).length, sellers: people.filter((p) => p.isSeller).length, tasks: people.filter((p) => tasksOf(p).length).length,
   overdue: people.filter((p) => { const t0 = tasksOf(p)[0]; return t0?.due_on && t0.due_on < today; }).length,
   loved: people.filter((p) => p.counts.loves).length,
   uncontacted: people.filter((p) => !p.lastAgentTouch).length,
   watching: people.filter((p) => p.counts.watches).length,
   shortlists: people.filter((p) => p.counts.shortlists).length,
 };
-const FILTERS = [["tasks", "Has tasks"], ["overdue", "Overdue"], ["loved", "Loved homes"], ["uncontacted", "Not contacted"], ["watching", "Watching"], ["shortlists", "Shortlists"]];
+const FILTERS = [["buyers", "Buyers"], ["sellers", "Sellers"], ["tasks", "Has tasks"], ["overdue", "Overdue"], ["loved", "Loved homes"], ["uncontacted", "Not contacted"], ["watching", "Watching"], ["shortlists", "Shortlists"]];
 ---
 <html lang="en">
 <head>
@@ -117,7 +117,7 @@ const FILTERS = [["tasks", "Has tasks"], ["overdue", "Overdue"], ["loved", "Love
         </div>
         <div class="crm-card plist" id="plist" data-today={today}>
           {people.map((p) => (
-            <a class="prow" href={href(p)} data-stage={p.stage} data-q={[p.name, ...p.emails, ...p.phones, p.address || "", p.spouseName || ""].join(" ").toLowerCase()} data-name={String(p.name).toLowerCase()} data-last={p.lastActivity} data-first={p.firstSeen} data-touch={p.lastAgentTouch} data-loves={p.counts.loves} data-enq={p.counts.enquiries} data-sl={p.counts.shortlists} data-watch={p.counts.watches} data-ntask={tasksOf(p).length} data-task={tasksOf(p)[0]?.due_on || (tasksOf(p).length ? "9999" : "")}>
+            <a class="prow" href={href(p)} data-stage={p.stage} data-buyer={p.isBuyer ? "1" : ""} data-seller={p.isSeller ? "1" : ""} data-q={[p.name, ...p.emails, ...p.phones, p.address || "", p.spouseName || ""].join(" ").toLowerCase()} data-name={String(p.name).toLowerCase()} data-last={p.lastActivity} data-first={p.firstSeen} data-touch={p.lastAgentTouch} data-loves={p.counts.loves} data-enq={p.counts.enquiries} data-sl={p.counts.shortlists} data-watch={p.counts.watches} data-ntask={tasksOf(p).length} data-task={tasksOf(p)[0]?.due_on || (tasksOf(p).length ? "9999" : "")}>
               <div class="nm"><strong>{p.name}</strong><span>{contact(p)}</span>{p.address && <span style="font-size:.78rem;color:#a8a196;">{p.address}</span>}</div>
               <div><span class={"stage stage-" + p.stage}>{stageLabel(p.stage)}</span></div>
               <div class="last"><b>{p.lastWhat || "—"}</b><span>{ago(p.lastActivity)}{p.lastAgentTouch ? ` · you: ${ago(p.lastAgentTouch)}` : ""}</span></div>
@@ -142,7 +142,7 @@ const FILTERS = [["tasks", "Has tasks"], ["overdue", "Overdue"], ["loved", "Love
       var today = list.dataset.today || "";
       var rows = Array.prototype.slice.call(list.querySelectorAll(".prow"));
       function num(r, k) { return Number(r.dataset[k] || 0); }
-      var F = {
+      var F = { buyers: function (r) { return r.dataset.buyer === "1"; }, sellers: function (r) { return r.dataset.seller === "1"; },
         tasks: function (r) { return num(r, "ntask") > 0; },
         overdue: function (r) { var t = r.dataset.task; return !!t && t !== "9999" && t < today; },
         loved: function (r) { return num(r, "loves") > 0; },
