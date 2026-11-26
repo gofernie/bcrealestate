@@ -1,0 +1,314 @@
+---
+// crm-v1: one person — contact, stage, follow-up, notes and the full timeline
+import AdminTopNav from "../../components/AdminTopNav.astro";
+import CrmStyles from "../../components/crm/CrmStyles.astro";
+import { loadPeople, timelineFor, STAGES, fmtPhone, todayStr, plusDays, when, fuText, sbAdmin, bdText } from "../../lib/crm";
+export const prerender = false;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const access: any = (Astro.locals as any).adminAccess || null;
+const siteId = String(Astro.url.searchParams.get("site_id") || "");
+const key = String(Astro.url.searchParams.get("key") || "");
+const allowed = UUID.test(siteId) && (!access || access.isPlatformAdmin || (access.siteIds || []).includes(siteId));
+let p: any = null, items: any[] = [], tasks: any[] = [], allPeople: any[] = [], partner: any = null;
+if (allowed && /^[ep]:/.test(key)) {
+  const { people, detail } = await loadPeople(siteId); allPeople = people;
+  p = people.find((x: any) => x.keys.includes(key)) || null; partner = p && p.partnerKey ? people.find((x: any) => x.keys.includes(p.partnerKey)) || null : null;
+  if (p) items = await timelineFor(siteId, p, detail.get(p.key));
+  if (p) { const { data: tk } = await sbAdmin().from("crm_tasks").select("*").eq("site_id", siteId).in("person_key", p.keys).order("due_on", { ascending: true, nullsFirst: false }).order("created_at", { ascending: true }); tasks = tk || []; }
+}
+const back = `/admin/people?site_id=${encodeURIComponent(siteId)}`;
+const enqTitle = items.filter((i) => i.kind === "lead").map((i) => i.title).join(" · ");
+const partnerHref = partner ? `/admin/person?site_id=${encodeURIComponent(siteId)}&key=${encodeURIComponent(partner.key)}` : "";
+const today = todayStr();
+const plus = plusDays;
+const openTasks = tasks.filter((t) => !t.done_at);
+const doneTasks = tasks.filter((t) => t.done_at).sort((a, b) => String(b.done_at).localeCompare(String(a.done_at)));
+const ICON: Record<string, string> = { lead: "?", visit: "→", love: "♥", react: "✓", browse: "◎", sent: "✉", shortlist: "☰", view: "◉", watch: "★", note: "✎", system: "•" };
+const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-sessions"))?.href : "";
+---
+<html lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{p ? p.name : "Person"} · Locus Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <CrmStyles />
+  <style is:global>
+    .crumb { font-size:.82rem; margin-bottom:14px; } .crumb a { color:#6f6a63; text-decoration:none; } .crumb a:hover { text-decoration:underline; }
+    .phead { display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap; align-items:flex-start; margin-bottom:22px; }
+    .phead h1 { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .phead .ids { color:#6f6a63; font-size:.9rem; display:flex; gap:14px; flex-wrap:wrap; margin-top:6px; }
+    .phead .acts { display:flex; gap:8px; flex-wrap:wrap; }
+    .rename { border:0; background:none; color:#a8a196; font:inherit; font-size:.8rem; cursor:pointer; text-decoration:underline; }
+    .pgrid { display:grid; grid-template-columns:300px minmax(0,1fr); gap:20px; align-items:start; }
+    .side { display:grid; gap:14px; position:sticky; top:16px; }
+    .side .crm-card { padding:16px; }
+    .side label { display:block; font-size:.72rem; font-weight:800; letter-spacing:.07em; text-transform:uppercase; color:#8a8378; margin:0 0 8px; }
+    .side select, .side input, .side textarea { width:100%; box-sizing:border-box; border:1px solid #d9d2c6; border-radius:6px; padding:8px 10px; font:inherit; font-size:.9rem; background:#fff; }
+    .side textarea { min-height:84px; resize:vertical; }
+    .quick { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0; } .quick button { height:28px; padding:0 9px; font-size:.75rem; font-weight:700; border:1px solid #d9d2c6; background:#fff; border-radius:5px; cursor:pointer; }
+    .quick button:hover { background:#f7f4ef; }
+    .row2 { display:flex; gap:8px; margin-top:8px; } .row2 .btn { flex:1; justify-content:center; }
+    .fu-now { font-size:.85rem; margin-bottom:8px; } .saved { font-size:.75rem; color:#1f6b60; height:16px; margin-top:6px; }
+    .stats { display:flex; gap:6px; flex-wrap:wrap; } .stats i { font-style:normal; font-size:.78rem; background:#f4f0e9; border-radius:5px; padding:3px 8px; } .stats i.love { background:#fdeceb; color:#a3352a; }
+    .tl { padding:6px 0; } .tl h2 { padding:12px 18px 0; }
+    .ti { display:grid; grid-template-columns:34px minmax(0,1fr) auto; gap:10px; padding:12px 18px; border-top:1px solid #f0ebe2; }
+    .ti:first-of-type { border-top:0; }
+    .ti .ic { width:28px; height:28px; border-radius:50%; background:#f4f0e9; display:grid; place-items:center; font-size:.85rem; color:#5d574f; }
+    .ti.k-love .ic { background:#fdeceb; color:#a3352a; } .ti.k-sent .ic, .ti.k-shortlist .ic { background:#e6f3f1; color:#1f6b60; }
+    .ti.k-note .ic { background:#fdf1e3; color:#8a5414; } .ti.k-lead .ic { background:#eaf0fb; color:#2c4f8c; }
+    .ti .tt { font-weight:700; font-size:.92rem; } .ti .td { font-size:.84rem; color:#6f6a63; overflow-wrap:anywhere; white-space:pre-line; }
+    .ti.k-note .td { color:#181614; }
+    .ti.k-system .tt { font-weight:500; color:#8a8378; font-size:.85rem; }
+    .ti .tw { font-size:.76rem; color:#a8a196; white-space:nowrap; text-align:right; } .ti .tw a { display:block; color:#1f6b60; font-weight:700; text-decoration:none; margin-top:2px; }
+    body:not(.editing) .ed { display:none !important; } body.editing .vw { display:none !important; }
+    .maincol { display:grid; gap:20px; min-width:0; }
+    .tasks { padding:6px 0 10px; } .tasks h2 { padding:12px 18px 4px; }
+    .tk { display:grid; grid-template-columns:22px minmax(0,1fr) auto 22px; gap:10px; align-items:center; padding:10px 18px; border-top:1px solid #f0ebe2; }
+    .tk input { width:16px; height:16px; cursor:pointer; accent-color:#181614; margin:0; }
+    .tk-t { font-weight:600; font-size:.92rem; } .tk.done .tk-t { text-decoration:line-through; color:#a8a196; font-weight:500; }
+    .tk-d { font-size:.8rem; color:#6f6a63; white-space:nowrap; } .tk-d.overdue { color:#a3352a; font-weight:700; }
+    .tk-x { border:0; background:none; color:#c9c2b6; cursor:pointer; font-size:.85rem; padding:0; } .tk-x:hover { color:#a3352a; }
+    .tk-empty { padding:10px 18px; color:#a8a196; font-size:.88rem; }
+    .tk-done summary { padding:10px 18px 6px; font-size:.8rem; color:#8a8378; cursor:pointer; font-weight:700; }
+    .quick button.on { background:#181614; color:#fff; border-color:#181614; }
+    @media (max-width:900px) { .pgrid { grid-template-columns:1fr; } .side { position:static; } }
+  </style>
+</head>
+<body>
+  <style is:inline>body:not(.editing) .ed{display:none!important}body.editing .vw{display:none!important}.stats i[data-k]{cursor:pointer}.stats i[data-k]:hover{text-decoration:underline}.ti.k-lead{box-shadow:inset 3px 0 0 #2c4f8c}.ti{transition:background .5s}.ti.hl{background:#fff4cf}.pf{display:block;font-size:.72rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#8a8378}.pf input{display:block;width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #d9d2c6;border-radius:6px;padding:9px 10px;font:inherit;font-size:.95rem;text-transform:none;letter-spacing:0;font-weight:500;color:#181614;background:#fff}.pf input:focus{outline:2px solid #181614;outline-offset:-1px}#pf-saved{color:#a3352a}.em-modal{position:fixed;inset:0;background:rgba(24,22,20,.45);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto}.em-modal[hidden]{display:none}.em-box{background:#fff;border-radius:12px;width:100%;max-width:980px;box-shadow:0 20px 60px rgba(0,0,0,.25)}.em-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #f0ebe2;font-size:1.05rem}.em-x{border:0;background:none;font-size:1rem;cursor:pointer;color:#8a8378}.em-body{display:grid;grid-template-columns:290px minmax(0,1fr)}.em-ideas{border-right:1px solid #f0ebe2;padding:16px;background:#faf8f4;border-bottom-left-radius:12px}.em-lbl{font-size:.72rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#8a8378;margin-bottom:10px}.em-idea{display:block;width:100%;text-align:left;border:1px solid #e6dfd3;background:#fff;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;font:inherit}.em-idea:hover{border-color:#b9b0a2}.em-idea b{display:block;font-size:.9rem}.em-idea span{display:block;font-size:.78rem;color:#8a8378;margin-top:2px}.em-idea.on{border-color:#181614;box-shadow:0 0 0 1px #181614}.em-rand{width:100%;border:1px dashed #c9c2b6;background:none;border-radius:8px;padding:9px;cursor:pointer;font:inherit;font-weight:700;font-size:.85rem;margin-top:4px}.em-draft{padding:16px 20px;display:grid;gap:12px}.pf select,.pf textarea{display:block;width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #d9d2c6;border-radius:6px;padding:9px 10px;font:inherit;font-size:.95rem;text-transform:none;letter-spacing:0;font-weight:500;color:#181614;background:#fff}.pf textarea{resize:vertical;line-height:1.5;min-height:300px}.em-foot{display:flex;justify-content:flex-end;align-items:center;gap:12px}#em-msg{font-size:.85rem;color:#8a8378}.em-wait{font-size:.85rem;color:#8a8378}@media (max-width:760px){.em-body{grid-template-columns:1fr}.em-ideas{border-right:0;border-bottom:1px solid #f0ebe2}}</style>
+  <AdminTopNav siteId={siteId} />
+  <main class="crm">
+    <div class="crumb"><a href={back}>← People</a></div>
+    {!p && <p>Person not found.</p>}
+    {p && (
+      <>
+        <div class="phead">
+          <div>
+            <h1><span id="pname">{p.name}</span> <button class="rename" id="rename" type="button" style="display:none">rename</button></h1>
+            <div class="ids vw">
+              {p.emails.map((e: string) => <a href="#" class="em-link" data-to={e} style="color:inherit;">{e}</a>)}
+              {p.phones.map((x: string) => <span>{fmtPhone(x)}</span>)}
+              {p.address && <span>📍 {p.address}</span>}
+              {p.birthday && <span>🎂 {bdText(p.birthday)}</span>}
+              {partner && <span>Partner: <a href={partnerHref} style="color:#181614;font-weight:700;">{partner.name} →</a>{partner.phones[0] ? ` · ${fmtPhone(partner.phones[0])}` : ""}{partner.birthday ? ` · 🎂 ${bdText(partner.birthday)}` : ""}</span>}
+              {!partner && p.spouseName && <span>Spouse: {p.spouseName}{p.spousePhone ? ` · ${p.spousePhone}` : ""}{p.spouseEmail ? ` · ${p.spouseEmail}` : ""}{p.spouseBirthday ? ` · 🎂 ${bdText(p.spouseBirthday)}` : ""} <button class="rename" id="sp-promote" type="button" style="color:#1f6b60;font-weight:700;">make {p.spouseName} a contact</button></span>}
+              {!partner && !p.spouseName && <button class="rename" id="pt-jump" type="button" style="color:#1f6b60;font-weight:700;">+ add partner</button>}
+            </div>
+          </div>
+          <div class="acts">
+            {p.phones[0] && <a class="btn" href={`sms:+1${p.phones[0]}`}>Text</a>}
+            {p.phones[0] && <a class="btn" href={`tel:+1${p.phones[0]}`}>Call</a>}
+            {p.emails[0] && <button class="btn" id="em-open" type="button">Email</button>}
+            {latestSession && <a class="btn dark" href={latestSession}>Open session</a>}
+            <button class="btn" id="edit-toggle" type="button">Edit</button>
+          </div>
+        </div>
+        <div class="crm-card ed" style="padding:18px;margin:-6px 0 22px;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;">
+            <label class="pf">Name<input id="pf-name" value={p.name} autocomplete="off" /></label>
+            <label class="pf">Email<input id="pf-email" type="email" value={p.emails[0] || ""} autocomplete="off" /></label>
+            <label class="pf">Phone<input id="pf-phone" type="tel" value={p.phones[0] ? fmtPhone(p.phones[0]) : ""} autocomplete="off" /></label>
+            <label class="pf">Birthday<input id="pf-bday" type="date" value={p.birthday || ""} /></label>
+            <label class="pf" style="grid-column:1/-1;">Address<input id="pf-address" value={p.address || ""} autocomplete="off" /></label>
+          </div>
+          <div class="saved" id="pf-saved"></div>
+        </div>
+        <div class="pgrid">
+          <aside class="side">
+            <div class="crm-card">
+              <label for="stage">Stage</label>
+              <div class="vw" style="margin-bottom:10px;"><span id="stage-badge" class={"stage stage-" + p.stage} style="font-size:.85rem;">{(STAGES.find(([k]) => k === p.stage) || STAGES[0])[1]}</span></div>
+              <select id="stage" class="ed">{STAGES.map(([k, l]) => <option value={k} selected={k === p.stage}>{l}</option>)}</select>
+              <div class="saved" id="stage-saved"></div>
+              <div class="stats">
+                {!!(p.counts.loves) && <i class="love" data-k="love" title="Show in timeline">♥ {p.counts.loves} loved</i>}
+                {!!(p.counts.likes) && <i data-k="react" title="Show in timeline">{p.counts.likes} liked</i>}
+                {!!(p.counts.passes) && <i data-k="react" title="Show in timeline">{p.counts.passes} passed</i>}
+                {!!(p.counts.enquiries) && <i data-k="lead" title={enqTitle}>{p.counts.enquiries} enquir{p.counts.enquiries === 1 ? "y" : "ies"}</i>}
+                {!!(p.counts.shortlists) && <i data-k="shortlist" title="Show in timeline">{p.counts.shortlists} shortlist{p.counts.shortlists === 1 ? "" : "s"}</i>}
+                {!!(p.counts.emails) && <i data-k="sent" title="Show in timeline">{p.counts.emails} email{p.counts.emails === 1 ? "" : "s"} sent</i>}
+              </div>
+            </div>
+            <div class="crm-card">
+              <label for="task-title">Add a task</label>
+              <input type="text" id="task-title" placeholder="What needs doing?" autocomplete="off" />
+              <div class="quick">
+                <button type="button" data-d={plus(1)}>Tomorrow</button><button type="button" data-d={plus(3)}>3 days</button>
+                <button type="button" data-d={plus(7)}>1 week</button><button type="button" data-d={plus(30)}>1 month</button>
+              </div>
+              <input type="date" id="task-due" />
+              <div class="row2"><button class="btn dark" id="task-add" type="button">Add task</button></div>
+              <div class="saved" id="task-saved"></div>
+            </div>
+            <div class="crm-card">
+              <label for="note">Add a note</label>
+              <textarea id="note" placeholder="Called, pre-approved to $750K, wants North Nanaimo, 3 bed…"></textarea>
+              <div class="row2"><button class="btn dark" id="note-save" type="button">Save note</button></div>
+              <div class="saved" id="note-saved"></div>
+            </div>
+            
+            <div class="crm-card ed">
+              <label id="pt-card">Partner</label>
+              {partner ? (
+                <>
+                  <div style="font-size:.95rem;margin-bottom:10px;"><a href={partnerHref} style="color:#181614;font-weight:700;">{partner.name} →</a></div>
+                  <button class="btn" id="pt-unlink" type="button" style="width:100%;justify-content:center;">Unlink</button>
+                </>
+              ) : (
+                <>
+                  <input type="text" id="pt-name" placeholder="Name" value={p.spouseName || ""} />
+                  <input type="email" id="pt-email" placeholder="Email" value={p.spouseEmail || ""} style="margin-top:6px;" />
+                  <input type="tel" id="pt-phone" placeholder="Phone" value={p.spousePhone || ""} style="margin-top:6px;" />
+                  <div style="font-size:.75rem;color:#8a8378;margin:8px 0 4px;">Birthday</div>
+                  <input type="date" id="pt-bday" value={p.spouseBirthday || ""} />
+                  <div class="row2"><button class="btn dark" id="pt-create" type="button">{p.spouseName ? `Make ${p.spouseName} a contact` : "Create partner"}</button></div>
+                  <div style="font-size:.75rem;color:#8a8378;margin:14px 0 4px;">Or link someone already in People</div>
+                  <input type="text" id="pt-pick" list="pt-people" placeholder="Start typing a name…" autocomplete="off" />
+                  <datalist id="pt-people">{allPeople.filter((x) => x.key !== p.key).map((x) => <option value={`${x.name} — ${x.emails[0] || (x.phones[0] ? fmtPhone(x.phones[0]) : x.key)}`} data-key={x.key} />)}</datalist>
+                  <div class="row2"><button class="btn" id="pt-link" type="button">Link</button></div>
+                </>
+              )}
+              <div class="saved" id="pt-saved"></div>
+            </div>
+          </aside>
+          <div class="maincol">
+          <section class="crm-card tasks">
+            <h2>Tasks</h2>
+            {openTasks.map((t) => (
+              <div class="tk">
+                <input type="checkbox" class="tk-check" data-id={t.id} title="Mark done" />
+                <div class="tk-t">{t.title}</div>
+                <div class={"tk-d" + (t.due_on && today > t.due_on ? " overdue" : "")}>{t.due_on ? fuText(t.due_on) : ""}</div>
+                <button class="tk-x" type="button" data-id={t.id} title="Delete task">✕</button>
+              </div>
+            ))}
+            {!openTasks.length && <div class="tk-empty">No open tasks. Add one on the left.</div>}
+            {!!(doneTasks.length) && (
+              <details class="tk-done"><summary>Completed ({doneTasks.length})</summary>
+                {doneTasks.map((t) => (
+                  <div class="tk done">
+                    <input type="checkbox" class="tk-check" data-id={t.id} checked title="Mark not done" />
+                    <div class="tk-t">{t.title}</div>
+                    <div class="tk-d">{when(new Date(t.done_at).getTime())}</div>
+                    <button class="tk-x" type="button" data-id={t.id} title="Delete task">✕</button>
+                  </div>
+                ))}
+              </details>
+            )}
+          </section>
+          <section class="crm-card tl">
+            <h2>Timeline</h2>
+            {items.map((i) => (
+              <div class={"ti k-" + i.kind}>
+                <div class="ic">{ICON[i.kind] || "•"}</div>
+                <div><div class="tt">{i.title}</div>{i.detail && <div class="td">{i.detail}</div>}</div>
+                <div class="tw">{when(i.at)}{i.href && <a href={i.href} target={i.href.startsWith("/admin") ? undefined : "_blank"}>Open</a>}</div>
+              </div>
+            ))}
+            {!items.length && <div style="padding:18px;color:#8a8378;">No activity yet.</div>}
+          </section>
+          </div>
+        </div>
+      </>
+    )}
+  {p && p.emails[0] && (
+      <div id="em-modal" class="em-modal" hidden>
+        <div class="em-box">
+          <div class="em-head"><strong>Email {p.name}</strong><button type="button" id="em-close" class="em-x" title="Close">✕</button></div>
+          <div class="em-body">
+            <div class="em-ideas">
+              <div class="em-lbl">Not sure what to say? Pick an idea</div>
+              <div id="em-list"><div class="em-wait">Loading ideas…</div></div>
+              <button type="button" id="em-random" class="em-rand">🎲 Surprise me</button>
+            </div>
+            <div class="em-draft">
+              <label class="pf">To<select id="em-to">{p.emails.map((e: string) => <option value={e}>{e}</option>)}</select></label>
+              <label class="pf">Subject<input id="em-subject" autocomplete="off" /></label>
+              <label class="pf">Message<textarea id="em-text" placeholder="Write your own, or pick an idea on the left."></textarea></label>
+              <div class="em-foot"><span id="em-msg"></span><button class="btn dark" id="em-send" type="button">Send</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+  </main>
+  {p && (
+    <script is:inline define:vars={{ siteId, pkey: p.key }}>
+      (function () {
+        function post(body) {
+          return fetch("/admin/api/people", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ site_id: siteId, key: pkey }, body)) }).then(function (r) { return r.json(); });
+        }
+        function flash(id, msg) { var el = document.getElementById(id); if (el) el.textContent = msg; }
+        var st = document.getElementById("stage");
+        st.addEventListener("change", function () { flash("stage-saved", "Saving…"); post({ action: "stage", stage: st.value }).then(function (j) { flash("stage-saved", j.ok ? "Saved" : (j.error || "Failed")); var bg = document.getElementById("stage-badge"); if (j.ok && bg) { bg.textContent = st.options[st.selectedIndex].text; bg.className = "stage stage-" + st.value; } }); });
+        var d = document.getElementById("task-due"), tt = document.getElementById("task-title");
+        document.querySelectorAll(".quick button").forEach(function (b) { b.addEventListener("click", function () { d.value = b.dataset.d; document.querySelectorAll(".quick button").forEach(function (x) { x.classList.remove("on"); }); b.classList.add("on"); }); });
+        function addTask() { var v = tt.value.trim(); if (!v) { tt.focus(); return; } flash("task-saved", "Saving…"); post({ action: "task_add", title: v, due: d.value || null }).then(function (j) { if (j.ok) location.reload(); else flash("task-saved", j.error || "Failed"); }); }
+        document.getElementById("task-add").addEventListener("click", addTask);
+        tt.addEventListener("keydown", function (e) { if (e.key === "Enter") addTask(); });
+        document.querySelectorAll(".tk-check").forEach(function (c) { c.addEventListener("change", function () { c.disabled = true; post({ action: c.checked ? "task_done" : "task_undo", id: c.dataset.id }).then(function (j) { if (j.ok) location.reload(); else { c.disabled = false; c.checked = !c.checked; c.title = j.error || "Failed"; } }); }); });
+        document.querySelectorAll(".tk-x").forEach(function (x) { x.addEventListener("click", function () { if (!confirm("Delete this task?")) return; post({ action: "task_delete", id: x.dataset.id }).then(function (j) { if (j.ok) location.reload(); }); }); });
+function v(id) { var el = document.getElementById(id); return el ? el.value.trim() : ""; }
+        var dsv = document.getElementById("d-save"); if (dsv) dsv.addEventListener("click", function () { flash("d-saved", "Saving…"); post({ action: "details", address: v("d-address"), birthday: v("d-bday") }).then(function (j) { if (j.ok) location.reload(); else flash("d-saved", j.error || "Failed"); }); });
+        document.querySelectorAll(".stats i[data-k]").forEach(function (c) { c.addEventListener("click", function () { var hits = document.querySelectorAll(".ti.k-" + c.dataset.k + (c.dataset.k === "love" ? ", .ti.k-react" : "")); if (!hits.length) return; hits[0].scrollIntoView({ behavior: "smooth", block: "center" }); hits.forEach(function (h) { h.classList.add("hl"); }); setTimeout(function () { hits.forEach(function (h) { h.classList.remove("hl"); }); }, 2500); }); });
+        var emM = document.getElementById("em-modal");
+        if (emM) {
+          var emIdeas = null, emCur = -1, emTx = document.getElementById("em-text"), emSub = document.getElementById("em-subject"), emMsg = document.getElementById("em-msg");
+          emTx.addEventListener("input", function () { emTx.dataset.dirty = "1"; });
+          var emPick = function (i) { var it = emIdeas && emIdeas[i]; if (!it) return; if (emTx.dataset.dirty === "1" && emTx.value.trim() && !confirm("Replace your draft with this idea?")) return; emSub.value = it.subject; emTx.value = it.body; emTx.dataset.dirty = "0"; emCur = i; document.querySelectorAll("#em-list .em-idea").forEach(function (b, k) { b.classList.toggle("on", k === i); }); emTx.focus(); emTx.setSelectionRange(0, 0); emTx.scrollTop = 0; };
+          var emLoad = function () { var list = document.getElementById("em-list"); fetch("/admin/api/person-email?site_id=" + encodeURIComponent(siteId) + "&key=" + encodeURIComponent(pkey)).then(function (r) { return r.json(); }).then(function (j) { emIdeas = j.ideas || []; list.innerHTML = ""; if (!emIdeas.length) { list.textContent = j.error || "No ideas right now."; return; } emIdeas.forEach(function (it, i) { var b = document.createElement("button"); b.type = "button"; b.className = "em-idea"; var tt = document.createElement("b"); tt.textContent = it.icon + " " + it.label; var s = document.createElement("span"); s.textContent = it.why || ""; b.appendChild(tt); b.appendChild(s); b.addEventListener("click", function () { emPick(i); }); list.appendChild(b); }); }).catch(function () { list.textContent = "Couldn't load ideas."; }); };
+          var emOpen = function (to) { emM.hidden = false; document.body.style.overflow = "hidden"; if (to) document.getElementById("em-to").value = to; if (!emIdeas) emLoad(); };
+          var emClose = function () { emM.hidden = true; document.body.style.overflow = ""; };
+          var emBtn = document.getElementById("em-open"); if (emBtn) emBtn.addEventListener("click", function () { emOpen(""); });
+          document.querySelectorAll(".em-link").forEach(function (a) { a.addEventListener("click", function (e) { e.preventDefault(); emOpen(a.dataset.to); }); });
+          document.getElementById("em-close").addEventListener("click", emClose);
+          emM.addEventListener("click", function (e) { if (e.target === emM) emClose(); });
+          document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !emM.hidden) emClose(); });
+          document.getElementById("em-random").addEventListener("click", function () { if (!emIdeas || !emIdeas.length) return; var i = emIdeas.length === 1 ? 0 : emCur; while (emIdeas.length > 1 && i === emCur) i = Math.floor(Math.random() * emIdeas.length); emPick(i); });
+          document.getElementById("em-send").addEventListener("click", function () {
+            var btn = this, to = document.getElementById("em-to").value;
+            if (!emSub.value.trim() || !emTx.value.trim()) { emMsg.textContent = "Add a subject and message"; return; }
+            if (!confirm("Send this email to " + to + "?")) return;
+            btn.disabled = true; btn.textContent = "Sending…"; emMsg.textContent = "";
+            fetch("/admin/api/person-email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ site_id: siteId, key: pkey, to: to, subject: emSub.value, body: emTx.value, idea: emCur >= 0 && emIdeas && emIdeas[emCur] ? emIdeas[emCur].id : "" }) })
+              .then(function (r) { return r.json(); })
+              .then(function (j) { if (j.ok) { emMsg.textContent = "Sent ✓"; setTimeout(function () { location.reload(); }, 700); } else { btn.disabled = false; btn.textContent = "Send"; emMsg.textContent = j.error || "Failed"; } })
+              .catch(function () { btn.disabled = false; btn.textContent = "Send"; emMsg.textContent = "Failed"; });
+          });
+        }
+        var et = document.getElementById("edit-toggle");
+        function setEdit(on) { document.body.classList.toggle("editing", on); if (et) { et.textContent = on ? "Done" : "Edit"; et.classList.toggle("dark", on); } try { if (on) sessionStorage.setItem("person-edit:" + pkey, "1"); else sessionStorage.removeItem("person-edit:" + pkey); } catch (e) {} }
+        try { if (sessionStorage.getItem("person-edit:" + pkey)) setEdit(true); } catch (e) {}
+        var pfIds = ["pf-name", "pf-email", "pf-phone", "pf-address", "pf-bday"], pfInit = pfIds.map(function (id) { return v(id); });
+        function saveProfile() {
+          var dirty = pfIds.some(function (id, i) { return v(id) !== pfInit[i]; });
+          if (!dirty) { setEdit(false); return; }
+          et.textContent = "Saving…";
+          post({ action: "profile", name: v("pf-name"), email: v("pf-email"), phone: v("pf-phone"), address: v("pf-address"), birthday: v("pf-bday") }).then(function (j) { if (j.ok) { setEdit(false); location.reload(); } else { et.textContent = "Done"; flash("pf-saved", j.error || "Failed"); } });
+        }
+        if (et) et.addEventListener("click", function () { if (document.body.classList.contains("editing")) saveProfile(); else { setEdit(true); var n = document.getElementById("pf-name"); if (n) { n.focus(); n.select(); } } });
+        pfIds.forEach(function (id) { var el = document.getElementById(id); if (el) el.addEventListener("keydown", function (e) { if (e.key === "Enter") saveProfile(); }); });
+        var spp = document.getElementById("sp-promote"); if (spp) spp.addEventListener("click", function () { var c = document.getElementById("pt-create"); if (c) { spp.textContent = "Saving…"; c.click(); } });
+        var ptj = document.getElementById("pt-jump"); if (ptj) ptj.addEventListener("click", function () { setEdit(true); var c = document.getElementById("pt-card"); if (c) { c.scrollIntoView({ behavior: "smooth", block: "center" }); setTimeout(function () { var n = document.getElementById("pt-name"); if (n) n.focus(); }, 400); } });
+        var ptc = document.getElementById("pt-create");
+        if (ptc) ptc.addEventListener("click", function () { if (!v("pt-name")) { flash("pt-saved", "Name needed"); return; } if (!v("pt-email") && !v("pt-phone")) { flash("pt-saved", "Email or phone needed"); return; } flash("pt-saved", "Saving…"); post({ action: "create_person", name: v("pt-name"), email: v("pt-email"), phone: v("pt-phone"), birthday: v("pt-bday"), link: true }).then(function (j) { if (j.ok) location.reload(); else flash("pt-saved", j.error || "Failed"); }); });
+        var ptl = document.getElementById("pt-link");
+        if (ptl) ptl.addEventListener("click", function () { var val = v("pt-pick"), k = ""; document.querySelectorAll("#pt-people option").forEach(function (o) { if (o.value === val) k = o.dataset.key; }); if (!k) { flash("pt-saved", "Pick someone from the list"); return; } flash("pt-saved", "Linking…"); post({ action: "link_partner", partner_key: k }).then(function (j) { if (j.ok) location.reload(); else flash("pt-saved", j.error || "Failed"); }); });
+        var ptu = document.getElementById("pt-unlink");
+        if (ptu) ptu.addEventListener("click", function () { if (!confirm("Unlink partner? Both contacts stay.")) return; post({ action: "unlink_partner" }).then(function (j) { if (j.ok) location.reload(); }); });
+        document.getElementById("note-save").addEventListener("click", function () {
+          var t = document.getElementById("note").value.trim(); if (!t) return;
+          flash("note-saved", "Saving…");
+          post({ action: "note", body: t }).then(function (j) { if (j.ok) location.reload(); else flash("note-saved", j.error || "Failed"); });
+        });
+        document.getElementById("rename").addEventListener("click", function () {
+          var cur = document.getElementById("pname").textContent; var v = prompt("Name for this person", cur);
+          if (v === null) return;
+          post({ action: "name", name: v }).then(function (j) { if (j.ok) location.reload(); });
+        });
+      })();
+    </script>
+  )}
+</body>
+</html>
