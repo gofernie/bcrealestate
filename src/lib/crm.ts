@@ -31,7 +31,7 @@ async function inChunks(sb: any, table: string, cols: string, col: string, vals:
 
 export type Person = {
   key: string; keys: string[]; name: string; emails: string[]; phones: string[];
-  stage: string; followup: string | null; followupNote: string | null; metaKey: string | null; address: string | null; birthday: string | null; spouseName: string | null; spousePhone: string | null; spouseEmail: string | null; spouseBirthday: string | null; partnerKey: string | null; manual: boolean; listingMls: string | null; boughtPrice: number | null; boughtMonth: string | null; boughtType: string | null; isBuyer: boolean; isSeller: boolean;
+  stage: string; followup: string | null; followupNote: string | null; metaKey: string | null; address: string | null; birthday: string | null; spouseName: string | null; spousePhone: string | null; spouseEmail: string | null; spouseBirthday: string | null; partnerKey: string | null; mainCity: string | null; manual: boolean; listingMls: string | null; boughtPrice: number | null; boughtMonth: string | null; boughtType: string | null; isBuyer: boolean; isSeller: boolean;
   firstSeen: number; lastActivity: number; lastWhat: string; lastAgentTouch: number;
   counts: { enquiries: number; loves: number; likes: number; passes: number; shortlists: number; emails: number; notes: number; watches: number };
   recentLoves: number; sessionIds: string[]; sources: string[];
@@ -43,11 +43,12 @@ export async function loadPeople(siteId: string, opts: { onlyKeys?: string[] } =
   if (!site) return { site: null, people: [] as Person[], raw: null as any };
   const domain = String(site.domain || "").replace(/^www\./, "");
 
-  const [{ data: leads }, { data: msgs }, { data: meta }, { data: notes }] = await Promise.all([
+  const [{ data: leads }, { data: msgs }, { data: meta }, { data: notes }, { data: evs }] = await Promise.all([
     sb.from("intent_leads").select("id, created_at, session_id, city, slug, name, email, phone, source, message, question").eq("site_id", siteId).order("created_at", { ascending: false }).limit(3000),
     sb.from("session_messages").select("id, session_id, lead_id, channel, message_type, to_email, subject, body, sent_by, created_at").eq("site_id", siteId).order("created_at", { ascending: false }).limit(3000),
     sb.from("crm_people").select("*").eq("site_id", siteId),
     sb.from("crm_notes").select("*").eq("site_id", siteId).order("created_at", { ascending: false }).limit(5000),
+    sb.from("crm_email_events").select("kind, email, subject, link, body, provider_id, created_at").eq("site_id", siteId).order("created_at", { ascending: false }).limit(5000),
   ]);
   const sends = site.agent_id
     ? ((await sb.from("shortlist_sends").select("id, client_name, client_phone, client_email, client_id, shortlist_url, shortlist_slug, status, sent_at, created_at, last_viewed_at, first_viewed_at, open_count, search_area, search_city").eq("agent_id", site.agent_id).order("created_at", { ascending: false }).limit(2000)).data || [])
@@ -98,7 +99,7 @@ export async function loadPeople(siteId: string, opts: { onlyKeys?: string[] } =
     const e = normEmail(m.to_email); if (e) (msgsByEmail.get(e) || msgsByEmail.set(e, []).get(e)!).push(m);
   }
 
-  const week = Date.now() - 7 * 864e5;
+  const week = Date.now() - 7 * 864e5; const evByEmail = new Map<string, any[]>(); for (const ev of evs || []) { const e = normEmail(ev.email); if (e) (evByEmail.get(e) || evByEmail.set(e, []).get(e)!).push(ev); }
   const people: Person[] = [];
   const detail = new Map<string, any>();
   for (const g of groups.values()) {
@@ -114,13 +115,14 @@ export async function loadPeople(siteId: string, opts: { onlyKeys?: string[] } =
     for (const id of g.leadIds) for (const x of msgsByLead.get(id) || []) mset.set(x.id, x);
     for (const e of emails) for (const x of msgsByEmail.get(e) || []) mset.set(x.id, x);
     const sent = [...mset.values()];
-    const pnotes = keys.flatMap((k) => notesByKey.get(k) || []);
+    const pnotes = keys.flatMap((k) => notesByKey.get(k) || []); const pev = emails.flatMap((e) => evByEmail.get(e) || []);
 
     const acts: [number, string][] = [];
     for (const l of g.leads) acts.push([ts(l.created_at), l.question ? "Asked a question" : l.source === "saved_search" ? "Saved a search" : "Sent an enquiry"]);
     for (const r of reacts) if (["love", "like", "pass"].includes(r.decision)) acts.push([ts(r.updated_at || r.created_at), r.decision === "love" ? `Loved ${r.address || "a home"}` : r.decision === "like" ? `Liked ${r.address || "a home"}` : "Passed on a home"]);
     for (const s of sess) acts.push([ts(s.updated_at || s.created_at), "Browsed homes"]);
     for (const s of g.sends) if (s.last_viewed_at) acts.push([ts(s.last_viewed_at), "Opened a shortlist"]);
+    { const owner = ["closed", "past"].includes(m?.stage || ""); for (const ev of pev) { if (ev.kind === "open") continue; const isHome = ev.kind === "click" && /[?&](mls|listing_id)=/.test(String(ev.link || "")); if (owner && !isHome) continue; acts.push([ts(ev.created_at), ev.kind === "reply" ? "Replied to your email" : isHome ? (owner ? "Past client looking at homes" : "Clicked a home in your email") : "Clicked a link in your email"]); } }
     acts.sort((a, b) => b[0] - a[0]);
     const touches = [...sent.map((x) => ts(x.created_at)), ...g.sends.map((s: any) => ts(s.sent_at)), ...pnotes.filter((n: any) => n.kind !== "system").map((n: any) => ts(n.created_at))];
     const all = [...acts.map((a) => a[0]), ...touches].filter(Boolean);
@@ -129,7 +131,7 @@ export async function loadPeople(siteId: string, opts: { onlyKeys?: string[] } =
     if (!g.leads.length && !g.sends.length && !g.watches.length && !g.manual) continue;
     const p: Person = {
       key, keys, name: m?.display_name || names[0]?.[1] || emails[0] || (phones[0] ? fmtPhone(phones[0]) : "Unnamed"),
-      emails, phones, stage: m?.stage || "new", followup: m?.next_followup_at || null, followupNote: m?.followup_note || null, metaKey: m?.person_key || null, address: m?.address || null, birthday: m?.birthday || null, spouseName: m?.spouse_name || null, spousePhone: m?.spouse_phone || null, spouseEmail: m?.spouse_email || null, spouseBirthday: m?.spouse_birthday || null, partnerKey: m?.partner_key || null, listingMls: m?.listing_mls || null, boughtPrice: m?.bought_price != null ? Number(m.bought_price) : null, boughtMonth: m?.bought_month || null, boughtType: m?.bought_type || null, isBuyer: m?.is_buyer ?? (g.leads.length + sess.length + reacts.length + g.sends.length + g.watches.length > 0), isSeller: m?.is_seller ?? !!m?.listing_mls, manual: !!g.manual,
+      emails, phones, stage: m?.stage || "new", followup: m?.next_followup_at || null, followupNote: m?.followup_note || null, metaKey: m?.person_key || null, address: m?.address || null, birthday: m?.birthday || null, spouseName: m?.spouse_name || null, spousePhone: m?.spouse_phone || null, spouseEmail: m?.spouse_email || null, spouseBirthday: m?.spouse_birthday || null, partnerKey: m?.partner_key || null, mainCity: m?.main_city || null, listingMls: m?.listing_mls || null, boughtPrice: m?.bought_price != null ? Number(m.bought_price) : null, boughtMonth: m?.bought_month || null, boughtType: m?.bought_type || null, isBuyer: m?.is_buyer ?? (g.leads.length + sess.length + reacts.length + g.sends.length + g.watches.length > 0), isSeller: m?.is_seller ?? !!m?.listing_mls, manual: !!g.manual,
       firstSeen: all.length ? Math.min(...all) : ts(m?.created_at), lastActivity: acts[0]?.[0] || (all.length ? Math.max(...all) : ts(m?.created_at)), lastWhat: acts[0]?.[1] || (g.manual ? "Added by you" : ""),
       lastAgentTouch: Math.max(0, ...touches),
       counts: { enquiries: g.leads.length, loves: reacts.filter((r: any) => r.decision === "love").length, likes: reacts.filter((r: any) => r.decision === "like").length, passes: reacts.filter((r: any) => r.decision === "pass").length, shortlists: g.sends.length, emails: sent.length, notes: pnotes.length, watches: g.watches.length },
@@ -137,7 +139,7 @@ export async function loadPeople(siteId: string, opts: { onlyKeys?: string[] } =
       sessionIds: [...g.sessionIds], sources: [...new Set(g.leads.map((l: any) => String(l.source || "")).filter(Boolean))] as string[],
     };
     people.push(p);
-    detail.set(p.key, { leads: g.leads, sessions: sess, reactions: reacts, messages: sent, sends: g.sends, watches: g.watches, notes: pnotes });
+    detail.set(p.key, { leads: g.leads, sessions: sess, reactions: reacts, messages: sent, sends: g.sends, watches: g.watches, notes: pnotes, events: pev });
   }
   people.sort((a, b) => b.lastActivity - a.lastActivity);
   return { site, people, detail };
@@ -196,6 +198,16 @@ export async function timelineFor(siteId: string, p: Person, d: any) {
       const bhomes = hs.filter((h) => h.mls).map((h) => ({ mls: String(h.mls), address: String(h.address || "MLS® " + h.mls), price: h.price ? fmtPrice(h.price) : "", url: lbase ? listingUrl(lbase, String(h.city || ""), String(h.mls), x.sid) : "" }));
       items.push({ homes: bhomes.length ? bhomes : undefined, at: x.t, kind: "browse", title: one ? `Looked at ${one.address}` : `Looked at ${x.homes.size} home${x.homes.size === 1 ? "" : "s"}`, detail: bhomes.length ? undefined : (detail || undefined), href: one && one.mls && lbase ? listingUrl(lbase, String(one.city || ""), String(one.mls), x.sid) : sq(x.sid) });
     }
+  }
+  {
+    const lab = (u: string) => { const s = String(u || ""); const mm = s.match(/[?&](?:mls|listing_id)=([A-Za-z0-9]+)/); if (mm) return `home MLS\u00ae ${mm[1]}`; if (/market-intelligence/.test(s)) return "the market report"; if (/\/report\//.test(s)) return "the comparable sales report"; if (/unsubscribe/.test(s)) return "the unsubscribe link"; try { const x = new URL(s); return x.hostname.replace(/^www\./, "") + (x.pathname.length > 1 ? x.pathname : ""); } catch { return "a link"; } };
+    const opens = new Map<string, any>();
+    for (const e of d.events || []) {
+      if (e.kind === "open") { const k = e.provider_id || e.subject || "x"; const o = opens.get(k) || { n: 0, at: 0, subject: e.subject }; o.n++; o.at = Math.max(o.at, ts(e.created_at)); opens.set(k, o); }
+      else if (e.kind === "click") items.push({ at: ts(e.created_at), kind: "view", title: `Clicked ${lab(e.link)}`, detail: e.subject ? `in "${e.subject}"` : undefined, href: e.link || undefined });
+      else if (e.kind === "reply") items.push({ at: ts(e.created_at), kind: "lead", title: `Replied: ${e.subject || "(no subject)"}`, detail: String(e.body || "").trim() || undefined });
+    }
+    for (const o of opens.values()) items.push({ at: o.at, kind: "view", title: `Opened "${o.subject || "your email"}"${o.n > 1 ? ` (${o.n} times)` : ""}` });
   }
   for (const m of d.messages) items.push({ at: ts(m.created_at), kind: "sent", title: `You emailed: ${m.subject || "(no subject)"}`, detail: String(m.body || "").replace(/\s+/g, " ").slice(0, 160) });
   for (const s of d.sends) {

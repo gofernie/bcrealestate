@@ -1,0 +1,151 @@
+---
+// crm-import v1: bring contacts in from a CSV (Top Producer, spreadsheets, other CRMs)
+import AdminTopNav from "../../components/AdminTopNav.astro";
+import CrmStyles from "../../components/crm/CrmStyles.astro";
+import { STAGES } from "../../lib/crm";
+export const prerender = false;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const access: any = (Astro.locals as any).adminAccess || null;
+const siteId = String(Astro.url.searchParams.get("site_id") || "");
+const allowed = UUID.test(siteId) && (!access || access.isPlatformAdmin || (access.siteIds || []).includes(siteId));
+const stages = STAGES.map(([k, l]) => ({ k, l }));
+const back = `/admin/people?site_id=${encodeURIComponent(siteId)}`;
+---
+<html lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Import contacts · Locus Admin</title>
+  <CrmStyles />
+  <style is:global>
+    .crumb { font-size:.82rem; margin-bottom:14px; } .crumb a { color:#6f6a63; text-decoration:none; }
+    .im-lede { color:#6f6a63; font-size:.92rem; max-width:680px; line-height:1.5; margin:6px 0 20px; }
+    .im-card { padding:20px; max-width:980px; }
+    .im-drop { display:flex; flex-direction:column; align-items:center; gap:6px; padding:48px 20px; border:2px dashed #d9d2c6; border-radius:12px; cursor:pointer; text-align:center; }
+    .im-drop b { font-size:1rem; } .im-drop span { color:#8a8378; font-size:.88rem; } .im-drop.on, .im-drop:hover { border-color:#1f6b60; background:#f4faf8; }
+    .im-card h2 { font-size:.78rem !important; font-weight:800; letter-spacing:.07em; text-transform:uppercase; color:#8a8378; margin:18px 0 10px; }
+    .im-fields, .im-opts { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:10px 14px; }
+    .im-fields label, .im-opts > label:not(.im-chk) { display:block; font-size:.8rem; font-weight:700; color:#5d574f; }
+    .im-fields select, .im-opts select { display:block; width:100%; margin-top:4px; border:1px solid #d9d2c6; border-radius:6px; padding:7px 8px; font:inherit; font-size:.88rem; background:#fff; }
+    .im-opts { align-items:end; } .im-chk { display:flex; align-items:center; gap:8px; font-size:.9rem; cursor:pointer; min-height:38px; }
+    .im-grp { font-size:.8rem; font-weight:700; color:#5d574f; } .im-grp .im-row { display:flex; gap:20px; margin-top:4px; min-height:38px; align-items:center; font-weight:500; } .im-grp small { display:block; font-weight:500; color:#8a8378; } .im-opts2 { border:1px solid #ece6dc; border-radius:10px; overflow:hidden; background:#fff; } .io-row { display:grid; grid-template-columns:280px minmax(0,1fr); gap:18px; align-items:center; padding:14px 16px; border-top:1px solid #f0ebe2; } .io-row:first-child { border-top:0; } .io-lbl { font-weight:700; font-size:.9rem; color:#181614; } .io-lbl small { display:block; font-weight:500; font-size:.78rem; color:#8a8378; margin-top:3px; line-height:1.4; } .io-ctl select { width:100%; max-width:260px; border:1px solid #d9d2c6; border-radius:6px; padding:8px 10px; font:inherit; font-size:.9rem; background:#fff; } .io-checks { display:flex; gap:24px; flex-wrap:wrap; } .io-checks label { display:inline-flex !important; align-items:center; gap:8px; font-size:.92rem; font-weight:500; color:#181614; cursor:pointer; margin:0; } .io-checks input { width:16px; height:16px; margin:0; accent-color:#181614; } @media (max-width:700px) { .io-row { grid-template-columns:1fr; gap:8px; } } .im-note { font-size:.8rem; color:#8a8378; line-height:1.5; }
+    .im-count { font-size:.9rem; margin-bottom:8px; }
+    .im-preview table { width:100%; border-collapse:collapse; font-size:.84rem; } .im-preview th { text-align:left; color:#8a8378; font-weight:700; padding:6px 8px; border-bottom:1px solid #ece6dc; } .im-preview td { padding:6px 8px; border-bottom:1px solid #f3efe8; }
+    .im-foot { display:flex; align-items:center; gap:8px; margin-top:18px; flex-wrap:wrap; } #im-msg { margin-right:auto; font-size:.88rem; color:#5d574f; }
+  </style>
+</head>
+<body>
+  <AdminTopNav siteId={siteId} />
+  <main class="crm">
+    <div class="crumb"><a href={back}>← People</a></div>
+    <h1>Import contacts</h1>
+    <p class="im-lede">Upload a CSV from Top Producer, a spreadsheet or another CRM. People already in your CRM (same email or phone) only get their blank details filled in. Nothing is overwritten.</p>
+    {!allowed && <p>Open this from a site's People page.</p>}
+    {allowed && (
+      <div class="crm-card im-card">
+        <label class="im-drop" id="im-drop"><input type="file" id="im-file" accept=".csv,text/csv" hidden /><b>Choose a CSV file</b><span>or drop it here</span></label>
+        <div id="im-map" hidden>
+          <h2>Match your columns</h2>
+          <div id="im-fields" class="im-fields"></div>
+          <h2>For everyone in this file</h2>
+          <div style="border:1px solid #e6dfd3;border-radius:12px;background:#fff;overflow:hidden;">
+            <div style="padding:12px 16px;background:#faf8f4;border-bottom:1px solid #ece6dc;font-size:.88rem;color:#5d574f;line-height:1.5;">These apply to everyone you import. You can change any of them later on each person's page.</div>
+            <div style="display:flex;flex-wrap:wrap;gap:12px 28px;align-items:center;padding:16px;">
+              <div style="flex:0 0 300px;max-width:100%;"><div style="font-weight:700;font-size:.95rem;color:#181614;">1. Stage</div><div style="font-size:.8rem;color:#8a8378;margin-top:3px;line-height:1.45;">For rows where your file's Status is blank. Rows with a status keep their own (Past Client, Active and so on).</div></div>
+              <div style="flex:1 1 240px;"><select id="im-stage" style="width:100%;max-width:260px;border:1px solid #d9d2c6;border-radius:6px;padding:9px 10px;font:inherit;font-size:.92rem;background:#fff;">{stages.map((s) => <option value={s.k} selected={s.k === "past"}>{s.l}</option>)}</select></div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:12px 28px;align-items:center;padding:16px;border-top:1px solid #f0ebe2;">
+              <div style="flex:0 0 300px;max-width:100%;"><div style="font-weight:700;font-size:.95rem;color:#181614;">2. Buyer or seller <span style="font-weight:500;color:#8a8378;">(optional)</span></div><div style="font-size:.8rem;color:#8a8378;margin-top:3px;line-height:1.45;">Tick only if everyone in this file is a buyer, or everyone is a seller. Leave both blank for a mixed list.</div></div>
+              <div style="flex:1 1 240px;display:flex;gap:28px;flex-wrap:wrap;"><label style="display:inline-flex;align-items:center;gap:8px;font-size:.95rem;font-weight:500;cursor:pointer;margin:0;"><input type="checkbox" id="im-buyer" style="width:16px;height:16px;margin:0;accent-color:#181614;" /> Buyer</label><label style="display:inline-flex;align-items:center;gap:8px;font-size:.95rem;font-weight:500;cursor:pointer;margin:0;"><input type="checkbox" id="im-seller" style="width:16px;height:16px;margin:0;accent-color:#181614;" /> Seller</label></div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:12px 28px;align-items:center;padding:16px;border-top:1px solid #f0ebe2;">
+              <div style="flex:0 0 300px;max-width:100%;"><div style="font-weight:700;font-size:.95rem;color:#181614;">3. Email consent</div><div style="font-size:.8rem;color:#8a8378;margin-top:3px;line-height:1.45;">Tick only if every person said yes to getting emails from you. If not, past clients with a purchase date are still covered for about 2 years, and everyone else needs a yes before you start a plan.</div></div>
+              <div style="flex:1 1 240px;"><label style="display:inline-flex;align-items:center;gap:8px;font-size:.95rem;font-weight:500;cursor:pointer;margin:0;"><input type="checkbox" id="im-consent" style="width:16px;height:16px;margin:0;accent-color:#181614;" /> Everyone agreed to get emails from me</label></div>
+            </div>
+          </div>
+          <h2>Preview</h2>
+          <div id="im-preview" class="im-preview"></div>
+          <div class="im-foot"><span id="im-msg"></span><button class="btn" id="im-reset" type="button">Choose another file</button><button class="btn dark" id="im-go" type="button">Import</button></div>
+        </div>
+        <div id="im-done" hidden></div>
+      </div>
+    )}
+  </main>
+  <script is:inline define:vars={{ siteId, back }}>
+    (function () {
+      var file = document.getElementById("im-file"); if (!file) return;
+      var drop = document.getElementById("im-drop"), mapEl = document.getElementById("im-map"), fieldsEl = document.getElementById("im-fields"), prevEl = document.getElementById("im-preview"), msg = document.getElementById("im-msg"), doneEl = document.getElementById("im-done"), go = document.getElementById("im-go");
+      var head = [], rows = [];
+      var FIELDS = [
+        ["name", "Full name", /^(full ?name|name|contact|contact ?name|client|client ?name|display ?name)$/],
+        ["first", "First name", /^(first|first ?name|given ?name|fname)$/],
+        ["last", "Last name", /^(last|last ?name|surname|family ?name|lname)$/],
+        ["email", "Email", /e-?mail/],
+        ["phone", "Phone", /(phone|mobile|cell|tel)/],
+        ["address", "Address", /(address|street)/],
+        ["birthday", "Birthday", /(birth|dob)/],
+        ["stage", "Stage", /^(stage|status|category|contact ?type)$/],
+        ["main_city", "Main area", /^(city|area|town|community|main ?area)$/],
+        ["bought_price", "Bought for", /(purchase|bought|sold|sale) ?price/],
+        ["bought_month", "Date bought", /(purchase|closing|completion|bought|sold|possession) ?date/],
+        ["note", "Notes", /(note|comment)/]
+      ];
+      function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+      function parseCSV(text) {
+        var out = [], row = [], f = "", q = false; text = String(text).replace(/^\uFEFF/, "");
+        for (var i = 0; i < text.length; i++) {
+          var c = text[i];
+          if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+          else if (c === '"') q = true;
+          else if (c === ",") { row.push(f); f = ""; }
+          else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(f); f = ""; if (row.some(function (x) { return x.trim(); })) out.push(row); row = []; }
+          else f += c;
+        }
+        row.push(f); if (row.some(function (x) { return x.trim(); })) out.push(row);
+        return out;
+      }
+      function sel(k) { return document.getElementById("map-" + k); }
+      function val(r, k) { var s = sel(k); return s && s.value !== "" ? String(r[Number(s.value)] || "").trim() : ""; }
+      function mapRow(r) { return { name: val(r, "name") || [val(r, "first"), val(r, "last")].filter(Boolean).join(" "), email: val(r, "email"), phone: val(r, "phone"), address: val(r, "address"), birthday: val(r, "birthday"), stage: val(r, "stage"), main_city: val(r, "main_city"), bought_price: val(r, "bought_price"), bought_month: val(r, "bought_month"), note: val(r, "note") }; }
+      function usable(m) { return /@/.test(m.email) || m.phone.replace(/\D/g, "").length >= 10; }
+      function renderFields() {
+        fieldsEl.innerHTML = FIELDS.map(function (f) { return '<label>' + esc(f[1]) + '<select id="map-' + f[0] + '"><option value="">\u2014 not in file \u2014</option>' + head.map(function (h, i) { return '<option value="' + i + '">' + esc(h) + '</option>'; }).join("") + '</select></label>'; }).join("");
+        var used = {};
+        FIELDS.forEach(function (f) { for (var i = 0; i < head.length; i++) { if (!used[i] && f[2].test(head[i].toLowerCase().trim())) { sel(f[0]).value = String(i); used[i] = 1; break; } } });
+        fieldsEl.querySelectorAll("select").forEach(function (s) { s.addEventListener("change", preview); });
+      }
+      function preview() {
+        var ok = 0, bad = 0; rows.forEach(function (r) { if (usable(mapRow(r))) ok++; else bad++; });
+        prevEl.innerHTML = '<div class="im-count"><b>' + ok + '</b> contacts ready' + (bad ? ' \u00b7 <span style="color:#a3352a">' + bad + ' without an email or phone will be skipped</span>' : '') + '</div><table><tr><th>Name</th><th>Email</th><th>Phone</th><th>Stage</th><th>Area</th><th>Bought</th></tr>' + rows.slice(0, 6).map(function (r) { var m = mapRow(r); return '<tr><td>' + esc(m.name) + '</td><td>' + esc(m.email) + '</td><td>' + esc(m.phone) + '</td><td>' + esc(m.stage) + '</td><td>' + esc(m.main_city) + '</td><td>' + esc([m.bought_price, m.bought_month].filter(Boolean).join(" \u00b7 ")) + '</td></tr>'; }).join("") + '</table>';
+      }
+      function load(f) {
+        if (!f) return;
+        var rd = new FileReader();
+        rd.onload = function () { var all = parseCSV(rd.result || ""); if (all.length < 2) { alert("That file has no rows."); return; } head = all[0].map(function (h) { return String(h).trim(); }); rows = all.slice(1); drop.hidden = true; mapEl.hidden = false; renderFields(); preview(); };
+        rd.readAsText(f);
+      }
+      file.addEventListener("change", function () { load(file.files[0]); });
+      drop.addEventListener("dragover", function (e) { e.preventDefault(); drop.classList.add("on"); });
+      drop.addEventListener("dragleave", function () { drop.classList.remove("on"); });
+      drop.addEventListener("drop", function (e) { e.preventDefault(); drop.classList.remove("on"); load(e.dataTransfer.files[0]); });
+      document.getElementById("im-reset").addEventListener("click", function () { location.reload(); });
+      go.addEventListener("click", function () {
+        var list = rows.map(mapRow).filter(usable); if (!list.length) return;
+        if (!confirm("Import " + list.length + " contacts?")) return;
+        go.disabled = true;
+        var tot = { added: 0, updated: 0, skipped: 0 }, i = 0, N = 200;
+        var opts = { stage: document.getElementById("im-stage").value, is_buyer: document.getElementById("im-buyer").checked, is_seller: document.getElementById("im-seller").checked, consent: document.getElementById("im-consent").checked };
+        function finish() { mapEl.hidden = true; doneEl.hidden = false; doneEl.innerHTML = '<h2>Done</h2><p style="font-size:1rem;margin:0 0 16px;"><b>' + tot.added + '</b> added \u00b7 <b>' + tot.updated + '</b> already in your CRM (blank details filled in)' + (tot.skipped ? ' \u00b7 ' + tot.skipped + ' skipped' : '') + '</p><a class="btn dark" href="' + back + '">Go to People</a>'; }
+        function next() {
+          var part = list.slice(i, i + N); if (!part.length) return finish();
+          msg.textContent = "Importing " + Math.min(i + N, list.length) + " of " + list.length + "\u2026";
+          fetch("/admin/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ site_id: siteId, rows: part, opts: opts }) })
+            .then(function (r) { return r.json(); })
+            .then(function (j) { if (!j.ok) { msg.textContent = j.error || "Import failed"; go.disabled = false; return; } tot.added += j.added; tot.updated += j.updated; tot.skipped += j.skipped; i += N; next(); })
+            .catch(function () { msg.textContent = "Import failed part-way. Re-running it is safe."; go.disabled = false; });
+        }
+        next();
+      });
+    })();
+  </script>
+</body>
+</html>

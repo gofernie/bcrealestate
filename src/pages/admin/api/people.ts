@@ -105,7 +105,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
       const em = normEmailX(rawE), ph = normPhoneX(rawP);
       if (rawE && !em) return json({ ok: false, error: "That email doesn't look right" }, 400);
       if (rawP && !ph) return json({ ok: false, error: "Phone needs 10 digits" }, 400);
-      await upsert({ display_name: s(b.name, 120), address: s(b.address, 300), birthday: pbd, email: em || null, phone: ph || null, listing_mls: String(b.listing_mls || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 20) || null, bought_price: Number(String(b.bought_price || "").replace(/[^0-9.]/g, "")) || null, bought_month: /^\d{4}-\d{2}$/.test(String(b.bought_month || "")) ? String(b.bought_month) : null, bought_type: ["house", "townhouse", "apartment"].includes(String(b.bought_type)) ? String(b.bought_type) : null });
+      await upsert({ display_name: s(b.name, 120), address: s(b.address, 300), birthday: pbd, email: em || null, phone: ph || null, listing_mls: String(b.listing_mls || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 20) || null, bought_price: Number(String(b.bought_price || "").replace(/[^0-9.]/g, "")) || null, bought_month: /^\d{4}-\d{2}$/.test(String(b.bought_month || "")) ? String(b.bought_month) : null, bought_type: ["house", "townhouse", "apartment"].includes(String(b.bought_type)) ? String(b.bought_type) : null, main_city: s(b.main_city, 60) });
     } else if (b.action === "roles") {
       const tri = (v: any) => (v === true || v === false ? v : null);
       await upsert({ is_buyer: tri(b.is_buyer), is_seller: tri(b.is_seller) });

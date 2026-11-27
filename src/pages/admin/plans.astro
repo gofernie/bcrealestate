@@ -2,13 +2,13 @@
 // crm-plans v1: build and edit email plans (drips)
 import AdminTopNav from "../../components/AdminTopNav.astro";
 import CrmStyles from "../../components/crm/CrmStyles.astro";
-import { loadPlans, MERGE_HELP } from "../../lib/drips";
+import { loadPlans, MERGE_HELP, planCities } from "../../lib/drips";
 export const prerender = false;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const access: any = (Astro.locals as any).adminAccess || null;
 const siteId = String(Astro.url.searchParams.get("site_id") || "");
 const allowed = UUID.test(siteId) && (!access || access.isPlatformAdmin || (access.siteIds || []).includes(siteId));
-const plans: any[] = allowed ? await loadPlans(siteId) : [];
+const plans: any[] = allowed ? await loadPlans(siteId) : []; const cities: any[] = allowed ? await planCities(siteId) : [];
 const back = `/admin/people?site_id=${encodeURIComponent(siteId)}`;
 ---
 <html lang="en">
@@ -57,26 +57,44 @@ const back = `/admin/people?site_id=${encodeURIComponent(siteId)}`;
       {allowed && !plans.length && <div class="pl-empty">No plans yet. Load the starter plans to see how they work, then edit them to sound like you.</div>}
     </div>
   </main>
-  <script is:inline define:vars={{ siteId, PLANS: plans, MERGE: MERGE_HELP }}>
+  <script is:inline define:vars={{ siteId, PLANS: plans, MERGE: MERGE_HELP, CITIES: cities }}>
     (function () {
       var ed = document.getElementById("pl-editor"); if (!ed) return;
       var INTEL = ["Market snapshot", "Market read", "Listings vs sales", "Price trend", "Asking vs sold"];
-      var cur = null;
+      var pvCity = ""; var cur = null;
+      var tip = document.createElement("div");
+      tip.style.cssText = "position:fixed;z-index:200;width:560px;max-width:calc(100vw - 24px);background:#fff;border:1px solid #e4e0d6;border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.18);padding:10px 12px;pointer-events:none;display:none;font-family:Arial,sans-serif;font-size:15px;line-height:1.5;";
+      document.body.appendChild(tip);
+      var tipCache = {}, tipOn = "";
+      function placeTip(b) { var r = b.getBoundingClientRect(), h = tip.offsetHeight, w = tip.offsetWidth; tip.style.left = Math.min(Math.max(12, r.left), window.innerWidth - w - 12) + "px"; tip.style.top = (r.bottom + h + 12 < window.innerHeight ? r.bottom + 8 : Math.max(12, r.top - h - 8)) + "px"; }
+      function fillTip(b, html) { tip.innerHTML = html; placeTip(b); tip.querySelectorAll("img").forEach(function (im) { im.addEventListener("load", function () { if (tip.style.display !== "none") placeTip(b); }); }); }
+      ed.addEventListener("mouseover", function (e) {
+        var b = e.target.closest && e.target.closest("[data-ib]"); if (!b || tipOn === pvCity.toLowerCase() + "|" + b.dataset.ib) return;
+        var n = b.dataset.ib, ck = pvCity.toLowerCase() + "|" + n; tipOn = ck; tip.style.display = "block";
+        fillTip(b, tipCache[ck] || "<div style='color:#777;font-size:13px;padding:6px'>Loading " + esc(n) + "\u2026</div>");
+        if (!tipCache[ck]) post({ action: "preview", block_only: true, city: pvCity, subject: "x", body: "[" + n + " \u00b7 {city}]" }).then(function (j) {
+          tipCache[ck] = j.ok && j.html && j.html.replace(/<br>/g, "").trim() ? j.html : "<div style='color:#a3352a;font-size:13px;padding:6px'>No data for this block in your city yet.</div>";
+          if (tipOn === ck) fillTip(b, tipCache[ck]);
+        }).catch(function () { if (tipOn === ck) fillTip(b, "<div style='color:#a3352a;font-size:13px;padding:6px'>Couldn't load preview.</div>"); });
+      });
+      ed.addEventListener("mouseout", function (e) { var b = e.target.closest && e.target.closest("[data-ib]"); if (b && !b.contains(e.relatedTarget)) { tipOn = ""; tip.style.display = "none"; } });
+      ed.addEventListener("click", function () { tipOn = ""; tip.style.display = "none"; });
+      ed.addEventListener("input", function (e) { if (e.target && e.target.id === "pe-city") pvCity = e.target.value.trim(); }); ed.addEventListener("change", function (e) { if (e.target && e.target.id === "pe-city") pvCity = e.target.value.trim(); });
       function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
       function post(b) { return fetch("/admin/api/plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ site_id: siteId }, b)) }).then(function (r) { return r.json(); }); }
       function msg(t) { var m = document.getElementById("pe-msg"); if (m) m.textContent = t; }
       function sync() {
         if (!cur) return;
-        cur.name = ed.querySelector("#pe-name").value; cur.description = ed.querySelector("#pe-desc").value; cur.stop_when_closed = ed.querySelector("#pe-stop").checked;
+        cur.name = ed.querySelector("#pe-name").value; cur.description = ed.querySelector("#pe-desc").value; cur.stop_when_closed = ed.querySelector("#pe-stop").checked; cur.pause_on_reply = ed.querySelector("#pe-pause").checked;
         cur.steps = Array.prototype.map.call(ed.querySelectorAll(".pe-step"), function (r) { return { day_offset: r.querySelector(".pe-day").value, mode: r.querySelector(".pe-mode").value, subject: r.querySelector(".pe-sub").value, body: r.querySelector(".pe-body").value }; });
       }
       function render() {
-        var h = '<div class="pe-top"><label class="pf">Plan name<input id="pe-name" value="' + esc(cur.name) + '" placeholder="e.g. New buyer lead"></label><label class="pf">What it is for<input id="pe-desc" value="' + esc(cur.description) + '" placeholder="Optional"></label><label style="grid-column:1/-1;font-size:.88rem;display:flex;gap:8px;align-items:center;cursor:pointer;"><input type="checkbox" id="pe-stop"' + (cur.stop_when_closed ? " checked" : "") + '> Stop this plan when they move to Closed or Past client</label></div>';
-        h += '<div class="pe-help"><b>Fill-ins:</b> ' + MERGE.map(function (m) { return '<code title="' + esc(m[1]) + '">' + esc(m[0]) + '</code>'; }).join(" ") + '<br>Market blocks use the city from the person\u2019s latest enquiry. Day 0 goes out the day you start the plan.</div>';
+        var h = '<div class="pe-top"><label class="pf">Plan name<input id="pe-name" value="' + esc(cur.name) + '" placeholder="e.g. New buyer lead"></label><label class="pf">What it is for<input id="pe-desc" value="' + esc(cur.description) + '" placeholder="Optional"></label><label style="grid-column:1/-1;font-size:.88rem;display:flex;gap:8px;align-items:center;cursor:pointer;"><input type="checkbox" id="pe-stop"' + (cur.stop_when_closed ? " checked" : "") + '> Stop this plan when they move to Closed or Past client</label><label style="grid-column:1/-1;font-size:.88rem;display:flex;gap:8px;align-items:center;cursor:pointer;"><input type="checkbox" id="pe-pause"' + (cur.pause_on_reply ? " checked" : "") + '> Pause this plan when they reply to any of your emails</label></div>';
+        h += '<div class="pe-help"><b>Fill-ins:</b> ' + MERGE.map(function (m) { return '<code title="' + esc(m[1]) + '">' + esc(m[0]) + '</code>'; }).join(" ") + '<br>Market blocks use the person\u2019s Main area, or the city of their latest enquiry. Day 0 goes out the day you start the plan.</div><label class="pe-dl" style="margin:8px 0 2px;">Preview for <select id="pe-city" style="border:1px solid #d9d2c6;border-radius:6px;padding:6px 8px;font:inherit;background:#fff;">' + CITIES.map(function (c) { return '<option value="' + esc(c.slug) + '"' + (c.slug === pvCity ? " selected" : "") + '>' + esc(c.label) + '</option>'; }).join("") + '</select></label>';
         cur.steps.forEach(function (s, i) {
           h += '<div class="pe-step"><div class="pe-row"><b>Email ' + (i + 1) + '</b><label class="pe-dl">Day <input class="pe-day" type="number" min="0" max="3650" value="' + esc(s.day_offset) + '"></label><select class="pe-mode"><option value="review"' + (s.mode !== "auto" ? " selected" : "") + '>Review before sending</option><option value="auto"' + (s.mode === "auto" ? " selected" : "") + '>Send automatically</option></select><span class="pe-tools"><button type="button" data-mv="-1" data-i="' + i + '" title="Move up">\u2191</button><button type="button" data-mv="1" data-i="' + i + '" title="Move down">\u2193</button><button type="button" data-rm="' + i + '" title="Remove">\u2715</button></span></div>';
           h += '<input class="pe-sub" placeholder="Subject" value="' + esc(s.subject) + '"><textarea class="pe-body" placeholder="Message">' + esc(s.body) + '</textarea>';
-          h += '<div class="pe-ib">' + INTEL.map(function (n) { return '<button type="button" class="emi" data-ib="' + esc(n) + '">+ ' + esc(n) + '</button>'; }).join("") + '</div></div>';
+          h += '<div class="pe-ib">' + INTEL.map(function (n) { return '<button type="button" class="emi" data-ib="' + esc(n) + '">+ ' + esc(n) + '</button>'; }).join("") + '<button type="button" class="emi" data-pv="1" style="margin-left:auto;font-weight:700;">&#128065; Preview</button></div></div>';
         });
         h += '<div class="pe-foot"><button type="button" class="btn" id="pe-add">+ Add email</button><span id="pe-msg"></span>' + (cur.id ? '<button type="button" class="btn" id="pe-del">Delete plan</button>' : '') + '<button type="button" class="btn" id="pe-cancel">Cancel</button><button type="button" class="btn dark" id="pe-save">Save plan</button></div>';
         ed.innerHTML = h; ed.hidden = false;
@@ -85,13 +103,23 @@ const back = `/admin/people?site_id=${encodeURIComponent(siteId)}`;
       function close() { cur = null; ed.hidden = true; ed.innerHTML = ""; document.getElementById("pl-list").hidden = false; }
       ed.addEventListener("click", function (e) {
         var t = e.target.closest("button"); if (!t) return;
+        if (t.dataset.pv) {
+          var stp = t.closest(".pe-step"), w = window.open("", "_blank");
+          if (w) w.document.write("<p style='font-family:Arial;padding:24px;color:#555'>Building preview\u2026</p>");
+          post({ action: "preview", city: pvCity, subject: stp.querySelector(".pe-sub").value, body: stp.querySelector(".pe-body").value }).then(function (j) {
+            if (!w) return; w.document.open();
+            w.document.write(j.ok ? "<title>Email preview</title><div style='background:#f3f1ec;padding:24px;font-family:Arial,sans-serif;min-height:100vh;box-sizing:border-box'><div style='max-width:620px;margin:0 auto'><div style='color:#666;font-size:13px;margin-bottom:10px'>Subject: <b style='color:#111'>" + esc(j.subject) + "</b> &middot; sample contact: Fred and Sally</div><div style='background:#fff;padding:24px;border-radius:8px'>" + j.html + "</div></div></div>" : "<p style='font-family:Arial;padding:24px'>" + esc(j.error || "Preview failed") + "</p>");
+            w.document.close();
+          }).catch(function () { if (w) w.document.body.innerHTML = "<p style='font-family:Arial;padding:24px'>Preview failed</p>"; });
+          return;
+        }
         if (t.dataset.ib) { var ta = t.closest(".pe-step").querySelector(".pe-body"); ta.value = ta.value.replace(/\s*$/, "") + "\n\n[" + t.dataset.ib + " \u00b7 {city}]"; ta.focus(); return; }
         if (t.dataset.mv) { sync(); var i = +t.dataset.i, j = i + +t.dataset.mv; if (j < 0 || j >= cur.steps.length) return; var x = cur.steps[i]; cur.steps[i] = cur.steps[j]; cur.steps[j] = x; render(); return; }
         if (t.dataset.rm) { sync(); if (cur.steps.length === 1) { msg("A plan needs at least one email"); return; } cur.steps.splice(+t.dataset.rm, 1); render(); return; }
         if (t.id === "pe-add") { sync(); var last = cur.steps[cur.steps.length - 1]; cur.steps.push({ day_offset: (last ? +last.day_offset || 0 : 0) + 7, mode: "review", subject: "", body: "{hi}\n\n" }); render(); return; }
         if (t.id === "pe-cancel") { close(); return; }
         if (t.id === "pe-del") { if (!confirm("Delete this plan? Anyone on it stops getting its emails.")) return; post({ action: "plan_delete", id: cur.id }).then(function (j) { if (j.ok) location.reload(); else msg(j.error || "Failed"); }); return; }
-        if (t.id === "pe-save") { sync(); t.disabled = true; msg("Saving\u2026"); post({ action: "plan_save", id: cur.id, name: cur.name, description: cur.description, stop_when_closed: !!cur.stop_when_closed, steps: cur.steps }).then(function (j) { if (j.ok) location.reload(); else { t.disabled = false; msg(j.error || "Failed"); } }); }
+        if (t.id === "pe-save") { sync(); t.disabled = true; msg("Saving\u2026"); post({ action: "plan_save", id: cur.id, name: cur.name, description: cur.description, stop_when_closed: !!cur.stop_when_closed, pause_on_reply: !!cur.pause_on_reply, steps: cur.steps }).then(function (j) { if (j.ok) location.reload(); else { t.disabled = false; msg(j.error || "Failed"); } }); }
       });
       document.querySelectorAll("[data-edit]").forEach(function (b) { b.addEventListener("click", function () { var p = PLANS.filter(function (x) { return x.id === b.dataset.edit; })[0]; if (p) open(p); }); });
       var nb = document.getElementById("pl-new"); if (nb) nb.addEventListener("click", function () { open(null); });

@@ -23,6 +23,9 @@ if (allowed && /^[ep]:/.test(key)) {
 }
 let planData: any = { plans: [], enrolls: [], ready: [], optedOut: false };
 if (p) planData = await planPanelData(siteId, p.keys, p, planDetail);
+let checklist: any[] = [];
+if (p) { const { data: cl } = await sbAdmin().from("crm_checklist").select("*").eq("site_id", siteId).in("person_key", p.keys).order("position"); checklist = cl || []; }
+const clPanels: any[] = p ? [["buyer", "Buyer checklist", p.isBuyer], ["seller", "Seller checklist", p.isSeller]].map(([kind, title, role]: any) => { const its = checklist.filter((c: any) => c.kind === kind); return { kind, title, its, done: its.filter((c: any) => c.done_at).length, show: its.length > 0 }; }).filter((x: any) => x.show) : []; const clHas: any = { buyer: checklist.some((c: any) => c.kind === "buyer"), seller: checklist.some((c: any) => c.kind === "seller") };
 const back = `/admin/people?site_id=${encodeURIComponent(siteId)}`;
 const enqTitle = items.filter((i) => i.kind === "lead").map((i) => i.title).join(" · ");
 const partnerHref = partner ? `/admin/person?site_id=${encodeURIComponent(siteId)}&key=${encodeURIComponent(partner.key)}` : "";
@@ -82,7 +85,9 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
   </style>
 </head>
 <body>
-  <style is:inline>body:not(.editing) .ed{display:none!important}body.editing .vw{display:none!important}.stats i[data-k]{cursor:pointer}.stats i[data-k]:hover{text-decoration:underline}.ti.k-lead{box-shadow:inset 3px 0 0 #2c4f8c}.ti{transition:background .5s}.ti.hl{background:#fff4cf}.pf{display:block;font-size:.72rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#8a8378}.pf input{display:block;width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #d9d2c6;border-radius:6px;padding:9px 10px;font:inherit;font-size:.95rem;text-transform:none;letter-spacing:0;font-weight:500;color:#181614;background:#fff}.pf input:focus{outline:2px solid #181614;outline-offset:-1px}#pf-saved{color:#a3352a}.em-modal{position:fixed;inset:0;background:rgba(24,22,20,.45);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto}.em-modal[hidden]{display:none}.em-box{background:#fff;border-radius:12px;width:100%;max-width:980px;box-shadow:0 20px 60px rgba(0,0,0,.25)}.em-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #f0ebe2;font-size:1.05rem}.em-x{border:0;background:none;font-size:1rem;cursor:pointer;color:#8a8378}.em-body{display:grid;grid-template-columns:290px minmax(0,1fr)}.em-ideas{border-right:1px solid #f0ebe2;padding:16px;background:#faf8f4;border-bottom-left-radius:12px}.em-lbl{font-size:.72rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#8a8378;margin-bottom:10px}.em-idea{display:block;width:100%;text-align:left;border:1px solid #e6dfd3;background:#fff;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;font:inherit}.em-idea:hover{border-color:#b9b0a2}.em-idea b{display:block;font-size:.9rem}.em-idea span{display:block;font-size:.78rem;color:#8a8378;margin-top:2px}.em-idea.on{border-color:#181614;box-shadow:0 0 0 1px #181614}.em-rand{width:100%;border:1px dashed #c9c2b6;background:none;border-radius:8px;padding:9px;cursor:pointer;font:inherit;font-weight:700;font-size:.85rem;margin-top:4px}.em-draft{padding:16px 20px;display:grid;gap:12px}.pf select,.pf textarea{display:block;width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #d9d2c6;border-radius:6px;padding:9px 10px;font:inherit;font-size:.95rem;text-transform:none;letter-spacing:0;font-weight:500;color:#181614;background:#fff}.pf textarea{resize:vertical;line-height:1.5;min-height:300px}.em-foot{display:flex;justify-content:flex-end;align-items:center;gap:12px}#em-msg{font-size:.85rem;color:#8a8378}.em-wait{font-size:.85rem;color:#8a8378}@media (max-width:760px){.em-body{grid-template-columns:1fr}.em-ideas{border-right:0;border-bottom:1px solid #f0ebe2}}.home-link{border:0;background:none;padding:0;font:inherit;color:#1f6b60;font-weight:600;cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:rgba(31,107,96,.35);text-underline-offset:2px}.home-link:hover{text-decoration-color:#1f6b60}.td .home-link{margin-right:12px}.tt .home-link{font-weight:700;color:#181614}.em-ctx{background:#fff7e6;border:1px solid #f0dcb0;border-radius:8px;padding:10px 12px;font-size:.8rem;line-height:1.5;color:#5a4410;margin-bottom:14px;white-space:pre-line}</style>
+  <style is:inline>main.crm{max-width:1500px!important}.pgrid{grid-template-columns:300px minmax(0,1fr) 300px!important}.pgrid>.side{max-height:calc(100vh - 32px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:2px 6px 2px 2px;margin:-2px -6px -2px -2px}.side-r textarea{min-height:160px}@media (max-width:1200px){.pgrid{grid-template-columns:300px minmax(0,1fr)!important}.side-r{display:none}}@media (max-width:900px){.pgrid{grid-template-columns:1fr!important}.pgrid>.side{max-height:none;overflow:visible;position:static}}</style>
+  <script is:inline>(function () { function go() { var n = document.getElementById("note"); if (!n) return; var card = n.closest(".crm-card"), L = document.querySelector(".pgrid > .side:not(.side-r)"), R = document.querySelector(".pgrid > .side-r"); if (!card || !L || !R) return; var mq = window.matchMedia("(max-width:1200px)"); function place() { if (mq.matches) { if (card.parentNode !== L) L.insertBefore(card, L.children[2] || null); } else if (card.parentNode !== R) R.appendChild(card); } place(); mq.addEventListener("change", place); } if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go); else go(); })();</script>
+  <style is:inline>body:not(.editing) .ed{display:none!important}body.editing .vw{display:none!important}.stats i[data-k]{cursor:pointer}.stats i[data-k]:hover{text-decoration:underline}.ti.k-lead{box-shadow:inset 3px 0 0 #2c4f8c}.ti{transition:background .5s}.ti.hl{background:#fff4cf}.pf{display:block;font-size:.72rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#8a8378}.pf input{display:block;width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #d9d2c6;border-radius:6px;padding:9px 10px;font:inherit;font-size:.95rem;text-transform:none;letter-spacing:0;font-weight:500;color:#181614;background:#fff}.pf input:focus{outline:2px solid #181614;outline-offset:-1px}#pf-saved{color:#a3352a}.em-modal{position:fixed;inset:0;background:rgba(24,22,20,.45);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;scrollbar-gutter:stable}.em-modal[hidden]{display:none}.em-box{background:#fff;border-radius:12px;width:100%;max-width:980px;box-shadow:0 20px 60px rgba(0,0,0,.25)}.em-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #f0ebe2;font-size:1.05rem}.em-x{border:0;background:none;font-size:1rem;cursor:pointer;color:#8a8378}.em-body{display:grid;grid-template-columns:290px minmax(0,1fr)}.em-ideas{border-right:1px solid #f0ebe2;padding:16px;background:#faf8f4;border-bottom-left-radius:12px}.em-lbl{font-size:.72rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#8a8378;margin-bottom:10px}.em-idea{display:block;width:100%;text-align:left;border:1px solid #e6dfd3;background:#fff;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;font:inherit}.em-idea:hover{border-color:#b9b0a2}.em-idea b{display:block;font-size:.9rem}.em-idea span{display:block;font-size:.78rem;color:#8a8378;margin-top:2px}.em-idea.on{border-color:#181614;box-shadow:0 0 0 1px #181614}.em-rand{width:100%;border:1px dashed #c9c2b6;background:none;border-radius:8px;padding:9px;cursor:pointer;font:inherit;font-weight:700;font-size:.85rem;margin-top:4px}.em-draft{padding:16px 20px;display:grid;gap:12px;align-content:start}.pf select,.pf textarea{display:block;width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #d9d2c6;border-radius:6px;padding:9px 10px;font:inherit;font-size:.95rem;text-transform:none;letter-spacing:0;font-weight:500;color:#181614;background:#fff}.pf textarea{resize:vertical;line-height:1.5;min-height:300px}.em-foot{display:flex;justify-content:flex-end;align-items:center;gap:12px}#em-msg{font-size:.85rem;color:#8a8378}.em-wait{font-size:.85rem;color:#8a8378}@media (max-width:760px){.em-body{grid-template-columns:1fr}.em-ideas{border-right:0;border-bottom:1px solid #f0ebe2}}.home-link{border:0;background:none;padding:0;font:inherit;color:#1f6b60;font-weight:600;cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:rgba(31,107,96,.35);text-underline-offset:2px}.home-link:hover{text-decoration-color:#1f6b60}.td .home-link{margin-right:12px}.tt .home-link{font-weight:700;color:#181614}.em-ctx{background:#fff7e6;border:1px solid #f0dcb0;border-radius:8px;padding:10px 12px;font-size:.8rem;line-height:1.5;color:#5a4410;margin-bottom:14px;white-space:pre-line}</style>
   <AdminTopNav siteId={siteId} />
   <main class="crm">
     <div class="crumb"><a href={back}>← People</a></div>
@@ -122,6 +127,7 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
             <label class="pf">Bought for<input id="pf-bprice" inputmode="numeric" value={p.boughtPrice ? String(Math.round(p.boughtPrice)) : ""} placeholder="e.g. 740000" autocomplete="off" /></label>
             <label class="pf">Month bought<input id="pf-bmonth" type="month" value={p.boughtMonth || ""} /></label>
             <label class="pf">Home type<select id="pf-btype"><option value="house" selected={!p.boughtType || p.boughtType === "house"}>House</option><option value="townhouse" selected={p.boughtType === "townhouse"}>Townhouse</option><option value="apartment" selected={p.boughtType === "apartment"}>Apartment / condo</option></select></label>
+            <label class="pf">Main area<input id="pf-city" value={p.mainCity || ""} placeholder="e.g. Duncan" autocomplete="off" /></label>
             <label class="pf" style="grid-column:1/-1;">Address<input id="pf-address" value={p.address || ""} autocomplete="off" /></label>
           </div>
           <div class="saved" id="pf-saved"></div>
@@ -138,6 +144,28 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:normal;"><input type="checkbox" id="role-seller" checked={p.isSeller} /> Seller</label>
               </div>
               <div class="saved" id="roles-saved"></div>
+              {["buyer", "seller"].map((k) => (
+                <div id={"cl-offer-" + k} class="cl-offer" data-site={siteId} data-key={p.key} data-kind={k} data-has={clHas[k] ? "1" : "0"} hidden={!(k === "buyer" ? p.isBuyer : p.isSeller) || clHas[k]} style="margin:4px 0 10px;padding:8px 10px;background:#eef6f4;border:1px solid #cfe5df;border-radius:6px;font-size:.84rem;color:#1d3b36;">
+                  Start a {k} checklist? <button class="rename cl-go" type="button" style="color:#1f6b60;font-weight:800;font-size:inherit;">Start</button> &middot; <button class="rename cl-dismiss" type="button" style="font-size:inherit;">Not now</button>
+                </div>
+              ))}
+              <script is:inline>
+                (function () {
+                  document.querySelectorAll(".cl-offer").forEach(function (of) {
+                    var k = of.dataset.kind, cb = document.getElementById("role-" + k);
+                    if (cb) cb.addEventListener("change", function () { of.hidden = !cb.checked || of.dataset.has === "1"; });
+                    of.querySelector(".cl-dismiss").addEventListener("click", function () { of.hidden = true; });
+                    var go = of.querySelector(".cl-go");
+                    go.addEventListener("click", function () {
+                      go.disabled = true; go.textContent = "Starting...";
+                      fetch("/admin/api/checklist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ site_id: of.dataset.site, key: of.dataset.key, action: "start", kind: k }) })
+                        .then(function (r) { return r.json(); })
+                        .then(function (j) { if (j.ok) location.reload(); else { go.disabled = false; go.textContent = "Start"; alert(j.error || "Failed"); } })
+                        .catch(function () { go.disabled = false; go.textContent = "Start"; });
+                    });
+                  });
+                })();
+              </script>
               <div class="stats">
                 {!!(p.counts.loves) && <i class="love" data-k="love" title="Show in timeline">♥ {p.counts.loves} loved</i>}
                 {!!(p.counts.likes) && <i data-k="react" title="Show in timeline">{p.counts.likes} liked</i>}
@@ -157,12 +185,6 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
               <input type="date" id="task-due" />
               <div class="row2"><button class="btn dark" id="task-add" type="button">Add task</button></div>
               <div class="saved" id="task-saved"></div>
-            </div>
-            <div class="crm-card">
-              <label for="note">Add a note</label>
-              <textarea id="note" placeholder="Called, pre-approved to $750K, wants North Nanaimo, 3 bed…"></textarea>
-              <div class="row2"><button class="btn dark" id="note-save" type="button">Save note</button></div>
-              <div class="saved" id="note-saved"></div>
             </div>
             
             <div class="crm-card ed">
@@ -190,6 +212,7 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
             </div>
           </aside>
           <div class="maincol">
+          <style is:inline>.pl-steps{margin-top:8px}.pl-steps summary{font-size:.78rem;color:#8a8378;cursor:pointer;font-weight:700;margin-bottom:4px}.pl-st{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:8px;align-items:center;font-size:.82rem;padding:3px 0;color:#5d574f}.pl-dot{width:8px;height:8px;border-radius:50%;background:#d9d2c6}.pl-when{white-space:nowrap;font-size:.78rem;color:#8a8378}.pl-sent{color:#8a8378}.pl-sent .pl-dot{background:#1f6b60}.pl-sent .pl-when{color:#1f6b60}.pl-next{color:#181614;font-weight:700}.pl-next .pl-dot{background:#181614;box-shadow:0 0 0 3px #e9e5de}.pl-next .pl-when{color:#181614}.pl-ready .pl-dot{background:#c98a1a}.pl-ready .pl-when{color:#a86f0b;font-weight:700}.pl-skipped,.pl-off{color:#b3ab9f}.pl-skipped .pl-sub,.pl-off .pl-sub{text-decoration:line-through}</style>
           <section class="crm-card tasks" id="plans-panel" data-site={siteId} data-key={p.key}>
             <h2 style="display:flex;justify-content:space-between;align-items:center;gap:10px;">Email plans <a href={`/admin/plans?site_id=${encodeURIComponent(siteId)}`} style="font-size:.78rem;font-weight:700;color:#1f6b60;text-decoration:none;letter-spacing:0;text-transform:none;">Manage plans →</a></h2>
             {planData.optedOut && <div class="tk-empty" style="color:#a3352a;font-weight:700;">Unsubscribed from plan emails.</div>}
@@ -212,12 +235,21 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
             {planData.enrolls.map((e: any) => (
               <div class="tk">
                 <span style="font-size:.75rem;color:#8a8378;">{e.status === "active" ? "▶" : e.status === "paused" ? "❚❚" : "■"}</span>
-                <div><div class="tk-t">{e.plan}</div><div class="tk-d" style="white-space:normal;">{e.line}</div></div>
+                <div><div class="tk-t">{e.plan}</div><div class="tk-d" style="white-space:normal;">{e.line}</div>
+                  {e.list && e.list.length > 0 && (
+                    <details class="pl-steps" open={e.status === "active"}>
+                      <summary>All {e.list.length} emails</summary>
+                      {e.list.map((s: any) => (
+                        <div class={"pl-st pl-" + s.state}><span class="pl-dot"></span><span class="pl-sub">{s.subject}</span><span class="pl-when">{s.state === "sent" ? "Sent " + s.when : s.state === "next" ? "Next \u00b7 " + s.when : s.when}</span></div>
+                      ))}
+                    </details>
+                  )}
+                </div>
                 <div style="display:flex;gap:6px;">
                   {e.status === "active" && <button class="btn pl-act" type="button" data-act="enroll" data-st="paused" data-id={e.id}>Pause</button>}
                   {e.status === "paused" && <button class="btn pl-act" type="button" data-act="enroll" data-st="active" data-id={e.id}>Resume</button>}
                 </div>
-                {(e.status === "active" || e.status === "paused") ? <button class="tk-x pl-act" type="button" data-act="enroll" data-st="stopped" data-id={e.id} title="Stop this plan">✕</button> : <span></span>}
+                {true ? <button class="tk-x pl-act" type="button" data-act="remove" data-id={e.id} title="Remove this plan">✕</button> : <span></span>}
               </div>
             ))}
             {!planData.enrolls.length && !planData.ready.length && !planData.optedOut && <div class="tk-empty">Not on a plan.</div>}
@@ -240,7 +272,7 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
                 P.querySelectorAll(".pl-act").forEach(function (b) { b.addEventListener("click", function () {
                   var act = b.dataset.act;
                   if (act === "ready_send" && !confirm("Send this email now?")) return;
-                  if (act === "enroll" && b.dataset.st === "stopped" && !confirm("Stop this plan for this person?")) return;
+                  if (act === "enroll" && b.dataset.st === "stopped" && !confirm("Stop this plan for this person?")) return; if (act === "remove" && !confirm("Remove this plan from this person? Emails already sent stay in their timeline, and nothing else will go out.")) return;
                   b.disabled = true; msg("Saving…");
                   post({ action: act === "enroll" ? "enroll_status" : act, status: b.dataset.st, id: b.dataset.id }).then(function (j) { if (j.ok) location.reload(); else { b.disabled = false; msg(j.error || "Failed"); } });
                 }); });
@@ -280,6 +312,41 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
               </details>
             )}
           </section>
+          {clPanels.map((cp: any) => (
+            <section class="crm-card tasks cl-panel">
+              <h2 style="display:flex;justify-content:space-between;align-items:center;gap:10px;">{cp.title}{cp.its.length > 0 && <span style="font-size:.78rem;color:#8a8378;letter-spacing:0;text-transform:none;font-weight:700;">{cp.done} of {cp.its.length} done &middot; <button class="rename cl-clear" type="button" data-kind={cp.kind} style="font-size:inherit;color:#a3352a;">remove</button></span>}</h2>
+              {cp.its.length > 0 && <div style="margin:4px 18px 8px;height:6px;background:#f0ebe2;border-radius:3px;overflow:hidden;"><div style={`height:100%;width:${Math.round((100 * cp.done) / cp.its.length)}%;background:#1f6b60;`}></div></div>}
+              {cp.its.map((c: any) => (
+                <div class={"tk" + (c.done_at ? " done" : "")}>
+                  <input type="checkbox" class="cl-check" data-id={c.id} checked={!!c.done_at} title={c.done_at ? "Mark not done" : "Mark done"} />
+                  <div class="tk-t">{c.item}</div>
+                  <div class="tk-d">{c.done_at ? when(new Date(c.done_at).getTime()) : ""}</div>
+                  <button class="tk-x cl-del" type="button" data-id={c.id} title="Remove this step">✕</button>
+                </div>
+              ))}
+              {cp.its.length === 0
+                ? <div class="tk-empty"><button class="btn cl-start" type="button" data-kind={cp.kind}>Start {cp.title.toLowerCase()}</button></div>
+                : <div style="display:flex;gap:8px;padding:10px 18px 4px;"><input class="cl-new" placeholder="Add a step..." autocomplete="off" style="flex:1;border:1px solid #d9d2c6;border-radius:6px;padding:8px 10px;font:inherit;font-size:.9rem;" /><button class="btn cl-add" type="button" data-kind={cp.kind}>Add</button></div>}
+            </section>
+          ))}
+          {clPanels.length > 0 && (
+            <script is:inline>
+              (function () {
+                var P = document.getElementById("plans-panel"); if (!P) return;
+                var site = P.dataset.site, key = P.dataset.key;
+                function go(b, el) { if (el) el.disabled = true; fetch("/admin/api/checklist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ site_id: site, key: key }, b)) }).then(function (r) { return r.json(); }).then(function (j) { if (j.ok) location.reload(); else { if (el) el.disabled = false; alert(j.error || "Failed"); } }); }
+                document.querySelectorAll(".cl-clear").forEach(function (b) { b.addEventListener("click", function () { if (confirm("Remove the whole " + b.dataset.kind + " checklist for this person? Ticked steps stay in the timeline.")) go({ action: "clear", kind: b.dataset.kind }, b); }); });
+                document.querySelectorAll(".cl-start").forEach(function (b) { b.addEventListener("click", function () { go({ action: "start", kind: b.dataset.kind }, b); }); });
+                document.querySelectorAll(".cl-check").forEach(function (c) { c.addEventListener("change", function () { go({ action: c.checked ? "done" : "undo", id: c.dataset.id }, c); }); });
+                document.querySelectorAll(".cl-del").forEach(function (x) { x.addEventListener("click", function () { if (confirm("Remove this step from their checklist?")) go({ action: "delete", id: x.dataset.id }, x); }); });
+                document.querySelectorAll(".cl-panel").forEach(function (pn) {
+                  var inp = pn.querySelector(".cl-new"), btn = pn.querySelector(".cl-add"); if (!inp || !btn) return;
+                  function add() { var v = inp.value.trim(); if (!v) { inp.focus(); return; } go({ action: "add", kind: btn.dataset.kind, item: v }, btn); }
+                  btn.addEventListener("click", add); inp.addEventListener("keydown", function (e) { if (e.key === "Enter") add(); });
+                });
+              })();
+            </script>
+          )}
           <section class="crm-card tl">
             <h2>Timeline</h2>
             {items.map((i) => (
@@ -292,6 +359,14 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
             {!items.length && <div style="padding:18px;color:#8a8378;">No activity yet.</div>}
           </section>
           </div>
+          <aside class="side side-r">
+            <div class="crm-card">
+              <label for="note">Add a note</label>
+              <textarea id="note" placeholder="Called, pre-approved to $750K, wants North Nanaimo, 3 bed…"></textarea>
+              <div class="row2"><button class="btn dark" id="note-save" type="button">Save note</button></div>
+              <div class="saved" id="note-saved"></div>
+            </div>
+          </aside>
         </div>
       </>
     )}
@@ -316,6 +391,7 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
   <button type="button" data-intel="Listings vs sales" class="emi">+ Listings vs sales</button>
   <button type="button" data-intel="Price trend" class="emi">+ Price trend</button>
   <button type="button" data-intel="Asking vs sold" class="emi">+ Asking vs sold</button>
+  <button type="button" id="em-listing" class="emi" style="font-weight:700;background:#1f6b60;color:#fff;border-color:#1f6b60;">+ Listing</button>
   <button type="button" id="em-preview" class="emi" style="margin-left:auto">&#128065; Preview</button>
 </div>
 <style is:inline>
@@ -329,7 +405,7 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
   var btns = document.querySelectorAll("[data-intel]");
   var esc = function (s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); };
   var city = function () {
-    var m = tx.value.match(/\u00b7 ([^\]\n]+)\]/); if (m) return m[1].trim();
+    var m = tx.value.match(/\[(?:Market snapshot|Market read|Listings vs sales|Price trend|Asking vs sold) \u00b7 ([^\]\n]+)\]/); if (m) return m[1].trim();
     var L = (document.getElementById("em-list") || {}).textContent || "";
     var n = L.match(/([A-Z][A-Za-z .'-]+?) market update/); return n ? n[1].trim() : "";
   };
@@ -367,7 +443,84 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
   mark();
 })();
 </script>
-              <div class="em-foot"><span id="em-msg"></span><button class="btn dark" id="em-send" type="button">Send</button></div>
+              <script is:inline>
+(function () {
+  var box = document.getElementById("em-intel"), tx = document.getElementById("em-text"); if (!box || !tx) return;
+  var site = new URLSearchParams(location.search).get("site_id");
+  var tip = document.createElement("div");
+  tip.style.cssText = "position:fixed;z-index:300;width:560px;max-width:calc(100vw - 24px);background:#fff;border:1px solid #e4e0d6;border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.18);padding:10px 12px;pointer-events:none;display:none;font-family:Arial,sans-serif;font-size:15px;line-height:1.5;";
+  document.body.appendChild(tip);
+  var cache = {}, on = "";
+  function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+  function cityNow() { var m = tx.value.match(/\[(?:Market snapshot|Market read|Listings vs sales|Price trend|Asking vs sold) \u00b7 ([^\]\n]+)\]/); if (m) return m[1].trim(); var L = (document.getElementById("em-list") || {}).textContent || ""; var n = L.match(/([A-Z][A-Za-z .'-]+?) market update/); return n ? n[1].trim() : ""; }
+  function place(b) { var r = b.getBoundingClientRect(), h = tip.offsetHeight, w = tip.offsetWidth; tip.style.left = Math.min(Math.max(12, r.left), window.innerWidth - w - 12) + "px"; tip.style.top = (r.top - h - 8 > 12 ? r.top - h - 8 : Math.min(r.bottom + 8, window.innerHeight - h - 12)) + "px"; }
+  function fill(b, html) { tip.innerHTML = html; place(b); tip.querySelectorAll("img").forEach(function (im) { im.addEventListener("load", function () { if (tip.style.display !== "none") place(b); }); }); }
+  function hide() { on = ""; tip.style.display = "none"; }
+  box.addEventListener("mouseover", function (e) {
+    var b = e.target.closest && e.target.closest("[data-intel]"); if (!b) return;
+    var n = b.dataset.intel, c = cityNow(), ck = c.toLowerCase() + "|" + n; if (on === ck) return;
+    on = ck; tip.style.display = "block";
+    fill(b, cache[ck] || "<div style='color:#777;font-size:13px;padding:6px'>Loading " + esc(n) + (c ? " for " + esc(c) : "") + "\u2026</div>");
+    if (!cache[ck]) fetch("/admin/api/plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ site_id: site, action: "preview", block_only: true, city: c, subject: "x", body: "[" + n + " \u00b7 {city}]" }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { cache[ck] = j.ok && j.html && j.html.replace(/<br>/g, "").trim() ? j.html : "<div style='color:#a3352a;font-size:13px;padding:6px'>No data for this block" + (c ? " in " + esc(c) : "") + " yet.</div>"; if (on === ck) fill(b, cache[ck]); })
+      .catch(function () { if (on === ck) fill(b, "<div style='color:#a3352a;font-size:13px;padding:6px'>Couldn't load preview.</div>"); });
+  });
+  box.addEventListener("mouseout", function (e) { var b = e.target.closest && e.target.closest("[data-intel]"); if (b && !b.contains(e.relatedTarget)) hide(); });
+  box.addEventListener("click", hide);
+  var x = document.getElementById("em-close"); if (x) x.addEventListener("click", hide);
+})();
+</script><script is:inline>
+(function () {
+  var btn = document.getElementById("em-listing"), tx = document.getElementById("em-text"); if (!btn || !tx) return;
+  var site = new URLSearchParams(location.search).get("site_id"), timer = 0;
+  var pk = document.createElement("div");
+  pk.style.cssText = "position:fixed;z-index:310;width:440px;max-width:calc(100vw - 24px);background:#fff;border:1px solid #e4e0d6;border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.18);padding:12px;display:none;font-size:14px;";
+  document.body.appendChild(pk);
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+  function row(h) { return '<button type="button" class="lp-row" data-mls="' + esc(h.mls) + '">' + (h.image ? '<img src="' + esc(h.image) + '" alt="">' : '<span class="lp-ph"></span>') + '<span><b>' + esc(h.address || ("MLS\u00ae " + h.mls)) + '</b><i>' + esc([h.price, h.city, "MLS\u00ae " + h.mls].filter(Boolean).join(" \u00b7 ")) + '</i></span></button>'; }
+  function quick() { var seen = {}, out = []; document.querySelectorAll(".home-link[data-mls]").forEach(function (b) { var m = b.dataset.mls; if (!m || seen[m]) return; seen[m] = 1; out.push({ mls: m, address: b.dataset.addr || "", price: b.dataset.price || "" }); }); return out.slice(0, 12); }
+  function quickHtml() { var q = quick(); return q.length ? '<div class="lp-h">Homes they looked at</div>' + q.map(row).join("") : '<div class="lp-m">Search for any listing above.</div>'; }
+  function place() { var r = btn.getBoundingClientRect(), h = pk.offsetHeight, w = pk.offsetWidth; pk.style.left = Math.min(Math.max(12, r.left), window.innerWidth - w - 12) + "px"; pk.style.top = (r.top - h - 8 > 12 ? r.top - h - 8 : Math.min(r.bottom + 8, window.innerHeight - h - 12)) + "px"; }
+  function close() { pk.style.display = "none"; }
+  function insert(mls) {
+    var line = "[Listing \u00b7 " + mls + "]", v = tx.value;
+    var at = tx.dataset.pv === v && tx.dataset.pos != null ? Math.min(Number(tx.dataset.pos), v.length) : v.length;
+    var before = v.slice(0, at), after = v.slice(at), pre = before && !/\n$/.test(before) ? "\n" : "", post = after && !/^\n/.test(after) ? "\n" : "";
+    tx.value = before + pre + line + post + after;
+    var pos = (before + pre + line).length; tx.dataset.pos = String(pos); tx.dataset.pv = tx.value; tx.dataset.dirty = "1";
+    tx.dispatchEvent(new Event("input", { bubbles: true })); close();
+  }
+  function open() {
+    pk.innerHTML = '<style>.lp-row{display:flex;gap:10px;align-items:center;width:100%;text-align:left;border:0;background:none;padding:6px;border-radius:6px;cursor:pointer;font:inherit}.lp-row:hover{background:#f7f4ef}.lp-row img,.lp-ph{width:60px;height:44px;object-fit:cover;border-radius:4px;flex:none;background:#f0ebe2;display:block}.lp-row b{display:block;font-size:14px}.lp-row i{display:block;font-style:normal;color:#8a8378;font-size:12px}.lp-h{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#8a8378;margin:4px 6px}.lp-m{color:#8a8378;padding:6px}</style><input id="lp-q" placeholder="Search MLS\u00ae number or address" autocomplete="off" style="width:100%;box-sizing:border-box;border:1px solid #d9d2c6;border-radius:6px;padding:8px 10px;font:inherit;margin-bottom:8px"><div id="lp-res" style="max-height:320px;overflow:auto">' + quickHtml() + '</div>';
+    pk.style.display = "block"; place();
+    var inp = pk.querySelector("#lp-q"), res = pk.querySelector("#lp-res"); inp.focus();
+    var qk = quick();
+    if (qk.length) fetch("/admin/api/listing-search?site_id=" + encodeURIComponent(site) + "&mlss=" + encodeURIComponent(qk.map(function (h) { return h.mls; }).join(","))).then(function (r) { return r.json(); }).then(function (j) {
+      var rs = (j && j.results) || []; if (!rs.length || inp.value.trim().length >= 2) return;
+      var by = {}; rs.forEach(function (h) { by[String(h.mls)] = h; });
+      res.innerHTML = '<div class="lp-h">Homes they looked at</div>' + qk.map(function (h) { return row(by[String(h.mls)] || h); }).join(""); place();
+    }).catch(function () {});
+    inp.addEventListener("input", function () {
+      clearTimeout(timer); var v = inp.value.trim();
+      if (v.length < 2) { res.innerHTML = quickHtml(); place(); return; }
+      res.innerHTML = '<div class="lp-m">Searching\u2026</div>';
+      timer = setTimeout(function () {
+        fetch("/admin/api/listing-search?site_id=" + encodeURIComponent(site) + "&q=" + encodeURIComponent(v)).then(function (r) { return r.json(); }).then(function (j) {
+          if (inp.value.trim() !== v) return; var rs = (j && j.results) || [];
+          res.innerHTML = rs.length ? rs.map(row).join("") : '<div class="lp-m">No listings found.</div>'; place();
+        }).catch(function () { res.innerHTML = '<div class="lp-m">Search failed.</div>'; });
+      }, 250);
+    });
+  }
+  pk.addEventListener("click", function (e) { var b = e.target.closest(".lp-row"); if (b) insert(b.dataset.mls); });
+  btn.addEventListener("click", function (e) { e.stopPropagation(); if (pk.style.display === "block") close(); else open(); });
+  document.addEventListener("click", function (e) { if (pk.style.display === "block" && !pk.contains(e.target) && e.target !== btn) close(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+  var x = document.getElementById("em-close"); if (x) x.addEventListener("click", close);
+})();
+</script>
+<div class="em-foot"><span id="em-msg"></span><button class="btn dark" id="em-send" type="button">Send</button></div>
             </div>
           </div>
         </div>
@@ -391,7 +544,7 @@ const latestSession = p ? items.find((i) => i.href && i.href.includes("intent-se
         document.getElementById("task-add").addEventListener("click", addTask);
         tt.addEventListener("keydown", function (e) { if (e.key === "Enter") addTask(); });
         document.querySelectorAll(".tk-check").forEach(function (c) { c.addEventListener("change", function () { c.disabled = true; post({ action: c.checked ? "task_done" : "task_undo", id: c.dataset.id }).then(function (j) { if (j.ok) location.reload(); else { c.disabled = false; c.checked = !c.checked; c.title = j.error || "Failed"; } }); }); });
-        document.querySelectorAll(".tk-x").forEach(function (x) { x.addEventListener("click", function () { if (!confirm("Delete this task?")) return; post({ action: "task_delete", id: x.dataset.id }).then(function (j) { if (j.ok) location.reload(); }); }); });
+        document.querySelectorAll(".tk-x:not(.cl-del):not(.pl-act)").forEach(function (x) { x.addEventListener("click", function () { if (!confirm("Delete this task?")) return; post({ action: "task_delete", id: x.dataset.id }).then(function (j) { if (j.ok) location.reload(); }); }); });
 function v(id) { var el = document.getElementById(id); return el ? el.value.trim() : ""; }
         var dsv = document.getElementById("d-save"); if (dsv) dsv.addEventListener("click", function () { flash("d-saved", "Saving…"); post({ action: "details", address: v("d-address"), birthday: v("d-bday") }).then(function (j) { if (j.ok) location.reload(); else flash("d-saved", j.error || "Failed"); }); });
         document.querySelectorAll(".stats i[data-k]").forEach(function (c) { c.addEventListener("click", function () { var hits = document.querySelectorAll(".ti.k-" + c.dataset.k + (c.dataset.k === "love" ? ", .ti.k-react" : "")); if (!hits.length) return; hits[0].scrollIntoView({ behavior: "smooth", block: "center" }); hits.forEach(function (h) { h.classList.add("hl"); }); setTimeout(function () { hits.forEach(function (h) { h.classList.remove("hl"); }); }, 2500); }); });
@@ -400,9 +553,9 @@ function v(id) { var el = document.getElementById(id); return el ? el.value.trim
           var emAuto = new URLSearchParams(location.search).get("email") || "", emIdeas = null, emCur = -1, emTx = document.getElementById("em-text"), emSub = document.getElementById("em-subject"), emMsg = document.getElementById("em-msg");
           emTx.addEventListener("input", function () { emTx.dataset.dirty = "1"; });
           var emPick = function (i) { var it = emIdeas && emIdeas[i]; if (!it) return; if (emTx.dataset.dirty === "1" && emTx.value.trim() && !confirm("Replace your draft with this idea?")) return; emSub.value = it.subject; emTx.value = it.body; emTx.dataset.dirty = "0"; emCur = i; document.querySelectorAll("#em-list .em-idea").forEach(function (b, k) { b.classList.toggle("on", k === i); }); emTx.focus(); emTx.setSelectionRange(0, 0); emTx.scrollTop = 0; };
-          var emLoad = function () { var list = document.getElementById("em-list"); fetch("/admin/api/person-email?site_id=" + encodeURIComponent(siteId) + "&key=" + encodeURIComponent(pkey)).then(function (r) { return r.json(); }).then(function (j) { var cx = document.getElementById("em-ctx"); if (cx && j.context) { cx.textContent = j.context; cx.hidden = false; } emIdeas = j.ideas || []; list.innerHTML = ""; if (!emIdeas.length) { list.textContent = j.error || "No ideas right now."; return; } var emGrp = ""; emIdeas.forEach(function (it, i) { if (it.group && it.group !== emGrp) { emGrp = it.group; var gh = document.createElement("div"); gh.className = "em-lbl"; gh.style.marginTop = "16px"; gh.textContent = it.group; list.appendChild(gh); } var b = document.createElement("button"); b.type = "button"; b.className = "em-idea"; var tt = document.createElement("b"); tt.textContent = it.icon + " " + it.label; var s = document.createElement("span"); s.textContent = it.why || ""; b.appendChild(tt); b.appendChild(s); b.addEventListener("click", function () { emPick(i); }); list.appendChild(b); }); if (emAuto) { var ai = 0; emIdeas.forEach(function (it, i) { if (it.id === emAuto) ai = i; }); emPick(ai); emAuto = ""; } }).catch(function () { list.textContent = "Couldn't load ideas."; }); };
-          var emOpen = function (to) { emM.hidden = false; document.body.style.overflow = "hidden"; if (to) document.getElementById("em-to").value = to; if (!emIdeas) emLoad(); };
-          var emClose = function () { emM.hidden = true; document.body.style.overflow = ""; };
+          var emLoad = function () { var list = document.getElementById("em-list"); fetch("/admin/api/person-email?site_id=" + encodeURIComponent(siteId) + "&key=" + encodeURIComponent(pkey)).then(function (r) { return r.json(); }).then(function (j) { var cx = document.getElementById("em-ctx"); if (cx && j.context) { cx.textContent = j.context; cx.hidden = false; } emIdeas = j.ideas || []; list.innerHTML = ""; if (!emIdeas.length) { list.textContent = j.error || "No ideas right now."; return; } var emGrp = ""; emIdeas.forEach(function (it, i) { if (it.group && it.group !== emGrp) { emGrp = it.group; var gName = it.group, gN = emIdeas.filter(function (x) { return x.group === gName; }).length, gh = document.createElement("div"); gh.className = "em-lbl"; gh.style.cssText = "margin-top:16px;cursor:pointer;user-select:none;"; gh.textContent = "\u25B8 " + gName + " (" + gN + ")"; gh.addEventListener("click", function () { var open = gh.dataset.open !== "1"; gh.dataset.open = open ? "1" : "0"; gh.textContent = (open ? "\u25BE " : "\u25B8 ") + gName + " (" + gN + ")"; list.querySelectorAll("[data-grp]").forEach(function (x) { if (x.dataset.grp === gName) x.style.display = open ? "" : "none"; }); }); list.appendChild(gh); } var b = document.createElement("button"); if (it.group) { b.dataset.grp = it.group; b.style.display = "none"; } b.type = "button"; b.className = "em-idea"; var tt = document.createElement("b"); tt.textContent = it.icon + " " + it.label; var s = document.createElement("span"); s.textContent = it.why || ""; b.appendChild(tt); b.appendChild(s); b.addEventListener("click", function () { emPick(i); }); list.appendChild(b); }); if (emAuto) { var ai = 0; emIdeas.forEach(function (it, i) { if (it.id === emAuto) ai = i; }); emPick(ai); emAuto = ""; } }).catch(function () { list.textContent = "Couldn't load ideas."; }); };
+          var emOpen = function (to) { var sbw = window.innerWidth - document.documentElement.clientWidth; emM.hidden = false; document.body.style.overflow = "hidden"; if (sbw > 0) document.body.style.paddingRight = sbw + "px"; if (to) document.getElementById("em-to").value = to; if (!emIdeas) emLoad(); };
+          var emClose = function () { emM.hidden = true; document.body.style.overflow = ""; document.body.style.paddingRight = ""; };
           var emBtn = document.getElementById("em-open"); if (emBtn) emBtn.addEventListener("click", function () { emOpen(""); });
           document.querySelectorAll(".em-link").forEach(function (a) { a.addEventListener("click", function (e) { e.preventDefault(); emOpen(a.dataset.to); }); });
           document.getElementById("em-close").addEventListener("click", emClose);
@@ -427,12 +580,12 @@ function v(id) { var el = document.getElementById(id); return el ? el.value.trim
 var et = document.getElementById("edit-toggle");
         function setEdit(on) { document.body.classList.toggle("editing", on); if (et) { et.textContent = on ? "Done" : "Edit"; et.classList.toggle("dark", on); } try { if (on) sessionStorage.setItem("person-edit:" + pkey, "1"); else sessionStorage.removeItem("person-edit:" + pkey); } catch (e) {} }
         try { if (sessionStorage.getItem("person-edit:" + pkey)) setEdit(true); } catch (e) {}
-        var pfIds = ["pf-name", "pf-email", "pf-phone", "pf-address", "pf-bday", "pf-listing", "pf-bprice", "pf-bmonth", "pf-btype"], pfInit = pfIds.map(function (id) { return v(id); });
+        var pfIds = ["pf-name", "pf-email", "pf-phone", "pf-address", "pf-bday", "pf-listing", "pf-bprice", "pf-bmonth", "pf-btype", "pf-city"], pfInit = pfIds.map(function (id) { return v(id); });
         function saveProfile() {
           var dirty = pfIds.some(function (id, i) { return v(id) !== pfInit[i]; });
           if (!dirty) { setEdit(false); return; }
           et.textContent = "Saving…";
-          post({ action: "profile", name: v("pf-name"), email: v("pf-email"), phone: v("pf-phone"), address: v("pf-address"), birthday: v("pf-bday"), listing_mls: v("pf-listing"), bought_price: v("pf-bprice"), bought_month: v("pf-bmonth"), bought_type: v("pf-btype") }).then(function (j) { if (j.ok) { setEdit(false); location.reload(); } else { et.textContent = "Done"; flash("pf-saved", j.error || "Failed"); } });
+          post({ action: "profile", name: v("pf-name"), email: v("pf-email"), phone: v("pf-phone"), address: v("pf-address"), birthday: v("pf-bday"), listing_mls: v("pf-listing"), bought_price: v("pf-bprice"), bought_month: v("pf-bmonth"), bought_type: v("pf-btype"), main_city: v("pf-city") }).then(function (j) { if (j.ok) { setEdit(false); location.reload(); } else { et.textContent = "Done"; flash("pf-saved", j.error || "Failed"); } });
         }
         if (et) et.addEventListener("click", function () { if (document.body.classList.contains("editing")) saveProfile(); else { setEdit(true); var n = document.getElementById("pf-name"); if (n) { n.focus(); n.select(); } } });
         pfIds.forEach(function (id) { var el = document.getElementById(id); if (el) el.addEventListener("keydown", function (e) { if (e.key === "Enter") saveProfile(); }); });

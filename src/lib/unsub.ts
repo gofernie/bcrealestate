@@ -9,3 +9,5 @@ export const unsubUrl = (base: string, siteId: string, key: string) => {
   try { if (base) o = new URL(base).origin; } catch {}
   return `${o}/api/unsubscribe?s=${encodeURIComponent(siteId)}&k=${encodeURIComponent(key)}&t=${unsubToken(siteId, key)}`;
 };
+// email-tracking v1: replies go to the agent AND a capture address the CRM receives (INBOUND_DOMAIN, e.g. abc123.resend.app)
+export const replyTo = (siteId: string, agentEmail: string) => { const d = env("INBOUND_DOMAIN"); const cap = d ? `r-${String(siteId).replace(/-/g, "")}@${d}` : ""; return [agentEmail, cap].filter(Boolean); };

@@ -2,7 +2,7 @@
 import { sbAdmin, loadPeople, todayStr, fuText, syncNextFollowup, closeDripSend } from "./crm";
 import { siteBase } from "./sessionHomes";
 import { toHtml, withIntel, agentFor, INTEL_RE } from "../pages/admin/api/person-email";
-import { unsubUrl } from "./unsub";
+import { unsubUrl, replyTo } from "./unsub";
 
 const env = (k: string) => String((import.meta.env as any)[k] || (globalThis as any).process?.env?.[k] || "").trim();
 const escH = (s: string) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -55,7 +55,7 @@ export async function loadPlans(siteId: string) {
   ]);
   return (pl || []).map((p: any) => {
     const steps = (st || []).filter((s: any) => s.plan_id === p.id).map((s: any) => ({ day_offset: s.day_offset, subject: s.subject, body: s.body, mode: s.mode }));
-    return { id: p.id, name: p.name, description: p.description || "", stop_when_closed: !!p.stop_when_closed, steps, days: steps.reduce((m: number, s: any) => Math.max(m, s.day_offset), 0), active: (en || []).filter((e: any) => e.plan_id === p.id && e.status === "active").length };
+    return { id: p.id, name: p.name, description: p.description || "", stop_when_closed: !!p.stop_when_closed, pause_on_reply: !!p.pause_on_reply, steps, days: steps.reduce((m: number, s: any) => Math.max(m, s.day_offset), 0), active: (en || []).filter((e: any) => e.plan_id === p.id && e.status === "active").length };
   });
 }
 
@@ -74,12 +74,30 @@ export async function planPanelData(siteId: string, keys: string[], person: any 
   const name = new Map((plans || []).map((x: any) => [x.id, x.name]));
   const stepsBy = new Map<string, any[]>();
   for (const s of st.data || []) (stepsBy.get(s.plan_id) || stepsBy.set(s.plan_id, []).get(s.plan_id)!).push(s);
+  const enIds = (en.data || []).map((e: any) => e.id);
+  const { data: hist } = enIds.length ? await sb.from("crm_drip_sends").select("enrollment_id, step_position, status, sent_at, created_at").in("enrollment_id", enIds) : { data: [] as any[] };
+  const histBy = new Map<string, any>(); for (const h of hist || []) histBy.set(h.enrollment_id + ":" + h.step_position, h);
+  const cityRaw = String(person?.mainCity || pd?.leads?.[0]?.city || pd?.sessions?.[0]?.city || "");
+  const cityLab = cityRaw ? cityRaw.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) : "";
+  const sub = (s: string) => String(s || "").replace(/\{city\}/g, cityLab || "{city}");
+  const shortD = (d: string) => new Date(String(d).slice(0, 10) + "T12:00:00").toLocaleDateString("en-CA", { month: "short", day: "numeric" });
   const recent = Date.now() - 30 * 864e5;
   const enrolls = (en.data || []).filter((e: any) => e.status === "active" || e.status === "paused" || new Date(e.updated_at).getTime() > recent).map((e: any) => {
     const ps = stepsBy.get(e.plan_id) || [], s = ps[e.next_step];
     const line = e.status === "done" ? `Finished ${D} ${ps.length} emails` : e.status === "stopped" ? "Stopped" : !s ? "Finishing up"
       : `${e.status === "paused" ? `Paused ${D} ` : ""}Email ${e.next_step + 1} of ${ps.length} ${D} ${s.subject} ${D} ${e.status === "paused" ? "on hold" : fuText(addDays(e.started_on, s.day_offset))}`;
-    return { id: e.id, plan: name.get(e.plan_id) || "Plan", status: e.status, line };
+    const list = ps.map((s: any, i: number) => {
+      const h = histBy.get(e.id + ":" + i); let state = "", when = "";
+      if (i < e.next_step) {
+        if (h?.status === "sent") { state = "sent"; when = h.sent_at ? shortD(h.sent_at) : ""; }
+        else if (h?.status === "ready") { state = "ready"; when = "waiting for you"; }
+        else { state = "skipped"; when = h?.status === "failed" ? "failed" : "skipped"; }
+      } else if (e.status === "active") { state = i === e.next_step ? "next" : "upcoming"; when = shortD(addDays(e.started_on, s.day_offset)); }
+      else if (e.status === "paused") { state = "upcoming"; when = "on hold"; }
+      else { state = "off"; when = "won't send"; }
+      return { n: i + 1, subject: sub(s.subject), state, when };
+    });
+    return { id: e.id, plan: name.get(e.plan_id) || "Plan", status: e.status, line: sub(line), list };
   });
   const planOf = new Map((en.data || []).map((e: any) => [e.id, name.get(e.plan_id) || "Plan"]));
   const ready = (rd.data || []).map((r: any) => ({ ...r, plan: planOf.get(r.enrollment_id) || "Plan" }));
@@ -103,7 +121,7 @@ function mergeFor(p: any, ctx: any) {
   const first = firstOf(p.name) || "there";
   const partner = p.partnerKey ? ctx.people.find((x: any) => x.keys.includes(p.partnerKey)) : null;
   const pf = partner ? firstOf(partner.name) : "";
-  const raw = String(d.leads?.[0]?.city || d.sessions?.[0]?.city || ctx.site?.city || "nanaimo");
+  const raw = String(p.mainCity || d.leads?.[0]?.city || d.sessions?.[0]?.city || ctx.site?.city || "nanaimo");
   const slug = raw.toLowerCase().trim().replace(/\s+/g, "-");
   const city = slug.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
   const loves = (d.reactions || []).filter((r: any) => r.decision === "love").sort((a: any, b: any) => String(b.updated_at || b.created_at).localeCompare(String(a.updated_at || a.created_at)));
@@ -126,11 +144,11 @@ async function sendPlanEmail(sb: any, siteId: string, p: any, ctx: any, to: stri
   const un = unsubUrl(ctx.base, siteId, p.key);
   const lead = `You're receiving this because you've been in touch with ${agent.agentName}.`;
   const plain = `${text.replace(INTEL_RE, "").replace(/\n{3,}/g, "\n\n").trim()}\n\n--\n${sig}\n\n${lead} Unsubscribe: ${un}`;
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1a1a1a;max-width:560px">${await withIntel(sb, toHtml(text))}<br><br><div style="color:#555;font-size:13px">${toHtml(sig)}</div><div style="color:#999;font-size:12px;margin-top:16px">${escH(lead)} <a href="${escH(un)}" style="color:#999">Unsubscribe</a></div></div>`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1a1a1a;max-width:560px">${await withIntel(sb, toHtml(text), siteId)}<br><br><div style="color:#555;font-size:13px">${toHtml(sig)}</div><div style="color:#999;font-size:12px;margin-top:16px">${escH(lead)} <a href="${escH(un)}" style="color:#999">Unsubscribe</a></div></div>`;
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${rkey}`, "content-type": "application/json" },
-    body: JSON.stringify({ from, to: [to], subject, text: plain, html, reply_to: agent.agentEmail, headers: { "List-Unsubscribe": `<${un}>` } }),
+    body: JSON.stringify({ from, to: [to], subject, text: plain, html, reply_to: replyTo(siteId, agent.agentEmail), headers: { "List-Unsubscribe": `<${un}>` } }),
   });
   const out: any = await r.json().catch(() => ({}));
   if (!r.ok) return { ok: false, error: out?.message || "Email send failed" };
@@ -241,4 +259,16 @@ export async function stopClosedPlans(sb: any, siteId: string, key: string, note
     for (const r of rs || []) await closeDripSend(sb, siteId, r.id, "skipped");
     await note(`Stopped plan: ${pl.name} (moved to Closed)`, "system");
   }
+}
+
+// crm-plans v3: cities for the plan editor's "Preview for" dropdown (own site first)
+export async function planCities(siteId: string) {
+  const sb = sbAdmin();
+  const { data } = await sb.from("sites").select("id, city, primary_city");
+  const slug = (c: any) => String(c || "").toLowerCase().trim().replace(/\s+/g, "-");
+  const lab = (s: string) => s.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const own = (data || []).find((s: any) => s.id === siteId);
+  const first = slug(own?.primary_city || own?.city);
+  const all = [...new Set((data || []).flatMap((s: any) => [slug(s.primary_city), slug(s.city)]).filter(Boolean))].sort().filter((s) => s !== first);
+  return [{ slug: "", label: first ? `${lab(first)} (your site)` : "Your site city" }, ...all.map((s) => ({ slug: s, label: lab(s) }))];
 }

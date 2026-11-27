@@ -2,9 +2,9 @@
 import type { APIRoute } from "astro";
 import { sbAdmin, loadPeople } from "../../../lib/crm";
 import { getMarketPulse } from "../../../lib/marketPulse";
-import { siteBase } from "../../../lib/sessionHomes";
+import { siteBase, mapListing, listingUrl, fmtPrice } from "../../../lib/sessionHomes";
 import { RATES } from "../../../lib/rates";
-import { unsubUrl } from "../../../lib/unsub";
+import { unsubUrl, replyTo } from "../../../lib/unsub";
 import { closeDripSend } from "../../../lib/crm";
 export const prerender = false;
 
@@ -230,13 +230,32 @@ INTEL["Asking vs sold"] = (P) => {
   const mean = s > 1 ? `Homes are selling about ${s.toFixed(1)}% below the general asking level, so pricing close to recent sales is what gets homes sold.` : s < -1 ? "Homes are selling above the general asking level, a sign of competition for well-priced listings." : "Homes are selling close to the general asking level.";
   return IB.wrap(`${P.cityLabel}: asking vs sold`, `${top}${head}${IB.T}><tr style="height:58px">${cols}</tr></table>${ends}<div style="font-size:12px;color:#333333;margin-top:8px">${mean}</div>`, "Spread each month: average asking index over 3 months vs. the sold index. Latest month left out until its sales are in.");
 };
-const INTEL_RE = /^\[(Market snapshot|Market read|Listings vs sales|Price trend|Asking vs sold) \u00b7 [^\]\n]+\][ \t]*$/gm;
-async function withIntel(sb: any, html: string) {
+const INTEL_RE = /^\[(Listing|Market snapshot|Market read|Listings vs sales|Price trend|Asking vs sold) \u00b7 [^\]\n]+\][ \t]*$/gm;
+// email-listings v1: [Listing · MLS] lines become listing cards
+const LISTING_RE = /\[Listing \u00b7 ([A-Za-z0-9]+)\]/g;
+async function withListings(sb: any, html: string, siteId?: string) {
+  const ids = [...new Set([...html.matchAll(LISTING_RE)].map((m) => m[1]))];
+  if (!ids.length) return html;
+  const { data } = await sb.from("listing_rows").select("*").in("mls_number", ids);
+  const by = new Map((data || []).map((r: any) => { const h: any = mapListing(r); return [String(h.mls), h]; }));
+  let base = "https://bc.realestate";
+  try { base = String((await siteBase(sb, siteId)) || base).replace(/\/$/, ""); } catch {}
+  return html.replace(LISTING_RE, (_m: string, mls: string) => {
+    const h: any = by.get(String(mls)); if (!h) return "";
+    const url = listingUrl(base, h.city, h.mls, "");
+    const facts = [h.beds ? `${h.beds} bed` : "", h.baths ? `${h.baths} bath` : "", h.sqft ? `${Math.round(h.sqft).toLocaleString("en-CA")} sq ft` : ""].filter(Boolean).join(" \u00b7 ");
+    const where = [h.area, h.city].filter(Boolean).join(", ");
+    const img = h.image ? `<a href="${url}"><img src="${h.image}" width="540" alt="${escH(String(h.address || ""))}" style="display:block;width:100%;max-width:540px;height:auto;border:0;border-radius:8px 8px 0 0"></a>` : "";
+    return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:540px;margin:10px 0;border:1px solid #e4e0d6;border-radius:8px;background:#ffffff"><tr><td style="padding:0">${img}<div style="padding:12px 16px 14px"><div style="font-family:Georgia,'Times New Roman',serif;font-size:22px;color:#1a1a1a">${fmtPrice(h.price)}</div><div style="font-size:15px;font-weight:bold;color:#1a1a1a;margin-top:2px">${escH(String(h.address || "MLS\u00ae " + h.mls))}</div>${where ? `<div style="font-size:13px;color:#666666">${escH(where)}</div>` : ""}${facts ? `<div style="font-size:13px;color:#333333;margin-top:6px">${facts}</div>` : ""}<a href="${url}" style="display:inline-block;margin-top:10px;background:#1f6b60;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;padding:10px 16px;border-radius:6px">View this home &rarr;</a></div></td></tr></table>`;
+  });
+}
+async function withIntel(sb: any, html: string, siteId?: string) {
+  html = await withListings(sb, html, siteId);
   const re = /\[(Market snapshot|Market read|Listings vs sales|Price trend|Asking vs sold) \u00b7 ([^\]<]+)\]/g;
   const found = [...html.matchAll(re)]; if (!found.length) return html;
   const slugOf = (c: string) => String(c).toLowerCase().trim().replace(/\s+/g, "-");
   const cache: Record<string, any> = {};
-  for (const m of found) { const s = slugOf(m[2]); if (!(s in cache)) { try { cache[s] = await getMarketPulse(sb, s); } catch (e) { console.error("intel pulse failed", s, e); cache[s] = null; } } }
+  for (const m of found) { const s = slugOf(m[2]); if (!(s in cache)) { try { { const P0: any = await getMarketPulse(sb, s); cache[s] = P0 ? { ...P0, monthlyHistory: (P0.monthlyHistory || []).map((m: any) => ({ ...m, label: String(m.label || "").replace(/^([A-Za-z]{3,9}) '?(\d{2})$/, "$1 20$2") })) } : P0; } } catch (e) { console.error("intel pulse failed", s, e); cache[s] = null; } } }
   for (const m of found) { const P = cache[slugOf(m[2])]; if (m[1] === "Asking vs sold" && P && P._as === undefined) { try { P._as = await askSold(sb, slugOf(m[2]), P.cityLabel); } catch (e) { console.error("asking vs sold failed", e); P._as = null; } } }
   return html.replace(re, (_a: string, name: string, city: string) => { const P = cache[slugOf(city)]; if (!P) return ""; try { return INTEL[name]?.(P) || ""; } catch (e) { console.error("intel block failed", name, e); return ""; } });
 }
@@ -250,7 +269,7 @@ export const GET: APIRoute = async ({ url, locals, request }) => {
     let seller: any = null;
     if (p.listingMls) { try { seller = await sellerCtx(request, sb, String(p.listingMls)); } catch (e) { console.error("seller ctx failed", e); } }
     const first = /@/.test(p.name) ? "there" : String(p.name).trim().split(/\s+/)[0];
-    const rawCity = String(seller?.city || d.leads?.[0]?.city || d.sessions?.[0]?.city || (site as any)?.city || "nanaimo");
+    const rawCity = String(seller?.city || p.mainCity || d.leads?.[0]?.city || d.sessions?.[0]?.city || (site as any)?.city || "nanaimo");
     const city = rawCity.toLowerCase().trim().replace(/\s+/g, "-");
     let pulse: any = null;
     try { pulse = await getMarketPulse(sb, city); } catch (e) { console.error("pulse failed", e); }
@@ -406,13 +425,13 @@ export const POST: APIRoute = async ({ request, locals }) => {
     const optLead = `You're receiving this because you've been in touch with ${agent.agentName}.`;
     const optout = `${optLead} Unsubscribe: ${unUrl}`;
     const plain = `${text.replace(INTEL_RE, "").replace(/\n{3,}/g, "\n\n").trim()}\n\n--\n${sig}\n\n${optout}`;
-    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1a1a1a;max-width:560px">${await withIntel(sb, toHtml(text))}<br><br><div style="color:#555;font-size:13px">${toHtml(sig)}</div><div style="color:#999;font-size:12px;margin-top:16px">${escH(optLead)} <a href="${unUrl}" style="color:#999">Unsubscribe</a></div></div>`;
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1a1a1a;max-width:560px">${await withIntel(sb, toHtml(text), siteId)}<br><br><div style="color:#555;font-size:13px">${toHtml(sig)}</div><div style="color:#999;font-size:12px;margin-top:16px">${escH(optLead)} <a href="${unUrl}" style="color:#999">Unsubscribe</a></div></div>`;
 
     if (b.preview) return json({ ok: true, html });
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${rkey}`, "content-type": "application/json" },
-      body: JSON.stringify({ from, to: [to], subject, text: plain, html, reply_to: agent.agentEmail, headers: unUrl ? { "List-Unsubscribe": `<${unUrl}>` } : undefined }),
+      body: JSON.stringify({ from, to: [to], subject, text: plain, html, reply_to: replyTo(siteId, agent.agentEmail), headers: unUrl ? { "List-Unsubscribe": `<${unUrl}>` } : undefined }),
     });
     const out: any = await r.json().catch(() => ({}));
     if (!r.ok) return json({ ok: false, error: out?.message || "Email send failed" }, 502);
