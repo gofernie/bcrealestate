@@ -506,7 +506,7 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
       var html = '<section class="card subjcard">' +
         (s.image ? '<img class="subj-img' + (s.status === "A" || s.lastSold ? ' subj-open" data-subj-open="1" title="Open listing' : "") + '" src="' + esc(s.image) + '" alt="" />' : "") +
         '<div class="subj-main"><div class="subj-top"><div><p class="subj-kicker">Valuing</p><h2 class="subj-title">' + (s.status === "A" || s.lastSold ? '<button type="button" class="subj-link" data-subj-open="1">' + esc(fixCase(s.address) || "MLS® " + s.mls) + ' <span>📷</span></button>' : esc(fixCase(s.address) || (s.mls ? "MLS® " + s.mls : "Home entered by hand"))) + '</h2><p class="subj-sub">' + subTitle + "</p></div>" +
-        '<button class="ghost no-print" id="print">Print</button></div>' +
+        '<button class="ghost no-print" id="share" title="Save this CMA as a link you can send">Share link</button> <button class="ghost no-print" id="print">Print</button></div>' +
         '<div class="subj-facts">' + facts + (s.listPrice && s.status === "A" ? '<span class="sf sf-list"><span>Listed at</span><strong>' + money(s.listPrice) + "</strong></span>" : "") + "</div></div></section>";
 
       if (!data.comps.length) {
@@ -594,6 +594,30 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
       if (sl) sl.oninput = function () { setCond(Number(sl.value)); var sm2 = summary(); var st = out.querySelectorAll(".range strong"); if (sm2) { st[0].textContent = k(sm2.lo); st[1].textContent = money(sm2.likely); st[2].textContent = k(sm2.hi); document.getElementById("wide").innerHTML = wideText(sm2); document.getElementById("lg").innerHTML = listGap(sm2); } document.getElementById("cl").textContent = condText(); document.getElementById("cn").innerHTML = condNote(sm2); condBubble(sm2); };
       out.querySelectorAll("[data-view]").forEach(function (b) { b.onclick = function () { view = b.getAttribute("data-view"); try { localStorage.setItem("cma-view", view); } catch (e) {} render(); }; });
       var pb = document.getElementById("print"); if (pb) pb.onclick = function () { window.print(); };
+      // cma-share-v1: save what's on screen (unticked comps left out) as a /report/<id> pitch link
+      var sh = document.getElementById("share"); if (sh) sh.onclick = function () {
+        var s = data && data.subject;
+        if (!s || !s.mls) { sh.textContent = "Needs an MLS® listing"; return; }
+        var keep = cond; cond = 0; var sm = summary(); cond = keep;
+        if (!sm) { sh.textContent = "Tick at least one comp"; return; }
+        var snap = { city: city, mls: s.mls, address: fixCase(s.address) || "MLS® " + s.mls, listPrice: s.status === "A" ? s.listPrice : null, listedAt: s.listedAt || null,
+          likely: sm.likely, lo: sm.lo, hi: sm.hi, core: (data.confidence && data.confidence.core) || [0.94, 1.07], criteria: data.criteria || "", activeCount: data.activeCount || (data.actives || []).length,
+          confidence: data.confidence ? { level: data.confidence.level, reasons: data.confidence.reasons || [] } : null,
+          subject: { beds: s.beds, baths: s.baths, sqft: s.sqft, year: s.year, lot: s.lot, type: s.type || s.family, area: s.area },
+          comps: data.comps.filter(function (c) { return !off[c.mls]; }),
+          actives: (data.actives || []).filter(function (a) { return String(a.mls) !== String(s.mls); }) };
+        sh.disabled = true; sh.textContent = "Saving…";
+        fetch("/admin/api/cma-share", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ snapshot: snap }) }).then(function (r) { return r.json(); }).then(function (j) {
+          sh.disabled = false;
+          var box = document.getElementById("share-out");
+          if (!box) { box = document.createElement("div"); box.id = "share-out"; box.className = "card no-print"; sh.closest("section").insertAdjacentElement("afterend", box); }
+          if (!j.id) { sh.textContent = "Share link"; box.innerHTML = '<p class="sub">' + esc(j.error || "Couldn't save the link.") + "</p>"; return; }
+          var link = location.origin + "/report/" + j.id;
+          try { navigator.clipboard.writeText(link); } catch (e) {}
+          sh.textContent = "Link copied ✓";
+          box.innerHTML = '<label>Share link · no admin, no nav, opens with a "Read the photos" button<input readonly value="' + esc(link) + '" onclick="this.select()" style="width:100%;box-sizing:border-box" /></label><p class="sub" style="margin:8px 0 0"><a href="' + esc(link) + '" target="_blank" rel="noopener">Open it →</a> · ' + snap.comps.length + " comps saved (unticked ones left out). Values are saved comps-only; the photo read on the page adds condition.</p>";
+        }).catch(function (e) { sh.disabled = false; sh.textContent = "Share link"; });
+      };
     }
 
     // cma-map-v1: subject + comps, subject + competition
@@ -863,6 +887,37 @@ const tileUrl = jawgToken ? `https://tile.jawg.io/8dcad843-ebe7-4a16-8db9-b11d05
       }).catch(function (err) { so.textContent = err.message; });
     };
   })();
+  // Shared links: also run the photo read and apply it (skip with &read=0)
+    (function () {
+      var qs = new URLSearchParams(location.search);
+      if (!qs.get("mls") || qs.get("read") === "0") return;
+      var tries = 0, clickedGo = false;
+      (function poll() {
+        if (tries++ > 300) return;
+        var ap = document.getElementById("pr-apply");
+        if (ap && !ap.disabled && ap.offsetParent) { ap.click(); return; }
+        var go = document.getElementById("pr-go");
+        if (go && !clickedGo && go.offsetParent) { go.click(); clickedGo = true; }
+        setTimeout(poll, 300);
+      })();
+    })();
+
+    // Shared links: /admin/cma?mls=1052148&skip=1040457,1037471 opens filled out
+    (function () {
+      var qs = new URLSearchParams(location.search), m = qs.get("mls");
+      if (!m) return;
+      var skip = (qs.get("skip") || "").split(",").map(function (x) { return x.trim(); }).filter(Boolean);
+      var f = document.getElementById("cma-form"); if (!f) return;
+      f.elements.q.value = m;
+      f.requestSubmit();
+      var tries = 0;
+      (function untick() {
+        if (!skip.length || tries++ > 150) return;
+        var cb = document.querySelector('input[data-c="' + skip[0] + '"]');
+        if (cb) { if (cb.checked) { cb.checked = false; cb.dispatchEvent(new Event("change")); } skip.shift(); }
+        setTimeout(untick, 200);
+      })();
+    })();
   </script>
 </body>
 </html>
