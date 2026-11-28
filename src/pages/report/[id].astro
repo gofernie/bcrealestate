@@ -33,6 +33,7 @@ const monL = (m: any) => (m ? new Date(String(m).slice(0, 7) + "-15T12:00:00").t
 // cma-share-v1: pitch reports (made from the admin CMA's Share link) open with a banner and a "Read the photos" button
 const pitch = !!d.pitch;
 const core: number[] = Array.isArray(d.core) && d.core.length === 2 ? d.core.map(Number) : [0.94, 1.07];
+const tc = (v: any) => String(v || "").replace(/\b\w/g, (c) => c.toUpperCase());
 const conf: any = pitch && d.confidence?.level === "low" ? d.confidence : null;
 const title = d.address ? `Market report · ${String(d.address).split(",")[0]}` : "Market report";
 ---
@@ -121,7 +122,7 @@ const title = d.address ? `Market report · ${String(d.address).split(",")[0]}` 
             <div>
               <div class="kick">Valuing</div>
               <div class="subj-t">{String(d.address || "").split(",")[0]} <span class="subj-cta">📷 Photos &amp; details →</span></div>
-              <div class="lc-m">{[d.subject?.type, d.subject?.area, "MLS® " + d.mls].filter(Boolean).join(" · ")}</div>
+              <div class="lc-m">{[tc(d.subject?.type), tc(d.subject?.area), "MLS® " + d.mls].filter(Boolean).join(" · ")}</div>
               <div class="lc-m">{[d.subject?.beds ? `${d.subject.beds} bd` : "", d.subject?.baths ? `${d.subject.baths} ba` : "", d.subject?.sqft ? `${num(d.subject.sqft)} sq ft` : "", d.subject?.year ? `built ${d.subject.year}` : "", d.listPrice ? `listed at ${money(d.listPrice)}` : ""].filter(Boolean).join(" · ")}</div>
             </div>
           </section>
@@ -144,7 +145,7 @@ const title = d.address ? `Market report · ${String(d.address).split(",")[0]}` 
           </div>
           <p class="note">
             {d.listPrice ? <>Current asking price: <strong>{money(d.listPrice)}</strong><span id="v-gap">{gap != null && (gap === 0 ? ", in line with the likely value." : `, about ${Math.abs(gap)}% ${gap > 0 ? "above" : "below"} the likely value.`)}</span> </> : ""}
-            Based on {(d.comps || []).length} comparable sales{d.criteria ? ` (${d.criteria})` : ""}. Most similar homes sold between {short(d.lo)} and {short(d.hi)}.
+            Based on {(d.comps || []).length} comparable sales{d.criteria ? ` (${d.criteria})` : ""}. Most similar homes sold between <span id="v-range">{short(d.lo)} and {short(d.hi)}</span>.
           </p>
           {conf && <p class="note conf-low"><strong>Rough guide.</strong> {(conf.reasons || []).join(" · ") || "Few close comparables for this home."}</p>}
         </section>
@@ -231,6 +232,7 @@ const title = d.address ? `Market report · ${String(d.address).split(",")[0]}` 
             "<ul>" + (j.areas || []).map(function (a) { return '<li><span class="r-' + esc(a.rating) + '">' + esc(a.area) + " · " + esc(a.rating) + "</span> " + esc(a.note) + "</li>"; }).join("") + "</ul>" +
             '<p class="pr-sm">Based on ' + (j.photos || "the") + " photos and the description · " + esc(j.confidence || "medium") + " confidence. An agent who has been inside would fine-tune this.</p>";
           set("v-likely", money(likely)); set("v-lo", short(likely * base.core[0])); set("v-hi", short(likely * base.core[1]));
+          set("v-range", short(likely * base.core[0]) + " and " + short(likely * base.core[1]));
           var n = document.getElementById("v-likely-note"); if (n) n.textContent = "with condition from the photos";
           var g = document.getElementById("v-gap");
           if (g && base.listPrice) { var gp = Math.round((base.listPrice / likely - 1) * 100); g.textContent = gp === 0 ? ", in line with the likely value." : ", about " + Math.abs(gp) + "% " + (gp > 0 ? "above" : "below") + " the likely value."; }
