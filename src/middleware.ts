@@ -210,6 +210,8 @@ const mainHandler = defineMiddleware(async (context, next) => {
       if (context.request.method === "GET" && cacheableApi && response.status === 200 && apiType.includes("json") && !response.headers.has("set-cookie")) { /* cdn-cache-api-v2: apply even when the API sets its own short Cache-Control */
         if (!response.headers.has("cache-control")) response.headers.set("Cache-Control", "public, max-age=0, must-revalidate");
         response.headers.set("Netlify-CDN-Cache-Control", pathname.startsWith("/api/listing-detail") ? "public, durable, s-maxage=3600, stale-while-revalidate=86400" : "public, durable, s-maxage=43200, stale-while-revalidate=604800");
+        // cdn-cache-api-v3: Netlify ignores the query string in cache keys unless told otherwise, so ?id=A and ?id=B were sharing one cached answer
+        if (!response.headers.has("netlify-vary")) response.headers.set("Netlify-Vary", "query");
         const apiHostTag = "host-" + tagSafe(context.url.hostname.replace(/\.localhost$/, ".bc.realestate").replace(/^www\./, ""));
         const apiCity = tagSafe(context.url.searchParams.get("city") || context.url.searchParams.get("market") || ""); response.headers.set("Netlify-Cache-Tag", ["all-pages", apiHostTag, "api", apiCity ? "city-" + apiCity : ""].filter(Boolean).join(","));
       }
