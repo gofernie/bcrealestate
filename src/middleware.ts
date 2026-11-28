@@ -11,8 +11,8 @@ const SHARED_HOSTS = new Set(["bc.realestate"]);
 // agent-city-guard-v1: map each domain to its primary city + secondary markets (cached 10 min)
 type SiteCities = { primary: string; cities: Set<string> };
 let siteCityCache: { at: number; byDomain: Map<string, SiteCities>; allCities: Set<string> } | null = null;
-async function getSiteCityMap() {
-  if (siteCityCache && Date.now() - siteCityCache.at < 10 * 60 * 1000) return siteCityCache;
+async function getSiteCityMap(fresh = false) {
+  if (!fresh && siteCityCache && Date.now() - siteCityCache.at < 10 * 60 * 1000) return siteCityCache;
   const byDomain = new Map<string, SiteCities>();
   const allCities = new Set<string>();
   try {
@@ -146,9 +146,11 @@ const mainHandler = defineMiddleware(async (context, next) => {
       ? (context.url.searchParams.get("siteDomain") || "").replace(/^www\./, "").toLowerCase()
       : reqHost;
     if (siteHost && !SHARED_HOSTS.has(siteHost) && siteHost !== "nanaimomobiles.com" && segs[0]) {
-      const map = await getSiteCityMap();
-      const site = map.byDomain.get(siteHost);
+      let map = await getSiteCityMap();
+      let site = map.byDomain.get(siteHost);
       const seg = tagSafe(segs[0]);
+      // agent-city-guard-v1b: a market added in the last 10 min isn't in the cache yet; reload once before redirecting away
+      if (site && site.primary && map.allCities.has(seg) && !site.cities.has(seg) && Date.now() - map.at > 5000) { map = await getSiteCityMap(true); site = map.byDomain.get(siteHost); }
       /* agent-root-home-v1: the main city lives at "/" on agent sites; /{primary}/ 301s home (index.astro rewrites "/" back with root_rewrite=1) */
       if (site && site.primary && segs.length === 1 && seg === site.primary && context.request.method === "GET" && context.url.searchParams.get("root_rewrite") !== "1") {
         const qs = context.url.searchParams.toString();
