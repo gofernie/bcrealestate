@@ -3670,6 +3670,7 @@ lastRegularPhotoIndex = activePhotoIndex;
 
             const loader = new Image();
         loader.onload = () => {
+  if (activePhotoUrls[activePhotoIndex] !== targetSrc) return; // photo-race-guard-v1: user already moved on
   sheetImage.src = targetSrc;
   sheetImage.style.opacity = "1";
 
@@ -3693,6 +3694,7 @@ lastRegularPhotoIndex = activePhotoIndex;
   }
 };
             loader.onerror = () => {
+              if (activePhotoUrls[activePhotoIndex] !== targetSrc) return; // photo-race-guard-v1
               sheetImage.src = targetSrc;
               sheetImage.style.opacity = "1";
               if (sheetImageStage) sheetImageStage.style.visibility = "visible";
@@ -6700,6 +6702,7 @@ function showActivePhoto() {
   // keep current photo visible while next photo loads
 
   const revealTargetPhoto = () => {
+  if (!isFloorplanMode && activePhotoUrls.length && activePhotoUrls[activePhotoIndex] !== targetSrc) return; // photo-race-guard-v1
   sheetImage.src = targetSrc;
   sheetImage.style.opacity = "1";
 
